@@ -1,0 +1,16 @@
+
+{
+  "name": "fund-valuation-pro",
+  "version": "1.0.0",
+  "description": "极简基金估值助手",
+  "main": "index.tsx",
+  "dependencies": {
+    "react": "^19.2.4",
+    "react-dom": "^19.2.4",
+    "@google/genai": "^0.21.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.0.0",
+    "tailwindcss": "^3.3.0"
+  }
+}
