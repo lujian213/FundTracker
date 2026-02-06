@@ -1,0 +1,6 @@
+
+{
+  "name": "极简基金估值助手",
+  "description": "专注中国大陆公募基金实时估值，数据源自天天基金官方接口，轻量无广告。",
+  "requestFramePermissions": []
+}
