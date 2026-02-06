@@ -6,7 +6,7 @@ import { TickerCard } from './components/TickerCard';
 import { AddTickerModal } from './components/AddTickerModal';
 import { ConfirmDialog } from './components/ConfirmDialog';
 
-type SortOrder = 'none' | 'asc' | 'desc';
+type SortOrder = 'asc' | 'desc';
 
 const App: React.FC = () => {
   const [portfolio, setPortfolio] = useState<Ticker[]>(() => {
@@ -28,7 +28,8 @@ const App: React.FC = () => {
   });
 
   const [sortOrder, setSortOrder] = useState<SortOrder>(() => {
-    return (localStorage.getItem('fund_sort_order') as SortOrder) || 'desc';
+    const saved = localStorage.getItem('fund_sort_order');
+    return (saved === 'asc' || saved === 'desc') ? saved : 'desc';
   });
 
   // UI 状态
@@ -57,8 +58,11 @@ const App: React.FC = () => {
     localStorage.setItem('fund_sort_order', sortOrder);
   }, [sortOrder]);
 
+  /**
+   * 更新单个基金数据
+   * 注意：此函数负责在完成后递减计数器
+   */
   const updateSingleFund = useCallback(async (symbol: string) => {
-    setBackgroundTasks(prev => prev + 1);
     try {
       const data = await fetchFundData(symbol);
       if (data) {
@@ -71,12 +75,21 @@ const App: React.FC = () => {
         ));
       }
     } finally {
+      // 无论成功失败，都递减待处理计数
       setBackgroundTasks(prev => Math.max(0, prev - 1));
     }
   }, []);
 
+  /**
+   * 运行批量更新任务
+   * 在开始前一次性增加总待处理数，由内部的 updateSingleFund 负责逐个递减
+   */
   const runBatchUpdate = useCallback(async (targets: Ticker[]) => {
     if (targets.length === 0) return;
+
+    // 一次性增加所有待处理项目的数量，以便 UI 正确显示
+    setBackgroundTasks(prev => prev + targets.length);
+
     const limit = Math.min(5, targets.length);
     const queue = [...targets];
     const workers = Array(limit).fill(null).map(async () => {
@@ -150,7 +163,6 @@ const App: React.FC = () => {
   };
 
   const sortedPortfolio = useMemo(() => {
-    if (sortOrder === 'none') return portfolio;
     return [...portfolio].sort((a, b) => {
       const valA = marketData[a.symbol]?.changePercentage ?? -9999;
       const valB = marketData[b.symbol]?.changePercentage ?? -9999;
@@ -332,11 +344,11 @@ const App: React.FC = () => {
                      <span>管理</span>
                    </button>
                    <button
-                    onClick={() => setSortOrder(prev => prev === 'desc' ? 'asc' : prev === 'asc' ? 'none' : 'desc')}
-                    className="flex items-center space-x-1 px-2 py-1.5 rounded-full bg-gray-100 hover:bg-gray-200 transition-colors text-[10px] font-bold text-gray-500"
+                    onClick={() => setSortOrder(prev => prev === 'desc' ? 'asc' : 'desc')}
+                    className="flex items-center justify-center w-8 h-8 rounded-full bg-gray-100 hover:bg-gray-200 transition-colors text-gray-500"
+                    title={sortOrder === 'desc' ? '当前：高到低' : '当前：低到高'}
                    >
-                     <i className={`fas fa-sort-amount-${sortOrder === 'asc' ? 'up' : 'down'} ${sortOrder === 'none' ? 'opacity-30' : ''}`}></i>
-                     <span>{sortOrder === 'none' ? '默认' : sortOrder === 'desc' ? '跌幅' : '涨幅'}</span>
+                     <i className={`fas fa-sort-amount-${sortOrder === 'asc' ? 'up' : 'down'}`}></i>
                    </button>
                    <span className="text-[10px] text-gray-400 bg-gray-200 px-2 py-1.5 rounded-full font-mono">{portfolio.length}</span>
                  </>
