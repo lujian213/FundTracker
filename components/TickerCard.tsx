@@ -22,14 +22,36 @@ export const TickerCard: React.FC<TickerCardProps> = ({
   const hasData = !!data;
   const isNoValuation = hasData && (data.lastUpdated.includes('无估值') || data.lastUpdated.includes('已休市'));
 
-  const isUp = hasData ? data.changePercentage > 0 : false;
-  const isDown = hasData ? data.changePercentage < 0 : false;
+  const change = hasData ? data.changePercentage : 0;
+  const absChange = Math.abs(change);
+  const isUp = change > 0;
+  const isDown = change < 0;
 
-  const getChangeColor = () => {
+  /**
+   * 根据涨跌幅绝对值获取颜色阶梯
+   * 0-1%: Level 1
+   * 1-3%: Level 2
+   * 3-5%: Level 3
+   * 5%+: Level 4
+   */
+  const getChangeStyles = () => {
     if (!hasData) return 'bg-gray-100 text-transparent select-none';
-    if (isNoValuation) return 'bg-gray-100 text-gray-500';
-    if (isUp) return 'bg-red-50 text-red-600';
-    if (isDown) return 'bg-green-50 text-green-600';
+    if (isNoValuation || change === 0) return 'bg-gray-50 text-gray-500';
+
+    if (isUp) {
+      if (absChange < 1) return 'bg-red-50 text-red-600';
+      if (absChange < 3) return 'bg-red-100 text-red-700 font-bold';
+      if (absChange < 5) return 'bg-red-500 text-white font-bold shadow-sm shadow-red-200';
+      return 'bg-red-700 text-white font-black shadow-md shadow-red-300 ring-2 ring-red-100';
+    }
+
+    if (isDown) {
+      if (absChange < 1) return 'bg-green-50 text-green-600';
+      if (absChange < 3) return 'bg-green-100 text-green-700 font-bold';
+      if (absChange < 5) return 'bg-green-500 text-white font-bold shadow-sm shadow-green-200';
+      return 'bg-green-700 text-white font-black shadow-md shadow-green-300 ring-2 ring-green-100';
+    }
+
     return 'bg-gray-50 text-gray-500';
   };
 
@@ -122,8 +144,10 @@ export const TickerCard: React.FC<TickerCardProps> = ({
         <div className="text-right">
           {hasData ? (
             <div className="flex flex-col items-end">
-              <div className={`inline-flex items-center px-3 py-1.5 rounded-xl font-black text-base shadow-sm transition-colors ${getChangeColor()}`}>
-                {!isNoValuation && <i className={`fas fa-caret-${isUp ? 'up' : isDown ? 'down' : 'minus'} mr-1.5`}></i>}
+              <div className={`inline-flex items-center px-3 py-1.5 rounded-xl text-base transition-all duration-300 ${getChangeStyles()}`}>
+                {!isNoValuation && change !== 0 && (
+                  <i className={`fas fa-caret-${isUp ? 'up' : 'down'} mr-1.5`}></i>
+                )}
                 {isUp ? '+' : ''}{data.changePercentage.toFixed(2)}%
               </div>
               <div className="text-[9px] text-gray-400 mt-2 font-medium bg-gray-50 px-2 py-0.5 rounded-full flex items-center">
