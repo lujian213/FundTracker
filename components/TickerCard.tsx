@@ -1,5 +1,5 @@
 
-import React from 'react';
+import React, { useMemo } from 'react';
 import { Ticker, ValuationData } from '../types';
 
 interface TickerCardProps {
@@ -22,10 +22,11 @@ export const TickerCard: React.FC<TickerCardProps> = ({
   const hasData = !!data;
   const isNoValuation = hasData && (data.lastUpdated.includes('无估值') || data.lastUpdated.includes('已休市'));
 
-  // 检查是否为非当日数据
+  // 检查是否为非当日数据（使用本地时区 YYYY-MM-DD）
   const isTodayData = useMemo(() => {
     if (!hasData || !data.valuationDate) return true;
-    const todayStr = new Date().toISOString().split('T')[0];
+    const now = new Date();
+    const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
     return data.valuationDate === todayStr;
   }, [hasData, data?.valuationDate]);
 
@@ -77,9 +78,9 @@ export const TickerCard: React.FC<TickerCardProps> = ({
       {/* 顶部状态标识 */}
       {!isSelectionMode && (
         <div className="absolute top-0 right-0 flex items-center">
-          {!isTodayData && hasData && (
-             <div className="bg-amber-100 text-amber-700 text-[9px] font-bold px-2 py-1 rounded-bl-lg shadow-sm mr-[1px]">
-               <i className="fas fa-history mr-1"></i>
+          {!isTodayData && hasData && data.valuationDate !== '---' && (
+             <div className="bg-amber-100 text-amber-700 text-[9px] font-bold px-2 py-1 rounded-bl-lg shadow-sm mr-[1px] animate-in slide-in-from-right-2 duration-300">
+               <i className="fas fa-history mr-1 opacity-70"></i>
                {data.valuationDate.split('-').slice(1).join('/')}
              </div>
           )}
@@ -169,6 +170,3 @@ export const TickerCard: React.FC<TickerCardProps> = ({
     </div>
   );
 };
-
-// 辅助 hook 以支持 useMemo
-import { useMemo } from 'react';

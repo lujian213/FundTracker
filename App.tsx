@@ -179,7 +179,7 @@ const App: React.FC = () => {
             </div>
           </div>
 
-          <div className="flex items-center space-x-1">
+          <div className="flex items-center space-x-1 relative">
             {!isSelectionMode && (
               <button disabled={isRefreshing} onClick={refreshAll} className={`p-2 w-10 h-10 rounded-full hover:bg-gray-100 transition-all flex items-center justify-center ${isRefreshing ? 'text-red-500' : 'text-gray-400'}`}>
                 <i className={`fas fa-sync-alt ${isRefreshing ? 'animate-spin' : ''}`}></i>
@@ -191,7 +191,7 @@ const App: React.FC = () => {
             {isMenuOpen && (
               <>
                 <div className="fixed inset-0 z-10" onClick={() => setIsMenuOpen(false)}></div>
-                <div className="absolute right-4 mt-12 w-48 bg-white rounded-2xl shadow-2xl border py-1 z-20">
+                <div className="absolute right-0 top-full mt-2 w-48 bg-white rounded-2xl shadow-2xl border py-1 z-20 animate-in fade-in zoom-in-95 duration-150 origin-top-right">
                   <button onClick={handleExport} className="w-full px-4 py-3 text-left text-sm hover:bg-gray-50 flex items-center space-x-3"><i className="fas fa-file-export opacity-70"></i><span>备份</span></button>
                   <button onClick={() => fileInputRef.current?.click()} className="w-full px-4 py-3 text-left text-sm hover:bg-gray-50 flex items-center space-x-3"><i className="fas fa-file-import opacity-70"></i><span>导入</span></button>
                 </div>
@@ -220,7 +220,7 @@ const App: React.FC = () => {
                 ))
               ) : (
                 marketIndices.map(idx => (
-                  <div key={idx.symbol} className="bg-white rounded-2xl p-4 shadow-sm border border-gray-100 min-w-[160px] lg:min-w-0">
+                  <div key={idx.symbol} className="bg-white rounded-2xl p-4 shadow-sm border border-gray-100 min-w-[180px] lg:min-w-0">
                     <div className="flex justify-between items-start mb-1">
                       <span className="text-xs font-bold text-gray-800">{idx.name}</span>
                       <span className={`text-[10px] font-bold ${idx.changePercent >= 0 ? 'text-red-500' : 'text-green-500'}`}>
@@ -230,11 +230,14 @@ const App: React.FC = () => {
                     <div className={`text-xl font-black ${idx.changePercent >= 0 ? 'text-red-600' : 'text-green-600'}`}>
                       {idx.current.toFixed(2)}
                     </div>
-                    <div className="flex justify-between items-center mt-2">
-                      <span className={`text-[10px] font-medium ${idx.changePercent >= 0 ? 'text-red-400' : 'text-green-400'}`}>
+                    <div className="flex flex-col mt-2">
+                      <div className={`text-[10px] font-medium ${idx.changePercent >= 0 ? 'text-red-400' : 'text-green-400'}`}>
                         {idx.change >= 0 ? '+' : ''}{idx.change.toFixed(2)}
-                      </span>
-                      <span className="text-[8px] text-gray-300">{idx.lastUpdated}</span>
+                      </div>
+                      <div className="text-[9px] text-gray-300 mt-1 flex items-center bg-gray-50/50 rounded-md py-0.5 px-1">
+                        <i className="far fa-clock mr-1 opacity-60"></i>
+                        <span>数据时间 {idx.lastUpdated}</span>
+                      </div>
                     </div>
                   </div>
                 ))

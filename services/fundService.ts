@@ -11,6 +11,14 @@ function getTimestamp(): string {
 }
 
 /**
+ * 格式化日期时间为 MM-DD HH:mm:ss
+ */
+function formatFullDateTime(date: Date): string {
+  const pad = (n: number) => n.toString().padStart(2, '0');
+  return `${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
+}
+
+/**
  * 提取 JS 变量值的辅助函数
  */
 function extractVar(content: string, varName: string): string {
@@ -79,7 +87,7 @@ async function fetchWithProxy(targetUrl: string, validator: (text: string) => bo
 export async function fetchMarketIndices(): Promise<MarketIndex[]> {
   const fetchIndex = async (secid: string): Promise<MarketIndex | null> => {
     const ut = 'fa5fd1943c7b386f172d6893dbf244b0';
-    const fields = 'f43,f169,f170,f58,f57,f124';
+    const fields = 'f43,f169,f170,f58,f57,f124'; // f124 为服务器端数据最后更新时间戳
     const targetUrl = `https://push2.eastmoney.com/api/qt/stock/get?ut=${ut}&fltt=2&invt=2&secid=${secid}&fields=${fields}&_=${Date.now()}`;
 
     const content = await fetchWithProxy(targetUrl, (t) => t.includes('"data":') || t.includes('f43'));
@@ -95,13 +103,20 @@ export async function fetchMarketIndices(): Promise<MarketIndex[]> {
         return parseFloat(val);
       };
 
+      // 解析 API 返回的时间戳 f124
+      let dataTime = new Date();
+      if (d.f124) {
+        // f124 通常是秒级 Unix 时间戳
+        dataTime = new Date(d.f124 * 1000);
+      }
+
       return {
         name: d.f58 || (secid.includes('HSTECH') ? '恒生科技' : '指数'),
         symbol: d.f57 || secid.split('.')[1],
         current: parseValue(d.f43),
         change: parseValue(d.f169),
         changePercent: parseValue(d.f170),
-        lastUpdated: new Date().toLocaleTimeString('zh-CN', { hour12: false })
+        lastUpdated: formatFullDateTime(dataTime)
       };
     } catch (e) {
       return null;
@@ -151,13 +166,24 @@ export async function fetchFundData(symbol: string): Promise<ValuationData | nul
     const gztime = valInfo?.gztime || baseInfo?.gztime || "更新中";
     const jzrq = valInfo?.jzrq || baseInfo?.jzrq || "---";
 
+    // 格式化天天基金返回的时间，如果只有 HH:mm 则补全日期
+    let finalGzTime = gztime;
+    if (gztime && gztime.length <= 5 && gztime.includes(':')) {
+        const now = new Date();
+        const dateStr = `${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+        finalGzTime = `${dateStr} ${gztime}`;
+    } else if (gztime && gztime.length > 10) {
+        // 如果是 YYYY-MM-DD HH:mm，缩减为 MM-DD HH:mm
+        finalGzTime = gztime.substring(5);
+    }
+
     return {
       symbol: code,
       name: name,
       currentPrice: gsz,
       previousPrice: dwjz,
       changePercentage: gszzl,
-      lastUpdated: gztime,
+      lastUpdated: finalGzTime,
       valuationDate: jzrq,
       sourceUrl: `https://fund.eastmoney.com/${code}.html`
     };
