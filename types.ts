@@ -20,3 +20,12 @@ export interface ValuationData {
   valuationDate: string;     // 数据日期
   sourceUrl: string;
 }
+
+export interface MarketIndex {
+  name: string;
+  symbol: string;
+  current: number;
+  change: number;
+  changePercent: number;
+  lastUpdated: string;
+}

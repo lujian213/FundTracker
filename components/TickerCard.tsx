@@ -22,18 +22,18 @@ export const TickerCard: React.FC<TickerCardProps> = ({
   const hasData = !!data;
   const isNoValuation = hasData && (data.lastUpdated.includes('无估值') || data.lastUpdated.includes('已休市'));
 
+  // 检查是否为非当日数据
+  const isTodayData = useMemo(() => {
+    if (!hasData || !data.valuationDate) return true;
+    const todayStr = new Date().toISOString().split('T')[0];
+    return data.valuationDate === todayStr;
+  }, [hasData, data?.valuationDate]);
+
   const change = hasData ? data.changePercentage : 0;
   const absChange = Math.abs(change);
   const isUp = change > 0;
   const isDown = change < 0;
 
-  /**
-   * 根据涨跌幅绝对值获取颜色阶梯
-   * 0-1%: Level 1
-   * 1-3%: Level 2
-   * 3-5%: Level 3
-   * 5%+: Level 4
-   */
   const getChangeStyles = () => {
     if (!hasData) return 'bg-gray-100 text-transparent select-none';
     if (isNoValuation || change === 0) return 'bg-gray-50 text-gray-500';
@@ -74,9 +74,15 @@ export const TickerCard: React.FC<TickerCardProps> = ({
       onClick={handleCardClick}
       className={`bg-white rounded-2xl p-5 shadow-sm border transition-all relative overflow-hidden animate-in fade-in slide-in-from-bottom-2 duration-300 ${isSelected ? 'border-blue-500 ring-4 ring-blue-500/10' : 'border-gray-100'} ${isSelectionMode ? 'cursor-pointer active:scale-[0.98]' : ''}`}
     >
-      {/* 顶部标识 */}
+      {/* 顶部状态标识 */}
       {!isSelectionMode && (
-        <div className="absolute top-0 right-0">
+        <div className="absolute top-0 right-0 flex items-center">
+          {!isTodayData && hasData && (
+             <div className="bg-amber-100 text-amber-700 text-[9px] font-bold px-2 py-1 rounded-bl-lg shadow-sm mr-[1px]">
+               <i className="fas fa-history mr-1"></i>
+               {data.valuationDate.split('-').slice(1).join('/')}
+             </div>
+          )}
           <div className={`${!hasData ? 'bg-gray-300' : isNoValuation ? 'bg-gray-400' : 'bg-red-600'} text-white text-[9px] font-bold px-3 py-1 rounded-bl-lg shadow-sm transition-colors`}>
             {!hasData ? '加载中' : isNoValuation ? '收盘' : '估值'}
           </div>
@@ -163,3 +169,6 @@ export const TickerCard: React.FC<TickerCardProps> = ({
     </div>
   );
 };
+
+// 辅助 hook 以支持 useMemo
+import { useMemo } from 'react';

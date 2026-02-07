@@ -1,5 +1,5 @@
 
-import { ValuationData } from "../types";
+import { ValuationData, MarketIndex } from "../types";
 
 /**
  * 获取当前时间戳 YYYYMMDDHHmmss
@@ -12,25 +12,20 @@ function getTimestamp(): string {
 
 /**
  * 提取 JS 变量值的辅助函数
- * 针对天天基金 pingzhongdata 脚本：var fS_name = "海富通电子信息传媒产业股票A";
  */
 function extractVar(content: string, varName: string): string {
-  // 匹配变量定义，支持有无 var，有无空格，单双引号
   const regex = new RegExp(`${varName}\\s*=\\s*["']([^"']*)["']`, 'i');
   const match = content.match(regex);
   if (match && match[1]) {
-    // 处理可能的转义或编码字符（如果有的话）
     return match[1].trim();
   }
-
-  // 匹配数值 var dwjz = 1.23;
   const numRegex = new RegExp(`${varName}\\s*=\\s*([\\d\\.-]+)`, 'i');
   const numMatch = content.match(numRegex);
   return numMatch ? numMatch[1] : '';
 }
 
 /**
- * 解析 jsonpgz 格式 (fundgz 接口)
+ * 解析 jsonpgz 格式
  */
 function parseJsonpgz(content: string): any {
   try {
@@ -45,41 +40,31 @@ function parseJsonpgz(content: string): any {
 }
 
 /**
- * 使用多个代理尝试获取数据，保持静默除非全部失败
+ * 通用代理获取函数
  */
 async function fetchWithProxy(targetUrl: string, validator: (text: string) => boolean): Promise<string | null> {
   const proxies = [
+    (url: string) => url,
     (url: string) => `https://corsproxy.io/?${encodeURIComponent(url)}`,
     (url: string) => `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`,
-    (url: string) => `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(url)}`,
-    (url: string) => `https://api.allorigins.win/get?url=${encodeURIComponent(url)}`
+    (url: string) => `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(url)}`
   ];
 
   for (let i = 0; i < proxies.length; i++) {
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 10000); // 10秒超时足够了
+    const timeoutId = setTimeout(() => controller.abort(), 6000);
+    const proxyUrl = proxies[i](targetUrl);
 
     try {
-      const proxyUrl = proxies[i](targetUrl);
       const response = await fetch(proxyUrl, {
         cache: 'no-cache',
-        signal: controller.signal
+        signal: controller.signal,
+        headers: i === 0 ? {} : { 'Accept': 'application/json' }
       });
-
       clearTimeout(timeoutId);
-
       if (response.ok) {
-        let text = "";
-        if (proxyUrl.includes('allorigins.win/get')) {
-          const json = await response.json();
-          text = json.contents || "";
-        } else {
-          text = await response.text();
-        }
-
-        if (text && validator(text)) {
-          return text;
-        }
+        const text = await response.text();
+        if (text && validator(text)) return text;
       }
     } catch (e) {
       clearTimeout(timeoutId);
@@ -89,19 +74,55 @@ async function fetchWithProxy(targetUrl: string, validator: (text: string) => bo
 }
 
 /**
- * 获取基金详情数据
+ * 获取大盘指数数据
  */
+export async function fetchMarketIndices(): Promise<MarketIndex[]> {
+  const fetchIndex = async (secid: string): Promise<MarketIndex | null> => {
+    const ut = 'fa5fd1943c7b386f172d6893dbf244b0';
+    const fields = 'f43,f169,f170,f58,f57,f124';
+    const targetUrl = `https://push2.eastmoney.com/api/qt/stock/get?ut=${ut}&fltt=2&invt=2&secid=${secid}&fields=${fields}&_=${Date.now()}`;
+
+    const content = await fetchWithProxy(targetUrl, (t) => t.includes('"data":') || t.includes('f43'));
+    if (!content) return null;
+
+    try {
+      const json = JSON.parse(content);
+      const d = json.data;
+      if (!d) return null;
+
+      const parseValue = (val: any) => {
+        if (val === undefined || val === null || val === "-") return 0;
+        return parseFloat(val);
+      };
+
+      return {
+        name: d.f58 || (secid.includes('HSTECH') ? '恒生科技' : '指数'),
+        symbol: d.f57 || secid.split('.')[1],
+        current: parseValue(d.f43),
+        change: parseValue(d.f169),
+        changePercent: parseValue(d.f170),
+        lastUpdated: new Date().toLocaleTimeString('zh-CN', { hour12: false })
+      };
+    } catch (e) {
+      return null;
+    }
+  };
+
+  const results = await Promise.all([
+    fetchIndex('1.000001'),
+    fetchIndex('124.HSTECH')
+  ]);
+
+  return results.filter((i): i is MarketIndex => i !== null);
+}
+
 export async function fetchFundData(symbol: string): Promise<ValuationData | null> {
   const code = symbol.padStart(6, '0');
   const timestamp = getTimestamp();
-
-  // 接口1：主接口，包含基金全称、历史净值
   const urlPrimary = `https://fund.eastmoney.com/pingzhongdata/${code}.js?v=${timestamp}`;
-  // 接口2：实时估值接口
   const urlValuation = `https://fundgz.1234567.com.cn/js/${code}.js?rt=${timestamp}`;
 
   try {
-    // 采用 AllSettled 确保一个接口挂了另一个还能工作
     const results = await Promise.allSettled([
       fetchWithProxy(urlPrimary, (t) => t.includes('fS_code') || t.includes('fS_name')),
       fetchWithProxy(urlValuation, (t) => t.includes('jsonpgz'))
@@ -112,7 +133,6 @@ export async function fetchFundData(symbol: string): Promise<ValuationData | nul
 
     if (!contentPrimary && !contentValuation) return null;
 
-    // 解析基础信息
     const baseInfo = contentPrimary ? {
       name: extractVar(contentPrimary, 'fS_name'),
       dwjz: extractVar(contentPrimary, 'dwjz'),
@@ -122,12 +142,8 @@ export async function fetchFundData(symbol: string): Promise<ValuationData | nul
       jzrq: extractVar(contentPrimary, 'fs_jzrq')
     } : null;
 
-    // 解析估值信息
     const valInfo = contentValuation ? parseJsonpgz(contentValuation) : null;
-
-    // 名称提取优化：优先取 contentPrimary 中的全称，通常最准确
     let name = baseInfo?.name || valInfo?.name || `基金(${code})`;
-
     const dwjz = parseFloat(valInfo?.dwjz || baseInfo?.dwjz || "0");
     const gszRaw = valInfo?.gsz || baseInfo?.gsz;
     const gsz = gszRaw ? parseFloat(gszRaw) : dwjz;
@@ -145,7 +161,6 @@ export async function fetchFundData(symbol: string): Promise<ValuationData | nul
       valuationDate: jzrq,
       sourceUrl: `https://fund.eastmoney.com/${code}.html`
     };
-
   } catch (error) {
     return null;
   }
