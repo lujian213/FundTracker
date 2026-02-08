@@ -8,7 +8,8 @@ import { ConfirmDialog } from './components/ConfirmDialog';
 
 type SortOrder = 'asc' | 'desc';
 
-const DEFAULT_INDICES = ['1.000001', '124.HSTECH'];
+// 修改：默认不再预设任何指数，遵循用户“并不是默认一定就有”的反馈
+const DEFAULT_INDICES: string[] = [];
 
 const App: React.FC = () => {
   // 持久化存储
@@ -22,6 +23,7 @@ const App: React.FC = () => {
   const [indicesConfig, setIndicesConfig] = useState<string[]>(() => {
     try {
       const saved = localStorage.getItem('fund_indices_config');
+      // 如果本地没有存储，则使用空数组
       return saved ? JSON.parse(saved) : DEFAULT_INDICES;
     } catch (e) { return DEFAULT_INDICES; }
   });
@@ -162,7 +164,7 @@ const App: React.FC = () => {
       try {
         const imported = JSON.parse(e.target?.result as string);
         const fundList = Array.isArray(imported) ? imported : (imported.portfolio || []);
-        const indexList = imported.indices || DEFAULT_INDICES;
+        const indexList = imported.indices || [];
 
         const existingSymbols = new Set(portfolio.map(p => p.symbol));
         const newItems = fundList.filter((item: any) =>
@@ -178,7 +180,7 @@ const App: React.FC = () => {
           setPortfolio(prev => [...prev, ...newItems]);
           runBatchUpdate(newItems);
         }
-        if (indexList.length > 0) setIndicesConfig(indexList);
+        setIndicesConfig(indexList);
       } catch (err) { alert('导入失败'); }
     };
     reader.readAsText(file);
@@ -217,7 +219,7 @@ const App: React.FC = () => {
                   <button onClick={handleExport} className="w-full px-4 py-3 text-left text-sm hover:bg-gray-50 flex items-center space-x-3"><i className="fas fa-file-export opacity-70"></i><span>导出备份</span></button>
                   <button onClick={() => fileInputRef.current?.click()} className="w-full px-4 py-3 text-left text-sm hover:bg-gray-50 flex items-center space-x-3"><i className="fas fa-file-import opacity-70"></i><span>导入备份</span></button>
                   <div className="h-px bg-gray-100 my-1 mx-2"></div>
-                  <button onClick={() => { setIndicesConfig(DEFAULT_INDICES); setIsMenuOpen(false); }} className="w-full px-4 py-3 text-left text-sm hover:bg-gray-50 flex items-center space-x-3 text-red-500"><i className="fas fa-undo opacity-70"></i><span>重置指数</span></button>
+                  <button onClick={() => { setIndicesConfig([]); setIsMenuOpen(false); }} className="w-full px-4 py-3 text-left text-sm hover:bg-gray-50 flex items-center space-x-3 text-red-500"><i className="fas fa-trash-alt opacity-70"></i><span>清空指数</span></button>
                 </div>
               </>
             )}
@@ -264,8 +266,9 @@ const App: React.FC = () => {
                 </div>
               ))}
               {marketIndices.length === 0 && (
-                 <div className="bg-gray-50 border-2 border-dashed border-gray-200 rounded-2xl p-4 text-center text-[10px] text-gray-400 min-w-[180px] lg:min-w-0">
-                   暂无指数数据
+                 <div className="bg-white border-2 border-dashed border-gray-100 rounded-3xl py-20 text-center text-[10px] text-gray-400 min-w-[180px] lg:min-w-0 flex flex-col items-center justify-center space-y-2">
+                   <i className="fas fa-chart-bar text-xl opacity-20"></i>
+                   <span>暂无指数数据</span>
                  </div>
               )}
             </div>
@@ -347,7 +350,6 @@ const App: React.FC = () => {
               if (unique.length) {
                 const nextConfig = [...indicesConfig, ...unique];
                 setIndicesConfig(nextConfig);
-                // 立即执行指数抓取，不等待 useEffect
                 refreshMarketIndices(nextConfig);
               }
             } else {
