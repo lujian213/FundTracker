@@ -1,5 +1,5 @@
 
-import { ValuationData, MarketIndex } from "../types";
+import { ValuationData, MarketIndex, HistoricalPoint } from "../types";
 
 /**
  * 获取当前时间戳 YYYYMMDDHHmmss
@@ -30,6 +30,25 @@ function extractVar(content: string, varName: string): string {
   const numRegex = new RegExp(`(?:var|const|let)?\\s*${varName}\\s*=\\s*([\\d\\.-]+)`, 'i');
   const numMatch = content.match(numRegex);
   return numMatch ? numMatch[1] : '';
+}
+
+/**
+ * 提取复杂 JS 对象 (Array/Object)
+ */
+function extractComplexVar(content: string, varName: string): any {
+  const regex = new RegExp(`var\\s+${varName}\\s*=\\s*(\\[[\\s\\S]*?\\]);`, 'm');
+  const match = content.match(regex);
+  if (match && match[1]) {
+    try {
+      // 注意：天天基金的 JS 里的 key 有时没加引号，直接 JSON.parse 会报错
+      // 这里的处理比较粗放，但在本场景下大部分合法的 JS 数组能通过 eval 解析
+      // 安全起见，在一个隔离的函数作用域中处理
+      return new Function(`return ${match[1]}`)();
+    } catch (e) {
+      console.error(`Failed to parse complex var: ${varName}`, e);
+    }
+  }
+  return null;
 }
 
 /**
@@ -78,6 +97,26 @@ async function fetchWithProxy(targetUrl: string, validator: (text: string) => bo
 }
 
 /**
+ * 获取历史趋势数据
+ */
+export async function fetchFundHistory(symbol: string): Promise<HistoricalPoint[]> {
+  const code = symbol.padStart(6, '0');
+  const url = `https://fund.eastmoney.com/pingzhongdata/${code}.js?v=${getTimestamp()}`;
+
+  const content = await fetchWithProxy(url, (t) => t.includes('Data_netWorthTrend'));
+  if (!content) return [];
+
+  const trendData = extractComplexVar(content, 'Data_netWorthTrend');
+  if (!Array.isArray(trendData)) return [];
+
+  return trendData.map((item: any) => ({
+    date: item.x,
+    value: item.y,
+    equityReturn: item.equityReturn || 0
+  }));
+}
+
+/**
  * 获取大盘指数数据
  */
 export async function fetchMarketIndices(secids: string[]): Promise<MarketIndex[]> {
@@ -104,7 +143,7 @@ export async function fetchMarketIndices(secids: string[]): Promise<MarketIndex[
 
       return {
         name: d.f58 || `指数(${secid})`,
-        symbol: secid, // 关键修复：确保 symbol 与输入的 secid 对应，而不是 API 返回的短代码
+        symbol: secid,
         current: parseValue(d.f43),
         change: parseValue(d.f169),
         changePercent: parseValue(d.f170),

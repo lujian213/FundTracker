@@ -30,3 +30,14 @@ export interface MarketIndex {
   changePercent: number;
   lastUpdated: string;
 }
+
+export interface HistoricalPoint {
+  date: number; // 时间戳
+  value: number; // 净值
+  equityReturn: number; // 当日涨跌
+}
+
+export interface FundHistory {
+  netWorthTrend: HistoricalPoint[];
+  accumulatedTrend: any[];
+}

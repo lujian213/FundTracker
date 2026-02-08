@@ -6,6 +6,7 @@ interface TickerCardProps {
   ticker: Ticker;
   data?: ValuationData;
   onRemove: () => void;
+  onClick?: () => void; // 新增：点击回调
   isSelectionMode?: boolean;
   isSelected?: boolean;
   onSelect?: () => void;
@@ -15,6 +16,7 @@ export const TickerCard: React.FC<TickerCardProps> = ({
   ticker,
   data,
   onRemove,
+  onClick,
   isSelectionMode = false,
   isSelected = false,
   onSelect
@@ -22,7 +24,7 @@ export const TickerCard: React.FC<TickerCardProps> = ({
   const hasData = !!data;
   const isNoValuation = hasData && (data.lastUpdated.includes('无估值') || data.lastUpdated.includes('已休市'));
 
-  // 检查是否为非当日数据（使用本地时区 YYYY-MM-DD）
+  // 检查是否为非当日数据
   const isTodayData = useMemo(() => {
     if (!hasData || !data.valuationDate) return true;
     const now = new Date();
@@ -67,13 +69,15 @@ export const TickerCard: React.FC<TickerCardProps> = ({
   const handleCardClick = (e: React.MouseEvent) => {
     if (isSelectionMode && onSelect) {
       onSelect();
+    } else if (!isSelectionMode && onClick) {
+      onClick();
     }
   };
 
   return (
     <div
       onClick={handleCardClick}
-      className={`bg-white rounded-2xl p-5 shadow-sm border transition-all relative overflow-hidden animate-in fade-in slide-in-from-bottom-2 duration-300 ${isSelected ? 'border-blue-500 ring-4 ring-blue-500/10' : 'border-gray-100'} ${isSelectionMode ? 'cursor-pointer active:scale-[0.98]' : ''}`}
+      className={`bg-white rounded-2xl p-5 shadow-sm border transition-all relative overflow-hidden animate-in fade-in slide-in-from-bottom-2 duration-300 ${isSelected ? 'border-blue-500 ring-4 ring-blue-500/10' : 'border-gray-100'} cursor-pointer hover:shadow-lg hover:border-gray-200 active:scale-[0.98]`}
     >
       {/* 顶部状态标识 */}
       {!isSelectionMode && (

@@ -5,10 +5,10 @@ import { fetchFundData, fetchMarketIndices } from './services/fundService';
 import { TickerCard } from './components/TickerCard';
 import { AddTickerModal } from './components/AddTickerModal';
 import { ConfirmDialog } from './components/ConfirmDialog';
+import { FundDetailsModal } from './components/FundDetailsModal';
 
 type SortOrder = 'asc' | 'desc';
 
-// 修改：默认不再预设任何指数，遵循用户“并不是默认一定就有”的反馈
 const DEFAULT_INDICES: string[] = [];
 
 const App: React.FC = () => {
@@ -23,7 +23,6 @@ const App: React.FC = () => {
   const [indicesConfig, setIndicesConfig] = useState<string[]>(() => {
     try {
       const saved = localStorage.getItem('fund_indices_config');
-      // 如果本地没有存储，则使用空数组
       return saved ? JSON.parse(saved) : DEFAULT_INDICES;
     } catch (e) { return DEFAULT_INDICES; }
   });
@@ -48,6 +47,7 @@ const App: React.FC = () => {
   const [isSelectionMode, setIsSelectionMode] = useState<boolean>(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [backgroundTasks, setBackgroundTasks] = useState<number>(0);
+  const [viewingFund, setViewingFund] = useState<ValuationData | null>(null);
 
   // 删除确认状态
   const [pendingDelete, setPendingDelete] = useState<{ id?: string, symbol?: string, name?: string, bulk: boolean, type?: 'fund' | 'index' } | null>(null);
@@ -105,7 +105,6 @@ const App: React.FC = () => {
   const refreshAll = useCallback(async () => {
     if (isRefreshing) return;
     setIsRefreshing(true);
-    // 并行刷新
     await Promise.allSettled([
       runBatchUpdate(portfolio),
       refreshMarketIndices()
@@ -113,21 +112,17 @@ const App: React.FC = () => {
     setIsRefreshing(false);
   }, [portfolio, isRefreshing, runBatchUpdate, refreshMarketIndices]);
 
-  // 1. 监听基金列表长度变化（仅在初始化或新增时）
   useEffect(() => {
     if (portfolio.length > 0) {
-      // 找出没有数据的基金进行初次同步
       const targets = portfolio.filter(p => !marketData[p.symbol]);
       if (targets.length > 0) runBatchUpdate(targets);
     }
   }, [portfolio.length]);
 
-  // 2. 监听指数配置变化（独立触发，不受 isRefreshing 影响）
   useEffect(() => {
     refreshMarketIndices();
   }, [indicesConfig]);
 
-  // 3. 定时刷新逻辑
   useEffect(() => {
     const fundInterval = setInterval(() => runBatchUpdate(portfolio), 120000);
     const indexInterval = setInterval(() => refreshMarketIndices(), 30000);
@@ -230,7 +225,6 @@ const App: React.FC = () => {
       <input type="file" ref={fileInputRef} onChange={handleImport} accept=".json" className="hidden" />
 
       <div className="max-w-5xl mx-auto px-4 py-6 flex flex-col lg:flex-row gap-6">
-        {/* 指数看板 - 响应式及管理 */}
         <aside className="lg:w-64 flex-shrink-0">
           <div className="sticky lg:top-24 space-y-4">
             <div className="h-8 flex items-center justify-between px-1">
@@ -275,7 +269,6 @@ const App: React.FC = () => {
           </div>
         </aside>
 
-        {/* 主内容 */}
         <main className="flex-1">
           <div className="space-y-4">
             <div className="h-8 flex justify-between items-center px-1">
@@ -303,6 +296,7 @@ const App: React.FC = () => {
                   ticker={ticker}
                   data={marketData[ticker.symbol]}
                   onRemove={() => setPendingDelete({ id: ticker.id, symbol: ticker.symbol, name: ticker.name, bulk: false, type: 'fund' })}
+                  onClick={() => marketData[ticker.symbol] && setViewingFund(marketData[ticker.symbol])}
                   isSelectionMode={isSelectionMode}
                   isSelected={selectedIds.has(ticker.id)}
                   onSelect={() => setSelectedIds(prev => {
@@ -363,6 +357,13 @@ const App: React.FC = () => {
             setIsModalOpen(false);
           }}
           isLoading={false}
+        />
+      )}
+
+      {viewingFund && (
+        <FundDetailsModal
+          data={viewingFund}
+          onClose={() => setViewingFund(null)}
         />
       )}
 
