@@ -2,6 +2,11 @@
 import { ValuationData, MarketIndex, HistoricalPoint } from "../types";
 
 /**
+ * 内存缓存，减少重复请求
+ */
+const historyCache: Record<string, HistoricalPoint[]> = {};
+
+/**
  * 获取当前时间戳 YYYYMMDDHHmmss
  */
 function getTimestamp(): string {
@@ -40,9 +45,6 @@ function extractComplexVar(content: string, varName: string): any {
   const match = content.match(regex);
   if (match && match[1]) {
     try {
-      // 注意：天天基金的 JS 里的 key 有时没加引号，直接 JSON.parse 会报错
-      // 这里的处理比较粗放，但在本场景下大部分合法的 JS 数组能通过 eval 解析
-      // 安全起见，在一个隔离的函数作用域中处理
       return new Function(`return ${match[1]}`)();
     } catch (e) {
       console.error(`Failed to parse complex var: ${varName}`, e);
@@ -67,53 +69,98 @@ function parseJsonpgz(content: string): any {
 }
 
 /**
- * 通用代理获取函数
+ * 竞速代理获取函数：并发请求多个代理，取最快的一个
  */
 async function fetchWithProxy(targetUrl: string, validator: (text: string) => boolean): Promise<string | null> {
-  const proxies = [
-    (url: string) => url,
+  const proxyTemplates = [
     (url: string) => `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`,
     (url: string) => `https://corsproxy.io/?${encodeURIComponent(url)}`,
-    (url: string) => `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(url)}`
+    (url: string) => `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(url)}`,
+    (url: string) => url // 最后的兜底，通常在非浏览器环境有效
   ];
 
-  for (let i = 0; i < proxies.length; i++) {
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 7000);
-    const proxyUrl = proxies[i](targetUrl);
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 8000); // 整体超时限制
+
+  const fetchFromProxy = async (template: (url: string) => string): Promise<string> => {
+    const proxyUrl = template(targetUrl);
+    const innerController = new AbortController();
+
+    // 手动关联信号，替代 AbortSignal.any，修复某些环境不支持该静态方法的问题
+    const linkAbort = () => innerController.abort();
+    controller.signal.addEventListener('abort', linkAbort);
+
+    const innerTimeout = setTimeout(() => innerController.abort(), 4500); // 单个请求激进超时
 
     try {
-      const response = await fetch(proxyUrl, { cache: 'no-cache', signal: controller.signal });
-      clearTimeout(timeoutId);
-      if (response.ok) {
-        const text = await response.text();
-        if (text && validator(text)) return text;
-      }
-    } catch (e) {
-      clearTimeout(timeoutId);
+      const response = await fetch(proxyUrl, {
+        cache: 'no-cache',
+        signal: innerController.signal
+      });
+
+      if (!response.ok) throw new Error('Proxy failed');
+      const text = await response.text();
+      if (text && validator(text)) return text;
+      throw new Error('Invalid content');
+    } finally {
+      // 这里的 finally 确保了计时器被清除以及事件监听器被移除，防止内存泄漏
+      clearTimeout(innerTimeout);
+      controller.signal.removeEventListener('abort', linkAbort);
     }
+  };
+
+  try {
+    // 使用手动实现的 Promise.any 逻辑，修复某些环境不支持 Promise.any 的问题
+    const fastestResult = await new Promise<string>((resolve, reject) => {
+      let rejectedCount = 0;
+      const tasks = proxyTemplates.map(t => fetchFromProxy(t));
+      tasks.forEach(task => {
+        task.then(resolve).catch(() => {
+          rejectedCount++;
+          if (rejectedCount === tasks.length) {
+            reject(new Error('All proxies failed'));
+          }
+        });
+      });
+    });
+
+    clearTimeout(timeoutId);
+    // 成功获取结果后，终止其他正在进行的代理请求
+    controller.abort();
+    return fastestResult;
+  } catch (e) {
+    clearTimeout(timeoutId);
+    return null;
   }
-  return null;
 }
 
 /**
- * 获取历史趋势数据
+ * 获取历史趋势数据 (增加内存缓存)
  */
 export async function fetchFundHistory(symbol: string): Promise<HistoricalPoint[]> {
   const code = symbol.padStart(6, '0');
-  const url = `https://fund.eastmoney.com/pingzhongdata/${code}.js?v=${getTimestamp()}`;
 
+  // 命中缓存直接返回
+  if (historyCache[code]) return historyCache[code];
+
+  const url = `https://fund.eastmoney.com/pingzhongdata/${code}.js?v=${getTimestamp()}`;
   const content = await fetchWithProxy(url, (t) => t.includes('Data_netWorthTrend'));
+
   if (!content) return [];
 
   const trendData = extractComplexVar(content, 'Data_netWorthTrend');
   if (!Array.isArray(trendData)) return [];
 
-  return trendData.map((item: any) => ({
+  const results = trendData.map((item: any) => ({
     date: item.x,
     value: item.y,
     equityReturn: item.equityReturn || 0
   }));
+
+  // 存入缓存
+  if (results.length > 0) historyCache[code] = results;
+
+  return results;
 }
 
 /**
@@ -166,7 +213,7 @@ export async function fetchFundData(symbol: string): Promise<ValuationData | nul
 
   try {
     const [resPrimary, resValuation] = await Promise.allSettled([
-      fetchWithProxy(urlPrimary, (t) => t.includes('fS_code') || t.includes('fS_name') || t.includes('dwjz')),
+      fetchWithProxy(urlPrimary, (t) => t.includes('fS_code') || t.includes('dwjz')),
       fetchWithProxy(urlValuation, (t) => t.includes('jsonpgz'))
     ]);
 
