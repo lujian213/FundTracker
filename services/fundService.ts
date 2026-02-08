@@ -2,9 +2,12 @@
 import { ValuationData, MarketIndex, HistoricalPoint } from "../types";
 
 /**
- * 内存缓存，减少重复请求
+ * 内存缓存
+ * historyCache: 存储官方历史净值
+ * realtimeCache: 存储最新的实时估值点，用于合并到历史趋势中
  */
 const historyCache: Record<string, HistoricalPoint[]> = {};
+const realtimeCache: Record<string, HistoricalPoint> = {};
 
 /**
  * 获取当前时间戳 YYYYMMDDHHmmss
@@ -76,56 +79,46 @@ async function fetchWithProxy(targetUrl: string, validator: (text: string) => bo
     (url: string) => `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`,
     (url: string) => `https://corsproxy.io/?${encodeURIComponent(url)}`,
     (url: string) => `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(url)}`,
-    (url: string) => url // 最后的兜底，通常在非浏览器环境有效
+    (url: string) => url
   ];
 
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 8000); // 整体超时限制
+  const timeoutId = setTimeout(() => controller.abort(), 8000);
 
   const fetchFromProxy = async (template: (url: string) => string): Promise<string> => {
     const proxyUrl = template(targetUrl);
     const innerController = new AbortController();
-
-    // 手动关联信号，替代 AbortSignal.any，修复某些环境不支持该静态方法的问题
     const linkAbort = () => innerController.abort();
     controller.signal.addEventListener('abort', linkAbort);
-
-    const innerTimeout = setTimeout(() => innerController.abort(), 4500); // 单个请求激进超时
+    const innerTimeout = setTimeout(() => innerController.abort(), 4500);
 
     try {
       const response = await fetch(proxyUrl, {
         cache: 'no-cache',
         signal: innerController.signal
       });
-
       if (!response.ok) throw new Error('Proxy failed');
       const text = await response.text();
       if (text && validator(text)) return text;
       throw new Error('Invalid content');
     } finally {
-      // 这里的 finally 确保了计时器被清除以及事件监听器被移除，防止内存泄漏
       clearTimeout(innerTimeout);
       controller.signal.removeEventListener('abort', linkAbort);
     }
   };
 
   try {
-    // 使用手动实现的 Promise.any 逻辑，修复某些环境不支持 Promise.any 的问题
     const fastestResult = await new Promise<string>((resolve, reject) => {
       let rejectedCount = 0;
       const tasks = proxyTemplates.map(t => fetchFromProxy(t));
       tasks.forEach(task => {
         task.then(resolve).catch(() => {
           rejectedCount++;
-          if (rejectedCount === tasks.length) {
-            reject(new Error('All proxies failed'));
-          }
+          if (rejectedCount === tasks.length) reject(new Error('All proxies failed'));
         });
       });
     });
-
     clearTimeout(timeoutId);
-    // 成功获取结果后，终止其他正在进行的代理请求
     controller.abort();
     return fastestResult;
   } catch (e) {
@@ -135,32 +128,39 @@ async function fetchWithProxy(targetUrl: string, validator: (text: string) => bo
 }
 
 /**
- * 获取历史趋势数据 (增加内存缓存)
+ * 获取历史趋势数据 (合并实时估值缓存)
  */
 export async function fetchFundHistory(symbol: string): Promise<HistoricalPoint[]> {
   const code = symbol.padStart(6, '0');
 
-  // 命中缓存直接返回
-  if (historyCache[code]) return historyCache[code];
+  let baseHistory = historyCache[code];
 
-  const url = `https://fund.eastmoney.com/pingzhongdata/${code}.js?v=${getTimestamp()}`;
-  const content = await fetchWithProxy(url, (t) => t.includes('Data_netWorthTrend'));
+  if (!baseHistory) {
+    const url = `https://fund.eastmoney.com/pingzhongdata/${code}.js?v=${getTimestamp()}`;
+    const content = await fetchWithProxy(url, (t) => t.includes('Data_netWorthTrend'));
 
-  if (!content) return [];
+    if (content) {
+      const trendData = extractComplexVar(content, 'Data_netWorthTrend');
+      if (Array.isArray(trendData)) {
+        baseHistory = trendData.map((item: any) => ({
+          date: item.x,
+          value: item.y,
+          equityReturn: item.equityReturn || 0
+        }));
+        historyCache[code] = baseHistory;
+      }
+    }
+  }
 
-  const trendData = extractComplexVar(content, 'Data_netWorthTrend');
-  if (!Array.isArray(trendData)) return [];
+  if (!baseHistory) return [];
 
-  const results = trendData.map((item: any) => ({
-    date: item.x,
-    value: item.y,
-    equityReturn: item.equityReturn || 0
-  }));
+  // 合并实时估值点（如果缓存中有且比历史点新）
+  const rtPoint = realtimeCache[code];
+  if (rtPoint && rtPoint.date > baseHistory[baseHistory.length - 1].date) {
+    return [...baseHistory, rtPoint];
+  }
 
-  // 存入缓存
-  if (results.length > 0) historyCache[code] = results;
-
-  return results;
+  return baseHistory;
 }
 
 /**
@@ -256,6 +256,13 @@ export async function fetchFundData(symbol: string): Promise<ValuationData | nul
     } else if (gztime && gztime.length > 10) {
         finalGzTime = gztime.substring(5);
     }
+
+    // 更新实时估值点缓存，以便趋势图能够获取最新状态
+    realtimeCache[code] = {
+      date: new Date(finalValuationDate).getTime(),
+      value: gsz,
+      equityReturn: gszzl
+    };
 
     return {
       symbol: code,

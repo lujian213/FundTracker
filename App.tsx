@@ -47,7 +47,9 @@ const App: React.FC = () => {
   const [isSelectionMode, setIsSelectionMode] = useState<boolean>(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [backgroundTasks, setBackgroundTasks] = useState<number>(0);
-  const [viewingFund, setViewingFund] = useState<ValuationData | null>(null);
+
+  // 改进：不再存储 ValuationData 快照，而是存储正在查看的代码，以便保持数据响应式
+  const [viewingSymbol, setViewingSymbol] = useState<string | null>(null);
 
   // 删除确认状态
   const [pendingDelete, setPendingDelete] = useState<{ id?: string, symbol?: string, name?: string, bulk: boolean, type?: 'fund' | 'index' } | null>(null);
@@ -296,7 +298,7 @@ const App: React.FC = () => {
                   ticker={ticker}
                   data={marketData[ticker.symbol]}
                   onRemove={() => setPendingDelete({ id: ticker.id, symbol: ticker.symbol, name: ticker.name, bulk: false, type: 'fund' })}
-                  onClick={() => marketData[ticker.symbol] && setViewingFund(marketData[ticker.symbol])}
+                  onClick={() => marketData[ticker.symbol] && setViewingSymbol(ticker.symbol)}
                   isSelectionMode={isSelectionMode}
                   isSelected={selectedIds.has(ticker.id)}
                   onSelect={() => setSelectedIds(prev => {
@@ -360,10 +362,10 @@ const App: React.FC = () => {
         />
       )}
 
-      {viewingFund && (
+      {viewingSymbol && marketData[viewingSymbol] && (
         <FundDetailsModal
-          data={viewingFund}
-          onClose={() => setViewingFund(null)}
+          data={marketData[viewingSymbol]}
+          onClose={() => setViewingSymbol(null)}
         />
       )}
 
