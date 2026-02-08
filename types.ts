@@ -1,11 +1,12 @@
 
 export enum MarketType {
-  FUND = 'Fund'
+  FUND = 'Fund',
+  INDEX = 'Index'
 }
 
 export interface Ticker {
   id: string;
-  symbol: string;
+  symbol: string; // 基金为6位代码，指数为 secid (如 1.000001)
   name: string;
   market: MarketType;
 }

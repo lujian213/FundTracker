@@ -1,41 +1,59 @@
 
 import React, { useState } from 'react';
+import { MarketType } from '../types';
 
 interface AddTickerModalProps {
   onClose: () => void;
-  onAdd: (symbols: string[]) => Promise<void>;
+  onAdd: (symbols: string[], type: MarketType) => Promise<void>;
   isLoading: boolean;
   progress?: string;
 }
 
 export const AddTickerModal: React.FC<AddTickerModalProps> = ({ onClose, onAdd, isLoading, progress }) => {
   const [inputValue, setInputValue] = useState('');
+  const [addType, setAddType] = useState<MarketType>(MarketType.FUND);
   const [isBatchMode, setIsBatchMode] = useState(false);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!inputValue.trim()) return;
 
-    // Split by comma, space, or newline. Support 5 or 6 digits.
-    const codes = inputValue
-      .split(/[\s,\n]+/)
-      .map(c => c.trim())
-      .filter(c => /^\d{5,6}$/.test(c));
+    let codes: string[] = [];
+    if (addType === MarketType.FUND) {
+      codes = inputValue
+        .split(/[\s,\n,，]+/)
+        .map(c => c.trim())
+        .filter(c => /^\d{5,6}$/.test(c));
+    } else {
+      // 指数格式比较多样，通常是 1.000001, 0.399001, 124.HSTECH 等
+      codes = inputValue
+        .split(/[\s,\n,，]+/)
+        .map(c => c.trim())
+        .filter(c => c.length > 0);
+    }
 
     if (codes.length > 0) {
-      onAdd(codes);
+      onAdd(codes, addType);
     } else {
-      alert("请输入有效的基金代码（5-6位数字）");
+      alert(addType === MarketType.FUND ? "请输入有效的基金代码（5-6位数字）" : "请输入有效的指数代码");
     }
   };
+
+  const SUGGESTED_INDICES = [
+    { name: '上证指数', code: '1.000001' },
+    { name: '深证成指', code: '0.399001' },
+    { name: '创业板指', code: '0.399006' },
+    { name: '恒生指数', code: '100.HSI' },
+    { name: '恒生科技', code: '124.HSTECH' },
+  ];
 
   return (
     <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4 backdrop-blur-sm animate-in fade-in duration-200">
       <div className="bg-white rounded-3xl w-full max-w-sm overflow-hidden shadow-2xl transition-all scale-in duration-200">
-        <div className="bg-red-600 px-6 py-4 flex justify-between items-center">
+        <div className={`px-6 py-4 flex justify-between items-center transition-colors ${addType === MarketType.FUND ? 'bg-red-600' : 'bg-blue-600'}`}>
           <div>
-            <h3 className="text-white font-bold">添加基金 / 股票</h3>
-            <p className="text-[10px] text-white/60">支持大陆 (6位) 及 香港 (5位) 代码</p>
+            <h3 className="text-white font-bold">{addType === MarketType.FUND ? '添加基金' : '添加指数'}</h3>
+            <p className="text-[10px] text-white/60">数据同步自天天基金/东方财富</p>
           </div>
           <button onClick={onClose} className="text-white/70 hover:text-white transition-colors">
             <i className="fas fa-times"></i>
@@ -46,68 +64,74 @@ export const AddTickerModal: React.FC<AddTickerModalProps> = ({ onClose, onAdd, 
           <div className="flex bg-gray-100 p-1 rounded-xl mb-6">
             <button
               type="button"
-              onClick={() => setIsBatchMode(false)}
-              className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all ${!isBatchMode ? 'bg-white shadow-sm text-red-600' : 'text-gray-500 hover:text-gray-700'}`}
+              onClick={() => setAddType(MarketType.FUND)}
+              className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all ${addType === MarketType.FUND ? 'bg-white shadow-sm text-red-600' : 'text-gray-500 hover:text-gray-700'}`}
             >
-              单个代码
+              公募基金
             </button>
             <button
               type="button"
-              onClick={() => setIsBatchMode(true)}
-              className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all ${isBatchMode ? 'bg-white shadow-sm text-red-600' : 'text-gray-500 hover:text-gray-700'}`}
+              onClick={() => setAddType(MarketType.INDEX)}
+              className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all ${addType === MarketType.INDEX ? 'bg-white shadow-sm text-blue-600' : 'text-gray-500 hover:text-gray-700'}`}
             >
-              批量导入
+              大盘指数
             </button>
           </div>
 
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
               <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-2 px-1">
-                {isBatchMode ? '输入代码列表 (空格或逗号分隔)' : '请输入 5-6 位代码'}
+                {addType === MarketType.FUND ? '输入代码 (空格/逗号分隔批量)' : '输入 secid 代码 (如 1.000001)'}
               </label>
 
-              {isBatchMode ? (
-                <textarea
-                  autoFocus
-                  value={inputValue}
-                  onChange={(e) => setInputValue(e.target.value)}
-                  placeholder="例如: 012328, 000001, 00700..."
-                  rows={4}
-                  className="w-full px-4 py-3 rounded-xl border-2 border-gray-100 focus:border-red-500 outline-none transition-all text-sm font-mono leading-relaxed"
-                />
-              ) : (
-                <input
-                  autoFocus
-                  type="text"
-                  maxLength={6}
-                  value={inputValue}
-                  onChange={(e) => setInputValue(e.target.value.replace(/\D/g, ''))}
-                  placeholder="例如: 012328"
-                  className="w-full px-4 py-4 rounded-xl border-2 border-gray-100 focus:border-red-500 outline-none transition-all text-xl font-mono text-center tracking-widest"
-                />
+              <textarea
+                autoFocus
+                value={inputValue}
+                onChange={(e) => setInputValue(e.target.value)}
+                placeholder={addType === MarketType.FUND ? "例如: 012328, 000001..." : "例如: 1.000001"}
+                rows={addType === MarketType.FUND ? 3 : 2}
+                className="w-full px-4 py-3 rounded-xl border-2 border-gray-100 focus:border-red-500 outline-none transition-all text-sm font-mono leading-relaxed"
+              />
+
+              {addType === MarketType.INDEX && (
+                <div className="mt-4">
+                  <p className="text-[10px] font-bold text-gray-400 mb-2 uppercase tracking-tight">常用指数推荐</p>
+                  <div className="flex flex-wrap gap-2">
+                    {SUGGESTED_INDICES.map(idx => (
+                      <button
+                        key={idx.code}
+                        type="button"
+                        onClick={() => setInputValue(idx.code)}
+                        className="px-2 py-1 bg-blue-50 text-blue-600 text-[10px] rounded-md hover:bg-blue-100 transition-colors border border-blue-100"
+                      >
+                        {idx.name}
+                      </button>
+                    ))}
+                  </div>
+                </div>
               )}
 
               <div className="text-[10px] text-gray-400 mt-4 px-2 space-y-1">
-                <p>💡 请输入正确的代码，系统将自动从天天基金抓取名称。</p>
-                <p>💡 示例：<span className="font-bold">012328</span> (基金) 或 <span className="font-bold">00700</span> (腾讯)</p>
+                {addType === MarketType.FUND ? (
+                  <p>💡 请输入6位数字代码。系统将抓取最新估值。</p>
+                ) : (
+                  <p>💡 指数代码需带前缀，上证加 <span className="font-bold">1.</span>，深证/创业板加 <span className="font-bold">0.</span></p>
+                )}
               </div>
             </div>
 
             <button
               type="submit"
               disabled={isLoading || !inputValue.trim()}
-              className="w-full bg-red-600 text-white font-bold py-4 rounded-xl hover:bg-red-700 disabled:opacity-50 transition-all shadow-lg shadow-red-100 flex items-center justify-center space-x-2"
+              className={`w-full text-white font-bold py-4 rounded-xl disabled:opacity-50 transition-all shadow-lg flex items-center justify-center space-x-2 ${addType === MarketType.FUND ? 'bg-red-600 hover:bg-red-700 shadow-red-100' : 'bg-blue-600 hover:bg-blue-700 shadow-blue-100'}`}
             >
               {isLoading ? (
-                <div className="flex flex-col items-center">
-                  <div className="flex items-center space-x-2">
-                    <i className="fas fa-circle-notch animate-spin"></i>
-                    <span>正在处理...</span>
-                  </div>
-                  {progress && <span className="text-[10px] opacity-70 mt-1 font-normal">{progress}</span>}
+                <div className="flex flex-center space-x-2">
+                  <i className="fas fa-circle-notch animate-spin"></i>
+                  <span>正在添加...</span>
                 </div>
               ) : (
-                <span>立即添加</span>
+                <span>完成并添加</span>
               )}
             </button>
           </form>
