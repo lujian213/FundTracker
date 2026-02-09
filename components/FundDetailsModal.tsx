@@ -28,10 +28,11 @@ export const FundDetailsModal: React.FC<FundDetailsModalProps> = ({ data, onClos
     if (history.length === 0) return [];
 
     const lastHist = history[history.length - 1];
-    // 使用实时日期 (realtimeDate) 生成时间戳，而不是确认净值日期
-    const valuationTs = new Date(data.realtimeDate + ' 15:00').getTime();
+    // 使用实时日期 (realtimeDate) 生成时间戳
+    const dateStr = data.realtimeDate && data.realtimeDate !== '---' ? data.realtimeDate : new Date().toISOString().split('T')[0];
+    const valuationTs = new Date(dateStr + ' 15:00').getTime();
 
-    if (valuationTs > lastHist.date) {
+    if (!isNaN(valuationTs) && valuationTs > lastHist.date) {
       return [...history, {
         date: valuationTs,
         value: data.currentPrice,
@@ -90,6 +91,10 @@ export const FundDetailsModal: React.FC<FundDetailsModalProps> = ({ data, onClos
     return { path: pathData, area: areaData, points: svgPoints, viewBox: `0 0 ${width} ${height}`, yLabels, xLabels };
   }, [chartData]);
 
+  const formattedNetWorthDate = data.netWorthDate && data.netWorthDate !== '---'
+    ? data.netWorthDate.split('-').slice(1).join('/')
+    : '---';
+
   return (
     <div className="fixed inset-0 z-[110] flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/60 backdrop-blur-md animate-in fade-in duration-300" onClick={onClose}></div>
@@ -108,7 +113,7 @@ export const FundDetailsModal: React.FC<FundDetailsModalProps> = ({ data, onClos
               <span className={`text-sm font-medium ${data.changePercentage >= 0 ? 'text-red-500' : 'text-green-500'}`}>
                 {data.changePercentage >= 0 ? '+' : ''}{data.changePercentage.toFixed(2)}%
               </span>
-              <span className="text-[10px] text-gray-400 font-medium">前值: {data.previousPrice.toFixed(4)} ({data.netWorthDate.split('-').slice(1).join('/')})</span>
+              <span className="text-[10px] text-gray-400 font-medium">前值: {data.previousPrice.toFixed(4)} ({formattedNetWorthDate})</span>
             </div>
           </div>
           <button onClick={onClose} className="w-10 h-10 rounded-full bg-gray-50 flex items-center justify-center text-gray-400 hover:bg-gray-100 transition-colors">

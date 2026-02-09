@@ -22,13 +22,12 @@ export const TickerCard: React.FC<TickerCardProps> = ({
   onSelect
 }) => {
   const hasData = !!data;
-  const isNoValuation = hasData && (data.lastUpdated.includes('无估值') || data.lastUpdated.includes('已休市'));
+  const isNoValuation = hasData && (data.lastUpdated?.includes('无估值') || data.lastUpdated?.includes('已休市'));
 
   const isTodayData = useMemo(() => {
     if (!hasData || !data.realtimeDate) return true;
     const now = new Date();
     const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
-    // 使用实时估值日期判断
     return data.realtimeDate === todayStr;
   }, [hasData, data?.realtimeDate]);
 
@@ -71,6 +70,14 @@ export const TickerCard: React.FC<TickerCardProps> = ({
     }
   };
 
+  const formattedRealtimeDate = data?.realtimeDate && data.realtimeDate !== '---'
+    ? data.realtimeDate.split('-').slice(1).join('/')
+    : '';
+
+  const formattedNetWorthDate = data?.netWorthDate && data.netWorthDate !== '---'
+    ? data.netWorthDate.split('-').slice(1).join('/')
+    : '---';
+
   return (
     <div
       onClick={handleCardClick}
@@ -81,7 +88,7 @@ export const TickerCard: React.FC<TickerCardProps> = ({
           {!isTodayData && hasData && data.realtimeDate !== '---' && (
              <div className="bg-amber-100 text-amber-700 text-[9px] font-bold px-2 py-1 rounded-bl-lg shadow-sm mr-[1px] animate-in slide-in-from-right-2 duration-300">
                <i className="fas fa-history mr-1 opacity-70"></i>
-               历史:{data.realtimeDate.split('-').slice(1).join('/')}
+               历史:{formattedRealtimeDate}
              </div>
           )}
           <div className={`${!hasData ? 'bg-gray-300' : isNoValuation ? 'bg-gray-400' : 'bg-red-600'} text-white text-[9px] font-bold px-3 py-1 rounded-bl-lg shadow-sm transition-colors`}>
@@ -132,7 +139,7 @@ export const TickerCard: React.FC<TickerCardProps> = ({
                   <span className="font-mono font-medium text-gray-600">
                     {data.previousPrice.toFixed(4)}
                   </span>
-                  <span className="text-[9px] opacity-60">({data.netWorthDate.split('-').slice(1).join('/')})</span>
+                  <span className="text-[9px] opacity-60">({formattedNetWorthDate})</span>
                 </div>
               </div>
             </>

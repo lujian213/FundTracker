@@ -160,7 +160,6 @@ export async function fetchFundData(symbol: string): Promise<ValuationData | nul
   if (content) {
     const data = parseJsonpgz(content);
     if (data) {
-      // 修正：从 gztime (2024-05-22 15:00) 提取日期 (2024-05-22)
       const realtimeDate = data.gztime ? data.gztime.split(' ')[0] : '---';
       return {
         symbol: data.fundcode,
@@ -168,10 +167,10 @@ export async function fetchFundData(symbol: string): Promise<ValuationData | nul
         currentPrice: safeParseFloat(data.gsz),
         previousPrice: safeParseFloat(data.dwjz),
         changePercentage: safeParseFloat(data.gszzl),
-        lastUpdated: data.gztime,
+        lastUpdated: data.gztime || '---',
         realtimeDate: realtimeDate,
-        netWorthDate: data.jzrq,
-        valuationDate: realtimeDate, // 默认使用实时日期
+        netWorthDate: data.jzrq || '---',
+        valuationDate: realtimeDate,
         sourceUrl: `https://pinzhong.eastmoney.com/fund/${code}.html`
       };
     }
