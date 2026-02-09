@@ -42,8 +42,21 @@ const App: React.FC = () => {
     } catch (e) { return {}; }
   });
 
-  const [marketIndices, setMarketIndices] = useState<MarketIndex[]>([]);
-  const [globalIndices, setGlobalIndices] = useState<MarketIndex[]>([]);
+  // 核心优化：从缓存初始化行情数据
+  const [marketIndices, setMarketIndices] = useState<MarketIndex[]>(() => {
+    try {
+      const saved = localStorage.getItem('fund_market_indices_cache');
+      return saved ? JSON.parse(saved) : [];
+    } catch (e) { return []; }
+  });
+
+  const [globalIndices, setGlobalIndices] = useState<MarketIndex[]>(() => {
+    try {
+      const saved = localStorage.getItem('fund_global_indices_cache');
+      return saved ? JSON.parse(saved) : [];
+    } catch (e) { return []; }
+  });
+
   const [sortOrder, setSortOrder] = useState<SortOrder>(() => {
     const saved = localStorage.getItem('fund_sort_order');
     return (saved === 'asc' || saved === 'desc') ? saved : 'desc';
@@ -62,11 +75,16 @@ const App: React.FC = () => {
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  // 持久化基础配置
   useEffect(() => { localStorage.setItem('fund_portfolio', JSON.stringify(portfolio)); }, [portfolio]);
   useEffect(() => { localStorage.setItem('fund_indices_config', JSON.stringify(indicesConfig)); }, [indicesConfig]);
   useEffect(() => { localStorage.setItem('fund_global_indices_config', JSON.stringify(globalIndicesConfig)); }, [globalIndicesConfig]);
   useEffect(() => { localStorage.setItem('fund_market_data', JSON.stringify(marketData)); }, [marketData]);
   useEffect(() => { localStorage.setItem('fund_sort_order', sortOrder); }, [sortOrder]);
+
+  // 核心优化：行情数据变动时同步缓存
+  useEffect(() => { localStorage.setItem('fund_market_indices_cache', JSON.stringify(marketIndices)); }, [marketIndices]);
+  useEffect(() => { localStorage.setItem('fund_global_indices_cache', JSON.stringify(globalIndices)); }, [globalIndices]);
 
   const updateSingleFund = useCallback(async (symbol: string) => {
     try {
@@ -97,15 +115,15 @@ const App: React.FC = () => {
   const refreshMarketIndices = useCallback(async () => {
     const tasks: Promise<any>[] = [];
     if (indicesConfig.length > 0) {
-      tasks.push(fetchMarketIndices(indicesConfig).then(setMarketIndices).catch(() => {}));
-    } else {
-      setMarketIndices([]);
+      tasks.push(fetchMarketIndices(indicesConfig).then(data => {
+        if (data && data.length > 0) setMarketIndices(data);
+      }).catch(() => {}));
     }
 
     if (globalIndicesConfig.length > 0) {
-      tasks.push(fetchMarketIndices(globalIndicesConfig).then(setGlobalIndices).catch(() => {}));
-    } else {
-      setGlobalIndices([]);
+      tasks.push(fetchMarketIndices(globalIndicesConfig).then(data => {
+        if (data && data.length > 0) setGlobalIndices(data);
+      }).catch(() => {}));
     }
     await Promise.allSettled(tasks);
   }, [indicesConfig, globalIndicesConfig]);
@@ -130,6 +148,7 @@ const App: React.FC = () => {
     }
   }, [portfolio.length]);
 
+  // 初始化触发一次异步抓取
   useEffect(() => {
     refreshMarketIndices();
   }, [indicesConfig, globalIndicesConfig]);
@@ -200,42 +219,48 @@ const App: React.FC = () => {
     setIsMenuOpen(false);
   };
 
-  const renderIndexCard = (idx: MarketIndex, type: 'index' | 'global_index') => (
-    <div
-      key={idx.symbol}
-      onClick={() => !isSelectionMode && setViewingIndex(idx)}
-      className={`bg-white rounded-2xl p-4 shadow-sm border transition-all min-w-[180px] lg:min-w-0 relative group cursor-pointer hover:shadow-md ${isSelectionMode ? 'border-blue-200 ring-2 ring-blue-50' : 'border-gray-100'}`}
-    >
-      {isSelectionMode && (
-        <button
-          onClick={(e) => { e.stopPropagation(); setPendingDelete({ symbol: idx.symbol, name: idx.name, bulk: false, type }); }}
-          className="absolute -top-2 -right-2 w-6 h-6 bg-red-500 text-white rounded-full flex items-center justify-center shadow-lg hover:bg-red-600 transition-colors z-10 scale-in"
-        >
-          <i className="fas fa-times text-xs"></i>
-        </button>
-      )}
-      <div className="mb-2">
-        <div className="flex justify-between items-start">
-          <div className="flex-1 min-w-0 pr-2">
-            <h4 className="text-[12px] font-bold text-gray-800 truncate" title={idx.name}>{idx.name}</h4>
-            <p className="text-[9px] text-gray-400 font-mono mt-0.5">{idx.symbol}</p>
+  const renderIndexCard = (idx: MarketIndex, type: 'index' | 'global_index') => {
+    // 检查该指数是否属于当前配置列表，如果不属于（刚被删除但还在缓存中），则不渲染
+    const currentList = type === 'index' ? indicesConfig : globalIndicesConfig;
+    if (!currentList.includes(idx.symbol)) return null;
+
+    return (
+      <div
+        key={idx.symbol}
+        onClick={() => !isSelectionMode && setViewingIndex(idx)}
+        className={`bg-white rounded-2xl p-4 shadow-sm border transition-all min-w-[180px] lg:min-w-0 relative group cursor-pointer hover:shadow-md ${isSelectionMode ? 'border-blue-200 ring-2 ring-blue-50' : 'border-gray-100'} animate-in fade-in duration-300`}
+      >
+        {isSelectionMode && (
+          <button
+            onClick={(e) => { e.stopPropagation(); setPendingDelete({ symbol: idx.symbol, name: idx.name, bulk: false, type }); }}
+            className="absolute -top-2 -right-2 w-6 h-6 bg-red-500 text-white rounded-full flex items-center justify-center shadow-lg hover:bg-red-600 transition-colors z-10 scale-in"
+          >
+            <i className="fas fa-times text-xs"></i>
+          </button>
+        )}
+        <div className="mb-2">
+          <div className="flex justify-between items-start">
+            <div className="flex-1 min-w-0 pr-2">
+              <h4 className="text-[12px] font-bold text-gray-800 truncate" title={idx.name}>{idx.name}</h4>
+              <p className="text-[9px] text-gray-400 font-mono mt-0.5">{idx.symbol}</p>
+            </div>
+            <span className={`text-[11px] font-medium whitespace-nowrap ${idx.changePercent >= 0 ? 'text-red-500' : 'text-green-500'}`}>
+              {idx.changePercent >= 0 ? '+' : ''}{idx.changePercent.toFixed(2)}%
+            </span>
           </div>
-          <span className={`text-[11px] font-medium whitespace-nowrap ${idx.changePercent >= 0 ? 'text-red-500' : 'text-green-500'}`}>
-            {idx.changePercent >= 0 ? '+' : ''}{idx.changePercent.toFixed(2)}%
-          </span>
+        </div>
+        <div className={`text-xl font-normal ${idx.changePercent >= 0 ? 'text-red-600' : 'text-green-600'}`}>
+          {(idx.current || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+        </div>
+        <div className="flex flex-col mt-2">
+          <div className="text-[9px] text-gray-300 flex items-center bg-gray-50/50 rounded-md py-0.5 px-1">
+            <i className="far fa-clock mr-1 opacity-60"></i>
+            <span>{idx.lastUpdated}</span>
+          </div>
         </div>
       </div>
-      <div className={`text-xl font-normal ${idx.changePercent >= 0 ? 'text-red-600' : 'text-green-600'}`}>
-        {(idx.current || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-      </div>
-      <div className="flex flex-col mt-2">
-        <div className="text-[9px] text-gray-300 flex items-center bg-gray-50/50 rounded-md py-0.5 px-1">
-          <i className="far fa-clock mr-1 opacity-60"></i>
-          <span>{idx.lastUpdated}</span>
-        </div>
-      </div>
-    </div>
-  );
+    );
+  };
 
   return (
     <div className={`min-h-screen pb-32 transition-colors duration-300 ${isSelectionMode ? 'bg-blue-50/50' : 'bg-gray-50'}`}>
@@ -287,7 +312,7 @@ const App: React.FC = () => {
             </div>
             <div className="flex lg:flex-col overflow-x-auto lg:overflow-visible gap-3 pb-2 no-scrollbar">
               {marketIndices.map(idx => renderIndexCard(idx, 'index'))}
-              {marketIndices.length === 0 && (
+              {marketIndices.filter(idx => indicesConfig.includes(idx.symbol)).length === 0 && (
                  <div className="bg-white border-2 border-dashed border-gray-100 rounded-3xl py-12 text-center text-[10px] text-gray-400 min-w-[180px] lg:min-w-0 flex flex-col items-center justify-center space-y-2">
                    <i className="fas fa-chart-bar text-xl opacity-20"></i>
                    <span>暂无指数</span>
@@ -351,7 +376,7 @@ const App: React.FC = () => {
             </div>
             <div className="flex lg:flex-col overflow-x-auto lg:overflow-visible gap-3 pb-2 no-scrollbar">
               {globalIndices.map(idx => renderIndexCard(idx, 'global_index'))}
-              {globalIndices.length === 0 && (
+              {globalIndices.filter(idx => globalIndicesConfig.includes(idx.symbol)).length === 0 && (
                  <div className="bg-white border-2 border-dashed border-gray-100 rounded-3xl py-12 text-center text-[10px] text-gray-400 min-w-[180px] lg:min-w-0 flex flex-col items-center justify-center space-y-2">
                    <i className="fas fa-globe text-xl opacity-20"></i>
                    <span>暂无数据</span>
@@ -435,10 +460,9 @@ const App: React.FC = () => {
             setIsSelectionMode(false);
           } else if (pendingDelete?.type === 'index' && pendingDelete.symbol) {
             setIndicesConfig(p => p.filter(s => s !== pendingDelete.symbol));
-            setMarketIndices(p => p.filter(idx => idx.symbol !== pendingDelete.symbol));
+            // 行情列表抓取时会自然同步，不需要手动过滤
           } else if (pendingDelete?.type === 'global_index' && pendingDelete.symbol) {
             setGlobalIndicesConfig(p => p.filter(s => s !== pendingDelete.symbol));
-            setGlobalIndices(p => p.filter(idx => idx.symbol !== pendingDelete.symbol));
           } else if (pendingDelete?.id) {
             setPortfolio(p => p.filter(t => t.id !== pendingDelete.id));
           }

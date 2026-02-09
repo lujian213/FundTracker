@@ -38,53 +38,47 @@ function parseJsonpgz(content: string): any {
   return null;
 }
 
+/**
+ * Sequential proxy fetcher to avoid overwhelming public proxies and handle CORS issues better.
+ */
 async function fetchWithProxy(targetUrl: string, validator: (text: string) => boolean): Promise<string | null> {
   const proxyTemplates = [
     (url: string) => `https://corsproxy.io/?${encodeURIComponent(url)}`,
-    (url: string) => `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`,
     (url: string) => `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(url)}`,
+    (url: string) => `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`,
+    // Fallback direct for local dev or if target suddenly allows it
     (url: string) => url
   ];
 
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 12000);
-
-  const fetchFromProxy = async (template: (url: string) => string): Promise<string> => {
+  for (const template of proxyTemplates) {
     const proxyUrl = template(targetUrl);
-    const innerController = new AbortController();
-    const linkAbort = () => innerController.abort();
-    controller.signal.addEventListener('abort', linkAbort);
-    const innerTimeout = setTimeout(() => innerController.abort(), 6000);
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 8000);
 
     try {
-      const response = await fetch(proxyUrl, { cache: 'no-cache', signal: innerController.signal });
-      if (!response.ok) throw new Error('Proxy failed');
-      const text = await response.text();
-      if (text && validator(text)) return text;
-      throw new Error('Invalid content');
-    } finally {
-      clearTimeout(innerTimeout);
-      controller.signal.removeEventListener('abort', linkAbort);
-    }
-  };
-
-  try {
-    const fastestResult = await new Promise<string>((resolve, reject) => {
-      let rejectedCount = 0;
-      const tasks = proxyTemplates.map(t => fetchFromProxy(t));
-      tasks.forEach(task => {
-        task.then(val => { resolve(val); controller.abort(); }).catch(() => {
-          rejectedCount++;
-          if (rejectedCount === tasks.length) reject(new Error('All proxies failed'));
-        });
+      const response = await fetch(proxyUrl, {
+        cache: 'no-cache',
+        signal: controller.signal,
+        headers: {
+          'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8'
+        }
       });
-    });
-    clearTimeout(timeoutId);
-    return fastestResult;
-  } catch (e) {
-    clearTimeout(timeoutId);
-    return null;
+
+      if (!response.ok) continue;
+
+      const text = await response.text();
+      if (text && validator(text)) {
+        clearTimeout(timeoutId);
+        return text;
+      }
+    } catch (e) {
+      // CORS or Network error, try next proxy
+    } finally {
+      clearTimeout(timeoutId);
+    }
   }
+
+  return null;
 }
 
 export async function fetchFundHistory(symbol: string): Promise<HistoricalPoint[]> {
