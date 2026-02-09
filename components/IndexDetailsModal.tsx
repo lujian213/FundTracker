@@ -107,17 +107,15 @@ export const IndexDetailsModal: React.FC<IndexDetailsModalProps> = ({ data, onCl
           ) : (
             <div className="space-y-6">
               <div className="relative bg-gray-50 rounded-2xl p-4">
-                <div className="absolute top-4 left-4 z-10">
+                <div className="absolute top-4 left-4 z-10 h-12">
                    <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1">历史趋势 (近90日)</p>
-                   {hoveredPoint ? (
+                   {hoveredPoint && (
                      <div className="animate-in fade-in slide-in-from-left-2 duration-150">
                         <p className="text-lg font-normal text-gray-800">{hoveredPoint.value.toLocaleString()}</p>
                         <p className="text-[10px] text-gray-500 font-bold">
                            {new Date(hoveredPoint.date).toLocaleDateString()}
                         </p>
                      </div>
-                   ) : (
-                     <div className="text-[10px] text-gray-300 italic font-medium">查看走势图</div>
                    )}
                 </div>
 
