@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { Ticker, ValuationData, MarketType, MarketIndex } from './types';
-import { fetchFundData, fetchMarketIndices, fetchSingleIndex } from './services/fundService';
+import { fetchFundData, fetchMarketIndices } from './services/fundService';
 import { TickerCard } from './components/TickerCard';
 import { AddTickerModal } from './components/AddTickerModal';
 import { ConfirmDialog } from './components/ConfirmDialog';
@@ -99,8 +99,7 @@ const App: React.FC = () => {
     if (targets.length === 0) return;
     setBackgroundTasks(prev => prev + targets.length);
     const queue = [...targets];
-    const limit = 3;
-    const workers = Array(Math.min(limit, targets.length)).fill(null).map(async () => {
+    const workers = Array(Math.min(3, targets.length)).fill(null).map(async () => {
       while (queue.length > 0) {
         const item = queue.shift();
         if (item) await updateSingleFund(item.symbol);
@@ -109,24 +108,17 @@ const App: React.FC = () => {
     await Promise.all(workers);
   }, [updateSingleFund]);
 
-  /**
-   * 异步且独立刷新指数数据，提升性能
-   */
   const refreshMarketIndicesAsync = useCallback(async () => {
-    // 并行开始两组任务
     const fetchDomestic = async () => {
       if (indicesConfig.length === 0) return;
       const data = await fetchMarketIndices(indicesConfig);
       if (data && data.length > 0) setMarketIndices(data);
     };
-
     const fetchGlobal = async () => {
       if (globalIndicesConfig.length === 0) return;
       const data = await fetchMarketIndices(globalIndicesConfig);
       if (data && data.length > 0) setGlobalIndices(data);
     };
-
-    // 两个过程不互相阻塞，全球市场不再被国内指数拖累
     fetchDomestic();
     fetchGlobal();
   }, [indicesConfig, globalIndicesConfig]);
@@ -135,13 +127,8 @@ const App: React.FC = () => {
     if (isRefreshing) return;
     setIsRefreshing(true);
     try {
-      await Promise.allSettled([
-        runBatchUpdate(portfolio),
-        refreshMarketIndicesAsync()
-      ]);
-    } finally {
-      setIsRefreshing(false);
-    }
+      await Promise.allSettled([runBatchUpdate(portfolio), refreshMarketIndicesAsync()]);
+    } finally { setIsRefreshing(false); }
   }, [portfolio, isRefreshing, runBatchUpdate, refreshMarketIndicesAsync]);
 
   useEffect(() => {
@@ -151,9 +138,7 @@ const App: React.FC = () => {
     }
   }, [portfolio.length]);
 
-  useEffect(() => {
-    refreshMarketIndicesAsync();
-  }, [indicesConfig, globalIndicesConfig]);
+  useEffect(() => { refreshMarketIndicesAsync(); }, [indicesConfig, globalIndicesConfig]);
 
   useEffect(() => {
     const fundInterval = setInterval(() => runBatchUpdate(portfolio), 180000);
@@ -191,26 +176,17 @@ const App: React.FC = () => {
     reader.onload = async (e) => {
       try {
         const imported = JSON.parse(e.target?.result as string);
-        const fundList = Array.isArray(imported) ? imported : (imported.portfolio || []);
-        const indexList = imported.indices || [];
-        const globalList = imported.globalIndices || [];
-
+        const fundList = imported.portfolio || imported || [];
         const existingSymbols = new Set(portfolio.map(p => p.symbol));
         const newItems = fundList.filter((item: any) =>
           item.symbol && /^\d{5,6}$/.test(item.symbol) && !existingSymbols.has(item.symbol)
         ).map((item: any) => ({
           id: Math.random().toString(36).substr(2, 9),
-          symbol: item.symbol,
-          name: item.name || '',
-          market: MarketType.FUND
+          symbol: item.symbol, name: item.name || '', market: MarketType.FUND
         }));
-
-        if (newItems.length > 0) {
-          setPortfolio(prev => [...prev, ...newItems]);
-          runBatchUpdate(newItems);
-        }
-        if (indexList.length > 0) setIndicesConfig(indexList);
-        if (globalList.length > 0) setGlobalIndicesConfig(globalList);
+        if (newItems.length > 0) { setPortfolio(prev => [...prev, ...newItems]); runBatchUpdate(newItems); }
+        if (imported.indices) setIndicesConfig(imported.indices);
+        if (imported.globalIndices) setGlobalIndicesConfig(imported.globalIndices);
       } catch (err) {}
     };
     reader.readAsText(file);
@@ -220,25 +196,17 @@ const App: React.FC = () => {
   const renderIndexCard = (idx: MarketIndex, type: 'index' | 'global_index') => {
     const currentList = type === 'index' ? indicesConfig : globalIndicesConfig;
     if (!currentList.includes(idx.symbol)) return null;
-
     return (
-      <div
-        key={idx.symbol}
-        onClick={() => !isSelectionMode && setViewingIndex(idx)}
-        className={`bg-white rounded-2xl p-4 shadow-sm border transition-all min-w-[180px] lg:min-w-0 relative group cursor-pointer hover:shadow-md ${isSelectionMode ? 'border-blue-200 ring-2 ring-blue-50' : 'border-gray-100'} animate-in fade-in duration-300`}
-      >
+      <div key={idx.symbol} onClick={() => !isSelectionMode && setViewingIndex(idx)} className={`bg-white rounded-2xl p-4 shadow-sm border transition-all min-w-[180px] lg:min-w-0 relative group cursor-pointer hover:shadow-md ${isSelectionMode ? 'border-blue-200 ring-2 ring-blue-50' : 'border-gray-100'} animate-in fade-in duration-300`}>
         {isSelectionMode && (
-          <button
-            onClick={(e) => { e.stopPropagation(); setPendingDelete({ symbol: idx.symbol, name: idx.name, bulk: false, type }); }}
-            className="absolute -top-2 -right-2 w-6 h-6 bg-red-500 text-white rounded-full flex items-center justify-center shadow-lg hover:bg-red-600 transition-colors z-10 scale-in"
-          >
+          <button onClick={(e) => { e.stopPropagation(); setPendingDelete({ symbol: idx.symbol, name: idx.name, bulk: false, type }); }} className="absolute -top-2 -right-2 w-6 h-6 bg-red-500 text-white rounded-full flex items-center justify-center shadow-lg hover:bg-red-600 transition-colors z-10 scale-in">
             <i className="fas fa-times text-xs"></i>
           </button>
         )}
         <div className="mb-2">
           <div className="flex justify-between items-start">
             <div className="flex-1 min-w-0 pr-2">
-              <h4 className="text-[12px] font-bold text-gray-800 truncate" title={idx.name}>{idx.name}</h4>
+              <h4 className="text-[12px] font-bold text-gray-800 truncate leading-none">{idx.name}</h4>
               <p className="text-[9px] text-gray-400 font-mono mt-0.5">{idx.symbol}</p>
             </div>
             <span className={`text-[11px] font-medium whitespace-nowrap ${idx.changePercent >= 0 ? 'text-red-500' : 'text-green-500'}`}>
@@ -270,20 +238,17 @@ const App: React.FC = () => {
             <div>
               <h1 className="text-xl font-bold text-gray-800 leading-tight">极简基金估值</h1>
               <p className="text-[10px] text-gray-400 font-medium uppercase tracking-tighter">
-                {backgroundTasks > 0 ? `数据同步中... (${backgroundTasks})` : '同步链路状态: 活跃 (2min/轮)'}
+                同步链路: {backgroundTasks > 0 ? `活跃 (${backgroundTasks})` : '就绪'} | 自动刷新开启
               </p>
             </div>
           </div>
-
           <div className="flex items-center space-x-1 relative">
             {!isSelectionMode && (
               <button disabled={isRefreshing} onClick={refreshAll} className={`p-2 w-10 h-10 rounded-full hover:bg-gray-100 transition-all flex items-center justify-center ${isRefreshing ? 'text-red-500' : 'text-gray-400'}`}>
                 <i className={`fas fa-sync-alt ${isRefreshing ? 'animate-spin' : ''}`}></i>
               </button>
             )}
-            <button onClick={() => setIsMenuOpen(!isMenuOpen)} className="p-2 w-10 h-10 rounded-full hover:bg-gray-100 text-gray-400">
-              <i className="fas fa-ellipsis-v"></i>
-            </button>
+            <button onClick={() => setIsMenuOpen(!isMenuOpen)} className="p-2 w-10 h-10 rounded-full hover:bg-gray-100 text-gray-400"><i className="fas fa-ellipsis-v"></i></button>
             {isMenuOpen && (
               <>
                 <div className="fixed inset-0 z-10" onClick={() => setIsMenuOpen(false)}></div>
@@ -302,30 +267,20 @@ const App: React.FC = () => {
 
       <input type="file" ref={fileInputRef} onChange={handleImport} accept=".json" className="hidden" />
 
-      {/* 修正 Grid 布局和 items-start，确保标题在顶端严格水平对齐 */}
       <div className="max-w-7xl mx-auto px-4 py-6 grid grid-cols-1 lg:grid-cols-[224px_1fr_224px] gap-6 items-start">
-
-        {/* 左侧：大盘看板 */}
         <aside className="sticky lg:top-[130px] space-y-4">
           <div className="h-10 flex items-center px-1">
-            <h2 className="text-[10px] font-bold text-gray-400 uppercase tracking-widest leading-none">大盘看板</h2>
+            <h2 className="text-[10px] font-bold text-gray-400 uppercase tracking-widest leading-none m-0">大盘看板</h2>
           </div>
           <div className="flex lg:flex-col overflow-x-auto lg:overflow-visible gap-3 pb-2 no-scrollbar">
             {marketIndices.map(idx => renderIndexCard(idx, 'index'))}
-            {marketIndices.filter(idx => indicesConfig.includes(idx.symbol)).length === 0 && (
-               <div className="bg-white border-2 border-dashed border-gray-100 rounded-3xl py-12 text-center text-[10px] text-gray-400 min-w-[180px] lg:min-w-0 flex flex-col items-center justify-center space-y-2">
-                 <i className="fas fa-chart-bar text-xl opacity-20"></i>
-                 <span>暂无指数</span>
-               </div>
-            )}
           </div>
         </aside>
 
-        {/* 中间：自选基金 */}
         <main className="space-y-4">
           <div className="h-10 flex justify-between items-center px-1">
-            <h2 className="text-[10px] font-bold text-gray-400 uppercase tracking-widest flex items-center leading-none">
-              {isSelectionMode ? <span className="text-blue-600 font-black">批量管理模式</span> : '我的自选基金'}
+            <h2 className="text-[10px] font-bold text-gray-400 uppercase tracking-widest leading-none m-0 flex items-center">
+              {isSelectionMode ? <span className="text-blue-600 font-black">批量管理</span> : '我的自选基金'}
             </h2>
             <div className="flex items-center space-x-2">
               {!isSelectionMode ? (
@@ -336,136 +291,35 @@ const App: React.FC = () => {
                   </button>
                 </>
               ) : (
-                <button onClick={() => setIsSelectionMode(false)} className="px-4 py-1.5 rounded-full bg-white border border-blue-200 text-[10px] font-bold text-blue-600">退出管理</button>
+                <button onClick={() => setIsSelectionMode(false)} className="px-4 py-1.5 rounded-full bg-white border border-blue-200 text-[10px] font-bold text-blue-600">退出</button>
               )}
             </div>
           </div>
-
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-1 xl:grid-cols-2 gap-4">
             {sortedPortfolio.map(ticker => (
-              <TickerCard
-                key={ticker.id}
-                ticker={ticker}
-                data={marketData[ticker.symbol]}
-                onRemove={() => setPendingDelete({ id: ticker.id, symbol: ticker.symbol, name: ticker.name, bulk: false, type: 'fund' })}
-                onClick={() => marketData[ticker.symbol] && setViewingSymbol(ticker.symbol)}
-                isSelectionMode={isSelectionMode}
-                isSelected={selectedIds.has(ticker.id)}
-                onSelect={() => setSelectedIds(prev => {
-                  const next = new Set(prev);
-                  if (next.has(ticker.id)) next.delete(ticker.id); else next.add(ticker.id);
-                  return next;
-                })}
-              />
+              <TickerCard key={ticker.id} ticker={ticker} data={marketData[ticker.symbol]} onRemove={() => setPendingDelete({ id: ticker.id, symbol: ticker.symbol, name: ticker.name, bulk: false, type: 'fund' })} onClick={() => marketData[ticker.symbol] && setViewingSymbol(ticker.symbol)} isSelectionMode={isSelectionMode} isSelected={selectedIds.has(ticker.id)} onSelect={() => setSelectedIds(prev => { const next = new Set(prev); if (next.has(ticker.id)) next.delete(ticker.id); else next.add(ticker.id); return next; })} />
             ))}
           </div>
-
-          {portfolio.length === 0 && (
-            <div className="text-center py-20 bg-white rounded-3xl border-2 border-dashed border-gray-100 text-gray-400">
-              点击右下角按钮添加第一个自选项目
-            </div>
-          )}
         </main>
 
-        {/* 右侧：全球市场 */}
         <aside className="sticky lg:top-[130px] space-y-4">
           <div className="h-10 flex items-center px-1">
-            <h2 className="text-[10px] font-bold text-gray-400 uppercase tracking-widest leading-none">全球市场</h2>
+            <h2 className="text-[10px] font-bold text-gray-400 uppercase tracking-widest leading-none m-0">全球市场</h2>
           </div>
           <div className="flex lg:flex-col overflow-x-auto lg:overflow-visible gap-3 pb-2 no-scrollbar">
             {globalIndices.map(idx => renderIndexCard(idx, 'global_index'))}
-            {globalIndices.filter(idx => globalIndicesConfig.includes(idx.symbol)).length === 0 && (
-               <div className="bg-white border-2 border-dashed border-gray-100 rounded-3xl py-12 text-center text-[10px] text-gray-400 min-w-[180px] lg:min-w-0 flex flex-col items-center justify-center space-y-2">
-                 <i className="fas fa-globe text-xl opacity-20"></i>
-                 <span>暂无数据</span>
-               </div>
-            )}
           </div>
         </aside>
       </div>
 
-      {isSelectionMode && (
-        <div className="fixed bottom-0 left-0 right-0 bg-white/95 backdrop-blur-md border-t p-5 z-40 shadow-2xl animate-in slide-in-from-bottom duration-300">
-          <div className="max-w-2xl mx-auto flex justify-between items-center">
-            <span className="text-xl font-black text-gray-800">{selectedIds.size} <span className="text-xs font-normal text-gray-400">个已选基金</span></span>
-            <div className="flex space-x-3">
-              <button onClick={() => setSelectedIds(new Set(portfolio.map(p => p.id)))} className="px-4 py-2 text-xs font-bold bg-gray-100 rounded-xl">全选</button>
-              <button disabled={selectedIds.size === 0} onClick={() => setPendingDelete({ bulk: true, type: 'fund' })} className="px-6 py-2 text-xs font-bold text-white bg-red-600 rounded-xl shadow-lg">批量删除</button>
-            </div>
-          </div>
-        </div>
-      )}
-
       {!isSelectionMode && (
-        <button onClick={() => setIsModalOpen(true)} className="fixed bottom-8 right-8 bg-red-600 text-white w-14 h-14 rounded-full shadow-2xl flex items-center justify-center hover:scale-110 active:scale-90 transition-all z-30">
-          <i className="fas fa-plus text-xl"></i>
-        </button>
+        <button onClick={() => setIsModalOpen(true)} className="fixed bottom-8 right-8 bg-red-600 text-white w-14 h-14 rounded-full shadow-2xl flex items-center justify-center hover:scale-110 active:scale-90 transition-all z-30"><i className="fas fa-plus text-xl"></i></button>
       )}
 
-      {isModalOpen && (
-        <AddTickerModal
-          onClose={() => setIsModalOpen(false)}
-          onAdd={async (symbols, type) => {
-            if (type === MarketType.INDEX) {
-              const isGlobal = (s: string) =>
-                /[A-Za-z]/.test(s) ||
-                /^(100|101|102|104|105|106|107)\./.test(s) ||
-                s.includes('IXIC') || s.includes('NDX') || s.includes('SPX');
-
-              const newDomestic = symbols.filter(s => !isGlobal(s) && !indicesConfig.includes(s));
-              const newGlobal = symbols.filter(s => isGlobal(s) && !globalIndicesConfig.includes(s));
-
-              if (newDomestic.length) setIndicesConfig(p => [...p, ...newDomestic]);
-              if (newGlobal.length) setGlobalIndicesConfig(p => [...p, ...newGlobal]);
-
-            } else {
-              const existing = new Set(portfolio.map(p => p.symbol));
-              const news = symbols.filter(s => !existing.has(s)).map(s => ({
-                id: Math.random().toString(36).substr(2, 9),
-                symbol: s, name: '', market: MarketType.FUND
-              }));
-              if (news.length) { setPortfolio(p => [...p, ...news]); runBatchUpdate(news); }
-            }
-            setIsModalOpen(false);
-          }}
-          isLoading={false}
-        />
-      )}
-
-      {viewingSymbol && marketData[viewingSymbol] && (
-        <FundDetailsModal
-          data={marketData[viewingSymbol]}
-          onClose={() => setViewingSymbol(null)}
-        />
-      )}
-
-      {viewingIndex && (
-        <IndexDetailsModal
-          data={viewingIndex}
-          onClose={() => setViewingIndex(null)}
-        />
-      )}
-
-      <ConfirmDialog
-        isOpen={!!pendingDelete}
-        title={pendingDelete?.bulk ? "批量删除" : (pendingDelete?.type?.includes('index') ? "删除指数" : "删除自选")}
-        message={pendingDelete?.bulk ? `确定删除选中的 ${selectedIds.size} 个基金吗？` : `确定移除 "${pendingDelete?.name || pendingDelete?.symbol}" 吗？`}
-        onConfirm={() => {
-          if (pendingDelete?.bulk) {
-            setPortfolio(p => p.filter(t => !selectedIds.has(t.id)));
-            setSelectedIds(new Set());
-            setIsSelectionMode(false);
-          } else if (pendingDelete?.type === 'index' && pendingDelete.symbol) {
-            setIndicesConfig(p => p.filter(s => s !== pendingDelete.symbol));
-          } else if (pendingDelete?.type === 'global_index' && pendingDelete.symbol) {
-            setGlobalIndicesConfig(p => p.filter(s => s !== pendingDelete.symbol));
-          } else if (pendingDelete?.id) {
-            setPortfolio(p => p.filter(t => t.id !== pendingDelete.id));
-          }
-          setPendingDelete(null);
-        }}
-        onCancel={() => setPendingDelete(null)}
-      />
+      {isModalOpen && <AddTickerModal onClose={() => setIsModalOpen(false)} onAdd={async (symbols, type) => { if (type === MarketType.INDEX) { const isGlobal = (s: string) => /[A-Za-z]/.test(s) || /^(100|101|102)\./.test(s); const newDomestic = symbols.filter(s => !isGlobal(s) && !indicesConfig.includes(s)); const newGlobal = symbols.filter(s => isGlobal(s) && !globalIndicesConfig.includes(s)); if (newDomestic.length) setIndicesConfig(p => [...p, ...newDomestic]); if (newGlobal.length) setGlobalIndicesConfig(p => [...p, ...newGlobal]); } else { const existing = new Set(portfolio.map(p => p.symbol)); const news = symbols.filter(s => !existing.has(s)).map(s => ({ id: Math.random().toString(36).substr(2, 9), symbol: s, name: '', market: MarketType.FUND })); if (news.length) { setPortfolio(p => [...p, ...news]); runBatchUpdate(news); } } setIsModalOpen(false); }} isLoading={false} />}
+      {viewingSymbol && marketData[viewingSymbol] && <FundDetailsModal data={marketData[viewingSymbol]} onClose={() => setViewingSymbol(null)} />}
+      {viewingIndex && <IndexDetailsModal data={viewingIndex} onClose={() => setViewingIndex(null)} />}
+      <ConfirmDialog isOpen={!!pendingDelete} title={pendingDelete?.bulk ? "批量删除" : "移除确认"} message={pendingDelete?.bulk ? `确定删除选中的 ${selectedIds.size} 个项目吗？` : `确定移除 "${pendingDelete?.name || pendingDelete?.symbol}" 吗？`} onConfirm={() => { if (pendingDelete?.bulk) { setPortfolio(p => p.filter(t => !selectedIds.has(t.id))); setSelectedIds(new Set()); setIsSelectionMode(false); } else if (pendingDelete?.type === 'index') { setIndicesConfig(p => p.filter(s => s !== pendingDelete.symbol)); } else if (pendingDelete?.type === 'global_index') { setGlobalIndicesConfig(p => p.filter(s => s !== pendingDelete.symbol)); } else if (pendingDelete?.id) { setPortfolio(p => p.filter(t => t.id !== pendingDelete.id)); } setPendingDelete(null); }} onCancel={() => setPendingDelete(null)} />
     </div>
   );
 };
