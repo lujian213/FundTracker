@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { Ticker, ValuationData, MarketType, MarketIndex } from './types';
-import { fetchFundData, fetchMarketIndices } from './services/fundService';
+import { fetchFundData, fetchMarketIndices, fetchSingleIndex } from './services/fundService';
 import { TickerCard } from './components/TickerCard';
 import { AddTickerModal } from './components/AddTickerModal';
 import { ConfirmDialog } from './components/ConfirmDialog';
@@ -11,8 +11,8 @@ import { MarketNewsTicker } from './components/MarketNewsTicker';
 
 type SortOrder = 'asc' | 'desc';
 
-const DEFAULT_INDICES: string[] = [];
-const DEFAULT_GLOBAL_INDICES: string[] = [];
+const DEFAULT_INDICES = ['1.000001', '0.399001', '0.399006'];
+const DEFAULT_GLOBAL_INDICES = ['100.NDX', '100.SPX', '100.HSI'];
 
 const App: React.FC = () => {
   const [portfolio, setPortfolio] = useState<Ticker[]>(() => {
@@ -43,7 +43,6 @@ const App: React.FC = () => {
     } catch (e) { return {}; }
   });
 
-  // 核心优化：从缓存初始化行情数据
   const [marketIndices, setMarketIndices] = useState<MarketIndex[]>(() => {
     try {
       const saved = localStorage.getItem('fund_market_indices_cache');
@@ -76,14 +75,11 @@ const App: React.FC = () => {
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // 持久化基础配置
   useEffect(() => { localStorage.setItem('fund_portfolio', JSON.stringify(portfolio)); }, [portfolio]);
   useEffect(() => { localStorage.setItem('fund_indices_config', JSON.stringify(indicesConfig)); }, [indicesConfig]);
   useEffect(() => { localStorage.setItem('fund_global_indices_config', JSON.stringify(globalIndicesConfig)); }, [globalIndicesConfig]);
   useEffect(() => { localStorage.setItem('fund_market_data', JSON.stringify(marketData)); }, [marketData]);
   useEffect(() => { localStorage.setItem('fund_sort_order', sortOrder); }, [sortOrder]);
-
-  // 核心优化：行情数据变动时同步缓存
   useEffect(() => { localStorage.setItem('fund_market_indices_cache', JSON.stringify(marketIndices)); }, [marketIndices]);
   useEffect(() => { localStorage.setItem('fund_global_indices_cache', JSON.stringify(globalIndices)); }, [globalIndices]);
 
@@ -102,8 +98,8 @@ const App: React.FC = () => {
   const runBatchUpdate = useCallback(async (targets: Ticker[]) => {
     if (targets.length === 0) return;
     setBackgroundTasks(prev => prev + targets.length);
-    const limit = 5;
     const queue = [...targets];
+    const limit = 3;
     const workers = Array(Math.min(limit, targets.length)).fill(null).map(async () => {
       while (queue.length > 0) {
         const item = queue.shift();
@@ -113,20 +109,26 @@ const App: React.FC = () => {
     await Promise.all(workers);
   }, [updateSingleFund]);
 
-  const refreshMarketIndices = useCallback(async () => {
-    const tasks: Promise<any>[] = [];
-    if (indicesConfig.length > 0) {
-      tasks.push(fetchMarketIndices(indicesConfig).then(data => {
-        if (data && data.length > 0) setMarketIndices(data);
-      }).catch(() => {}));
-    }
+  /**
+   * 异步且独立刷新指数数据，提升性能
+   */
+  const refreshMarketIndicesAsync = useCallback(async () => {
+    // 并行开始两组任务
+    const fetchDomestic = async () => {
+      if (indicesConfig.length === 0) return;
+      const data = await fetchMarketIndices(indicesConfig);
+      if (data && data.length > 0) setMarketIndices(data);
+    };
 
-    if (globalIndicesConfig.length > 0) {
-      tasks.push(fetchMarketIndices(globalIndicesConfig).then(data => {
-        if (data && data.length > 0) setGlobalIndices(data);
-      }).catch(() => {}));
-    }
-    await Promise.allSettled(tasks);
+    const fetchGlobal = async () => {
+      if (globalIndicesConfig.length === 0) return;
+      const data = await fetchMarketIndices(globalIndicesConfig);
+      if (data && data.length > 0) setGlobalIndices(data);
+    };
+
+    // 两个过程不互相阻塞，全球市场不再被国内指数拖累
+    fetchDomestic();
+    fetchGlobal();
   }, [indicesConfig, globalIndicesConfig]);
 
   const refreshAll = useCallback(async () => {
@@ -135,12 +137,12 @@ const App: React.FC = () => {
     try {
       await Promise.allSettled([
         runBatchUpdate(portfolio),
-        refreshMarketIndices()
+        refreshMarketIndicesAsync()
       ]);
     } finally {
       setIsRefreshing(false);
     }
-  }, [portfolio, isRefreshing, runBatchUpdate, refreshMarketIndices]);
+  }, [portfolio, isRefreshing, runBatchUpdate, refreshMarketIndicesAsync]);
 
   useEffect(() => {
     if (portfolio.length > 0) {
@@ -149,24 +151,19 @@ const App: React.FC = () => {
     }
   }, [portfolio.length]);
 
-  // 初始化触发一次异步抓取
   useEffect(() => {
-    refreshMarketIndices();
+    refreshMarketIndicesAsync();
   }, [indicesConfig, globalIndicesConfig]);
 
   useEffect(() => {
-    const fundInterval = setInterval(() => {
-      runBatchUpdate(portfolio);
-    }, 90000);
+    const fundInterval = setInterval(() => runBatchUpdate(portfolio), 180000);
     return () => clearInterval(fundInterval);
   }, [portfolio, runBatchUpdate]);
 
   useEffect(() => {
-    const indexInterval = setInterval(() => {
-      refreshMarketIndices();
-    }, 20000);
+    const indexInterval = setInterval(() => refreshMarketIndicesAsync(), 120000);
     return () => clearInterval(indexInterval);
-  }, [refreshMarketIndices]);
+  }, [refreshMarketIndicesAsync]);
 
   const sortedPortfolio = useMemo(() => {
     return [...portfolio].sort((a, b) => {
@@ -212,8 +209,8 @@ const App: React.FC = () => {
           setPortfolio(prev => [...prev, ...newItems]);
           runBatchUpdate(newItems);
         }
-        setIndicesConfig(indexList);
-        setGlobalIndicesConfig(globalList);
+        if (indexList.length > 0) setIndicesConfig(indexList);
+        if (globalList.length > 0) setGlobalIndicesConfig(globalList);
       } catch (err) {}
     };
     reader.readAsText(file);
@@ -221,7 +218,6 @@ const App: React.FC = () => {
   };
 
   const renderIndexCard = (idx: MarketIndex, type: 'index' | 'global_index') => {
-    // 检查该指数是否属于当前配置列表，如果不属于（刚被删除但还在缓存中），则不渲染
     const currentList = type === 'index' ? indicesConfig : globalIndicesConfig;
     if (!currentList.includes(idx.symbol)) return null;
 
@@ -265,7 +261,7 @@ const App: React.FC = () => {
 
   return (
     <div className={`min-h-screen pb-32 transition-colors duration-300 ${isSelectionMode ? 'bg-blue-50/50' : 'bg-gray-50'}`}>
-      <header className="bg-white border-b sticky top-0 z-20 shadow-sm">
+      <header className="bg-white border-b sticky top-0 z-50 shadow-sm overflow-visible">
         <div className="max-w-7xl mx-auto px-4 py-4 flex justify-between items-center">
           <div className="flex items-center space-x-2">
             <div className={`p-2 rounded-lg shadow-inner transition-colors ${isSelectionMode ? 'bg-blue-600' : 'bg-red-600'}`}>
@@ -274,7 +270,7 @@ const App: React.FC = () => {
             <div>
               <h1 className="text-xl font-bold text-gray-800 leading-tight">极简基金估值</h1>
               <p className="text-[10px] text-gray-400 font-medium uppercase tracking-tighter">
-                {backgroundTasks > 0 ? `同步中 (${backgroundTasks})` : '高频实时行情同步中'}
+                {backgroundTasks > 0 ? `数据同步中... (${backgroundTasks})` : '同步链路状态: 活跃 (2min/轮)'}
               </p>
             </div>
           </div>
@@ -306,85 +302,84 @@ const App: React.FC = () => {
 
       <input type="file" ref={fileInputRef} onChange={handleImport} accept=".json" className="hidden" />
 
-      <div className="max-w-7xl mx-auto px-4 py-6 flex flex-col lg:flex-row gap-6">
-        <aside className="lg:w-56 flex-shrink-0">
-          <div className="sticky lg:top-24 space-y-4">
-            <div className="h-8 flex items-center justify-between px-1">
-              <h2 className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">大盘看板</h2>
-            </div>
-            <div className="flex lg:flex-col overflow-x-auto lg:overflow-visible gap-3 pb-2 no-scrollbar">
-              {marketIndices.map(idx => renderIndexCard(idx, 'index'))}
-              {marketIndices.filter(idx => indicesConfig.includes(idx.symbol)).length === 0 && (
-                 <div className="bg-white border-2 border-dashed border-gray-100 rounded-3xl py-12 text-center text-[10px] text-gray-400 min-w-[180px] lg:min-w-0 flex flex-col items-center justify-center space-y-2">
-                   <i className="fas fa-chart-bar text-xl opacity-20"></i>
-                   <span>暂无指数</span>
-                 </div>
-              )}
-            </div>
+      {/* 修正 Grid 布局和 items-start，确保标题在顶端严格水平对齐 */}
+      <div className="max-w-7xl mx-auto px-4 py-6 grid grid-cols-1 lg:grid-cols-[224px_1fr_224px] gap-6 items-start">
+
+        {/* 左侧：大盘看板 */}
+        <aside className="sticky lg:top-[130px] space-y-4">
+          <div className="h-10 flex items-center px-1">
+            <h2 className="text-[10px] font-bold text-gray-400 uppercase tracking-widest leading-none">大盘看板</h2>
+          </div>
+          <div className="flex lg:flex-col overflow-x-auto lg:overflow-visible gap-3 pb-2 no-scrollbar">
+            {marketIndices.map(idx => renderIndexCard(idx, 'index'))}
+            {marketIndices.filter(idx => indicesConfig.includes(idx.symbol)).length === 0 && (
+               <div className="bg-white border-2 border-dashed border-gray-100 rounded-3xl py-12 text-center text-[10px] text-gray-400 min-w-[180px] lg:min-w-0 flex flex-col items-center justify-center space-y-2">
+                 <i className="fas fa-chart-bar text-xl opacity-20"></i>
+                 <span>暂无指数</span>
+               </div>
+            )}
           </div>
         </aside>
 
-        <main className="flex-1">
-          <div className="space-y-4">
-            <div className="h-8 flex justify-between items-center px-1">
-              <h2 className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">
-                {isSelectionMode ? <span className="text-blue-600">选择管理项目</span> : '我的自选'}
-              </h2>
-              <div className="flex items-center space-x-2">
-                {!isSelectionMode ? (
-                  <>
-                    <button onClick={() => setIsSelectionMode(true)} className="px-4 py-1.5 rounded-full bg-blue-600 shadow-md text-[11px] font-bold text-white hover:bg-blue-700 transition-all">管理</button>
-                    <button onClick={() => setSortOrder(o => o === 'desc' ? 'asc' : 'desc')} className="w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center text-gray-500">
-                      <i className={`fas fa-sort-amount-${sortOrder === 'asc' ? 'up' : 'down'}`}></i>
-                    </button>
-                  </>
-                ) : (
-                  <button onClick={() => setIsSelectionMode(false)} className="px-4 py-1.5 rounded-full bg-white border border-blue-200 text-[10px] font-bold text-blue-600">取消管理</button>
-                )}
-              </div>
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-1 xl:grid-cols-2 gap-4">
-              {sortedPortfolio.map(ticker => (
-                <TickerCard
-                  key={ticker.id}
-                  ticker={ticker}
-                  data={marketData[ticker.symbol]}
-                  onRemove={() => setPendingDelete({ id: ticker.id, symbol: ticker.symbol, name: ticker.name, bulk: false, type: 'fund' })}
-                  onClick={() => marketData[ticker.symbol] && setViewingSymbol(ticker.symbol)}
-                  isSelectionMode={isSelectionMode}
-                  isSelected={selectedIds.has(ticker.id)}
-                  onSelect={() => setSelectedIds(prev => {
-                    const next = new Set(prev);
-                    if (next.has(ticker.id)) next.delete(ticker.id); else next.add(ticker.id);
-                    return next;
-                  })}
-                />
-              ))}
-            </div>
-
-            {portfolio.length === 0 && (
-              <div className="text-center py-20 bg-white rounded-3xl border-2 border-dashed border-gray-100 text-gray-400">
-                点击右下角按钮添加第一个自选项目
-              </div>
-            )}
-          </div>
-        </main>
-
-        <aside className="lg:w-56 flex-shrink-0">
-          <div className="sticky lg:top-24 space-y-4">
-            <div className="h-8 flex items-center justify-between px-1">
-              <h2 className="text-[10px] font-bold text-gray-400 uppercase tracking-widest text-blue-500">全球市场</h2>
-            </div>
-            <div className="flex lg:flex-col overflow-x-auto lg:overflow-visible gap-3 pb-2 no-scrollbar">
-              {globalIndices.map(idx => renderIndexCard(idx, 'global_index'))}
-              {globalIndices.filter(idx => globalIndicesConfig.includes(idx.symbol)).length === 0 && (
-                 <div className="bg-white border-2 border-dashed border-gray-100 rounded-3xl py-12 text-center text-[10px] text-gray-400 min-w-[180px] lg:min-w-0 flex flex-col items-center justify-center space-y-2">
-                   <i className="fas fa-globe text-xl opacity-20"></i>
-                   <span>暂无数据</span>
-                 </div>
+        {/* 中间：自选基金 */}
+        <main className="space-y-4">
+          <div className="h-10 flex justify-between items-center px-1">
+            <h2 className="text-[10px] font-bold text-gray-400 uppercase tracking-widest flex items-center leading-none">
+              {isSelectionMode ? <span className="text-blue-600 font-black">批量管理模式</span> : '我的自选基金'}
+            </h2>
+            <div className="flex items-center space-x-2">
+              {!isSelectionMode ? (
+                <>
+                  <button onClick={() => setIsSelectionMode(true)} className="px-4 py-1.5 rounded-full bg-blue-600 shadow-md text-[11px] font-bold text-white hover:bg-blue-700 transition-all">管理</button>
+                  <button onClick={() => setSortOrder(o => o === 'desc' ? 'asc' : 'desc')} className="w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center text-gray-500">
+                    <i className={`fas fa-sort-amount-${sortOrder === 'asc' ? 'up' : 'down'}`}></i>
+                  </button>
+                </>
+              ) : (
+                <button onClick={() => setIsSelectionMode(false)} className="px-4 py-1.5 rounded-full bg-white border border-blue-200 text-[10px] font-bold text-blue-600">退出管理</button>
               )}
             </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-1 xl:grid-cols-2 gap-4">
+            {sortedPortfolio.map(ticker => (
+              <TickerCard
+                key={ticker.id}
+                ticker={ticker}
+                data={marketData[ticker.symbol]}
+                onRemove={() => setPendingDelete({ id: ticker.id, symbol: ticker.symbol, name: ticker.name, bulk: false, type: 'fund' })}
+                onClick={() => marketData[ticker.symbol] && setViewingSymbol(ticker.symbol)}
+                isSelectionMode={isSelectionMode}
+                isSelected={selectedIds.has(ticker.id)}
+                onSelect={() => setSelectedIds(prev => {
+                  const next = new Set(prev);
+                  if (next.has(ticker.id)) next.delete(ticker.id); else next.add(ticker.id);
+                  return next;
+                })}
+              />
+            ))}
+          </div>
+
+          {portfolio.length === 0 && (
+            <div className="text-center py-20 bg-white rounded-3xl border-2 border-dashed border-gray-100 text-gray-400">
+              点击右下角按钮添加第一个自选项目
+            </div>
+          )}
+        </main>
+
+        {/* 右侧：全球市场 */}
+        <aside className="sticky lg:top-[130px] space-y-4">
+          <div className="h-10 flex items-center px-1">
+            <h2 className="text-[10px] font-bold text-gray-400 uppercase tracking-widest leading-none">全球市场</h2>
+          </div>
+          <div className="flex lg:flex-col overflow-x-auto lg:overflow-visible gap-3 pb-2 no-scrollbar">
+            {globalIndices.map(idx => renderIndexCard(idx, 'global_index'))}
+            {globalIndices.filter(idx => globalIndicesConfig.includes(idx.symbol)).length === 0 && (
+               <div className="bg-white border-2 border-dashed border-gray-100 rounded-3xl py-12 text-center text-[10px] text-gray-400 min-w-[180px] lg:min-w-0 flex flex-col items-center justify-center space-y-2">
+                 <i className="fas fa-globe text-xl opacity-20"></i>
+                 <span>暂无数据</span>
+               </div>
+            )}
           </div>
         </aside>
       </div>
@@ -462,7 +457,6 @@ const App: React.FC = () => {
             setIsSelectionMode(false);
           } else if (pendingDelete?.type === 'index' && pendingDelete.symbol) {
             setIndicesConfig(p => p.filter(s => s !== pendingDelete.symbol));
-            // 行情列表抓取时会自然同步，不需要手动过滤
           } else if (pendingDelete?.type === 'global_index' && pendingDelete.symbol) {
             setGlobalIndicesConfig(p => p.filter(s => s !== pendingDelete.symbol));
           } else if (pendingDelete?.id) {

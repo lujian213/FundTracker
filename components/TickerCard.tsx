@@ -38,7 +38,7 @@ export const TickerCard: React.FC<TickerCardProps> = ({
 
   const getChangeStyles = () => {
     if (!hasData) return 'bg-gray-100 text-transparent select-none';
-    if (isNoValuation || change === 0) return 'bg-gray-50 text-gray-500';
+    if (isNoValuation || change === 0 || isNaN(change)) return 'bg-gray-50 text-gray-500';
     if (isUp) {
       if (absChange < 1) return 'bg-red-50 text-red-600';
       if (absChange < 3) return 'bg-red-100 text-red-700 font-medium';
@@ -77,6 +77,10 @@ export const TickerCard: React.FC<TickerCardProps> = ({
   const formattedNetWorthDate = data?.netWorthDate && data.netWorthDate !== '---'
     ? data.netWorthDate.split('-').slice(1).join('/')
     : '---';
+
+  const displayPrice = hasData && !isNaN(data.currentPrice) ? data.currentPrice.toFixed(4) : "---";
+  const displayPrevPrice = hasData && !isNaN(data.previousPrice) ? data.previousPrice.toFixed(4) : "---";
+  const displayChange = hasData && !isNaN(data.changePercentage) ? `${isUp ? '+' : ''}${data.changePercentage.toFixed(2)}%` : "---";
 
   return (
     <div
@@ -127,7 +131,7 @@ export const TickerCard: React.FC<TickerCardProps> = ({
             <>
               <div className="flex items-baseline space-x-2">
                 <span className={`text-3xl font-normal leading-none tracking-tight ${getPriceColor()}`}>
-                  {data.currentPrice.toFixed(4)}
+                  {displayPrice}
                 </span>
                 <span className="text-[10px] text-gray-400 font-medium">
                   {isNoValuation ? '净值' : '实时估值'}
@@ -137,7 +141,7 @@ export const TickerCard: React.FC<TickerCardProps> = ({
                 <div className="flex items-center space-x-1">
                   <span>确认净值:</span>
                   <span className="font-mono font-medium text-gray-600">
-                    {data.previousPrice.toFixed(4)}
+                    {displayPrevPrice}
                   </span>
                   <span className="text-[9px] opacity-60">({formattedNetWorthDate})</span>
                 </div>
@@ -155,10 +159,10 @@ export const TickerCard: React.FC<TickerCardProps> = ({
           {hasData ? (
             <div className="flex flex-col items-end">
               <div className={`inline-flex items-center px-3 py-1.5 rounded-xl text-base transition-all duration-300 ${getChangeStyles()}`}>
-                {!isNoValuation && change !== 0 && (
+                {!isNoValuation && change !== 0 && !isNaN(change) && (
                   <i className={`fas fa-caret-${isUp ? 'up' : 'down'} mr-1.5`}></i>
                 )}
-                {isUp ? '+' : ''}{data.changePercentage.toFixed(2)}%
+                {displayChange}
               </div>
               <div className="text-[9px] text-gray-400 mt-2 font-medium bg-gray-50 px-2 py-0.5 rounded-full flex items-center">
                 <i className="far fa-clock mr-1"></i>
