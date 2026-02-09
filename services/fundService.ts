@@ -1,34 +1,21 @@
 
 import { ValuationData, MarketIndex, HistoricalPoint } from "../types";
 
-/**
- * 内存缓存
- * historyCache: 存储官方历史净值
- * realtimeCache: 存储最新的实时估值点，用于合并到历史趋势中
- */
 const historyCache: Record<string, HistoricalPoint[]> = {};
-const realtimeCache: Record<string, HistoricalPoint> = {};
+const realtimeCache: Record<string, HistoricalPoint[]> = {};
 
-/**
- * 获取当前时间戳 YYYYMMDDHHmmss
- */
 function getTimestamp(): string {
   const now = new Date();
   const pad = (n: number) => n.toString().padStart(2, '0');
   return `${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`;
 }
 
-/**
- * 格式化日期时间为 MM-DD HH:mm:ss
- */
 function formatFullDateTime(date: Date): string {
   const pad = (n: number) => n.toString().padStart(2, '0');
+  if (isNaN(date.getTime())) return "---";
   return `${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
 }
 
-/**
- * 提取 JS 变量值的辅助函数
- */
 function extractVar(content: string, varName: string): string {
   const regex = new RegExp(`(?:var|const|let)?\\s*${varName}\\s*=\\s*["']([^"']*)["']`, 'i');
   const match = content.match(regex);
@@ -40,9 +27,6 @@ function extractVar(content: string, varName: string): string {
   return numMatch ? numMatch[1] : '';
 }
 
-/**
- * 提取复杂 JS 对象 (Array/Object)
- */
 function extractComplexVar(content: string, varName: string): any {
   const regex = new RegExp(`var\\s+${varName}\\s*=\\s*(\\[[\\s\\S]*?\\]);`, 'm');
   const match = content.match(regex);
@@ -50,15 +34,12 @@ function extractComplexVar(content: string, varName: string): any {
     try {
       return new Function(`return ${match[1]}`)();
     } catch (e) {
-      console.error(`Failed to parse complex var: ${varName}`, e);
+      // 保持安静
     }
   }
   return null;
 }
 
-/**
- * 解析 jsonpgz 格式
- */
 function parseJsonpgz(content: string): any {
   try {
     const start = content.indexOf('(') + 1;
@@ -71,26 +52,23 @@ function parseJsonpgz(content: string): any {
   return null;
 }
 
-/**
- * 竞速代理获取函数：并发请求多个代理，取最快的一个
- */
 async function fetchWithProxy(targetUrl: string, validator: (text: string) => boolean): Promise<string | null> {
   const proxyTemplates = [
-    (url: string) => `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`,
     (url: string) => `https://corsproxy.io/?${encodeURIComponent(url)}`,
+    (url: string) => `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`,
     (url: string) => `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(url)}`,
     (url: string) => url
   ];
 
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 8000);
+  const timeoutId = setTimeout(() => controller.abort(), 12000);
 
   const fetchFromProxy = async (template: (url: string) => string): Promise<string> => {
     const proxyUrl = template(targetUrl);
     const innerController = new AbortController();
     const linkAbort = () => innerController.abort();
     controller.signal.addEventListener('abort', linkAbort);
-    const innerTimeout = setTimeout(() => innerController.abort(), 4500);
+    const innerTimeout = setTimeout(() => innerController.abort(), 6000);
 
     try {
       const response = await fetch(proxyUrl, {
@@ -112,14 +90,16 @@ async function fetchWithProxy(targetUrl: string, validator: (text: string) => bo
       let rejectedCount = 0;
       const tasks = proxyTemplates.map(t => fetchFromProxy(t));
       tasks.forEach(task => {
-        task.then(resolve).catch(() => {
+        task.then(val => {
+          resolve(val);
+          controller.abort();
+        }).catch(() => {
           rejectedCount++;
           if (rejectedCount === tasks.length) reject(new Error('All proxies failed'));
         });
       });
     });
     clearTimeout(timeoutId);
-    controller.abort();
     return fastestResult;
   } catch (e) {
     clearTimeout(timeoutId);
@@ -127,12 +107,8 @@ async function fetchWithProxy(targetUrl: string, validator: (text: string) => bo
   }
 }
 
-/**
- * 获取历史趋势数据 (合并实时估值缓存)
- */
 export async function fetchFundHistory(symbol: string): Promise<HistoricalPoint[]> {
   const code = symbol.padStart(6, '0');
-
   let baseHistory = historyCache[code];
 
   if (!baseHistory) {
@@ -153,128 +129,100 @@ export async function fetchFundHistory(symbol: string): Promise<HistoricalPoint[
   }
 
   if (!baseHistory) return [];
-
-  // 合并实时估值点（如果缓存中有且比历史点新）
-  const rtPoint = realtimeCache[code];
-  if (rtPoint && rtPoint.date > baseHistory[baseHistory.length - 1].date) {
-    return [...baseHistory, rtPoint];
-  }
-
   return baseHistory;
 }
 
-/**
- * 获取大盘指数数据
- */
+function safeParseFloat(val: any): number {
+  if (val === undefined || val === null || val === "-" || val === "" || val === "NaN") return 0;
+  const parsed = parseFloat(val);
+  return isNaN(parsed) ? 0 : parsed;
+}
+
 export async function fetchMarketIndices(secids: string[]): Promise<MarketIndex[]> {
-  const fetchIndex = async (secid: string): Promise<MarketIndex | null> => {
-    const ut = 'fa5fd1943c7b386f172d6893dbf244b0';
-    const fields = 'f43,f169,f170,f58,f57,f124';
-    const targetUrl = `https://push2.eastmoney.com/api/qt/stock/get?ut=${ut}&fltt=2&invt=2&secid=${secid}&fields=${fields}&_=${Date.now()}`;
+  const fetchIndex = async (rawSecid: string): Promise<MarketIndex | null> => {
+    let secid = rawSecid.trim().toUpperCase();
 
-    const content = await fetchWithProxy(targetUrl, (t) => t.includes('"data":') || t.includes('f43'));
-    if (!content) return null;
-
-    try {
-      const json = JSON.parse(content);
-      const d = json.data;
-      if (!d) return null;
-
-      const parseValue = (val: any) => {
-        if (val === undefined || val === null || val === "-") return 0;
-        return parseFloat(val);
-      };
-
-      let dataTime = new Date();
-      if (d.f124) dataTime = new Date(d.f124 * 1000);
-
-      return {
-        name: d.f58 || `指数(${secid})`,
-        symbol: secid,
-        current: parseValue(d.f43),
-        change: parseValue(d.f169),
-        changePercent: parseValue(d.f170),
-        lastUpdated: formatFullDateTime(dataTime)
-      };
-    } catch (e) {
-      return null;
+    if (/^[A-Z]+$/.test(secid)) {
+      secid = `100.${secid}`;
     }
+
+    const isGlobal = secid.startsWith('100.') || secid.startsWith('101.') || secid.startsWith('102.');
+
+    const utOptions = isGlobal
+      ? [
+          'b2a84d46797b5e4c8d451421f57f4951',
+          '70f12f01f422830f269a83a00f1c3f9f',
+          '6f1816054a41031a05256e2978917e76',
+          'bd1d9ddb04089700cf9c27f6f7426281'
+        ]
+      : ['fa5fd1943c7b386f172d6893dbf244b0'];
+
+    const fields = 'f43,f169,f170,f58,f124,f116,f60';
+
+    for (const ut of utOptions) {
+      const invtOptions = isGlobal ? [2, 1] : [2];
+
+      for (const invt of invtOptions) {
+        const targetUrl = `https://push2.eastmoney.com/api/qt/stock/get?ut=${ut}&fltt=2&invt=${invt}&secid=${secid}&fields=${fields}&_=${Date.now()}`;
+
+        const content = await fetchWithProxy(targetUrl, (t) => t.includes('"data":') || t.includes('"rc":'));
+        if (!content) continue;
+
+        try {
+          const json = JSON.parse(content);
+          const d = json.data;
+
+          if (d) {
+            const currentPrice = safeParseFloat(d.f43 || d.f116 || d.f60);
+
+            if (currentPrice > 0 || d.f58) {
+              let dataTime = new Date();
+              if (d.f124) {
+                const ts = d.f124;
+                dataTime = new Date(ts > 2000000000 ? ts : ts * 1000);
+              }
+
+              return {
+                name: d.f58 || `指数(${secid})`,
+                symbol: secid,
+                current: currentPrice,
+                change: safeParseFloat(d.f169),
+                changePercent: safeParseFloat(d.f170),
+                lastUpdated: formatFullDateTime(dataTime)
+              };
+            }
+          }
+        } catch (e) {
+          // 保持安静
+        }
+      }
+    }
+    return null;
   };
 
   const results = await Promise.all(secids.map(id => fetchIndex(id)));
-  return results.filter((i): i is MarketIndex => i !== null);
+  return results.filter((r): r is MarketIndex => r !== null);
 }
 
 export async function fetchFundData(symbol: string): Promise<ValuationData | null> {
   const code = symbol.padStart(6, '0');
-  const timestamp = getTimestamp();
-  const urlPrimary = `https://fund.eastmoney.com/pingzhongdata/${code}.js?v=${timestamp}`;
-  const urlValuation = `https://fundgz.1234567.com.cn/js/${code}.js?rt=${timestamp}`;
+  const url = `https://fundgz.1234567.com.cn/js/${code}.js?rt=${Date.now()}`;
+  const content = await fetchWithProxy(url, (t) => t.includes('jsonpgz'));
 
-  try {
-    const [resPrimary, resValuation] = await Promise.allSettled([
-      fetchWithProxy(urlPrimary, (t) => t.includes('fS_code') || t.includes('dwjz')),
-      fetchWithProxy(urlValuation, (t) => t.includes('jsonpgz'))
-    ]);
-
-    const contentPrimary = resPrimary.status === 'fulfilled' ? resPrimary.value : null;
-    const contentValuation = resValuation.status === 'fulfilled' ? resValuation.value : null;
-
-    if (!contentPrimary && !contentValuation) return null;
-
-    const valInfo = contentValuation ? parseJsonpgz(contentValuation) : null;
-    const baseInfo = contentPrimary ? {
-      name: extractVar(contentPrimary, 'fS_name'),
-      dwjz: extractVar(contentPrimary, 'dwjz'),
-      gsz: extractVar(contentPrimary, 'gsz'),
-      gszzl: extractVar(contentPrimary, 'gszzl'),
-      gztime: extractVar(contentPrimary, 'gztime'),
-      jzrq: extractVar(contentPrimary, 'fs_jzrq')
-    } : null;
-
-    const name = valInfo?.name || baseInfo?.name || `基金(${code})`;
-    const dwjz = parseFloat(valInfo?.dwjz || baseInfo?.dwjz || "0");
-    const gszRaw = valInfo?.gsz || baseInfo?.gsz;
-    const gsz = gszRaw ? parseFloat(gszRaw) : dwjz;
-    const gszzl = parseFloat(valInfo?.gszzl || baseInfo?.gszzl || "0");
-    const gztime = valInfo?.gztime || baseInfo?.gztime || "数据加载中";
-    const jzrq = valInfo?.jzrq || baseInfo?.jzrq || "---";
-
-    let finalValuationDate = jzrq;
-    const now = new Date();
-    const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
-
-    if (gszRaw && gztime && gztime !== "数据加载中") {
-        if (gztime.includes('-') && gztime.length > 10) finalValuationDate = gztime.split(' ')[0];
-        else finalValuationDate = todayStr;
+  if (content) {
+    const data = parseJsonpgz(content);
+    if (data) {
+      return {
+        symbol: data.fundcode,
+        name: data.name,
+        currentPrice: safeParseFloat(data.gsz),
+        previousPrice: safeParseFloat(data.dwjz),
+        changePercentage: safeParseFloat(data.gszzl),
+        lastUpdated: data.gztime,
+        valuationDate: data.jzrq,
+        sourceUrl: `https://pinzhong.eastmoney.com/fund/${code}.html`
+      };
     }
-
-    let finalGzTime = gztime;
-    if (gztime && gztime.length <= 5 && gztime.includes(':')) {
-        const dateStrForDisplay = `${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
-        finalGzTime = `${dateStrForDisplay} ${gztime}`;
-    } else if (gztime && gztime.length > 10) {
-        finalGzTime = gztime.substring(5);
-    }
-
-    // 更新实时估值点缓存，以便趋势图能够获取最新状态
-    realtimeCache[code] = {
-      date: new Date(finalValuationDate).getTime(),
-      value: gsz,
-      equityReturn: gszzl
-    };
-
-    return {
-      symbol: code,
-      name: name,
-      currentPrice: gsz,
-      previousPrice: dwjz,
-      changePercentage: gszzl,
-      lastUpdated: finalGzTime,
-      valuationDate: finalValuationDate,
-      sourceUrl: `https://fund.eastmoney.com/${code}.html`
-    };
-  } catch (error) {
-    return null;
   }
+  return null;
 }
