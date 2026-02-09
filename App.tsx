@@ -7,6 +7,7 @@ import { AddTickerModal } from './components/AddTickerModal';
 import { ConfirmDialog } from './components/ConfirmDialog';
 import { FundDetailsModal } from './components/FundDetailsModal';
 import { IndexDetailsModal } from './components/IndexDetailsModal';
+import { MarketNewsTicker } from './components/MarketNewsTicker';
 
 type SortOrder = 'asc' | 'desc';
 
@@ -300,6 +301,7 @@ const App: React.FC = () => {
             )}
           </div>
         </div>
+        {!isSelectionMode && <MarketNewsTicker />}
       </header>
 
       <input type="file" ref={fileInputRef} onChange={handleImport} accept=".json" className="hidden" />
