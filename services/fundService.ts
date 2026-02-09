@@ -62,13 +62,13 @@ function jsonp<T>(url: string, callbackParam: string = 'cb', fundCode?: string):
 
     const script = document.createElement('script');
     const separator = url.includes('?') ? '&' : '?';
-    const finalUrl = isFundGz ? url : `${url}${separator}cb=${callbackName}`;
+    const finalUrl = isFundGz ? url : `${url}${separator}${callbackParam}=${callbackName}`;
 
-    const timeoutLimit = 10000;
+    const timeoutLimit = 8000;
     const timeoutId = setTimeout(() => {
       cleanup();
       if (fundCode) delete fundRegistry[fundCode];
-      reject(new Error(`Timeout`));
+      reject(new Error(`TIMEOUT`));
     }, timeoutLimit);
 
     const cleanup = () => {
@@ -90,11 +90,11 @@ function jsonp<T>(url: string, callbackParam: string = 'cb', fundCode?: string):
     }
 
     script.src = finalUrl;
-    script.referrerPolicy = "no-referrer-when-downgrade";
+    script.referrerPolicy = "no-referrer";
     script.onerror = () => {
       cleanup();
       if (fundCode) delete fundRegistry[fundCode];
-      reject(new Error(`Script Load Error`));
+      reject(new Error(`SCRIPT_ERROR`));
     };
     document.head.appendChild(script);
   });
@@ -204,32 +204,45 @@ export async function fetchIndexHistory(symbol: string): Promise<HistoricalPoint
 }
 
 /**
- * 获取上证指数市场异动信息
+ * 获取实时市场热点 (替代受限的异动接口)
+ * 使用 push2 排行榜接口，通常比异动接口更稳定且无跨域限制
  */
 export async function fetchMarketNews(): Promise<{ id: string, title: string, time: string, url: string }[]> {
-  // 使用东方财富的上证指数（1.000001）盘中异动接口
-  const url = `https://push2ex.eastmoney.com/api/qt/stock/details/get?secid=1.000001&fields1=f1,f2,f3,f4&fields2=f51,f52,f53,f54,f55&_=${Date.now()}`;
+  // 获取领涨板块或热门个股，作为“市场动态”展示
+  const ut = 'fa1a66105171779fbdd067425f38a7c2';
+  // 综合排行榜接口，获取当前涨幅前列的板块
+  const url = `https://push2.eastmoney.com/api/qt/clist/get?pn=1&pz=10&po=1&np=1&ut=${ut}&fltt=2&invt=2&fid=f3&fs=m:90+t:2&fields=f12,f14,f2,f3,f4&_=${Date.now()}`;
 
   try {
     const response: any = await jsonp(url, 'cb');
-    if (response?.data?.details) {
-      // 提取最近的异动记录
-      // 东方财富详情接口：f51:时间, f52:价格, f53:成交量, f54:类型, f55:描述
-      const details = response.data.details.reverse().slice(0, 15);
-      return details.map((item: any, idx: number) => {
-        const title = `上证指数 ${item.f51} ${item.f55}，价格 ${item.f52}`;
-        return {
-          id: `move-${idx}-${Date.now()}`,
-          title: title,
-          time: item.f51,
-          url: 'https://quote.eastmoney.com/zs000001.html'
-        };
-      });
-    }
-  } catch (e) {}
 
-  return [
-    { id: 'def1', title: '正在连接上证指数实时异动监控队列...', time: 'NOW', url: '#' },
-    { id: 'def2', title: '市场数据同步中，请稍候...', time: 'WAIT', url: '#' }
-  ];
+    if (response?.data?.diff) {
+      const diff = response.data.diff;
+      const now = new Date();
+      const timeStr = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}`;
+
+      return Object.values(diff).map((item: any, idx: number) => ({
+        id: `news-${item.f12}-${idx}`,
+        title: `🔥 热门领涨: ${item.f14} 涨幅 ${item.f3}%`,
+        time: timeStr,
+        url: `https://quote.eastmoney.com/unify/grid.html?fixed=1&kind=2&type=90&code=${item.f12}`
+      }));
+    }
+  } catch (e) {
+    // 如果排行榜也挂了，最后保底尝试直接从上证指数获取简要状态
+    try {
+      const index = await fetchSingleIndex('1.000001');
+      if (index) {
+        return [{
+          id: 'status-sh',
+          title: `上证指数当前 ${index.current} (${index.changePercent > 0 ? '↑' : '↓'}${index.changePercent}%) 交易进行中`,
+          time: index.lastUpdated.slice(0, 5),
+          url: 'https://quote.eastmoney.com/zs000001.html'
+        }];
+      }
+    } catch (inner) {}
+    throw e;
+  }
+
+  return [];
 }
