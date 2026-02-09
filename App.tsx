@@ -9,7 +9,6 @@ import { FundDetailsModal } from './components/FundDetailsModal';
 
 type SortOrder = 'asc' | 'desc';
 
-// 移除硬编码的代码，默认保持空白
 const DEFAULT_INDICES: string[] = [];
 const DEFAULT_GLOBAL_INDICES: string[] = [];
 
@@ -94,33 +93,32 @@ const App: React.FC = () => {
   }, [updateSingleFund]);
 
   const refreshMarketIndices = useCallback(async () => {
+    const tasks: Promise<any>[] = [];
     if (indicesConfig.length > 0) {
-      try {
-        const data = await fetchMarketIndices(indicesConfig);
-        setMarketIndices(data);
-      } catch (e) {}
+      tasks.push(fetchMarketIndices(indicesConfig).then(setMarketIndices).catch(() => {}));
     } else {
       setMarketIndices([]);
     }
 
     if (globalIndicesConfig.length > 0) {
-      try {
-        const data = await fetchMarketIndices(globalIndicesConfig);
-        setGlobalIndices(data);
-      } catch (e) {}
+      tasks.push(fetchMarketIndices(globalIndicesConfig).then(setGlobalIndices).catch(() => {}));
     } else {
       setGlobalIndices([]);
     }
+    await Promise.allSettled(tasks);
   }, [indicesConfig, globalIndicesConfig]);
 
   const refreshAll = useCallback(async () => {
     if (isRefreshing) return;
     setIsRefreshing(true);
-    await Promise.allSettled([
-      runBatchUpdate(portfolio),
-      refreshMarketIndices()
-    ]);
-    setIsRefreshing(false);
+    try {
+      await Promise.allSettled([
+        runBatchUpdate(portfolio),
+        refreshMarketIndices()
+      ]);
+    } finally {
+      setIsRefreshing(false);
+    }
   }, [portfolio, isRefreshing, runBatchUpdate, refreshMarketIndices]);
 
   useEffect(() => {
@@ -134,14 +132,21 @@ const App: React.FC = () => {
     refreshMarketIndices();
   }, [indicesConfig, globalIndicesConfig]);
 
+  // 基金刷新频率：90 秒 (90000ms)
   useEffect(() => {
-    const fundInterval = setInterval(() => runBatchUpdate(portfolio), 120000);
-    const indexInterval = setInterval(() => refreshMarketIndices(), 30000);
-    return () => {
-      clearInterval(fundInterval);
-      clearInterval(indexInterval);
-    };
-  }, [portfolio, refreshMarketIndices, runBatchUpdate]);
+    const fundInterval = setInterval(() => {
+      runBatchUpdate(portfolio);
+    }, 90000);
+    return () => clearInterval(fundInterval);
+  }, [portfolio, runBatchUpdate]);
+
+  // 行情刷新频率：20 秒 (20000ms)
+  useEffect(() => {
+    const indexInterval = setInterval(() => {
+      refreshMarketIndices();
+    }, 20000);
+    return () => clearInterval(indexInterval);
+  }, [refreshMarketIndices]);
 
   const sortedPortfolio = useMemo(() => {
     return [...portfolio].sort((a, b) => {
@@ -239,7 +244,7 @@ const App: React.FC = () => {
             <div>
               <h1 className="text-xl font-bold text-gray-800 leading-tight">极简基金估值</h1>
               <p className="text-[10px] text-gray-400 font-medium uppercase tracking-tighter">
-                {backgroundTasks > 0 ? `同步中 (${backgroundTasks})` : '数据实时更新'}
+                {backgroundTasks > 0 ? `同步中 (${backgroundTasks})` : '高频实时行情同步中'}
               </p>
             </div>
           </div>
