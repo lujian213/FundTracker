@@ -6,7 +6,7 @@ export enum MarketType {
 
 export interface Ticker {
   id: string;
-  symbol: string; // 基金为6位代码，指数为 secid (如 1.000001)
+  symbol: string;
   name: string;
   market: MarketType;
 }
@@ -17,8 +17,10 @@ export interface ValuationData {
   currentPrice: number;      // 实时估值 (gsz)
   previousPrice: number;     // 昨日单位净值 (dwjz)
   changePercentage: number;  // 估值涨跌幅 (gszzl)
-  lastUpdated: string;       // 更新时间 (gztime)
-  valuationDate: string;     // 数据日期
+  lastUpdated: string;       // 完整更新时间 (gztime) -> "2024-05-22 15:00"
+  realtimeDate: string;      // 提取出的实时日期 -> "2024-05-22"
+  netWorthDate: string;      // 最后确认净值的日期 (jzrq) -> "2024-05-21"
+  valuationDate: string;     // 兼容性字段
   sourceUrl: string;
 }
 

@@ -211,12 +211,12 @@ const App: React.FC = () => {
             <h4 className="text-[12px] font-bold text-gray-800 truncate" title={idx.name}>{idx.name}</h4>
             <p className="text-[9px] text-gray-400 font-mono mt-0.5">{idx.symbol}</p>
           </div>
-          <span className={`text-[11px] font-black whitespace-nowrap ${idx.changePercent >= 0 ? 'text-red-500' : 'text-green-500'}`}>
+          <span className={`text-[11px] font-medium whitespace-nowrap ${idx.changePercent >= 0 ? 'text-red-500' : 'text-green-500'}`}>
             {idx.changePercent >= 0 ? '+' : ''}{idx.changePercent.toFixed(2)}%
           </span>
         </div>
       </div>
-      <div className={`text-xl font-black ${idx.changePercent >= 0 ? 'text-red-600' : 'text-green-600'}`}>
+      <div className={`text-xl font-normal ${idx.changePercent >= 0 ? 'text-red-600' : 'text-green-600'}`}>
         {(idx.current || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
       </div>
       <div className="flex flex-col mt-2">

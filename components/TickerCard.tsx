@@ -6,7 +6,7 @@ interface TickerCardProps {
   ticker: Ticker;
   data?: ValuationData;
   onRemove: () => void;
-  onClick?: () => void; // 新增：点击回调
+  onClick?: () => void;
   isSelectionMode?: boolean;
   isSelected?: boolean;
   onSelect?: () => void;
@@ -24,13 +24,13 @@ export const TickerCard: React.FC<TickerCardProps> = ({
   const hasData = !!data;
   const isNoValuation = hasData && (data.lastUpdated.includes('无估值') || data.lastUpdated.includes('已休市'));
 
-  // 检查是否为非当日数据
   const isTodayData = useMemo(() => {
-    if (!hasData || !data.valuationDate) return true;
+    if (!hasData || !data.realtimeDate) return true;
     const now = new Date();
     const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
-    return data.valuationDate === todayStr;
-  }, [hasData, data?.valuationDate]);
+    // 使用实时估值日期判断
+    return data.realtimeDate === todayStr;
+  }, [hasData, data?.realtimeDate]);
 
   const change = hasData ? data.changePercentage : 0;
   const absChange = Math.abs(change);
@@ -40,21 +40,18 @@ export const TickerCard: React.FC<TickerCardProps> = ({
   const getChangeStyles = () => {
     if (!hasData) return 'bg-gray-100 text-transparent select-none';
     if (isNoValuation || change === 0) return 'bg-gray-50 text-gray-500';
-
     if (isUp) {
       if (absChange < 1) return 'bg-red-50 text-red-600';
-      if (absChange < 3) return 'bg-red-100 text-red-700 font-bold';
-      if (absChange < 5) return 'bg-red-500 text-white font-bold shadow-sm shadow-red-200';
-      return 'bg-red-700 text-white font-black shadow-md shadow-red-300 ring-2 ring-red-100';
+      if (absChange < 3) return 'bg-red-100 text-red-700 font-medium';
+      if (absChange < 5) return 'bg-red-500 text-white font-medium shadow-sm shadow-red-200';
+      return 'bg-red-700 text-white font-normal shadow-md shadow-red-300 ring-2 ring-red-100';
     }
-
     if (isDown) {
       if (absChange < 1) return 'bg-green-50 text-green-600';
-      if (absChange < 3) return 'bg-green-100 text-green-700 font-bold';
-      if (absChange < 5) return 'bg-green-500 text-white font-bold shadow-sm shadow-green-200';
-      return 'bg-green-700 text-white font-black shadow-md shadow-green-300 ring-2 ring-green-100';
+      if (absChange < 3) return 'bg-green-100 text-green-700 font-medium';
+      if (absChange < 5) return 'bg-green-500 text-white font-medium shadow-sm shadow-green-200';
+      return 'bg-green-700 text-white font-normal shadow-md shadow-green-300 ring-2 ring-green-100';
     }
-
     return 'bg-gray-50 text-gray-500';
   };
 
@@ -79,13 +76,12 @@ export const TickerCard: React.FC<TickerCardProps> = ({
       onClick={handleCardClick}
       className={`bg-white rounded-2xl p-5 shadow-sm border transition-all relative overflow-hidden animate-in fade-in slide-in-from-bottom-2 duration-300 ${isSelected ? 'border-blue-500 ring-4 ring-blue-500/10' : 'border-gray-100'} cursor-pointer hover:shadow-lg hover:border-gray-200 active:scale-[0.98]`}
     >
-      {/* 顶部状态标识 */}
       {!isSelectionMode && (
         <div className="absolute top-0 right-0 flex items-center">
-          {!isTodayData && hasData && data.valuationDate !== '---' && (
+          {!isTodayData && hasData && data.realtimeDate !== '---' && (
              <div className="bg-amber-100 text-amber-700 text-[9px] font-bold px-2 py-1 rounded-bl-lg shadow-sm mr-[1px] animate-in slide-in-from-right-2 duration-300">
                <i className="fas fa-history mr-1 opacity-70"></i>
-               {data.valuationDate.split('-').slice(1).join('/')}
+               历史:{data.realtimeDate.split('-').slice(1).join('/')}
              </div>
           )}
           <div className={`${!hasData ? 'bg-gray-300' : isNoValuation ? 'bg-gray-400' : 'bg-red-600'} text-white text-[9px] font-bold px-3 py-1 rounded-bl-lg shadow-sm transition-colors`}>
@@ -94,7 +90,6 @@ export const TickerCard: React.FC<TickerCardProps> = ({
         </div>
       )}
 
-      {/* 选择指示器 */}
       {isSelectionMode && (
         <div className={`absolute top-4 right-4 w-7 h-7 rounded-full border-2 flex items-center justify-center transition-all ${isSelected ? 'bg-blue-600 border-blue-600 text-white shadow-lg shadow-blue-200' : 'bg-white border-gray-200 text-transparent'}`}>
           <i className="fas fa-check text-[12px]"></i>
@@ -111,12 +106,8 @@ export const TickerCard: React.FC<TickerCardProps> = ({
 
         {!isSelectionMode && (
           <button
-            onClick={(e) => {
-              e.stopPropagation();
-              onRemove();
-            }}
+            onClick={(e) => { e.stopPropagation(); onRemove(); }}
             className="w-10 h-10 -mr-2 -mt-2 flex items-center justify-center text-gray-300 hover:text-red-500 hover:bg-red-50 rounded-full transition-all group"
-            title="删除"
           >
             <i className="fas fa-trash-can text-sm group-active:scale-90"></i>
           </button>
@@ -128,19 +119,20 @@ export const TickerCard: React.FC<TickerCardProps> = ({
           {hasData ? (
             <>
               <div className="flex items-baseline space-x-2">
-                <span className={`text-3xl font-black leading-none tracking-tight ${getPriceColor()}`}>
+                <span className={`text-3xl font-normal leading-none tracking-tight ${getPriceColor()}`}>
                   {data.currentPrice.toFixed(4)}
                 </span>
                 <span className="text-[10px] text-gray-400 font-medium">
-                  {isNoValuation ? '收盘净值' : '实时估值'}
+                  {isNoValuation ? '净值' : '实时估值'}
                 </span>
               </div>
               <div className="flex flex-col text-[11px] text-gray-400">
                 <div className="flex items-center space-x-1">
-                  <span>昨日净值:</span>
+                  <span>确认净值:</span>
                   <span className="font-mono font-medium text-gray-600">
                     {data.previousPrice.toFixed(4)}
                   </span>
+                  <span className="text-[9px] opacity-60">({data.netWorthDate.split('-').slice(1).join('/')})</span>
                 </div>
               </div>
             </>
