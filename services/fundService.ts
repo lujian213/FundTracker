@@ -108,6 +108,31 @@ export async function fetchFundHistory(symbol: string): Promise<HistoricalPoint[
   return baseHistory || [];
 }
 
+/**
+ * 获取指数/个股的历史 K 线数据
+ */
+export async function fetchIndexHistory(secid: string): Promise<HistoricalPoint[]> {
+  const url = `https://push2his.eastmoney.com/api/qt/stock/kline/get?secid=${secid}&fields1=f1,f2,f3,f4,f5,f6&fields2=f51,f53&klt=101&fqt=1&end=20500101&lmt=90`;
+  const content = await fetchWithProxy(url, (t) => t.includes('"klines"'));
+  if (content) {
+    try {
+      const json = JSON.parse(content);
+      const klines = json.data?.klines;
+      if (Array.isArray(klines)) {
+        return klines.map((k: string) => {
+          const parts = k.split(',');
+          return {
+            date: new Date(parts[0]).getTime(),
+            value: parseFloat(parts[1]),
+            equityReturn: 0
+          };
+        });
+      }
+    } catch (e) {}
+  }
+  return [];
+}
+
 function safeParseFloat(val: any): number {
   if (val === undefined || val === null || val === "-" || val === "" || val === "NaN") return 0;
   const parsed = parseFloat(val);

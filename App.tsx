@@ -6,6 +6,7 @@ import { TickerCard } from './components/TickerCard';
 import { AddTickerModal } from './components/AddTickerModal';
 import { ConfirmDialog } from './components/ConfirmDialog';
 import { FundDetailsModal } from './components/FundDetailsModal';
+import { IndexDetailsModal } from './components/IndexDetailsModal';
 
 type SortOrder = 'asc' | 'desc';
 
@@ -56,6 +57,7 @@ const App: React.FC = () => {
   const [backgroundTasks, setBackgroundTasks] = useState<number>(0);
 
   const [viewingSymbol, setViewingSymbol] = useState<string | null>(null);
+  const [viewingIndex, setViewingIndex] = useState<MarketIndex | null>(null);
   const [pendingDelete, setPendingDelete] = useState<{ id?: string, symbol?: string, name?: string, bulk: boolean, type?: 'fund' | 'index' | 'global_index' } | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -132,7 +134,6 @@ const App: React.FC = () => {
     refreshMarketIndices();
   }, [indicesConfig, globalIndicesConfig]);
 
-  // 基金刷新频率：90 秒 (90000ms)
   useEffect(() => {
     const fundInterval = setInterval(() => {
       runBatchUpdate(portfolio);
@@ -140,7 +141,6 @@ const App: React.FC = () => {
     return () => clearInterval(fundInterval);
   }, [portfolio, runBatchUpdate]);
 
-  // 行情刷新频率：20 秒 (20000ms)
   useEffect(() => {
     const indexInterval = setInterval(() => {
       refreshMarketIndices();
@@ -201,10 +201,14 @@ const App: React.FC = () => {
   };
 
   const renderIndexCard = (idx: MarketIndex, type: 'index' | 'global_index') => (
-    <div key={idx.symbol} className={`bg-white rounded-2xl p-4 shadow-sm border transition-all min-w-[180px] lg:min-w-0 relative group ${isSelectionMode ? 'border-blue-200 ring-2 ring-blue-50' : 'border-gray-100'}`}>
+    <div
+      key={idx.symbol}
+      onClick={() => !isSelectionMode && setViewingIndex(idx)}
+      className={`bg-white rounded-2xl p-4 shadow-sm border transition-all min-w-[180px] lg:min-w-0 relative group cursor-pointer hover:shadow-md ${isSelectionMode ? 'border-blue-200 ring-2 ring-blue-50' : 'border-gray-100'}`}
+    >
       {isSelectionMode && (
         <button
-          onClick={() => setPendingDelete({ symbol: idx.symbol, name: idx.name, bulk: false, type })}
+          onClick={(e) => { e.stopPropagation(); setPendingDelete({ symbol: idx.symbol, name: idx.name, bulk: false, type }); }}
           className="absolute -top-2 -right-2 w-6 h-6 bg-red-500 text-white rounded-full flex items-center justify-center shadow-lg hover:bg-red-600 transition-colors z-10 scale-in"
         >
           <i className="fas fa-times text-xs"></i>
@@ -410,6 +414,13 @@ const App: React.FC = () => {
         <FundDetailsModal
           data={marketData[viewingSymbol]}
           onClose={() => setViewingSymbol(null)}
+        />
+      )}
+
+      {viewingIndex && (
+        <IndexDetailsModal
+          data={viewingIndex}
+          onClose={() => setViewingIndex(null)}
         />
       )}
 

@@ -1,0 +1,164 @@
+
+import React, { useState, useEffect, useMemo } from 'react';
+import { MarketIndex, HistoricalPoint } from '../types';
+import { fetchIndexHistory } from '../services/fundService';
+
+interface IndexDetailsModalProps {
+  data: MarketIndex;
+  onClose: () => void;
+}
+
+export const IndexDetailsModal: React.FC<IndexDetailsModalProps> = ({ data, onClose }) => {
+  const [history, setHistory] = useState<HistoricalPoint[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [hoveredPoint, setHoveredPoint] = useState<HistoricalPoint | null>(null);
+
+  useEffect(() => {
+    const load = async () => {
+      setLoading(true);
+      const points = await fetchIndexHistory(data.symbol);
+      setHistory(points);
+      setLoading(false);
+    };
+    load();
+  }, [data.symbol]);
+
+  const { path, area, points, viewBox, yLabels, xLabels } = useMemo(() => {
+    if (history.length < 2) return { path: '', area: '', points: [], viewBox: '0 0 100 100', yLabels: [], xLabels: [] };
+
+    const width = 1000;
+    const height = 450;
+    const paddingLeft = 60;
+    const paddingRight = 30;
+    const paddingTop = 40;
+    const paddingBottom = 60;
+
+    const values = history.map(p => p.value);
+    const rawMin = Math.min(...values);
+    const rawMax = Math.max(...values);
+    const margin = (rawMax - rawMin) * 0.1 || 0.01;
+    const min = rawMin - margin;
+    const max = rawMax + margin;
+    const range = max - min;
+
+    const getX = (idx: number) => paddingLeft + (idx * (width - paddingLeft - paddingRight) / (history.length - 1));
+    const getY = (val: number) => height - paddingBottom - ((val - min) / range * (height - paddingTop - paddingBottom));
+
+    const svgPoints = history.map((p, i) => ({
+      x: getX(i),
+      y: getY(p.value),
+      data: p
+    }));
+
+    const pathData = `M ${svgPoints[0].x} ${svgPoints[0].y} ` +
+      svgPoints.slice(1).map(p => `L ${p.x} ${p.y}`).join(' ');
+
+    const areaData = pathData +
+      ` L ${svgPoints[svgPoints.length - 1].x} ${height - paddingBottom}` +
+      ` L ${svgPoints[0].x} ${height - paddingBottom} Z`;
+
+    const yLabelsCount = 4;
+    const yLabels = Array.from({ length: yLabelsCount }).map((_, i) => {
+      const val = min + (i * range / (yLabelsCount - 1));
+      return { text: val.toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 }), y: getY(val) };
+    });
+
+    const xLabelIndices = [0, Math.floor(history.length / 2), history.length - 1];
+    const xLabels = xLabelIndices.map(idx => {
+      const d = new Date(history[idx].date);
+      return { text: `${d.getMonth() + 1}/${d.getDate()}`, x: getX(idx) };
+    });
+
+    return { path: pathData, area: areaData, points: svgPoints, viewBox: `0 0 ${width} ${height}`, yLabels, xLabels };
+  }, [history]);
+
+  return (
+    <div className="fixed inset-0 z-[110] flex items-center justify-center p-4">
+      <div className="absolute inset-0 bg-black/60 backdrop-blur-md animate-in fade-in duration-300" onClick={onClose}></div>
+
+      <div className="relative bg-white rounded-3xl w-full max-w-2xl overflow-hidden shadow-2xl animate-in zoom-in-95 duration-300 flex flex-col max-h-[90vh]">
+        <div className="px-6 py-6 border-b border-gray-50 flex justify-between items-start">
+          <div>
+            <div className="flex items-center space-x-2 mb-1">
+               <h2 className="text-xl font-black text-gray-800 leading-tight">{data.name}</h2>
+               <span className="px-2 py-0.5 bg-gray-100 text-gray-500 rounded text-[10px] font-mono">{data.symbol}</span>
+            </div>
+            <div className="flex items-baseline space-x-3">
+              <span className={`text-2xl font-normal ${data.changePercent >= 0 ? 'text-red-600' : 'text-green-600'}`}>
+                {data.current.toLocaleString()}
+              </span>
+              <span className={`text-sm font-medium ${data.changePercent >= 0 ? 'text-red-500' : 'text-green-500'}`}>
+                {data.changePercent >= 0 ? '+' : ''}{data.changePercent.toFixed(2)}%
+                <span className="ml-2">({data.change >= 0 ? '+' : ''}{data.change.toFixed(2)})</span>
+              </span>
+            </div>
+          </div>
+          <button onClick={onClose} className="w-10 h-10 rounded-full bg-gray-50 flex items-center justify-center text-gray-400 hover:bg-gray-100 transition-colors">
+            <i className="fas fa-times"></i>
+          </button>
+        </div>
+
+        <div className="flex-1 overflow-y-auto p-6">
+          {loading ? (
+            <div className="h-64 flex flex-col items-center justify-center space-y-3">
+              <i className="fas fa-circle-notch animate-spin text-blue-500 text-3xl"></i>
+              <p className="text-xs text-gray-400 font-bold uppercase tracking-widest">正在抓取指数趋势...</p>
+            </div>
+          ) : (
+            <div className="space-y-6">
+              <div className="relative bg-gray-50 rounded-2xl p-4">
+                <div className="absolute top-4 left-4 z-10">
+                   <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1">历史趋势 (近90日)</p>
+                   {hoveredPoint ? (
+                     <div className="animate-in fade-in slide-in-from-left-2 duration-150">
+                        <p className="text-lg font-normal text-gray-800">{hoveredPoint.value.toLocaleString()}</p>
+                        <p className="text-[10px] text-gray-500 font-bold">
+                           {new Date(hoveredPoint.date).toLocaleDateString()}
+                        </p>
+                     </div>
+                   ) : (
+                     <div className="text-[10px] text-gray-300 italic font-medium">查看走势图</div>
+                   )}
+                </div>
+
+                <svg viewBox={viewBox} className="w-full h-auto drop-shadow-sm overflow-visible" onMouseLeave={() => setHoveredPoint(null)}>
+                  <defs>
+                    <linearGradient id="gradient-idx" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%" stopColor="#2563eb" stopOpacity="0.2" />
+                      <stop offset="100%" stopColor="#2563eb" stopOpacity="0" />
+                    </linearGradient>
+                  </defs>
+                  {yLabels.map((label, i) => (
+                    <g key={i}>
+                      <line x1="60" y1={label.y} x2="970" y2={label.y} stroke="#e2e8f0" strokeWidth="1" strokeDasharray="4 4" />
+                      <text x="50" y={label.y} textAnchor="end" alignmentBaseline="middle" className="text-[22px] fill-gray-400 font-mono">{label.text}</text>
+                    </g>
+                  ))}
+                  {xLabels.map((label, i) => (
+                    <text key={i} x={label.x} y="420" textAnchor="middle" className="text-[22px] fill-gray-400 font-medium">{label.text}</text>
+                  ))}
+                  <path d={area} fill="url(#gradient-idx)" className="transition-all duration-700" />
+                  <path d={path} fill="none" stroke="#2563eb" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" className="transition-all duration-700" />
+                  <circle cx={points[points.length - 1]?.x} cy={points[points.length - 1]?.y} r="6" fill="#2563eb" className="animate-pulse" />
+                  {points.map((p, i) => (
+                    <rect key={i} x={p.x - 5} y={0} width="10" height="400" fill="transparent" onMouseEnter={() => setHoveredPoint(p.data)} className="cursor-crosshair" />
+                  ))}
+                  {hoveredPoint && (
+                     <line x1={points.find(p => p.data === hoveredPoint)?.x} y1="40" x2={points.find(p => p.data === hoveredPoint)?.x} y2="380" stroke="#2563eb" strokeWidth="1" strokeDasharray="4 2" className="pointer-events-none" />
+                  )}
+                </svg>
+              </div>
+
+              <div className="grid grid-cols-1 gap-4">
+                 <div className="p-4 bg-gray-50 rounded-2xl">
+                    <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1">行情更新时间</p>
+                    <p className="text-sm font-bold text-gray-700">{data.lastUpdated}</p>
+                 </div>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+};
