@@ -112,8 +112,11 @@ export const IndexDetailsModal: React.FC<IndexDetailsModalProps> = ({ data, onCl
                    {hoveredPoint && (
                      <div className="animate-in fade-in slide-in-from-left-2 duration-150">
                         <p className="text-lg font-normal text-gray-800">{hoveredPoint.value.toLocaleString()}</p>
-                        <p className="text-[10px] text-gray-500 font-bold">
+                        <p className="text-[10px] text-gray-500 font-bold flex items-center">
                            {new Date(hoveredPoint.date).toLocaleDateString()}
+                           <span className={`ml-2 font-medium ${hoveredPoint.equityReturn >= 0 ? 'text-red-500' : 'text-green-500'}`}>
+                             {hoveredPoint.equityReturn > 0 ? '+' : ''}{hoveredPoint.equityReturn.toFixed(2)}%
+                           </span>
                         </p>
                      </div>
                    )}

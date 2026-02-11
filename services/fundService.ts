@@ -190,13 +190,19 @@ export async function fetchIndexHistory(symbol: string): Promise<HistoricalPoint
   if (secid === 'NDX') secid = '100.NDX';
   if (secid === 'SPX') secid = '100.SPX';
   if (secid === 'HSI') secid = '100.HSI';
-  const url = `https://push2his.eastmoney.com/api/qt/stock/kline/get?secid=${secid}&fields1=f1,f2,f3,f4,f5,f6&fields2=f51,f52&klt=101&fqt=1&end=20500101&lmt=90`;
+  // 修改 fields2 以获取准确的：日期(f51)、收盘价(f53)、涨跌幅(f59)
+  const url = `https://push2his.eastmoney.com/api/qt/stock/kline/get?secid=${secid}&fields1=f1,f2,f3,f4,f5,f6&fields2=f51,f53,f59&klt=101&fqt=1&end=20500101&lmt=90`;
   try {
     const response: any = await jsonp(url, 'cb');
     if (response?.data?.klines) {
       return response.data.klines.map((line: string) => {
         const parts = line.split(',');
-        return { date: new Date(parts[0]).getTime(), value: parseFloat(parts[1]) || 0, equityReturn: 0 };
+        // parts[0]: date, parts[1]: close price, parts[2]: change percentage
+        return {
+          date: new Date(parts[0]).getTime(),
+          value: parseFloat(parts[1]) || 0,
+          equityReturn: parseFloat(parts[2]) || 0
+        };
       });
     }
   } catch (e) {}
