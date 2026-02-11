@@ -1,4 +1,3 @@
-
 import React from 'react';
 
 interface ConfirmDialogProps {
@@ -24,8 +23,13 @@ export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
 }) => {
   if (!isOpen) return null;
 
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Escape') onCancel();
+    if (e.key === 'Enter') onConfirm();
+  };
+
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4" role="dialog" aria-modal="true" aria-labelledby="confirm-title" onKeyDown={handleKeyDown} tabIndex={-1}>
       {/* Backdrop */}
       <div
         className="absolute inset-0 bg-black/40 backdrop-blur-sm animate-in fade-in duration-200"
@@ -38,7 +42,7 @@ export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
           <div className={`w-12 h-12 rounded-full mx-auto flex items-center justify-center mb-4 ${type === 'danger' ? 'bg-red-50 text-red-600' : 'bg-blue-50 text-blue-600'}`}>
             <i className={`fas ${type === 'danger' ? 'fa-trash-can' : 'fa-info-circle'} text-xl`}></i>
           </div>
-          <h3 className="text-lg font-bold text-gray-800 mb-2">{title}</h3>
+          <h3 id="confirm-title" className="text-lg font-bold text-gray-800 mb-2">{title}</h3>
           <p className="text-sm text-gray-500 leading-relaxed">{message}</p>
         </div>
 
@@ -46,6 +50,7 @@ export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
           <button
             onClick={onCancel}
             className="flex-1 py-4 text-sm font-bold text-gray-400 hover:bg-gray-50 transition-colors"
+            aria-label="取消"
           >
             {cancelText}
           </button>
@@ -53,6 +58,7 @@ export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
           <button
             onClick={onConfirm}
             className={`flex-1 py-4 text-sm font-bold transition-colors ${type === 'danger' ? 'text-red-600 hover:bg-red-50' : 'text-blue-600 hover:bg-blue-50'}`}
+            aria-label="确认"
           >
             {confirmText}
           </button>

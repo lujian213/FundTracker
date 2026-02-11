@@ -1,4 +1,3 @@
-
 import React, { useMemo } from 'react';
 import { Ticker, ValuationData } from '../types';
 
@@ -118,6 +117,7 @@ export const TickerCard: React.FC<TickerCardProps> = ({
         {!isSelectionMode && (
           <button
             onClick={(e) => { e.stopPropagation(); onRemove(); }}
+            aria-label={`删除 ${ticker.symbol}`}
             className="w-10 h-10 -mr-2 -mt-2 flex items-center justify-center text-gray-300 hover:text-red-500 hover:bg-red-50 rounded-full transition-all group"
           >
             <i className="fas fa-trash-can text-sm group-active:scale-90"></i>
