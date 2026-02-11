@@ -306,16 +306,61 @@ Integration (medium)
 
 ---
 
-## 14. 附录 — 参考代码位置（便于对照）
-- 类型定义： `types.ts`
-- 服务实现： `services/fundService.ts`
-- 主要组件：
-  - `components/TickerCard.tsx`
-  - `components/AddTickerModal.tsx`
-  - `components/ConfirmDialog.tsx`
-  - `components/FundDetailsModal.tsx`
-  - `components/IndexDetailsModal.tsx`
-- 测试示例（已有）： `tests/components/AddTickerModal.test.tsx`
-- 项目根： `App.tsx`, `package.json`, `vite.config.ts`, `jest.config.cjs`
+## 附加功能：均线（Moving Average, SMA）
 
+说明
+- 在基金详情的趋势图中增加移动均线（Simple Moving Average, SMA）作为技术参考指标，初始支持 SMA5（5 日均线），并可扩展为 SMA10、SMA20 等。
 
+目的
+- 为用户提供短期价格趋势的平滑视图，帮助观察短期支撑/阻力与趋势方向。
+
+功能需求（高层）
+- 在 `FundDetailsModal` 的净值趋势图上显示 SMA5，默认开启。
+- 提供用户开关，允许显示/隐藏 SMA5、SMA10、SMA20（默认只打开 SMA5）。
+- 在鼠标 hover（或触摸交互）的点信息中，显示对应索引处的可见均线值（若有）。
+- 为均线计算提供独立的可测试公用函数（例如：`utils/movingAverage.ts`），并为该函数添加单元测试。
+
+数据契约 / 算法
+- 输入：历史净值数组 values: number[]（按时间升序）。
+- SMA(window) 的定义：对于索引 i，当 i + 1 >= window 时，SMA(i) = 平均(values[i-window+1..i])；否则 SMA(i) = null。
+- 输出：与输入同长度的数组，位置 i 对应的 SMA 值或 null。
+- 兼容性：`FundDetailsModal` 在合并实时点后会把实时值追加到历史数组再计算 SMA；SMA 计算使用追加后的完整数组。
+
+UI/视觉规范
+- 主价线（当前实现）使用红色（#ef4444），SMA5 使用蓝色（#2563eb），SMA10 使用绿色（#059669），SMA20 使用琥珀色（#f59e0b）。颜色可配置。
+- SMA 线宽：SMA5 为 2px，其他均线为 1.5px（可微调）。
+- 在图例或控制区放置小开关/按钮，标注为“均线：5 10 20”，当前可点击切换显隐。
+- Hover 弹出框中显示当前点的净值、当日涨跌、以及所有可见均线（按颜色前置与数值）的即时值。
+
+可访问性
+- 均线控制需要可通过键盘聚焦与操作（button 元素，自带 focus），按钮应有明确文本与 aria-label，例如 `aria-label="切换 5 日均线"`。
+- 图形元素（SVG）应保留必要的文本替代/数据表或提供 aria-describedby 链接到弹出信息（按需补充）。
+
+测试计划（新增项）
+- 单元测试（utils）
+  - `tests/utils/movingAverage.test.ts`：覆盖 `computeSMA` 与 `computeMultipleSMAs` 的边界和正确性（空数组、window 大于数组长度、正常窗口）。
+- 组件测试（最佳实践）
+  - `tests/components/FundDetailsModal.test.tsx`（新增）
+    - 渲染包含 5 个或以上历史点时，默认显示 SMA5 路径（通过查询 SVG path 的 stroke 或路径 `d` 属性断言）。
+    - 点击均线切换按钮后，SMA 线可见性切换（assert 显示/隐匿）。
+    - Hover 任一点时，弹框中显示 SMA5/SMA10/SMA20 的数值（mock history + realtime，查找文本）。
+- 集成测试（中优先）
+  - 在 `AddTickerModal` 或 `App` 的流程中，mock `fetchFundHistory` 返回已知历史点，打开 `FundDetailsModal`，断言图上显示 SMA（端到端逻辑正确）。
+
+验收准则（可自动化验证）
+- 自动化：新增 `tests/utils/movingAverage.test.ts` 与 `tests/components/FundDetailsModal.test.tsx` 的测试通过。
+- 视觉：当历史点 >= 5 且 SMA5 可见时，SVG 中存在对应的 path（可通过 `getByRole` / query selector 验证其 stroke 色或 `d` 属性）。
+- 交互：点击均线按钮能在 UI 上开/关对应均线（并在 DOM 中反映）。
+- Hover：当鼠标移动到某历史点的交互区域，弹出框中列出该点的可见均线值且数值与 utils 计算结果一致。
+
+性能与实现注意事项
+- SMA 计算为 O(n * m)（n = 点数，m = 窗口）实现足够快（n <= 90，m <= 20）；若扩展到更长窗口或实时流，可将 SMA 计算优化为滑动窗口累计法 O(n).
+- 建议将 SMA 计算封装为纯函数（无副作用）并放置于 `utils/` 以便单元测试与复用。
+- 图形路径构建应与主曲线共享坐标变换逻辑（使均线与主价位对齐）；在实现中以 `chartData` 为单一数据源并在同一 scale 下计算坐标。
+
+文档更新
+- 在 PRD 的测试计划与验收准则中新增本节的测试项。
+- 在 README 或组件注释中记录均线的颜色/默认可见性与 API（如 `utils/movingAverage.ts` 的导出函数名称与参数说明）。
+
+迁移/回退策略
+- 若新增均线导致性能或视觉问题，可通过在 UI 层默认为关闭（visibleMAs 默认 {}）并仅在用户明确开启的情况下计算并渲染；或通过开关将均线渲染延迟到用户请求时再计算。

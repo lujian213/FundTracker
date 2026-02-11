@@ -1,7 +1,7 @@
-
 import React, { useState, useEffect, useMemo } from 'react';
 import { ValuationData, HistoricalPoint } from '../types';
 import { fetchFundHistory } from '../services/fundService';
+import { computeMultipleSMAs, MA_COLORS } from '../utils/movingAverage';
 
 interface FundDetailsModalProps {
   data: ValuationData;
@@ -12,6 +12,7 @@ export const FundDetailsModal: React.FC<FundDetailsModalProps> = ({ data, onClos
   const [history, setHistory] = useState<HistoricalPoint[]>([]);
   const [loading, setLoading] = useState(true);
   const [hoveredPoint, setHoveredPoint] = useState<HistoricalPoint | null>(null);
+  const [visibleMAs, setVisibleMAs] = useState<Record<number, boolean>>({ 5: true });
 
   useEffect(() => {
     const load = async () => {
@@ -42,8 +43,8 @@ export const FundDetailsModal: React.FC<FundDetailsModalProps> = ({ data, onClos
     return history;
   }, [history, data]);
 
-  const { path, area, points, viewBox, yLabels, xLabels } = useMemo(() => {
-    if (chartData.length < 2) return { path: '', area: '', points: [], viewBox: '0 0 100 100', yLabels: [], xLabels: [] };
+  const { path, area, points, viewBox, yLabels, xLabels, maPaths, maValues } = useMemo(() => {
+    if (chartData.length < 2) return { path: '', area: '', points: [], viewBox: '0 0 100 100', yLabels: [], xLabels: [], maPaths: {} as Record<number, string>, maValues: {} as Record<number, (number | null)[]> };
 
     const width = 1000;
     const height = 450;
@@ -88,7 +89,29 @@ export const FundDetailsModal: React.FC<FundDetailsModalProps> = ({ data, onClos
       return { text: `${d.getMonth() + 1}/${d.getDate()}`, x: getX(idx) };
     });
 
-    return { path: pathData, area: areaData, points: svgPoints, viewBox: `0 0 ${width} ${height}`, yLabels, xLabels };
+    // Calculate multiple SMAs (5,10,20)
+    const maWindows = [5, 10, 20];
+    const maValues = computeMultipleSMAs(values, maWindows);
+    const maPaths: Record<number, string> = {};
+
+    for (const w of maWindows) {
+      const sma = maValues[w];
+      // build path for this SMA
+      const smaPts = sma.map((v, i) => v !== null ? { x: getX(i), y: getY(v as number) } : null);
+      const firstIdx = smaPts.findIndex(p => p !== null);
+      if (firstIdx !== -1) {
+        let d = `M ${(smaPts[firstIdx] as any).x} ${(smaPts[firstIdx] as any).y} `;
+        for (let j = firstIdx + 1; j < smaPts.length; j++) {
+          const p = smaPts[j];
+          if (p) d += `L ${p.x} ${p.y} `;
+        }
+        maPaths[w] = d;
+      } else {
+        maPaths[w] = '';
+      }
+    }
+
+    return { path: pathData, area: areaData, points: svgPoints, viewBox: `0 0 ${width} ${height}`, yLabels, xLabels, maPaths, maValues };
   }, [chartData]);
 
   const formattedNetWorthDate = data.netWorthDate && data.netWorthDate !== '---'
@@ -141,6 +164,21 @@ export const FundDetailsModal: React.FC<FundDetailsModalProps> = ({ data, onClos
                              {hoveredPoint.equityReturn > 0 ? '+' : ''}{hoveredPoint.equityReturn.toFixed(2)}%
                            </span>
                         </p>
+                        {/* show MA values at hovered index */}
+                        <div className="flex items-center space-x-2 mt-1">
+                          {Object.keys(maValues).map(k => {
+                            const n = parseInt(k, 10);
+                            const arr = maValues[n];
+                            const idx = points.findIndex(p => p.data === hoveredPoint);
+                            const v = idx >= 0 ? arr[idx] : null;
+                            if (!v) return null;
+                            return (
+                              <span key={k} className="text-xs font-mono text-gray-500">
+                                <span style={{ color: MA_COLORS[n] }}>{n}：</span>{v.toFixed(4)}
+                              </span>
+                            );
+                          })}
+                        </div>
                      </div>
                    )}
                 </div>
@@ -163,6 +201,13 @@ export const FundDetailsModal: React.FC<FundDetailsModalProps> = ({ data, onClos
                   ))}
                   <path d={area} fill="url(#gradient)" className="transition-all duration-700" />
                   <path d={path} fill="none" stroke="#ef4444" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" className="transition-all duration-700" />
+                  {/* render MA lines based on visibility */}
+                  {Object.keys(maPaths).map(k => {
+                    const n = parseInt(k, 10);
+                    const d = maPaths[n];
+                    if (!d || !visibleMAs[n]) return null;
+                    return <path key={k} d={d} fill="none" stroke={MA_COLORS[n] || '#2563eb'} strokeWidth={n === 5 ? 2 : 1.5} strokeLinecap="round" className="transition-all duration-700" />;
+                  })}
                   <circle cx={points[points.length - 1]?.x} cy={points[points.length - 1]?.y} r="6" fill="#ef4444" className="animate-pulse" />
                   {points.map((p, i) => (
                     <rect key={i} x={p.x - 5} y={0} width="10" height="400" fill="transparent" onMouseEnter={() => setHoveredPoint(p.data)} className="cursor-crosshair" />
@@ -171,6 +216,14 @@ export const FundDetailsModal: React.FC<FundDetailsModalProps> = ({ data, onClos
                      <line x1={points.find(p => p.data === hoveredPoint)?.x} y1="40" x2={points.find(p => p.data === hoveredPoint)?.x} y2="380" stroke="#ef4444" strokeWidth="1" strokeDasharray="4 2" className="pointer-events-none" />
                   )}
                 </svg>
+
+                <div className="mt-3 flex items-center space-x-2">
+                  <label className="text-xs text-gray-500 font-medium">均线：</label>
+                  {[5,10,20].map(n => (
+                    <button key={n} type="button" onClick={() => setVisibleMAs(v => ({ ...v, [n]: !v[n] }))} className={`text-xs px-2 py-1 rounded ${visibleMAs[n] ? 'bg-gray-100' : 'bg-white'} border`}>{n}</button>
+                  ))}
+                </div>
+
               </div>
 
               <div className="grid grid-cols-2 gap-4">
