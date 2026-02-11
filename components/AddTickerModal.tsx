@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import { MarketType } from '../types';
 
@@ -37,11 +36,13 @@ export const AddTickerModal: React.FC<AddTickerModalProps> = ({ onClose, onAdd, 
     const isActuallyIndexSearch = activeTab !== 'fund' || parts.some(looksLikeIndex);
 
     if (!isActuallyIndexSearch) {
-      const codes = parts.filter(c => /^\d{5,6}$/.test(c));
+      // Allow 4-6 digit codes from UI and normalize them to 6 digits before calling onAdd
+      const rawCodes = parts.filter(c => /^\d{4,6}$/.test(c));
+      const codes = rawCodes.map(c => c.padStart(6, '0'));
       if (codes.length > 0) {
         onAdd(codes, MarketType.FUND);
       } else {
-        alert("请输入有效的基金代码（5-6位数字）");
+        alert("请输入有效的基金代码（4-6位数字）");
       }
     } else {
       const codes = parts.map(c => {
