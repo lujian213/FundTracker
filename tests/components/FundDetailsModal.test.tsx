@@ -85,4 +85,27 @@ describe('FundDetailsModal SMA behavior', () => {
     // tooltip should include at least one reason string
     expect(tooltip.textContent).toBeTruthy();
   });
+
+  test('rating tooltip shows golden cross when present in history', async () => {
+    // Provide >=20 points so SMA20 exists. First 24 values = 1.0, last value = 1.5 to create SMA5 > SMA10 > SMA20 on last day
+    const CROSS_HISTORY = Array.from({ length: 25 }).map((_, i) => ({
+      date: 1670000000000 + i * 1000,
+      value: i < 24 ? 1.00 : 1.50,
+      equityReturn: 0.00
+    }));
+
+    (fetchFundHistory as jest.Mock).mockResolvedValue(CROSS_HISTORY);
+
+    // set data realtimeDate to last history date so chartData will not append realtime point
+    const lastDateISO = new Date(CROSS_HISTORY[CROSS_HISTORY.length - 1].date).toISOString().split('T')[0];
+    const dataWithSameDate = { ...data, realtimeDate: lastDateISO, currentPrice: CROSS_HISTORY[CROSS_HISTORY.length - 1].value };
+
+    render(<FundDetailsModal data={dataWithSameDate} onClose={() => {}} />);
+    await waitFor(() => expect(fetchFundHistory).toHaveBeenCalled());
+
+    const badge = screen.getByLabelText(/风险评级/);
+    fireEvent.mouseEnter(badge);
+    const tooltip = await screen.findByRole('tooltip');
+    expect(tooltip.textContent).toMatch(/黄金交叉/);
+  });
 });

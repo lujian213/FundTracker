@@ -158,4 +158,21 @@ describe('TickerCard', () => {
     expect(tooltip.textContent).toBeTruthy();
   });
 
+  test('shows golden cross in rating tooltip when calculated from history', async () => {
+    // Provide >=20 points so SMA20 exists. First 24 values = 1.0, last value = 1.5
+    const CROSS_HISTORY = Array.from({ length: 25 }).map((_, i) => ({ date: i + 1, value: i < 24 ? 1.00 : 1.50, equityReturn: 0 }));
+
+    mockFetchHistory.mockResolvedValue(CROSS_HISTORY);
+
+    await act(async () => {
+      render(<TickerCard ticker={sampleTicker} onRemove={jest.fn()} fetchHistory={mockFetchHistory} />);
+    });
+    await flushAct();
+
+    const badge = await screen.findByLabelText(/风险评级/);
+    fireEvent.mouseEnter(badge);
+    const tooltip = await screen.findByRole('tooltip');
+    expect(tooltip.textContent).toMatch(/黄金交叉/);
+  });
+
 });

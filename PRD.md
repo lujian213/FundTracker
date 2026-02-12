@@ -303,6 +303,24 @@ UI 与交互
 - 自动化验收：新增 utils 与组件测试通过；视觉与交互通过测试断言（SVG 有 path、tooltip 出现）。
 - 回退策略：若均线功能引发性能或 UI 问题，可默认将均线设为关闭，或延迟计算/渲染直至用户显式开启。
 
+### E. 变更记录：统一风险 tooltip 与金叉/死叉定义
+
+2026-02-12 更新：将风险评级与 tooltip 逻辑抽取为共享模块 `utils/riskTooltip.ts`，并统一 `TickerCard` 与 `FundDetailsModal` 使用该模块，以避免不同组件间判定不一致的问题。主要变更点：
+
+- 统一实现：`utils/riskTooltip.ts` 导出 `computeRiskRating`，输入为当前价格、预计算的均线数组（5/10/20）以及索引位置，输出包含 `rating`、`color`、`action` 与 `reasons`（用于 tooltip 展示）。
+- 金叉（黄金交叉）新定义：当日 5 日均线向上穿越 10 日均线（即上一交易日 5 <= 10，当日 5 > 10），并且当日呈现多头排列（5 > 10 > 20）。仅在满足上述条件并且前一日均线数据存在时认定为金叉。
+- 死叉（死亡交叉）对称定义：上一日 5 >= 10，当日 5 < 10，并且当日呈现空头排列（5 < 10 < 20）。
+- Tooltip 改进：若当日发生金叉或死叉，`reasons` 中会包含相应条目（“最近发生 ...（黄金交叉）” 或 “最近发生 ...（死亡交叉）”），`TickerCard` 与 `FundDetailsModal` 的 hover tooltip 均会显示该信息。
+- 测试覆盖：新增 `tests/utils/riskTooltip.test.ts`（单元测试金叉/死叉检测边界与 prev-null 行为），并扩展 `tests/components/TickerCard.test.tsx` 与 `tests/components/FundDetailsModal.test.tsx`，加入金叉场景断言（tooltip 包含“黄金交叉”）。
+
+注意事项与假设：
+- 为避免误判，金叉/死叉需依赖上一日的均线值（若上一日数据缺失则不认定为交叉）。
+- 在当日缺少 SMA20 值时，不会认定为金叉/死叉（无法判断 5/10/20 的多空排列）。
+
+验收标准：
+- `computeRiskRating` 返回的 `reasons` 在有交叉时包含交叉描述；`TickerCard` 与 `FundDetailsModal` 的 tooltip 在 hover 时展示这些描述。
+- 新增/修改的测试均通过（参见 tests/ 目录）。
+
 ---
 
 (文档结束)

@@ -1,8 +1,8 @@
 import React, { useMemo, useEffect, useState } from 'react';
 import { Ticker, ValuationData } from '../types';
 import { fetchFundHistory as defaultFetchFundHistory } from '../services/fundService';
-import { computeMultipleSMAs } from '../utils/movingAverage';
-import { TOLERANCE, MA_WINDOWS } from '../utils/maConfig';
+import { computeRatingFromHistory } from '../utils/ratingHelper';
+import RatingTooltip from './RatingTooltip';
 
 interface TickerCardProps {
   ticker: Ticker;
@@ -102,42 +102,13 @@ export const TickerCard: React.FC<TickerCardProps> = ({
   const displayPrevPrice = hasData && !isNaN(data!.previousPrice) ? data!.previousPrice.toFixed(4) : '---';
   const displayChange = hasData && !isNaN(data!.changePercentage) ? `${isUp ? '+' : ''}${data!.changePercentage.toFixed(2)}%` : '---';
 
-  // compute a simple rating from MAs (same rules as modal but simplified)
+  // compute a simple rating from MAs using shared logic
   const ratingComputed = useMemo(() => {
-    const values = history.length > 0 ? history.map(h => h.value) : (hasData ? [data!.previousPrice, data!.currentPrice] : []);
-    if (values.length === 0) return null;
-    const ma = computeMultipleSMAs(values, MA_WINDOWS);
-    const idx = values.length - 1;
-    const sma5 = ma[5] ? ma[5][idx] : null;
-    const sma10 = ma[10] ? ma[10][idx] : null;
-    const sma20 = ma[20] ? ma[20][idx] : null;
-    const price = hasData ? data!.currentPrice : values[idx];
-
-    const reasons: string[] = [];
-    let rating: '危险' | '谨慎' | '安全' | '机会' = '谨慎';
-    let color = '#f59e0b';
-
-    if (sma20 !== null && price < sma20) {
-      rating = '危险'; color = '#ef4444'; reasons.push(`当前价格 ${price.toFixed(4)} 已跌破 20 日均线 (${sma20.toFixed(4)})`);
-      return { rating, color, reasons };
+    try {
+      return computeRatingFromHistory(history, data);
+    } catch (e) {
+      return null;
     }
-
-    if (sma5 !== null && sma10 !== null && sma5 > sma10) {
-      reasons.push('5日均线高于10日，短期上升');
-      if (price >= sma5 * TOLERANCE) {
-        rating = '机会'; color = '#3b82f6'; reasons.push('回踩未破 5 日线');
-        return { rating, color, reasons };
-      }
-      rating = '安全'; color = '#10b981';
-      return { rating, color, reasons };
-    }
-
-    if (sma5 !== null && sma10 !== null && sma5 <= sma10) {
-      rating = '谨慎'; color = '#f59e0b'; reasons.push('短期弱势或均线交叉');
-      return { rating, color, reasons };
-    }
-
-    return { rating, color, reasons };
   }, [history, data]);
 
   return (
@@ -176,17 +147,7 @@ export const TickerCard: React.FC<TickerCardProps> = ({
         {!isSelectionMode && (
           <>
             {ratingComputed && (
-              <div className="mr-2 relative inline-block">
-                <button aria-label={`风险评级 ${ratingComputed.rating}`} onMouseEnter={() => setRatingTooltipOpen(true)} onMouseLeave={() => setRatingTooltipOpen(false)} className="px-2 py-1 rounded text-xs font-bold text-white" style={{ backgroundColor: ratingComputed.color }}>
-                  {ratingComputed.rating}
-                </button>
-                {ratingTooltipOpen && (
-                  <div role="tooltip" className="absolute right-0 top-full mt-2 w-64 bg-white border rounded shadow-lg p-2 text-xs z-50">
-                    <div className="font-bold">评级：{ratingComputed.rating}</div>
-                    <ul className="list-disc pl-4">{ratingComputed.reasons.map((r, i) => <li key={i}>{r}</li>)}</ul>
-                  </div>
-                )}
-              </div>
+              <RatingTooltip ratingInfo={ratingComputed} open={ratingTooltipOpen} onOpen={() => setRatingTooltipOpen(true)} onClose={() => setRatingTooltipOpen(false)} />
             )}
 
             <button onClick={(e) => { e.stopPropagation(); onRemove(); }} aria-label={`删除 ${ticker.symbol}`} className="w-10 h-10 -mr-2 -mt-2 flex items-center justify-center text-gray-300 hover:text-red-500 hover:bg-red-50 rounded-full transition-all group">

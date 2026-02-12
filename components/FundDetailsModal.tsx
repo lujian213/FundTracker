@@ -3,6 +3,9 @@ import { ValuationData, HistoricalPoint } from '../types';
 import { fetchFundHistory as defaultFetchFundHistory } from '../services/fundService';
 import { computeMultipleSMAs, MA_COLORS } from '../utils/movingAverage';
 import { TOLERANCE, DEFAULT_VISIBLE_MAS, MA_WINDOWS } from '../utils/maConfig';
+import { computeRiskRating } from '../utils/riskTooltip';
+import { computeRatingFromHistory } from '../utils/ratingHelper';
+import RatingTooltip from './RatingTooltip';
 
 interface FundDetailsModalProps {
   data: ValuationData;
@@ -125,96 +128,16 @@ export const FundDetailsModal: React.FC<FundDetailsModalProps> = ({ data, onClos
     return { path: pathData, area: areaData, points: svgPoints, viewBox: `0 0 ${width} ${height}`, yLabels, xLabels, maPaths, maValues };
   }, [chartData]);
 
-  // Rating logic based on MAs and price
+  // Rating logic based on MAs and price (use shared computeRiskRating to ensure consistency)
   const ratingInfo = useMemo(() => {
-    const lastIndex = points.length - 1;
-    const prevIndex = Math.max(0, lastIndex - 1);
-    const price = points[lastIndex]?.data?.value ?? data.currentPrice;
-
-    const getVal = (arr: (number | null)[], idx: number) => (arr && arr[idx] !== null) ? (arr[idx] as number) : null;
-
-    const sma5 = maValues[5] ? getVal(maValues[5], lastIndex) : null;
-    const sma10 = maValues[10] ? getVal(maValues[10], lastIndex) : null;
-    const sma20 = maValues[20] ? getVal(maValues[20], lastIndex) : null;
-
-    const prev_sma5 = maValues[5] ? getVal(maValues[5], prevIndex) : null;
-    const prev_sma10 = maValues[10] ? getVal(maValues[10], prevIndex) : null;
-
-    const reasons: string[] = [];
-    let rating: '危险' | '谨慎' | '安全' | '机会' = '谨慎';
-    let color = '#f59e0b';
-    let action = '观望';
-
-    // If we don't have enough data for sma20, fallback to safe/caution logic
-    if (sma20 !== null && price < sma20) {
-      rating = '危险';
-      color = '#ef4444';
-      action = '撤离';
-      reasons.push(`当前价格 ${price.toFixed(4)} 已跌破 20 日均线 (${sma20.toFixed(4)})，进入阶段性风险期`);
-      return { rating, color, action, reasons };
+    try {
+      // computeRatingFromHistory will merge history + today's valuation same as chartData logic
+      return computeRatingFromHistory(chartData, data);
+    } catch (e) {
+      return { rating: '谨慎' as const, color: '#f59e0b', action: '观望', reasons: ['数据不足或均线关系不明确，建议观望'] };
     }
 
-    if (sma5 !== null && sma10 !== null && sma5 > sma10) {
-      reasons.push('5 日均线位于 10 日均线之上，表明短期上升趋势');
-
-      // Detect golden cross
-      if (prev_sma5 !== null && prev_sma10 !== null && prev_sma5 <= prev_sma10 && sma5 > sma10) {
-        reasons.push('最近发生 5 日均线向上突破 10 日均线（黄金交叉）');
-        if (price >= (sma5 * TOLERANCE)) {
-          rating = '机会';
-          color = '#3b82f6';
-          action = '进场';
-          reasons.push('股价回踩触及 5 日均线但未跌破，短期可作为入场机会');
-          return { rating, color, action, reasons };
-        } else {
-          rating = '安全';
-          color = '#10b981';
-          action = '进场';
-          reasons.push('黄金交叉后走势稳健，建议关注回踩机会');
-          return { rating, color, action, reasons };
-        }
-      }
-
-      // No recent cross, but 5 > 10
-      if (price >= (sma5 * TOLERANCE)) {
-        rating = '机会';
-        color = '#3b82f6';
-        action = '进场';
-        reasons.push('股价回踩触及 5 日均线但未跌破，短期可考虑入场');
-        return { rating, color, action, reasons };
-      }
-
-      rating = '安全';
-      color = '#10b981';
-      action = '进场';
-      reasons.push('5 日均线上行，处于相对安全的上升趋势');
-      return { rating, color, action, reasons };
-    }
-
-    // If 5 <= 10 (短期弱势)
-    if (sma5 !== null && sma10 !== null && sma5 <= sma10) {
-      reasons.push('5 日均线位于或下穿 10 日均线，短期弱势');
-      if (sma10 !== null && price < sma10) {
-        reasons.push(`当前价格 ${price.toFixed(4)} 已跌破 10 日均线 (${sma10.toFixed(4)})，短线风险增加`);
-        rating = '谨慎';
-        color = '#f59e0b';
-        action = '观望';
-        return { rating, color, action, reasons };
-      }
-      rating = '谨慎';
-      color = '#f59e0b';
-      action = '观望';
-      return { rating, color, action, reasons };
-    }
-
-    // Default
-    reasons.push('数据不足或均线关系不明确，建议观望');
-    rating = '谨慎';
-    color = '#f59e0b';
-    action = '观望';
-    return { rating, color, action, reasons };
-
-  }, [maValues, points, data.currentPrice]);
+  }, [chartData, data]);
 
   const formattedNetWorthDate = data.netWorthDate && data.netWorthDate !== '---'
     ? data.netWorthDate.split('-').slice(1).join('/')
@@ -231,28 +154,7 @@ export const FundDetailsModal: React.FC<FundDetailsModalProps> = ({ data, onClos
                <h2 className="text-xl font-black text-gray-800 leading-tight">{data.name}</h2>
                <span className="px-2 py-0.5 bg-gray-100 text-gray-500 rounded text-[10px] font-mono">{data.symbol}</span>
                {/* Rating badge */}
-               <div className="ml-2 relative inline-block">
-                 <button
-                   onMouseEnter={() => setShowTooltip(true)}
-                   onMouseLeave={() => setShowTooltip(false)}
-                   onFocus={() => setShowTooltip(true)}
-                   onBlur={() => setShowTooltip(false)}
-                   aria-describedby="ma-rating-tooltip"
-                   className="text-xs font-bold px-2 py-1 rounded-md"
-                   style={{ backgroundColor: ratingInfo.color, color: '#fff' }}
-                   aria-label={`风险评级 ${ratingInfo.rating}`}
-                 >
-                   {ratingInfo.rating}
-                 </button>
-                 {showTooltip && (
-                   <div id="ma-rating-tooltip" role="tooltip" className="absolute left-0 top-full mt-2 w-60 bg-white border rounded shadow-lg p-3 text-xs z-50">
-                     <div className="font-bold mb-1">评级：{ratingInfo.rating} &nbsp; <span className="font-normal">({ratingInfo.action})</span></div>
-                     <ul className="list-disc pl-4 space-y-1">
-                       {ratingInfo.reasons.map((r, i) => <li key={i}>{r}</li>)}
-                     </ul>
-                   </div>
-                 )}
-               </div>
+               <RatingTooltip ratingInfo={ratingInfo} open={showTooltip} onOpen={() => setShowTooltip(true)} onClose={() => setShowTooltip(false)} alignRight={false} />
             </div>
             <div className="flex items-baseline space-x-3">
               <span className={`text-2xl font-normal ${data.changePercentage >= 0 ? 'text-red-600' : 'text-green-600'}`}>
