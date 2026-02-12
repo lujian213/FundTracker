@@ -100,6 +100,7 @@ FundTracker 是一个前端单页应用，用于添加/管理“自选基金/指
   - 根据 `changePercentage` 决定样式（`text-red-600` vs `text-green-600` 等）
   - 在 selection 模式下显示勾选状态
   - 可触发 `onRemove`、`onClick`、`onSelect` 回调
+  - 风险评级：在卡片 header（删除按钮左侧）显示风险评级 badge（危险/谨慎/安全/机会），badge 支持 hover/focus 展示 tooltip，列出判定依据与推荐操作（见算法与配置）
 
 - `AddTickerModal` (`components/AddTickerModal.tsx`)
   - 三个 tab：`fund` / `domestic` / `global`（输入格式与占位、建议不同）
@@ -115,6 +116,7 @@ FundTracker 是一个前端单页应用，用于添加/管理“自选基金/指
   - 在 mount 时调用 `fetchFundHistory(symbol)`，限制成最近 90 个交易日点
   - 将实时估值点（基于 `data.realtimeDate` + 15:00）合并到历史数组（当时间戳大于历史最后一个点时）
   - 生成曲线 path/area/points，用于 svg 绘制
+  - 均线（SMA）显示：默认打开 SMA5 与 SMA20，支持 SMA10 的开关；在图表 hover 时显示各可见均线的当前点数值；提供图例/控件切换均线显隐
 
 - `IndexDetailsModal` (`components/IndexDetailsModal.tsx`)
   - 与 `FundDetailsModal` 类似但使用 `fetchIndexHistory`
@@ -159,6 +161,7 @@ FundTracker 是一个前端单页应用，用于添加/管理“自选基金/指
    - 渲染 symbol, name, price, lastUpdated
    - 根据 `changePercentage` 应用正确类名（positive/negative）
    - 点击 remove 调用 `onRemove`
+   - Badge 与 tooltip：断言风险评级 badge 出现，hover/focus 后 tooltip 显示判定理由（SMA 基于历史数据）
 
 3. components/AddTickerModal.test.tsx
    - 当输入空字符串显示校验/阻止提交
@@ -248,119 +251,58 @@ CI 要求（必须）
 
 ---
 
-## 10. 具体 Test Cases（示例）
+## 附录：均线（SMA）与基金风险评级 — 需求细节（保留）
 
-services/fundService.test.ts (high)
-- "returns ValuationData for valid 6-digit symbol"
-- "returns null for symbol too short or non-numeric"
-- "produces deterministic currentPrice for symbol X"
-- "handles jsonp timeout / callback not invoked"
-- "edge length symbols 4/5/6/7"
+本附录保存所有关于均线（SMA）与基于均线的风险评级的详尽需求与判定规则，便于后续实施与审计。下面为摘要与详尽说明（开发/测试/验收细节）：
 
-components/TickerCard.test.tsx (high)
-- "renders symbol and price"
-- "applies positive class when changePercentage > 0, negative when < 0"
-- "calls onRemove when remove button clicked"
-
-components/AddTickerModal.test.tsx (high)
-- "shows validation error when symbol empty"
-- "calls onAdd with normalized symbols after submit"
-- "disables submit while fetching (isLoading true)"
-
-components/ConfirmDialog.test.tsx (high)
-- "calls onConfirm when OK clicked"
-- "calls onCancel when Cancel clicked or Escape pressed"
-
-Integration (medium)
-- "AddTickerModal triggers fetchFundData on submit and shows loading then success"
-
----
-
-## 11. Implementation Notes & 建议
-- 测试隔离：`fundService` 的 JSONP/RequestQueue 需要被抽象或在测试中替换/spy。建议：
-  - 在 `fundService` 中把 `jsonp` 导出或允许注入一个 `jsonpImpl`，以便测试中替换为同步 stub。
-  - 或者在测试中直接覆盖 `global.jsonpgz` 并触发注册回调，模拟真实 JSONP 回调。
-
-- 测试位置：请将所有测试文件放到仓库已有的 `tests/`（已有 tests/components 下的示例），不要和源码放在同一目录（按你的要求）。
-
-- CI：为避免 main 无法部署问题，建议:
-  - 在 `deploy.yml` 中把 `test` 步骤和 `build` 步骤设置为必须通过；
-  - 将部署到 github-pages 的 job 设为只在 `gh-pages` 或特定 tag 上运行，或使用仓库管理员添加的 deploy token。
-
-- 错误策略统一：目前服务 swallow 错误返回 null；建议在未来版本明确两种策略：`null`（业务可接受）或 throw（用于上层统一处理）。在 PRD 中保持当前行为，并在服务层形成文档注释。
-
----
-
-## 12. 风险与待决事项
-- JSONP 全局回调复杂度：在并发请求时需要确保注册/反注册逻辑健壮；单元测试需要覆盖并发场景。
-- 部署受 GitHub 环境保护限制：需要仓库管理员更改 settings 才能允许 main 触发部署，或调整 workflow。
-- 对 7 位及以上 symbol 的处理需与业务方确认（是否需要截断或报错）。
-
----
-
-## 13. 下一步（行动项）
-- [ ] 在 `tests/` 中创建所需测试骨架（我可以代为创建这些测试文件并确保 jest 能跑通）。
-- [ ] 修改 `.github/workflows/deploy.yml`：在 deploy 流程中加入 `npm ci` + `npm test` 步骤（我可以按你之前批准的 “go ahead” 实施）。
-- [ ] （可选）重构 `fundService` 以便更易于测试（将 jsonp 抽象或导出可替换实现）。
-- [ ] 将 PRD 保存为 `PRD.md` 到仓库（已完成）。
-
----
-
-## 附加功能：均线（Moving Average, SMA）
+### A. 均线（Moving Average, SMA）
 
 说明
-- 在基金详情的趋势图中增加移动均线（Simple Moving Average, SMA）作为技术参考指标，初始支持 SMA5（5 日均线），并可扩展为 SMA10、SMA20 等。
+- 在 `FundDetailsModal` 的净值趋势图中增加移动均线（Simple Moving Average, SMA）作为技术参考指标，支持 SMA5、SMA10、SMA20。
 
-目的
-- 为用户提供短期价格趋势的平滑视图，帮助观察短期支撑/阻力与趋势方向。
+功能需求
+- `FundDetailsModal` 在图上默认显示 SMA5 与 SMA20；提供控制允许开启 SMA10。
+- Hover 时显示每条可见均线在该点的数值。
+- 提供可测试的纯函数 `utils/movingAverage.ts`（computeSMA / computeMultipleSMAs）。
 
-功能需求（高层）
-- 在 `FundDetailsModal` 的净值趋势图上显示 SMA5，默认开启。
-- 提供用户开关，允许显示/隐藏 SMA5、SMA10、SMA20（默认只打开 SMA5）。
-- 在鼠标 hover（或触摸交互）的点信息中，显示对应索引处的可见均线值（若有）。
-- 为均线计算提供独立的可测试公用函数（例如：`utils/movingAverage.ts`），并为该函数添加单元测试。
+算法与契约
+- 输入：values: number[]（按时间升序）
+- 输出：Record<number, (number | null)[]> 或 number[] 与 null 占位，保证长度与输入一致。
+- SMA 定义：当 i + 1 >= window 时，SMA(i) = 平均(values[i-window+1..i])，否则 null。
 
-数据契约 / 算法
-- 输入：历史净值数组 values: number[]（按时间升序）。
-- SMA(window) 的定义：对于索引 i，当 i + 1 >= window 时，SMA(i) = 平均(values[i-window+1..i])；否则 SMA(i) = null。
-- 输出：与输入同长度的数组，位置 i 对应的 SMA 值或 null。
-- 兼容性：`FundDetailsModal` 在合并实时点后会把实时值追加到历史数组再计算 SMA；SMA 计算使用追加后的完整数组。
+测试点（utils）
+- 空数组、window > length、正常窗口、多个 window 同时计算。
 
-UI/视觉规范
-- 主价线（当前实现）使用红色（#ef4444），SMA5 使用蓝色（#2563eb），SMA10 使用绿色（#059669），SMA20 使用琥珀色（#f59e0b）。颜色可配置。
-- SMA 线宽：SMA5 为 2px，其他均线为 1.5px（可微调）。
-- 在图例或控制区放置小开关/按钮，标注为“均线：5 10 20”，当前可点击切换显隐。
-- Hover 弹出框中显示当前点的净值、当日涨跌、以及所有可见均线（按颜色前置与数值）的即时值。
+UI 要求与视觉
+- SMA5: #2563eb（蓝），SMA10: #059669（绿），SMA20: #f59e0b（琥珀）。
+- SMA5 线宽略宽（2px）以突出短期趋势。
 
-可访问性
-- 均线控制需要可通过键盘聚焦与操作（button 元素，自带 focus），按钮应有明确文本与 aria-label，例如 `aria-label="切换 5 日均线"`。
-- 图形元素（SVG）应保留必要的文本替代/数据表或提供 aria-describedby 链接到弹出信息（按需补充）。
+### B. 基于均线的风险评级（概述）
 
-测试计划（新增项）
-- 单元测试（utils）
-  - `tests/utils/movingAverage.test.ts`：覆盖 `computeSMA` 与 `computeMultipleSMAs` 的边界和正确性（空数组、window 大于数组长度、正常窗口）。
-- 组件测试（最佳实践）
-  - `tests/components/FundDetailsModal.test.tsx`（新增）
-    - 渲染包含 5 个或以上历史点时，默认显示 SMA5 路径（通过查询 SVG path 的 stroke 或路径 `d` 属性断言）。
-    - 点击均线切换按钮后，SMA 线可见性切换（assert 显示/隐匿）。
-    - Hover 任一点时，弹框中显示 SMA5/SMA10/SMA20 的数值（mock history + realtime，查找文本）。
-- 集成测试（中优先）
-  - 在 `AddTickerModal` 或 `App` 的流程中，mock `fetchFundHistory` 返回已知历史点，打开 `FundDetailsModal`，断言图上显示 SMA（端到端逻辑正确）。
+评级类别与举例触发条件
+- 危险（红） — price < SMA20
+- 谨慎（黄） — SMA5 <= SMA10 或 5 日下穿 10 日但未跌破 20 日
+- 安全（绿） — SMA5 > SMA10 且 price 未跌破 SMA5
+- 机会（蓝） — 最近发生 SMA5 上穿 SMA10（金叉），且 price >= SMA5 * TOLERANCE（回踩未破）
 
-验收准则（可自动化验证）
-- 自动化：新增 `tests/utils/movingAverage.test.ts` 与 `tests/components/FundDetailsModal.test.tsx` 的测试通过。
-- 视觉：当历史点 >= 5 且 SMA5 可见时，SVG 中存在对应的 path（可通过 `getByRole` / query selector 验证其 stroke 色或 `d` 属性）。
-- 交互：点击均线按钮能在 UI 上开/关对应均线（并在 DOM 中反映）。
-- Hover：当鼠标移动到某历史点的交互区域，弹出框中列出该点的可见均线值且数值与 utils 计算结果一致。
+UI 与交互
+- 在 `TickerCard` header 显示 badge，hover/focus 显示 tooltip（判定理由 + 推荐操作）。
+- Tooltip 提供简明的判据列表（reasons），并可在 `FundDetailsModal` 查看更详细分析。
 
-性能与实现注意事项
-- SMA 计算为 O(n * m)（n = 点数，m = 窗口）实现足够快（n <= 90，m <= 20）；若扩展到更长窗口或实时流，可将 SMA 计算优化为滑动窗口累计法 O(n).
-- 建议将 SMA 计算封装为纯函数（无副作用）并放置于 `utils/` 以便单元测试与复用。
-- 图形路径构建应与主曲线共享坐标变换逻辑（使均线与主价位对齐）；在实现中以 `chartData` 为单一数据源并在同一 scale 下计算坐标。
+测试要点
+- `tests/components/TickerCard.test.tsx`：断言 badge 出现且 tooltip 显示判据。
+- `tests/components/FundDetailsModal.test.tsx`：在不同历史/价格情形下断言评级逻辑输出。
 
-文档更新
-- 在 PRD 的测试计划与验收准则中新增本节的测试项。
-- 在 README 或组件注释中记录均线的颜色/默认可见性与 API（如 `utils/movingAverage.ts` 的导出函数名称与参数说明）。
+### C. 配置与可访问性
 
-迁移/回退策略
-- 若新增均线导致性能或视觉问题，可通过在 UI 层默认为关闭（visibleMAs 默认 {}）并仅在用户明确开启的情况下计算并渲染；或通过开关将均线渲染延迟到用户请求时再计算。
+- 常量 `TOLERANCE`（默认 0.995）暴露于 `utils/maConfig.ts`，并建议实现设置面板以允许用户调整。
+- Badge/tooltip 要支持 keyboard focus 与 aria 描述（`aria-label`/`aria-describedby`/`role="tooltip"`）。
+
+### D. 验收与回退策略
+
+- 自动化验收：新增 utils 与组件测试通过；视觉与交互通过测试断言（SVG 有 path、tooltip 出现）。
+- 回退策略：若均线功能引发性能或 UI 问题，可默认将均线设为关闭，或延迟计算/渲染直至用户显式开启。
+
+---
+
+(文档结束)

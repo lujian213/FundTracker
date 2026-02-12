@@ -1,11 +1,18 @@
 import React from 'react';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { TickerCard } from '../../components/TickerCard';
 import { Ticker } from '../../types';
+
+jest.mock('../../services/fundService', () => ({ fetchFundHistory: jest.fn() }));
+import { fetchFundHistory } from '../../services/fundService';
 
 const sampleTicker: Ticker = { id: '1', symbol: '000001', name: 'Sample Fund', market: 'Fund' } as any;
 
 describe('TickerCard', () => {
+  beforeEach(() => {
+    (fetchFundHistory as jest.Mock).mockResolvedValue([{ date: 1, value: 1.0, equityReturn: 0 }]);
+  });
+
   test('renders ticker name and symbol and shows loading when no data', () => {
     const onRemove = jest.fn();
     render(<TickerCard ticker={sampleTicker} onRemove={onRemove} />);
@@ -94,6 +101,31 @@ describe('TickerCard', () => {
     // Click card should call onSelect
     fireEvent.click(container.firstChild as HTMLElement);
     expect(onSelect).toHaveBeenCalled();
+  });
+
+  test('shows rating badge and tooltip when data available', async () => {
+    const data = {
+      symbol: '000001',
+      name: 'Sample Fund',
+      currentPrice: 1.2345,
+      previousPrice: 1.0000,
+      changePercentage: 2.5,
+      lastUpdated: '2026-02-11 10:00:00',
+      realtimeDate: '2026-02-11',
+      netWorthDate: '2026-02-10',
+      valuationDate: '2026-02-11',
+      sourceUrl: ''
+    } as any;
+
+    render(<TickerCard ticker={sampleTicker} data={data} onRemove={jest.fn()} />);
+    await waitFor(() => expect(fetchFundHistory).toHaveBeenCalledWith('000001'));
+
+    const badge = await screen.findByLabelText(/风险评级/);
+    expect(badge).toBeTruthy();
+    fireEvent.mouseEnter(badge);
+    const tooltip = await screen.findByRole('tooltip');
+    expect(tooltip).toBeTruthy();
+    expect(tooltip.textContent).toBeTruthy();
   });
 
 });
