@@ -1,6 +1,6 @@
 import React, { useMemo, useEffect, useState } from 'react';
 import { Ticker, ValuationData } from '../types';
-import { fetchFundHistory } from '../services/fundService';
+import { fetchFundHistory as defaultFetchFundHistory } from '../services/fundService';
 import { computeMultipleSMAs } from '../utils/movingAverage';
 import { TOLERANCE, MA_WINDOWS } from '../utils/maConfig';
 
@@ -12,6 +12,8 @@ interface TickerCardProps {
   isSelectionMode?: boolean;
   isSelected?: boolean;
   onSelect?: () => void;
+  // optional injection for easier testing
+  fetchHistory?: (symbol: string) => Promise<{ date: number; value: number; equityReturn: number }[]>;
 }
 
 export const TickerCard: React.FC<TickerCardProps> = ({
@@ -21,17 +23,20 @@ export const TickerCard: React.FC<TickerCardProps> = ({
   onClick,
   isSelectionMode = false,
   isSelected = false,
-  onSelect
+  onSelect,
+  fetchHistory
 }) => {
   // local history for MA calculation (best-effort)
   const [history, setHistory] = useState<{ date: number; value: number; equityReturn: number }[]>([]);
   const [ratingTooltipOpen, setRatingTooltipOpen] = useState(false);
 
+  const fetchFn = fetchHistory ?? defaultFetchFundHistory;
+
   useEffect(() => {
     let mounted = true;
     const load = async () => {
       try {
-        const h = await fetchFundHistory(ticker.symbol);
+        const h = await fetchFn(ticker.symbol);
         if (mounted && Array.isArray(h)) setHistory(h.slice(-90));
       } catch (e) {
         // ignore
@@ -39,7 +44,7 @@ export const TickerCard: React.FC<TickerCardProps> = ({
     };
     load();
     return () => { mounted = false; };
-  }, [ticker.symbol]);
+  }, [ticker.symbol, fetchFn]);
 
   const hasData = !!data;
   const isNoValuation = hasData && (data!.lastUpdated?.includes('无估值') || data!.lastUpdated?.includes('已休市'));

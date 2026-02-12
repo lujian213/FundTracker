@@ -1,30 +1,40 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { ValuationData, HistoricalPoint } from '../types';
-import { fetchFundHistory } from '../services/fundService';
+import { fetchFundHistory as defaultFetchFundHistory } from '../services/fundService';
 import { computeMultipleSMAs, MA_COLORS } from '../utils/movingAverage';
 import { TOLERANCE, DEFAULT_VISIBLE_MAS, MA_WINDOWS } from '../utils/maConfig';
 
 interface FundDetailsModalProps {
   data: ValuationData;
   onClose: () => void;
+  fetchHistory?: (symbol: string) => Promise<HistoricalPoint[]>; // optional injection for tests
 }
 
-export const FundDetailsModal: React.FC<FundDetailsModalProps> = ({ data, onClose }) => {
+export const FundDetailsModal: React.FC<FundDetailsModalProps> = ({ data, onClose, fetchHistory }) => {
   const [history, setHistory] = useState<HistoricalPoint[]>([]);
   const [loading, setLoading] = useState(true);
   const [hoveredPoint, setHoveredPoint] = useState<HistoricalPoint | null>(null);
   const [visibleMAs, setVisibleMAs] = useState<Record<number, boolean>>(() => Object.fromEntries(DEFAULT_VISIBLE_MAS.map(n => [n, true])));
   const [showTooltip, setShowTooltip] = useState(false);
 
+  const fetchFn = fetchHistory ?? defaultFetchFundHistory;
+
   useEffect(() => {
+    let mounted = true;
     const load = async () => {
       setLoading(true);
-      const points = await fetchFundHistory(data.symbol);
-      setHistory(points.slice(-90));
-      setLoading(false);
+      try {
+        const points = await fetchFn(data.symbol);
+        if (mounted) setHistory(points.slice(-90));
+      } catch (e) {
+        // ignore
+      } finally {
+        if (mounted) setLoading(false);
+      }
     };
     load();
-  }, [data.symbol]);
+    return () => { mounted = false; };
+  }, [data.symbol, fetchFn]);
 
   // 合并实时估值点
   const chartData = useMemo(() => {

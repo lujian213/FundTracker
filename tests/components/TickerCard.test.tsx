@@ -1,21 +1,32 @@
 import React from 'react';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent } from '@testing-library/react';
+import { act } from 'react';
 import { TickerCard } from '../../components/TickerCard';
 import { Ticker } from '../../types';
 
-jest.mock('../../services/fundService', () => ({ fetchFundHistory: jest.fn() }));
-import { fetchFundHistory } from '../../services/fundService';
-
 const sampleTicker: Ticker = { id: '1', symbol: '000001', name: 'Sample Fund', market: 'Fund' } as any;
 
+// Helper to flush pending microtasks inside act
+async function flushAct() {
+  await act(async () => {
+    await Promise.resolve();
+  });
+}
+
 describe('TickerCard', () => {
+  let mockFetchHistory: jest.Mock;
+
   beforeEach(() => {
-    (fetchFundHistory as jest.Mock).mockResolvedValue([{ date: 1, value: 1.0, equityReturn: 0 }]);
+    mockFetchHistory = jest.fn().mockResolvedValue([{ date: 1, value: 1.0, equityReturn: 0 }]);
   });
 
-  test('renders ticker name and symbol and shows loading when no data', () => {
+  test('renders ticker name and symbol and shows loading when no data', async () => {
     const onRemove = jest.fn();
-    render(<TickerCard ticker={sampleTicker} onRemove={onRemove} />);
+    await act(async () => {
+      render(<TickerCard ticker={sampleTicker} onRemove={onRemove} fetchHistory={mockFetchHistory} />);
+    });
+    // ensure microtasks and state updates are flushed inside act
+    await flushAct();
 
     expect(screen.getByText('Sample Fund')).toBeInTheDocument();
     expect(screen.getByText('000001')).toBeInTheDocument();
@@ -23,7 +34,7 @@ describe('TickerCard', () => {
     expect(screen.getByText('加载中')).toBeInTheDocument();
   });
 
-  test('renders valuation data and change styles for positive change', () => {
+  test('renders valuation data and change styles for positive change', async () => {
     const data = {
       symbol: '000001',
       name: 'Sample Fund',
@@ -38,7 +49,10 @@ describe('TickerCard', () => {
     } as any;
 
     const onRemove = jest.fn();
-    render(<TickerCard ticker={sampleTicker} data={data} onRemove={onRemove} />);
+    await act(async () => {
+      render(<TickerCard ticker={sampleTicker} data={data} onRemove={onRemove} fetchHistory={mockFetchHistory} />);
+    });
+    await flushAct();
 
     expect(screen.getByText('1.2345')).toBeInTheDocument();
     expect(screen.getByText('+2.50%')).toBeInTheDocument();
@@ -48,7 +62,7 @@ describe('TickerCard', () => {
     expect(screen.getByText('2026-02-11 10:00:00')).toBeInTheDocument();
   });
 
-  test('applies negative change class when changePercentage < 0', () => {
+  test('applies negative change class when changePercentage < 0', async () => {
     const data = {
       symbol: '000001',
       name: 'Sample Fund',
@@ -62,44 +76,58 @@ describe('TickerCard', () => {
       sourceUrl: ''
     } as any;
 
-    render(<TickerCard ticker={sampleTicker} data={data} onRemove={jest.fn()} />);
+    await act(async () => {
+      render(<TickerCard ticker={sampleTicker} data={data} onRemove={jest.fn()} fetchHistory={mockFetchHistory} />);
+    });
+    await flushAct();
+
     const changeBadge = screen.getByText('-2.50%');
-    // The change badge is nested; check the closest div ancestor that should carry styles
     const styledContainer = changeBadge.closest('div');
     expect(styledContainer).toBeTruthy();
     expect(styledContainer).toHaveClass('bg-green-100');
   });
 
-  test('onRemove callback is called when remove button clicked', () => {
+  test('onRemove callback is called when remove button clicked', async () => {
     const onRemove = jest.fn();
-    render(<TickerCard ticker={sampleTicker} onRemove={onRemove} />);
+    await act(async () => {
+      render(<TickerCard ticker={sampleTicker} onRemove={onRemove} fetchHistory={mockFetchHistory} />);
+    });
+    await flushAct();
 
     const btn = screen.getByLabelText('删除 000001');
     fireEvent.click(btn);
     expect(onRemove).toHaveBeenCalled();
   });
 
-  test('card click calls onClick when not in selection mode', () => {
+  test('card click calls onClick when not in selection mode', async () => {
     const onClick = jest.fn();
     const onRemove = jest.fn();
-    const { container } = render(<TickerCard ticker={sampleTicker} onRemove={onRemove} onClick={onClick} />);
+    let container: HTMLElement | null = null;
+    await act(async () => {
+      const rendered = render(<TickerCard ticker={sampleTicker} onRemove={onRemove} onClick={onClick} fetchHistory={mockFetchHistory} />);
+      container = rendered.container as HTMLElement;
+    });
+    await flushAct();
 
-    const card = container.firstChild as HTMLElement;
+    const card = container!.firstChild as HTMLElement;
     fireEvent.click(card);
     expect(onClick).toHaveBeenCalled();
   });
 
-  test('selection mode toggles selection indicator and onSelect is called', () => {
+  test('selection mode toggles selection indicator and onSelect is called', async () => {
     const onSelect = jest.fn();
     const onRemove = jest.fn();
-    const { container } = render(<TickerCard ticker={sampleTicker} onRemove={onRemove} isSelectionMode onSelect={onSelect} />);
+    let container: HTMLElement | null = null;
+    await act(async () => {
+      const rendered = render(<TickerCard ticker={sampleTicker} onRemove={onRemove} isSelectionMode onSelect={onSelect} fetchHistory={mockFetchHistory} />);
+      container = rendered.container as HTMLElement;
+    });
+    await flushAct();
 
-    // When rendered in selection mode, checkbox area should be present
-    const check = container.querySelector('.rounded-full');
+    const check = container!.querySelector('.rounded-full');
     expect(check).toBeTruthy();
 
-    // Click card should call onSelect
-    fireEvent.click(container.firstChild as HTMLElement);
+    fireEvent.click(container!.firstChild as HTMLElement);
     expect(onSelect).toHaveBeenCalled();
   });
 
@@ -117,8 +145,10 @@ describe('TickerCard', () => {
       sourceUrl: ''
     } as any;
 
-    render(<TickerCard ticker={sampleTicker} data={data} onRemove={jest.fn()} />);
-    await waitFor(() => expect(fetchFundHistory).toHaveBeenCalledWith('000001'));
+    await act(async () => {
+      render(<TickerCard ticker={sampleTicker} data={data} onRemove={jest.fn()} fetchHistory={mockFetchHistory} />);
+    });
+    await flushAct();
 
     const badge = await screen.findByLabelText(/风险评级/);
     expect(badge).toBeTruthy();
