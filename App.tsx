@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { Ticker, ValuationData, MarketType, MarketIndex } from './types';
 import { fetchFundData, fetchMarketIndices } from './services/fundService';
@@ -159,7 +158,10 @@ const App: React.FC = () => {
   }, [portfolio, marketData, sortOrder]);
 
   const handleExport = () => {
-    const data = { portfolio, indices: indicesConfig, globalIndices: globalIndicesConfig };
+    // include trades and positions for full backup
+    const trades = (() => { try { const raw = localStorage.getItem('fund_trades'); return raw ? JSON.parse(raw) : {}; } catch (e) { return {}; } })();
+    const positions = (() => { try { const keys = Object.keys(localStorage).filter(k => k.startsWith('fund_position_')); const obj: Record<string, any> = {}; keys.forEach(k => { try { obj[k.replace('fund_position_', '')] = JSON.parse(localStorage.getItem(k) as string); } catch (e) {} }); return obj; } catch (e) { return {}; } })();
+    const data = { portfolio, indices: indicesConfig, globalIndices: globalIndicesConfig, trades, positions };
     const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
@@ -187,6 +189,28 @@ const App: React.FC = () => {
         if (newItems.length > 0) { setPortfolio(prev => [...prev, ...newItems]); runBatchUpdate(newItems); }
         if (imported.indices) setIndicesConfig(imported.indices);
         if (imported.globalIndices) setGlobalIndicesConfig(imported.globalIndices);
+        // import trades if present (overwrite for symbols provided)
+        if (imported.trades) {
+          try {
+            const raw = localStorage.getItem('fund_trades');
+            const all = raw ? JSON.parse(raw) : {};
+            // Overwrite per-symbol: for each symbol in imported.trades, replace existing entries
+            Object.keys(imported.trades).forEach(sym => {
+              const arr = Array.isArray(imported.trades[sym]) ? imported.trades[sym] : [];
+              all[sym] = arr;
+            });
+            localStorage.setItem('fund_trades', JSON.stringify(all));
+          } catch (e) {}
+        }
+        // import positions if present
+        if (imported.positions) {
+          try {
+            Object.keys(imported.positions).forEach(sym => {
+              const key = `fund_position_${sym}`;
+              try { localStorage.setItem(key, JSON.stringify(imported.positions[sym])); } catch (e) {}
+            });
+          } catch (e) {}
+        }
       } catch (err) {}
     };
     reader.readAsText(file);

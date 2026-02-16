@@ -1,4 +1,5 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { ValuationData, HistoricalPoint } from '../types';
 import { fetchFundHistory as defaultFetchFundHistory } from '../services/fundService';
 import { computeMultipleSMAs, MA_COLORS } from '../utils/movingAverage';
@@ -6,6 +7,8 @@ import { TOLERANCE, DEFAULT_VISIBLE_MAS, MA_WINDOWS } from '../utils/maConfig';
 import { computeRiskRating } from '../utils/riskTooltip';
 import { computeRatingFromHistory } from '../utils/ratingHelper';
 import RatingTooltip from './RatingTooltip';
+import TradeManager from './TradeManager';
+import useTrades from '../hooks/useTrades';
 
 interface FundDetailsModalProps {
   data: ValuationData;
@@ -19,8 +22,95 @@ export const FundDetailsModal: React.FC<FundDetailsModalProps> = ({ data, onClos
   const [hoveredPoint, setHoveredPoint] = useState<HistoricalPoint | null>(null);
   const [visibleMAs, setVisibleMAs] = useState<Record<number, boolean>>(() => Object.fromEntries(DEFAULT_VISIBLE_MAS.map(n => [n, true])));
   const [showTooltip, setShowTooltip] = useState(false);
+  // 满仓额度与初始仓位（单位：份）
+  const [fullCapacity, setFullCapacity] = useState<number>(0);
+  const [initialPosition, setInitialPosition] = useState<number>(0);
+  // 起始日期（YYYY-MM-DD）与初始价格（只读，从历史取）
+  const [startDate, setStartDate] = useState<string | null>(null);
+  const [initialPrice, setInitialPrice] = useState<number | null>(null);
+  // 配置弹窗控制与临时输入
+  const [showConfig, setShowConfig] = useState(false);
+  const [tmpFull, setTmpFull] = useState<string>('0');
+  const [tmpInitial, setTmpInitial] = useState<string>('0');
+  const [tmpStartDate, setTmpStartDate] = useState<string>('');
+  const [showTrade, setShowTrade] = useState(false);
+  // validation errors for modal inputs
+  const [tmpFullError, setTmpFullError] = useState<string | null>(null);
+  const [tmpInitialError, setTmpInitialError] = useState<string | null>(null);
+  const [tmpStartDateError, setTmpStartDateError] = useState<string | null>(null);
+  // refs to inputs for focusing
+  const fullInputRef = useRef<HTMLInputElement | null>(null);
+  const initialInputRef = useRef<HTMLInputElement | null>(null);
+  // refs for computing marker tooltip position relative to modal container
+  const svgRef = useRef<SVGSVGElement | null>(null);
+  const modalRef = useRef<HTMLDivElement | null>(null);
+  const [markerTooltip, setMarkerTooltip] = useState<{ left: number; top: number; lines: string[] } | null>(null);
 
   const fetchFn = fetchHistory ?? defaultFetchFundHistory;
+
+  // runtime dev flag: prefer NODE_ENV (works in Jest); Vite may replace this at build time
+  const isDev = typeof process !== 'undefined' && process.env && process.env.NODE_ENV === 'development';
+
+  // localStorage key per fund symbol
+  const storageKey = `fund_position_${data.symbol}`;
+
+  // helper to convert timestamp to local YYYY-MM-DD key (used by startDate lookups)
+  const localDateKey = (ts: number) => {
+    const d = new Date(ts);
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${y}-${m}-${day}`;
+  };
+
+  // helper: get price for isoDate from history: exact match or nearest previous available (<= end of day)
+  const getPriceForISODate = (isoDate: string): number | null => {
+    if (!history || history.length === 0) return null;
+    // exact match
+    const exact = history.find(h => localDateKey(h.date) === isoDate);
+    if (exact) return exact.value;
+    // find last point <= end of day
+    const end = new Date(isoDate);
+    end.setHours(23, 59, 59, 999);
+    const endTs = end.getTime();
+    const prev = [...history].filter(h => h.date <= endTs).sort((a, b) => b.date - a.date)[0];
+    if (prev) return prev.value;
+    // B: fallback to earliest available history point if none <= end of day
+    const first = history[0];
+    return first ? first.value : null;
+  };
+
+  // formatting helpers
+  const formatCurrency = (v: number, decimals = 2) => {
+    try {
+      return new Intl.NumberFormat('zh-CN', { minimumFractionDigits: decimals, maximumFractionDigits: decimals }).format(v) + ' 元';
+    } catch (e) {
+      return v.toFixed(decimals) + ' 元';
+    }
+  };
+
+  // load persisted config on mount
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(storageKey);
+      if (raw) {
+        const obj = JSON.parse(raw);
+        // Coerce persisted values (accept numbers or numeric strings)
+        if (obj.fullCapacity !== undefined && obj.fullCapacity !== null) setFullCapacity(Number(obj.fullCapacity) || 0);
+        if (obj.initialPosition !== undefined && obj.initialPosition !== null) setInitialPosition(Number(obj.initialPosition) || 0);
+        if (typeof obj.startDate === 'string') setStartDate(obj.startDate);
+        // load persisted initialPrice if present (number or numeric string) — allow null
+        if (obj.initialPrice === null) setInitialPrice(null);
+        else if (obj.initialPrice !== undefined) {
+          const p = Number(obj.initialPrice);
+          setInitialPrice(!Number.isNaN(p) ? p : null);
+        }
+      }
+    } catch (e) {
+      // ignore parse errors
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   useEffect(() => {
     let mounted = true;
@@ -39,24 +129,46 @@ export const FundDetailsModal: React.FC<FundDetailsModalProps> = ({ data, onClos
     return () => { mounted = false; };
   }, [data.symbol, fetchFn]);
 
-  // 合并实时估值点
+  // If startDate is configured but initialPrice is null, try to compute it once history arrives
+  useEffect(() => {
+    if (!startDate) return;
+    // only act if we don't already have an initialPrice
+    if (initialPrice !== null) return;
+    if (!history || history.length === 0) return;
+    const price = getPriceForISODate(startDate);
+    if (price !== null) {
+      setInitialPrice(price);
+      try {
+        localStorage.setItem(storageKey, JSON.stringify({ fullCapacity, initialPosition, startDate, initialPrice: price }));
+      } catch (e) {
+        // ignore
+      }
+    }
+  }, [history, startDate, initialPrice, storageKey, fullCapacity, initialPosition]);
+
+  // Merge realtime point carefully: only append realtime valuation when it's strictly after last history timestamp
+  // and avoid duplicating if last history point is the same day as realtime.
   const chartData = useMemo(() => {
     if (history.length === 0) return [];
 
     const lastHist = history[history.length - 1];
-    // 使用实时日期 (realtimeDate) 生成时间戳
     const dateStr = data.realtimeDate && data.realtimeDate !== '---' ? data.realtimeDate : new Date().toISOString().split('T')[0];
     const valuationTs = new Date(dateStr + ' 15:00').getTime();
 
+    // If lastHist.date is on same local day as valuationTs, replace it with realtime point to avoid duplicate days
+    const lastDayKey = localDateKey(lastHist.date);
+    const valDayKey = localDateKey(valuationTs);
+    if (lastDayKey === valDayKey) {
+      // replace last entry with realtime
+      return [...history.slice(0, history.length - 1), { date: valuationTs, value: data.currentPrice, equityReturn: data.changePercentage }];
+    }
+
+    // otherwise if valuation ts is after lastHist, append
     if (!isNaN(valuationTs) && valuationTs > lastHist.date) {
-      return [...history, {
-        date: valuationTs,
-        value: data.currentPrice,
-        equityReturn: data.changePercentage
-      }];
+      return [...history, { date: valuationTs, value: data.currentPrice, equityReturn: data.changePercentage }];
     }
     return history;
-  }, [history, data]);
+  }, [history, data.currentPrice, data.changePercentage, data.realtimeDate]);
 
   const { path, area, points, viewBox, yLabels, xLabels, maPaths, maValues } = useMemo(() => {
     if (chartData.length < 2) return { path: '', area: '', points: [], viewBox: '0 0 100 100', yLabels: [], xLabels: [], maPaths: {} as Record<number, string>, maValues: {} as Record<number, (number | null)[]> };
@@ -143,6 +255,181 @@ export const FundDetailsModal: React.FC<FundDetailsModalProps> = ({ data, onClos
     ? data.netWorthDate.split('-').slice(1).join('/')
     : '---';
 
+  // helpers for config modal
+  const openConfig = () => {
+    console.log('openConfig invoked for', data.symbol);
+    setTmpFull(fullCapacity.toString());
+    setTmpInitial(initialPosition.toString());
+    setTmpStartDate(startDate ?? (data.realtimeDate && data.realtimeDate !== '---' ? data.realtimeDate : ''));
+    // clear previous errors when opening
+    setTmpFullError(null);
+    setTmpInitialError(null);
+    setTmpStartDateError(null);
+    setShowConfig(true);
+  };
+  const saveConfig = async () => {
+    // validate inputs and decide focus immediately
+    const fRaw = tmpFull.trim();
+    const iRaw = tmpInitial.trim();
+    const sRaw = (tmpStartDate || '').trim();
+    const fNum = Number(fRaw);
+    const iNum = Number(iRaw);
+    let hasError = false;
+    // syntactic checks
+    if (fRaw === '' || Number.isNaN(fNum) || !isFinite(fNum) || fNum < 0) {
+      setTmpFullError(fRaw === '' || Number.isNaN(fNum) || !isFinite(fNum) ? '请输入有效的满仓额度（数字）' : '满仓额度不能为负');
+      if (fullInputRef.current) fullInputRef.current.focus();
+      hasError = true;
+    }
+    if (!hasError && (iRaw === '' || Number.isNaN(iNum) || !isFinite(iNum) || iNum < 0)) {
+      setTmpInitialError(iRaw === '' || Number.isNaN(iNum) || !isFinite(iNum) ? '请输入有效的初始仓位（数字）' : '初始仓位不能为负');
+      if (initialInputRef.current) initialInputRef.current.focus();
+      hasError = true;
+    }
+    if (!hasError) {
+      if (fNum !== 0 && iNum > fNum) {
+        setTmpInitialError('初始仓位不能大于满仓额度');
+        if (initialInputRef.current) initialInputRef.current.focus();
+        hasError = true;
+      }
+    }
+    // validate start date format (YYYY-MM-DD)
+    if (sRaw) {
+      // simple YYYY-MM-DD check
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(sRaw)) {
+        setTmpStartDateError('请输入有效的起始日期（YYYY-MM-DD）');
+        hasError = true;
+      } else {
+        setTmpStartDateError(null);
+      }
+    } else {
+      setTmpStartDateError(null);
+    }
+    if (hasError) return;
+
+    // commit values
+    let f = Number(tmpFull) || 0;
+    let c = Number(tmpInitial) || 0;
+    let s = tmpStartDate ? tmpStartDate.trim() : '';
+    if (f < 0) f = 0;
+    if (c < 0) c = 0;
+    if (f === 0) c = 0;
+    if (c > f) c = f;
+    setFullCapacity(f);
+    setInitialPosition(c);
+    // compute initial price from history for the start date (if provided)
+    if (s) {
+      // if history not loaded, try to fetch it now to compute initial price
+      if (!history || history.length === 0) {
+        try {
+          const points = await fetchFn(data.symbol);
+          setHistory(points.slice(-365));
+        } catch (e) {
+          // ignore
+        }
+      }
+      const price = getPriceForISODate(s);
+      setStartDate(s);
+      setInitialPrice(price);
+      try {
+        localStorage.setItem(storageKey, JSON.stringify({ fullCapacity: f, initialPosition: c, startDate: s || null, initialPrice: price !== null ? price : null }));
+      } catch (e) {
+        // ignore storage errors
+      }
+    } else {
+      setStartDate(null);
+      setInitialPrice(null);
+      try { localStorage.setItem(storageKey, JSON.stringify({ fullCapacity: f, initialPosition: c, startDate: null, initialPrice: null })); } catch (e) {}
+    }
+    setShowConfig(false);
+  };
+  const clearConfig = () => {
+    setFullCapacity(0);
+    setInitialPosition(0);
+    setStartDate(null);
+    setInitialPrice(null);
+    try { localStorage.removeItem(storageKey); } catch (e) {}
+    setShowConfig(false);
+  };
+
+  // live-validate current tmp values and set errors (returns whether valid)
+  const validateTmp = (showErrors = true) => {
+    const fRaw = tmpFull.trim();
+    const iRaw = tmpInitial.trim();
+    const sRaw = (tmpStartDate || '').trim();
+    let hasError = false;
+    const fNum = Number(fRaw);
+    const iNum = Number(iRaw);
+
+    if (fRaw === '' || Number.isNaN(fNum) || !isFinite(fNum) || fNum < 0) {
+      if (showErrors) setTmpFullError(fRaw === '' || Number.isNaN(fNum) || !isFinite(fNum) ? '请输入有效的满仓额度（数字）' : '满仓额度不能为负');
+      hasError = true;
+    } else {
+      if (showErrors) setTmpFullError(null);
+    }
+
+    if (iRaw === '' || Number.isNaN(iNum) || !isFinite(iNum) || iNum < 0) {
+      if (showErrors) setTmpInitialError(iRaw === '' || Number.isNaN(iNum) || !isFinite(iNum) ? '请输入有效的初始仓位（数字）' : '初始仓位不能为负');
+      hasError = true;
+    } else {
+      if (showErrors) setTmpInitialError(null);
+    }
+
+    // validate start date format (YYYY-MM-DD)
+    if (sRaw) {
+      // simple YYYY-MM-DD check
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(sRaw)) {
+        if (showErrors) setTmpStartDateError('请输入有效的起始日期（YYYY-MM-DD）');
+        hasError = true;
+      } else {
+        if (showErrors) setTmpStartDateError(null);
+      }
+    } else {
+      if (showErrors) setTmpStartDateError(null);
+    }
+
+    return !hasError;
+  };
+
+  const isFormValid = useMemo(() => validateTmp(false), [tmpFull, tmpInitial, tmpStartDate]);
+
+  // temporary initial price computed from tmpStartDate (or persisted startDate) and history
+  const tmpInitialPrice = useMemo(() => {
+    const s = (tmpStartDate && tmpStartDate.trim()) || startDate;
+    if (!s) return null;
+    return getPriceForISODate(s);
+  }, [tmpStartDate, startDate, history]);
+
+  // holdings summary from trades
+  const { trades: tradeList } = useTrades(data.symbol);
+
+  // Compute holdings and profit using initialPosition and trades per requirements:
+  // currentShares = initialPosition + sum(buy.shares) - sum(sell.shares)
+  // profit = currentShares*currentPrice + sum(sellAmount) - sum(buyAmount) - initialPosition*initialPrice
+  const holdings = useMemo(() => {
+    let buyShares = 0;
+    let sellShares = 0;
+    let buyAmount = 0; // sum of buy: price*shares + fee
+    let sellAmount = 0; // sum of sell: price*shares - fee
+    for (const t of tradeList || []) {
+      if (t.type === 'buy') {
+        buyShares += t.shares;
+        buyAmount += t.price * t.shares + (t.fee || 0);
+      } else {
+        sellShares += t.shares;
+        sellAmount += t.price * t.shares - (t.fee || 0);
+      }
+    }
+    const totalShares = initialPosition + buyShares - sellShares;
+    const marketValue = totalShares * data.currentPrice;
+    // initialPrice may be null -> treat as 0 for calculation (or if null, initialPosition*0)
+    const initPrice = initialPrice !== null ? initialPrice : 0;
+    const profit = (totalShares * data.currentPrice) + sellAmount - buyAmount - (initialPosition * initPrice);
+    return { totalShares, buyShares, sellShares, buyAmount, sellAmount, marketValue, profit };
+  }, [tradeList, data.currentPrice, initialPosition, initialPrice]);
+
+  const { totalShares, buyShares, sellShares, buyAmount, sellAmount, marketValue, profit } = holdings;
+
   return (
     <div className="fixed inset-0 z-[110] flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/60 backdrop-blur-md animate-in fade-in duration-300" onClick={onClose}></div>
@@ -165,10 +452,44 @@ export const FundDetailsModal: React.FC<FundDetailsModalProps> = ({ data, onClos
               </span>
               <span className="text-[10px] text-gray-400 font-medium">前值: {data.previousPrice.toFixed(4)} ({formattedNetWorthDate})</span>
             </div>
+            {/* Position summary: show only when configured (fullCapacity > 0 or startDate present) */}
+            {(fullCapacity > 0 || startDate || initialPrice !== null) && (
+             <div className="mt-2 text-xs text-gray-600 flex items-baseline space-x-6 whitespace-nowrap overflow-hidden">
+               {fullCapacity > 0 && (
+                 <span className="whitespace-nowrap">满仓份额：<span className="font-medium">{fullCapacity.toFixed(2)}份</span></span>
+               )}
+               {initialPosition > 0 && (
+                 <span className="whitespace-nowrap">初始份额：<span className="font-medium">{initialPosition.toFixed(2)}份</span></span>
+               )}
+               {startDate && (
+                 <span className="whitespace-nowrap">起始日期：<span className="font-medium">{startDate}</span></span>
+               )}
+               {initialPrice !== null && (
+                 <span className="whitespace-nowrap">初始价格：<span className="font-medium">{initialPrice.toFixed(4)}</span></span>
+               )}
+             </div>
+           )}
+
+           {/* Market / position / profit row - always visible but show placeholders when unknown */}
+           <div className="mt-1 text-xs text-gray-600 flex items-baseline space-x-6 whitespace-nowrap">
+             <span className="whitespace-nowrap">市场价值：<span className="font-medium">{(marketValue !== null && !isNaN(marketValue)) ? formatCurrency(marketValue, 2) : '—'}</span></span>
+             <span className="whitespace-nowrap">当前仓位：<span className="font-medium">{(typeof totalShares === 'number') ? `${totalShares.toFixed(2)} 份` : '—'}</span></span>
+             <span className="whitespace-nowrap">仓位占比：<span className="font-medium">{(fullCapacity > 0) ? `${((totalShares / fullCapacity) * 100).toFixed(2)}%` : '—'}</span></span>
+             <span className="whitespace-nowrap">整体盈利：<span className={`font-medium ${typeof profit === 'number' ? (profit < 0 ? 'text-green-600' : profit > 0 ? 'text-red-600' : 'text-gray-600') : ''}`}>{(typeof profit === 'number') ? formatCurrency(profit, 2) : '—'}</span></span>
+           </div>
           </div>
-          <button onClick={onClose} className="w-10 h-10 rounded-full bg-gray-50 flex items-center justify-center text-gray-400 hover:bg-gray-100 transition-colors">
-            <i className="fas fa-times"></i>
-          </button>
+          <div className="flex items-center space-x-2">
+            {/* 配置与交易按钮 */}
+            <button aria-label="配置仓位" title="配置仓位" onClick={openConfig} className="w-10 h-10 rounded-full bg-gray-50 flex items-center justify-center text-gray-500 hover:bg-gray-100 transition-colors">
+              <i className="fas fa-cog"></i>
+            </button>
+            <button aria-label="交易管理" aria-haspopup="dialog" title="交易管理" onClick={() => { setShowTrade(true); }} className="w-10 h-10 rounded-full bg-gray-50 flex items-center justify-center text-gray-500 hover:bg-gray-100 transition-colors">
+              <i className="fas fa-exchange-alt"></i>
+            </button>
+            <button onClick={onClose} className="w-10 h-10 rounded-full bg-gray-50 flex items-center justify-center text-gray-400 hover:bg-gray-100 transition-colors">
+              <i className="fas fa-times"></i>
+            </button>
+          </div>
         </div>
 
         <div className="flex-1 overflow-y-auto p-6">
@@ -184,19 +505,27 @@ export const FundDetailsModal: React.FC<FundDetailsModalProps> = ({ data, onClos
                    <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1">净值趋势 (近90个交易日)</p>
                    {hoveredPoint && (
                      <div className="animate-in fade-in slide-in-from-left-2 duration-150">
-                        <p className="text-lg font-normal text-gray-800">{hoveredPoint.value.toFixed(4)}</p>
+                        <p className="text-lg font-normal text-gray-800">{(hoveredPoint as any).value !== undefined ? (hoveredPoint as any).value.toFixed(4) : '—'}</p>
                         <p className="text-[10px] text-gray-500 font-bold">
-                           {new Date(hoveredPoint.date).toLocaleDateString()}
+                           {hoveredPoint.date ? new Date(hoveredPoint.date).toLocaleDateString() : ''}
                            <span className={`ml-2 font-medium ${hoveredPoint.equityReturn >= 0 ? 'text-red-500' : 'text-green-500'}`}>
-                             {hoveredPoint.equityReturn > 0 ? '+' : ''}{hoveredPoint.equityReturn.toFixed(2)}%
+                             {hoveredPoint.equityReturn > 0 ? '+' : ''}{hoveredPoint.equityReturn !== undefined ? hoveredPoint.equityReturn.toFixed(2) : '0.00'}%
                            </span>
                         </p>
-                        {/* show MA values at hovered index */}
+                        {/* If hovered point is a trade, show trade details */}
+                        {(hoveredPoint as any).shares !== undefined && (
+                          <div className="text-xs text-gray-600 mt-1">
+                            <div>类型：<span className="font-medium">{(hoveredPoint as any).tradeType === 'buy' ? '买入' : '卖出'}</span></div>
+                            <div>份额：<span className="font-medium">{(hoveredPoint as any).shares}</span></div>
+                            <div>价格：<span className="font-medium">{(hoveredPoint as any).price.toFixed(4)}</span></div>
+                          </div>
+                        )}
+                        {/* show MA values at hovered index when hoveredPoint corresponds to history point */}
                         <div className="flex items-center space-x-2 mt-1">
                           {Object.keys(maValues).map(k => {
                             const n = parseInt(k, 10);
                             const arr = maValues[n];
-                            const idx = points.findIndex(p => p.data === hoveredPoint);
+                            const idx = points.findIndex(p => p.data === hoveredPoint || p.data.date === hoveredPoint.date);
                             const v = idx >= 0 ? arr[idx] : null;
                             if (!v) return null;
                             return (
@@ -236,16 +565,80 @@ export const FundDetailsModal: React.FC<FundDetailsModalProps> = ({ data, onClos
                     return <path key={k} d={d} fill="none" stroke={MA_COLORS[n] || '#2563eb'} strokeWidth={n === 5 ? 2 : 1.5} strokeLinecap="round" className="transition-all duration-700" />;
                   })}
                   <circle cx={points[points.length - 1]?.x} cy={points[points.length - 1]?.y} r="6" fill="#ef4444" className="animate-pulse" />
+                  {/* transparent overlays for hover handling (behind markers) */}
                   {points.map((p, i) => (
                     <rect key={i} x={p.x - 5} y={0} width="10" height="400" fill="transparent" onMouseEnter={() => setHoveredPoint(p.data)} className="cursor-crosshair" />
                   ))}
-                  {hoveredPoint && (
-                     <line x1={points.find(p => p.data === hoveredPoint)?.x} y1="40" x2={points.find(p => p.data === hoveredPoint)?.x} y2="380" stroke="#ef4444" strokeWidth="1" strokeDasharray="4 2" className="pointer-events-none" />
-                  )}
-                </svg>
+                  {/* Trade markers: aggregate trades by calendar date and render one marker per date on the net value line */}
+                  {tradeList && tradeList.length > 0 && points && points.length > 0 && (() => {
+                    // aggregate trades by date key (YYYY-MM-DD)
+                    // accumulate per-date shares AND amounts
+                    const byDate: Record<string, { buy: number; sell: number; buyAmount: number; sellAmount: number }> = {};
+                    for (const t of tradeList) {
+                      const dKey = (t.date || '').trim();
+                      if (!dKey) continue;
+                      if (!byDate[dKey]) byDate[dKey] = { buy: 0, sell: 0, buyAmount: 0, sellAmount: 0 };
+                      const shares = Number(t.shares || 0);
+                      const amt = (t.price || 0) * shares + (t.fee || 0);
+                      if (t.type === 'buy') {
+                        byDate[dKey].buy += shares;
+                        // buy amount = price*shares + fee
+                        byDate[dKey].buyAmount += amt;
+                      } else {
+                        byDate[dKey].sell += shares;
+                        // sell amount = price*shares - fee
+                        byDate[dKey].sellAmount += ((t.price || 0) * shares - (t.fee || 0));
+                      }
+                    }
 
-                <div className="mt-3 flex items-center space-x-2">
-                  <label className="text-xs text-gray-500 font-medium">均线：</label>
+                    const markers: Array<{ dateKey: string; net: number; x: number; y: number }> = [];
+                    for (const dateKey of Object.keys(byDate)) {
+                      const agg = byDate[dateKey];
+                      const net = (agg.buy || 0) - (agg.sell || 0);
+                      // compute net amount = total buys - total sells, then take absolute value for display
+                      const netAmount = Math.abs((agg.buyAmount || 0) - (agg.sellAmount || 0));
+                      if (!net || net === 0) continue; // skip zero net
+                      // find chart index matching this date (last point <= end of that day)
+                      const end = new Date(dateKey);
+                      end.setHours(23, 59, 59, 999);
+                      const endTs = end.getTime();
+                      let idx = -1;
+                      for (let i = 0; i < chartData.length; i++) {
+                        if (chartData[i].date <= endTs) idx = i;
+                      }
+                      if (idx === -1) continue; // no suitable point
+                      const pt = points[idx];
+                      if (!pt) continue;
+                      markers.push({ dateKey, net, x: pt.x, y: pt.y });
+                    }
+
+                    const fmtShares = (v: number) => {
+                      if (Number.isInteger(v)) return `${v}`;
+                      return v.toFixed(2);
+                    };
+
+                    return markers.map((m, i) => {
+                      const isBuy = m.net > 0;
+                      const absShares = Math.abs(m.net);
+                      // find aggregated amounts for this date to include in tip
+                      const agg = (byDate as any)[m.dateKey];
+                      const totalAmt = agg ? Math.abs((agg.buyAmount || 0) - (agg.sellAmount || 0)) : 0;
+                      const tip = `${isBuy ? '买入' : '卖出'}${fmtShares(absShares)}份 · 总额: ${formatCurrency(totalAmt, 2)}`;
+                      return (
+                        <g key={`trade-${m.dateKey}-${i}`} className="cursor-pointer" onMouseEnter={() => { /* keep tooltip native; do not set side panel */ }}>
+                          <circle cx={m.x} cy={m.y} r={6} fill={isBuy ? '#10b981' : '#ef4444'} stroke="#fff" strokeWidth={1.6} />
+                          <title>{tip}</title>
+                        </g>
+                      );
+                    });
+                  })()}
+                   {hoveredPoint && (
+                      <line x1={points.find(p => p.data === hoveredPoint)?.x} y1="40" x2={points.find(p => p.data === hoveredPoint)?.x} y2="380" stroke="#ef4444" strokeWidth="1" strokeDasharray="4 2" className="pointer-events-none" />
+                   )}
+                 </svg>
+
+                 <div className="mt-3 flex items-center space-x-2">
+                   <label className="text-xs text-gray-500 font-medium">均线：</label>
                   {[5,10,20].map(n => (
                     <button key={n} type="button" onClick={() => setVisibleMAs(v => ({ ...v, [n]: !v[n] }))} className={`text-xs px-2 py-1 rounded ${visibleMAs[n] ? 'bg-gray-100' : 'bg-white'} border`}>{n}</button>
                   ))}
@@ -267,6 +660,108 @@ export const FundDetailsModal: React.FC<FundDetailsModalProps> = ({ data, onClos
               <a href={data.sourceUrl} target="_blank" rel="noreferrer" className="block w-full py-4 text-center text-xs font-bold text-gray-400 border border-gray-100 rounded-2xl hover:bg-gray-50 transition-colors">
                 在天天基金查看详细页 <i className="fas fa-external-link-alt ml-1"></i>
               </a>
+
+              {/* Debug panel (dev only) */}
+              {isDev && (
+                  <div className="mt-6 p-4 bg-gray-50 rounded-2xl border">
+                    <p className="text-xs font-bold text-gray-500 uppercase tracking-widest mb-2">调试信息</p>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="text-sm text-gray-700">
+                        <span className="font-medium">起始日期:</span> {startDate}
+                      </div>
+                      <div className="text-sm text-gray-700">
+                        <span className="font-medium">初始价格:</span> {initialPrice !== null ? initialPrice.toFixed(4) : 'N/A'}
+                      </div>
+                      <div className="text-sm text-gray-700">
+                        <span className="font-medium">市值:</span> {marketValue !== null && !isNaN(marketValue) ? formatCurrency(marketValue, 2) : '—'}
+                      </div>
+                      <div className="text-sm text-gray-700">
+                        <span className="font-medium">盈亏:</span> <span className={`${typeof profit === 'number' ? (profit < 0 ? 'text-green-600' : profit > 0 ? 'text-red-600' : 'text-gray-700') : ''}`}>{profit !== null && !isNaN(profit) ? formatCurrency(profit, 2) : '—'}</span>
+                      </div>
+                      <div className="text-sm text-gray-700 col-span-2">
+                        <span className="font-medium">交易记录:</span> {tradeList.length} 条
+                      </div>
+                    </div>
+                  </div>
+                )}
+               {/* Configuration modal (show when user clicks gear) */}
+               {showConfig && (
+                 <div className="fixed inset-0 z-[120] flex items-center justify-center">
+                   <div className="absolute inset-0 bg-black/40" onClick={() => setShowConfig(false)} />
+                   <div className="relative bg-white rounded-lg shadow-lg w-full max-w-md p-6 z-30">
+                     <h3 className="text-lg font-bold mb-3">配置仓位（单位：份）</h3>
+                     <div className="space-y-3">
+                       <div className="flex items-center justify-between">
+                         <label className="text-sm text-gray-600">满仓额度</label>
+                         <input
+                           ref={fullInputRef}
+                           aria-label="modal-full"
+                           aria-invalid={!!(tmpFullError || tmpInitialError || tmpStartDateError)}
+                           aria-describedby={tmpFullError || tmpInitialError || tmpStartDateError ? 'modal-errors' : undefined}
+                           type="number"
+                           className="w-36 px-2 py-1 border rounded text-right"
+                           value={tmpFull}
+                           onChange={e => { setTmpFull(e.target.value); /* run validation lightly */ }}
+                           onBlur={() => { /* validation handled on save */ }}
+                         />
+                       </div>
+                       <div className="flex items-center justify-between">
+                         <label className="text-sm text-gray-600">初始持仓</label>
+                         <input
+                           ref={initialInputRef}
+                           aria-label="modal-initial"
+                           aria-invalid={!!(tmpFullError || tmpInitialError || tmpStartDateError)}
+                           aria-describedby={tmpFullError || tmpInitialError || tmpStartDateError ? 'modal-errors' : undefined}
+                           type="number"
+                           className="w-36 px-2 py-1 border rounded text-right"
+                           value={tmpInitial}
+                           onChange={e => { setTmpInitial(e.target.value); }}
+                           onBlur={() => {}}
+                         />
+                       </div>
+                       <div className="flex items-center justify-between">
+                         <label className="text-sm text-gray-600">起始日期</label>
+                         <input
+                           aria-label="modal-start-date"
+                           aria-invalid={!!tmpStartDateError}
+                           aria-describedby={tmpStartDateError ? 'modal-errors' : undefined}
+                           type="text"
+                           className="w-36 px-2 py-1 border rounded text-right"
+                           value={tmpStartDate}
+                           onChange={e => { setTmpStartDate(e.target.value); }}
+                         />
+                       </div>
+                       <div className="flex items-center justify-between">
+                         <label className="text-sm text-gray-600">初始价格</label>
+                         <input
+                           aria-label="modal-initial-price"
+                           type="text"
+                           readOnly
+                           className="w-36 px-2 py-1 border rounded text-right bg-gray-50"
+                           value={initialPrice !== null ? initialPrice.toFixed(4) : '—'}
+                         />
+                       </div>
+                       <div className="mt-3 flex items-center justify-end space-x-2">
+                         <button className="px-3 py-1 rounded bg-gray-100 whitespace-nowrap" onClick={() => setShowConfig(false)}>取消</button>
+                         <button className="px-3 py-1 rounded bg-red-100 text-red-600 whitespace-nowrap" onClick={() => { clearConfig(); }}>清除</button>
+                         <button className="px-3 py-1 rounded bg-emerald-500 text-white disabled:opacity-50 whitespace-nowrap" onClick={() => { saveConfig(); }}>
+                           保存
+                         </button>
+                       </div>
+                       <div id="modal-errors" role="alert" aria-live="assertive" className="text-xs text-red-600 min-h-[1.25rem] mt-2 text-left">
+                         {tmpFullError && <div>{tmpFullError}</div>}
+                         {tmpInitialError && <div>{tmpInitialError}</div>}
+                         {tmpStartDateError && <div>{tmpStartDateError}</div>}
+                       </div>
+                     </div>
+                   </div>
+                 </div>
+               )}
+               {/* Trade manager modal rendered into document.body to avoid z-index issues */}
+               {showTrade && (typeof document !== 'undefined' && document.body ? createPortal(
+                 <TradeManager name={data.name} symbol={data.symbol} currentPrice={data.currentPrice} onClose={() => setShowTrade(false)} />,
+                 document.body
+               ) : <TradeManager name={data.name} symbol={data.symbol} currentPrice={data.currentPrice} onClose={() => setShowTrade(false)} />)}
             </div>
           )}
         </div>
@@ -274,3 +769,5 @@ export const FundDetailsModal: React.FC<FundDetailsModalProps> = ({ data, onClos
     </div>
   );
 };
+
+
