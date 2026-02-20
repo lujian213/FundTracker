@@ -1,326 +1,276 @@
 # FundTracker — 产品需求文档 (PRD)
 
-版本：1.0  
-生成日期：2026-02-11
+版本：1.1
+最后更新：2026-02-16
 
 ---
 
-## 1. 概述
-FundTracker 是一个前端单页应用，用于添加/管理“自选基金/指数”，展示实时估值、涨跌、历史净值曲线与详情链接，支持本地持久化（localStorage），并通过简单的交互（添加、删除、查看详情）帮助用户监控其关注的基金或指数。
+简述
+- FundTracker 是一款前端单页（SPA）应用，面向普通投资者，用于添加/管理自选基金/指数，展示实时估值、涨跌、历史净值趋势及交易记录管理（本地持久化），目标是快速构建可交付的前端版本（vibe coding 可直接实现）。
 
-技术栈（从仓库观察）：
-- React + TypeScript
-- Vite
-- Jest + @testing-library/react（用于单元/组件测试）
-- JSONP 调用（用于天天基金实时估值）
-- Tailwind CSS（类名风格）
-- CI: GitHub Actions（存在 deploy 工作流，需在其上增加测试步骤）
+目标与范围
+- 目标：提供稳定、直观、可测试的核心功能：自选列表管理、基金/指数估值显示、历史曲线、交易记录（添加/编辑/删除/导入/导出）以及基本风险提示。
+- 范围（本 PRD 覆盖）：
+  - 自选基金/指数的添加/删除/排序/批量管理
+  - 实时估值展示与历史净值曲线（含 SMA 指标）
+  - 交易记录模块（本地存储、分页、导入/导出、价格回溯策略）
+  - 风险评级与 tooltip（基于均线）
+  - 本地化时间规则（交易记录价格回溯使用用户本地日终）
+  - 测试、验收与 CI 要求
 
----
+高优先级交付物（v1）
+- 主界面：自选卡片（TickerCard）列表（响应式布局）
+- 添加弹窗：`AddTickerModal`（支持批量输入、验证）
+- 详情弹窗：`FundDetailsModal` / `IndexDetailsModal`（历史曲线 + SMA）
+- 交易管理弹窗：`TradeManager`（新增/编辑/删除/分页/导入/导出）
+- 本地持久化：portfolio/indices 与 trades 存于 localStorage
+- 单元测试：服务层（fundService）和关键组件（AddTickerModal、TickerCard、ConfirmDialog、TradeManager）
 
-## 2. 目标与成功度量
+关键确认（已由产品在 2026-02-16 确认）
+- 均线默认可视：显示 SMA5、SMA10、SMA20（即 DEFAULT_VISIBLE_MAS = [5,10,20]）。
+- `fetchFundHistory`：服务返回完整抓取历史，由消费组件按需截断（TickerCard/FundDetailsModal 使用最近 90 点，TradeManager 使用最近 365 点）。
+- 交易导入策略：导入为覆盖（overwrite）指定 symbol 的交易；导入前需提示并建议用户备份（导出）现有数据。
+- `total` 字段：不作为持久化字段，仅在导出（JSON/CSV）时动态计算并包含。
+- 日期/时间 & 价格回溯：使用用户本地时区的当日 23:59:59 作为回溯截止点来匹配历史价格（TradeManager 的 getPriceForDate 行为）。
+- 分页：交易记录默认每页 10 条（pageSize = 10）。
 
-目标
-- 提供稳定、可测的“自选基金/指数”展示功能，包含实时估值与历史趋势。
-- 保持核心服务（fetchFundData/fetchFundHistory）可单元测试（可模拟 jsonp 或错误）。
-- CI 流程在合并/部署前自动运行单元与组件测试，阻止有问题的代码进入生产。
+数据模型与契约（开发者参考）
 
-成功度量
-- 单元测试覆盖关键服务（fundService）和主要交互组件（AddTickerModal、TickerCard、ConfirmDialog、FundDetailsModal）：关键路径覆盖率 >= 85%（目标）。
-- CI 在每次 PR/合并时执行测试步骤并阻止失败的合并（由 GitHub 分支保护配合实现）。
+- types.ts（摘要）
+  - Ticker { id: string; symbol: string; name: string; market: MarketType }
+  - ValuationData { symbol, name, currentPrice, previousPrice, changePercentage, lastUpdated, realtimeDate, netWorthDate, valuationDate, sourceUrl }
+  - HistoricalPoint { date: number (ms timestamp), value: number, equityReturn: number }
 
----
+- 交易记录（localStorage）
+  - 存储 key：`fund_trades`
+  - 存储结构（JSON）：
 
-## 3. 用户与使用场景
-
-用户：需要实时查看/管理基金/指数估值的普通投资者。
-
-主要场景
-- S1: 添加基金/指数到自选（通过 `AddTickerModal`），显示加载状态、校验不合法输入。
-- S2: 在主界面查看多个 `TickerCard`，能看到符号、名称、当前估值、涨跌幅、上次更新时间与操作（删除/查看详情）。
-- S3: 点击某个卡片展开 `FundDetailsModal` 或 `IndexDetailsModal`，查看历史净值趋势（近90个交易日）、最近更新与在第三方页面查看链接。
-- S4: 删除某个自选项（弹出 `ConfirmDialog`）。
-- S5: 本地持久化（localStorage）以便刷新后数据仍然存在。
-
----
-
-## 4. 数据模型（契约）
-
-文件：`types.ts`
-
-主要类型摘要：
-
-- MarketType (enum)
-  - FUND, INDEX
-
-- Ticker
-  - id: string
-  - symbol: string
-  - name: string
-  - market: MarketType
-
-- ValuationData
-  - symbol: string
-  - name: string
-  - currentPrice: number         // 实时估值 gsz
-  - previousPrice: number        // 昨日净值 dwjz
-  - changePercentage: number     // 估值涨跌幅 gszzl
-  - lastUpdated: string          // 完整更新时间 gztime -> "YYYY-MM-DD HH:mm"
-  - realtimeDate: string         // 提取日期 -> "YYYY-MM-DD"
-  - netWorthDate: string         // jzrq -> 确认净值日期
-  - valuationDate: string
-  - sourceUrl: string
-
-- HistoricalPoint
-  - date: number (timestamp)
-  - value: number
-  - equityReturn: number
-
-契约说明
-- `fetchFundData(symbol: string): Promise<ValuationData | null>`
-  - 输入：symbol（可能为数字字符串或编号），函数会在内部 padStart(6,'0') 并调用 jsonp
-  - 返回：若成功返回 `ValuationData`，否则 `null`
-  - 错误模型：当前实现在 catch 后 swallow 错误并返回 null；未来可能改为抛出网络错误（需测试兼容）
-
-- `fetchFundHistory(symbol: string): Promise<HistoricalPoint[]>`
-  - 返回按时间排序的历史点数组；`FundDetailsModal` 会使用最近 90 个点。
-
----
-
-## 5. 主要功能与组件行为（映射到源代码）
-
-- `App` (`App.tsx`)
-  - 管理 portfolio, indices 和 globalIndices
-  - 保存/加载到 `localStorage`（键：`fund_portfolio` 等）
-  - 打开/关闭相关 modal（Add/Details）
-  - 触发批量更新 `runBatchUpdate`
-
-- `TickerCard` (`components/TickerCard.tsx`)
-  - 显示 symbol、name 或占位、当前价格、涨跌幅、上次更新信息
-  - 根据 `changePercentage` 决定样式（`text-red-600` vs `text-green-600` 等）
-  - 在 selection 模式下显示勾选状态
-  - 可触发 `onRemove`、`onClick`、`onSelect` 回调
-  - 风险评级：在卡片 header（删除按钮左侧）显示风险评级 badge（危险/谨慎/安全/机会），badge 支持 hover/focus 展示 tooltip，列出判定依据与推荐操作（见算法与配置）
-
-- `AddTickerModal` (`components/AddTickerModal.tsx`)
-  - 三个 tab：`fund` / `domestic` / `global`（输入格式与占位、建议不同）
-  - 支持输入多个 symbol（用空格/逗号/换行分隔）
-  - 验证空输入并阻止提交；提交时调用 `onAdd(symbols, MarketType)`
-  - 在 `isLoading` 状态下禁用提交按钮
-
-- `ConfirmDialog` (`components/ConfirmDialog.tsx`)
-  - 显示确认/取消按钮
-  - 按钮点击与键盘（Enter/Esc）应触发 `onConfirm` / `onCancel`
-
-- `FundDetailsModal` (`components/FundDetailsModal.tsx`)
-  - 在 mount 时调用 `fetchFundHistory(symbol)`，限制成最近 90 个交易日点
-  - 将实时估值点（基于 `data.realtimeDate` + 15:00）合并到历史数组（当时间戳大于历史最后一个点时）
-  - 生成曲线 path/area/points，用于 svg 绘制
-  - 均线（SMA）显示：默认打开 SMA5 与 SMA20，支持 SMA10 的开关；在图表 hover 时显示各可见均线的当前点数值；提供图例/控件切换均线显隐
-
-- `IndexDetailsModal` (`components/IndexDetailsModal.tsx`)
-  - 与 `FundDetailsModal` 类似但使用 `fetchIndexHistory`
-
----
-
-## 6. 错误处理、边界条件与安全约束
-
-已知行为
-- `fetchFundData` 在发生错误时目前 swallow 并返回 `null`（service 内部 try/catch 并返回 null）
-- `jsonp` 机制通过全局回调注册表 (`fundRegistry`) 将回调映射到 fundCode（实现复杂度需要单元测试模拟）
-
-边界与输入规范
-- symbol normalization：`fetchFundData` 会 `padStart(6,'0')`，因此短数字会补零（比如 '123' => '000123'）
-- 允许的 symbol 长度测试范围：4, 5, 6, 7 digits（需在测试中覆盖）。
-
-安全/隐私
-- 不持久化任何敏感用户信息；只在 localStorage 保存 portfolio/indices。
-- JSONP 使用全局回调，注意避免可注入的回调名；代码中通过 `code` 参数作为 callback 名称（需要评估安全性）。
-
----
-
-## 7. 测试计划（总体）
-
-目标：为高优先级路径（fundService 与主要交互组件）提供确定性、可重复的单元/组件测试。测试代码放置位置：仓库已有 `tests/` 目录，约定将所有测试放在顶级 `tests/`（或 `__tests__`）而不是与源文件夹混放。
-
-总体测试优先级（来自用户需求）
-- High: services/fundService.ts（详见下文），components/TickerCard, AddTickerModal, ConfirmDialog
-- Medium: 集成 AddTickerModal → fetchFundData (mocked)，App smoke test
-- Low: 快照、无障碍审计、E2E
-
-具体测试点（高优先级，必须）
-1. services/fundService.test.ts
-   - Case A: Valid 6-digit symbol -> 返回 `ValuationData` 结构（所有字段存在与类型正确）
-   - Case B: Invalid symbol (含字母或空字符串) -> 返回 `null`
-   - Case C: Deterministic currentPrice for same symbol（seeded pseudo-random）
-   - Case D: Error handling: 模拟 jsonp 或 queue 抛出（或 callback 未触发），期望 `fetchFundData` 返回 `null`（当前行为）
-   - Case E: Edge length: 对 4/5/6/7 位 symbol 的行为断言（映射到 padStart 或直接请求）
-   - Case F: `fetchFundHistory`：返回数组，排序与长度截断（只取最后 90）
-
-2. components/TickerCard.test.tsx
-   - 渲染 symbol, name, price, lastUpdated
-   - 根据 `changePercentage` 应用正确类名（positive/negative）
-   - 点击 remove 调用 `onRemove`
-   - Badge 与 tooltip：断言风险评级 badge 出现，hover/focus 后 tooltip 显示判定理由（SMA 基于历史数据）
-
-3. components/AddTickerModal.test.tsx
-   - 当输入空字符串显示校验/阻止提交
-   - 输入多个代码后点击提交，调用 `onAdd` 并传递标准化 symbol 列表
-   - 提交时 `isLoading` 禁止按钮
-
-4. components/ConfirmDialog.test.tsx
-   - 点击 Confirm/Cancel 调用对应回调
-   - 键盘 Enter/Escape 调用对应回调
-
-中优先级（建议在主分支稳定后实现）
-- AddTickerModal 在提交时对 `fetchFundData` 的交互（使用 jest.mock 模拟 service）
-- App.tsx 的挂载 smoke test
-
-低优先级
-- Snapshot 测试（选择稳定组件）
-- a11y 自动化（axe）
-
-测试桩与工具
-- 把 `fetch`/`jsonp` 抽象并在测试中进行 mock
-- 为 `fundService` 提供「注入式」测试桩或在测试中直接替换 `global.jsonpgz` 回调触发
-- 建议创建 `tests/fixtures/fundData.ts`，包含 createValuationFixture(symbol) 帮助函数，保证测试中使用确定性数据
-
-测试目录约定
-- tests/
-  - services/fundService.test.ts
-  - components/
-    - AddTickerModal.test.tsx
-    - TickerCard.test.tsx
-    - ConfirmDialog.test.tsx
-  - fixtures/
-    - fundFixtures.ts
-
-测试命令（开发者使用）
-- 运行所有测试：
-
-```bash
-npm test
+```json
+{
+  "000001": [
+    {
+      "id": "abc123",
+      "date": "2026-02-16",
+      "type": "buy",
+      "shares": 10.1234,
+      "price": 1.2345,
+      "fee": 0.50
+    }
+  ],
+  "000002": [ ... ]
+}
 ```
 
----
+  - 字段精度与约定：
+    - `date` 格式为 YYYY-MM-DD（local），用于 UI 显示与价格回溯匹配
+    - `shares` 精度建议 4 位小数（输入 step=0.0001）
+    - `price` 精度展示 4 位小数（currentPrice & price 存储为 Number）
+    - `fee` 精度 2 位小数（输入 step=0.01）
+    - `total` 不持久化；导出时 total = (type==='sell' ? price*shares - fee : price*shares + fee)，导出到 CSV 时保留 2 位小数
 
-## 8. CI / 部署 与 分支保护
+- 导出格式
+  - JSON 导出：{ symbol, trades: [ { id, date, type, shares, price, fee, total } ] }
+  - CSV 导出 header：id,date,type,shares,price,fee,total
 
-CI 要求（必须）
-- 在 GitHub Actions 工作流（现有 `deploy.yml`）中添加 test 步骤，在部署前运行 `npm ci`（或 `npm install`）以及 `npm test`，并在测试失败时阻止部署。
-- 若主分支（`main`）被 GitHub 环境保护规则阻止发布到 `github-pages`，需要在部署工作流中：
-  - 使用受保护的分支策略（例如通过检查 `GITHUB_REF` 是否为允许分支），或者
-  - 将部署分支切换到 `gh-pages` 分支，并通过工作流创建/强制推送到 `gh-pages`（在有分支保护时需使用、或者管理员作业 token）
-- CI 必须设置 node 版本与缓存（actions/setup-node），并且在拉取依赖前先运行 `npm ci`。
+- 事件与通知
+  - 在写入 localStorage 后触发 `CustomEvent('fund-trades-changed', { detail: { time: Date.now() } })`（用于同窗口刷新）
+  - 同时监听 `storage` 事件以支持跨 tab 同步
 
-示例工作流步骤（说明，不直接修改文件）
-- Checkout
-- Setup Node (用项目支持的版本)
-- Install deps: `npm ci`
-- Run tests: `npm test` — 若失败，停止流程（exit non-zero）
-- Build: `npm run build`
-- Deploy: 执行现有 deploy 步骤（仅在 test & build 成功后）
+服务层（`services/fundService.ts`）行为约定
+- `fetchFundData(symbol: string): Promise<ValuationData | null>`
+  - 内部对 symbol 执行 `padStart(6,'0')` 后构建请求（JSONP 专用）。
+  - 在异常/超时情况下返回 null（当前策略）。
+  - JSONP 超时：8000ms
+- `fetchFundHistory(symbol: string): Promise<HistoricalPoint[]>`
+  - 返回抓取到的完整历史（按时间升序），组件决定截断数目。
+  - 若失败返回 []
+- 请求速率控制：内部有 `RequestQueue` 做排队与随机小延迟（150–350ms）以减缓并发请求
 
-关于“Branch 'main' is not allowed to deploy to github-pages due to environment protection rules.”
-- 这是 GitHub 的环境保护（Environment protection / branch protection / required reviewers / required status checks）配置导致的限制，不是代码层面的规则。
-- 来源：仓库的 GitHub Settings -> Environments/Branches，管理员可配置哪个分支/谁能触发对某个 environment 的部署。
-- 建议：将部署工作流改为使用专门的部署分支（如 `gh-pages`）或调整 repository 的 environment protection（需要仓库管理员操作）。
+UI / 视觉与交互规范（可直接实现）
 
----
+- 全体风格：Tailwind utility-first。保持现有组件样式约定（rounded-2xl、shadow-sm、text-xs 等）。
 
-## 9. 验收准则（Per Feature / Testable）
+- TickerCard（卡片）
+  - 显示要素：基金/指数名称（或占位）、symbol、实时估值（4 位小数）、涨跌幅、上次更新时间、风险 badge、删除按钮
+  - 风险 badge：基于 `computeRatingFromHistory` 输出（rating, color, reasons），hover/focus 显示 tooltip（aria 支持）
+  - 点击卡片打开 `FundDetailsModal`（非 selection 模式）；在 selection 模式下点击触发选择
 
-1. fetchFundData 基本契约
-   - 验证命令：运行 `npm test -- tests/services/fundService.test.ts`
-   - 预期：所有 fundService 相关测试通过，包括 4/5/6/7 位边界测试、错误处理与确定性输出测试。
+- FundDetailsModal
+  - 加载并展示最近 90 个历史点（若可用），svg 曲线 + area + 可切换的 SMA（5/10/20）
+  - 默认可见：5/10/20（如上确认）
+  - Hover 在图上时显示每条可见均线的数值
 
-2. AddTickerModal 行为
-   - 测试：`tests/components/AddTickerModal.test.tsx`
-   - 预期：valid 输入会调用 `onAdd`，空输入阻止提交，加载状态禁用按钮。
+- TradeManager（交易管理）
+  - 弹窗包含：表单（date, type, shares, fee, price(只读按日期), computed total(只读)）、交易记录列表（分页）、导入/导出按钮
+  - 分页：pageSize = 10，显示“第 X / Y 页”与上一页/下一页按钮
+  - 价格回溯（getPriceForDate）：
+    1. 若 `fetchFundHistory` 返回包含与 `date`（local YYYY-MM-DD）完全匹配的历史点，使用该点的 value
+    2. 否则将 `date` 的本地时间设置为 23:59:59（local），在 history 中查找 <= 该 timestamp 的最近点
+    3. 若仍无则使用 history 的最早点
+    4. 若 history 为空则回退到传入的 `currentPrice`
+  - 导入：覆盖策略；导入前弹出确认（提示备份/导出现有数据），确认后覆盖并触发 UI 刷新事件
+  - 导出：导出 JSON / CSV（含动态计算的 total）
 
-3. TickerCard
-   - 测试：`tests/components/TickerCard.test.tsx`
-   - 预期：渲染文本与 class 匹配 `changePercentage` 值。
+- 交易记录行高度规范（界面上合理展示多条记录）
+  - 目标：每条记录视觉上尽量控制在两行文字内。实现建议：
+    - 使用较小字体（text-xs / text-[11px]）、减小垂直内边距（px-2 py-1）
+    - 对文本使用单行截断（`truncate`）或多行截断（可选：`-webkit-line-clamp:2` 结合 `display:-webkit-box`）
+    - 确保 flex 子项使用 `min-w-0` 以允许截断生效
+  - PRD 规范（可作为验收项）：记录行在常用桌面分辨率下不超过两行；超出使用省略号显示
 
-4. ConfirmDialog
-   - 测试：`tests/components/ConfirmDialog.test.tsx`
-   - 预期：点击/键盘触发相应回调。
+风险评级与均线（实现细节）
+- 使用 `utils/movingAverage.ts` 的 `computeSMA` / `computeMultipleSMAs` 计算 SMA5/10/20
+- 使用 `utils/riskTooltip.ts` 的 `computeRiskRating` 进行评级，输入为 price、maValues、index 与 prevIndex，输出包含 rating、color、action、reasons
+- TOLERANCE = 0.995（maConfig）用于判断 price 回踩是否破位
+- 无历史时 `computeRatingFromHistory` 会退化地使用 `previousPrice` 与 `currentPrice` 来尝试计算（已实现并被接受）
 
-5. CI
-   - 验证：提交 PR，检查 Actions `deploy.yml` 执行，确保 test step 在 build/deploy 之前运行；尝试向受保护的 environment 部署（应失败或需要权限），再使用允许的分支/凭证成功部署。
+错误处理、边界条件与安全
+- 服务层在异常情况下返回 null 或 []（不抛出），以便 UI 选择友好回退策略
+- jsonp 全局回调 `jsonpgz` 与注册表 `fundRegistry`：实现时应注意回调名安全与清理逻辑
+- localStorage 操作包裹 try/catch，写入失败时应用友好提示（浏览器存储满或私有模式）
 
----
+验收标准（可自动化测试/手工验收）
+- 服务函数：`fetchFundData` 在正常/异常/超时场景下行为符合契约（单元测试）
+- 历史数据：`fetchFundHistory` 返回数组并且组件正确截断（TickerCard/FundDetailsModal 90，TradeManager 365）
+- 交易管理：
+  - 添加/编辑/删除 功能在 UI 上生效并持久化到 `fund_trades`
+  - 导出 JSON/CSV 包含正确 total 值（数值精度检验：price 4 位，total 2 位）
+  - 导入会在用户确认后覆盖数据并触发 UI 刷新
+  - 分页逻辑正确（上一页/下一页、页数显示正确）
+- 风险评级：在给定历史/当前价样例中输出预期 rating 与 reasons（单元测试覆盖）
+- UI 视觉：交易记录在常见桌面宽度下保持不超过两行显示（或使用多行截断展示两行）
 
-## 附录：均线（SMA）与基金风险评级 — 需求细节（保留）
+测试计划（开发者可直接运行）
+- 单元测试（High）
+  - `tests/services/fundService.test.ts`：fetchFundData 的正常/边界/超时/错误用例；fetchFundHistory 返回结构测试
+  - `tests/utils/movingAverage.test.ts` 与 `tests/utils/riskTooltip.test.ts`：均线算法与交叉检测
+  - `tests/hooks/useTrades.test.ts`：localStorage 读写、导入覆盖、导出格式、CustomEvent 与 storage 同步
+- 组件/集成测试（Medium）
+  - `tests/components/AddTickerModal.test.tsx`、`TickerCard.test.tsx`、`ConfirmDialog.test.tsx`、`TradeManager.test.tsx`：交互路径、表单校验、导入导出、分页
+- 手工/视觉回归
+  - 检查 TradeManager 中记录展示在常见窗口尺寸下不超出两行
 
-本附录保存所有关于均线（SMA）与基于均线的风险评级的详尽需求与判定规则，便于后续实施与审计。下面为摘要与详尽说明（开发/测试/验收细节）：
+CI 与发布
+- 在 GitHub Actions 中的工作流应包含：checkout、setup-node、`npm ci`、`npm test`（失败阻止后续步骤）、`npm run build`、deploy（仅当测试/构建成功）
+- 建议部署到 `gh-pages`（与 repository environment protection 兼容），或配置合适的 deploy 权限
 
-### A. 均线（Moving Average, SMA）
+实现注意与开发指引
+- 尽量保持服务层（fundService）无副作用，返回 null/[] 代替抛错，便于测试
+- 组件对历史点数量应做防御性编程：在计算均线或索引时校验长度并妥善处理 null
+- 交易导入前提示：在 `TradeManager` 的导入按钮上弹出 ConfirmDialog 或自定义 modal 提示“导入将覆盖当前交易，建议先导出备份”，确认后执行 `setAll(parsed.trades)`
+- 交易记录双行显示：实现时使用 Tailwind 类组合 + 一段小 CSS（若需要多行截断则加入 `.line-clamp-2` 的样式规则）
 
-说明
-- 在 `FundDetailsModal` 的净值趋势图中增加移动均线（Simple Moving Average, SMA）作为技术参考指标，支持 SMA5、SMA10、SMA20。
+开发任务清单（可直接执行）
+- [x] 将 PRD 中实现细节与确认结果整合（本文件）
+- [ ] 为 `TradeManager` 添加导入前确认弹窗（若需要，我可以立即实现并添加测试）
+- [ ] 在 tests/ 中补充 `hooks/useTrades.test.ts`、`TradeManager.test.tsx`、`utils/riskTooltip.test.ts`（优先级按上）
+- [ ] 在 CI workflow 中加入 `npm test` 步骤（如需我可以提交 workflow 修改建议）
 
-功能需求
-- `FundDetailsModal` 在图上默认显示 SMA5 与 SMA20；提供控制允许开启 SMA10。
-- Hover 时显示每条可见均线在该点的数值。
-- 提供可测试的纯函数 `utils/movingAverage.ts`（computeSMA / computeMultipleSMAs）。
-
-算法与契约
-- 输入：values: number[]（按时间升序）
-- 输出：Record<number, (number | null)[]> 或 number[] 与 null 占位，保证长度与输入一致。
-- SMA 定义：当 i + 1 >= window 时，SMA(i) = 平均(values[i-window+1..i])，否则 null。
-
-测试点（utils）
-- 空数组、window > length、正常窗口、多个 window 同时计算。
-
-UI 要求与视觉
-- SMA5: #2563eb（蓝），SMA10: #059669（绿），SMA20: #f59e0b（琥珀）。
-- SMA5 线宽略宽（2px）以突出短期趋势。
-
-### B. 基于均线的风险评级（概述）
-
-评级类别与举例触发条件
-- 危险（红） — price < SMA20
-- 谨慎（黄） — SMA5 <= SMA10 或 5 日下穿 10 日但未跌破 20 日
-- 安全（绿） — SMA5 > SMA10 且 price 未跌破 SMA5
-- 机会（蓝） — 最近发生 SMA5 上穿 SMA10（金叉），且 price >= SMA5 * TOLERANCE（回踩未破）
-
-UI 与交互
-- 在 `TickerCard` header 显示 badge，hover/focus 显示 tooltip（判定理由 + 推荐操作）。
-- Tooltip 提供简明的判据列表（reasons），并可在 `FundDetailsModal` 查看更详细分析。
-
-测试要点
-- `tests/components/TickerCard.test.tsx`：断言 badge 出现且 tooltip 显示判据。
-- `tests/components/FundDetailsModal.test.tsx`：在不同历史/价格情形下断言评级逻辑输出。
-
-### C. 配置与可访问性
-
-- 常量 `TOLERANCE`（默认 0.995）暴露于 `utils/maConfig.ts`，并建议实现设置面板以允许用户调整。
-- Badge/tooltip 要支持 keyboard focus 与 aria 描述（`aria-label`/`aria-describedby`/`role="tooltip"`）。
-
-### D. 验收与回退策略
-
-- 自动化验收：新增 utils 与组件测试通过；视觉与交互通过测试断言（SVG 有 path、tooltip 出现）。
-- 回退策略：若均线功能引发性能或 UI 问题，可默认将均线设为关闭，或延迟计算/渲染直至用户显式开启。
-
-### E. 变更记录：统一风险 tooltip 与金叉/死叉定义
-
-2026-02-12 更新：将风险评级与 tooltip 逻辑抽取为共享模块 `utils/riskTooltip.ts`，并统一 `TickerCard` 与 `FundDetailsModal` 使用该模块，以避免不同组件间判定不一致的问题。主要变更点：
-
-- 统一实现：`utils/riskTooltip.ts` 导出 `computeRiskRating`，输入为当前价格、预计算的均线数组（5/10/20）以及索引位置，输出包含 `rating`、`color`、`action` 与 `reasons`（用于 tooltip 展示）。
-- 金叉（黄金交叉）新定义：当日 5 日均线向上穿越 10 日均线（即上一交易日 5 <= 10，当日 5 > 10），并且当日呈现多头排列（5 > 10 > 20）。仅在满足上述条件并且前一日均线数据存在时认定为金叉。
-- 死叉（死亡交叉）对称定义：上一日 5 >= 10，当日 5 < 10，并且当日呈现空头排列（5 < 10 < 20）。
-- Tooltip 改进：若当日发生金叉或死叉，`reasons` 中会包含相应条目（“最近发生 ...（黄金交叉）” 或 “最近发生 ...（死亡交叉）”），`TickerCard` 与 `FundDetailsModal` 的 hover tooltip 均会显示该信息。
-- 测试覆盖：新增 `tests/utils/riskTooltip.test.ts`（单元测试金叉/死叉检测边界与 prev-null 行为），并扩展 `tests/components/TickerCard.test.tsx` 与 `tests/components/FundDetailsModal.test.tsx`，加入金叉场景断言（tooltip 包含“黄金交叉”）。
-
-注意事项与假设：
-- 为避免误判，金叉/死叉需依赖上一日的均线值（若上一日数据缺失则不认定为交叉）。
-- 在当日缺少 SMA20 值时，不会认定为金叉/死叉（无法判断 5/10/20 的多空排列）。
-
-验收标准：
-- `computeRiskRating` 返回的 `reasons` 在有交叉时包含交叉描述；`TickerCard` 与 `FundDetailsModal` 的 tooltip 在 hover 时展示这些描述。
-- 新增/修改的测试均通过（参见 tests/ 目录）。
+变更记录
+- 2026-02-11 v1.0：初始 PRD
+- 2026-02-16 v1.1：整合实现对照、产品确认项（均线默认 5/10/20、导入覆盖、local day-end 回溯等）并生成可执行的开发任务清单
 
 ---
 
-(文档结束)
+### 风险评级算法细则
+
+目的：对每只基金给出可解释的风险评级（危险/谨慎/安全/机会），并在 UI tooltip 中列出判定理由（reasons），便于用户理解与决策。
+
+输入（必须提供给算法的最小数据）
+- price: number （当前用于评级的价格，通常为 data.currentPrice）
+- maValues: Record<number, (number | null)[]> — 预计算的均线数组，key 为窗口（如 5/10/20），value 为与历史 price 数组等长的均线值数组（不足位置为 null）
+- index: number — 当前用于评级的索引（对应 maValues 中的最后一个索引，一般为 values.length - 1）
+- prevIndex?: number — 可选，前一日索引（若存在用于交叉检测）
+
+输出
+- RatingResult / RiskResult：{ rating: '危险' | '谨慎' | '安全' | '机会', color: string, action?: string, reasons: string[] }
+
+关键判定规则（实现应严格遵循）
+1. 金叉/死叉检测（交叉必须依赖前一日数据）：
+   - 黄金交叉（golden cross）：当 prev_sma5 <= prev_sma10 且 sma5 > sma10 且同时 sma20 可用且 sma5 > sma10 > sma20（多头排列）时认定；在 reasons 中加入 “最近发生 5 日均线向上突破 10 日均线（黄金交叉）”。
+   - 死亡交叉（death cross）对称定义：prev_sma5 >= prev_sma10 且 sma5 < sma10 且 sma5 < sma10 < sma20（空头排列）。加入对应 reasons。
+2. 20 日均线保护位（首要风险判定）：
+   - 若 sma20 可用且 price < sma20 => rating = '危险'，color = 红，action = '撤离'，并在 reasons 中加入跌破 20 日均线的说明（包含数值）。
+3. 短期多头判定：
+   - 若 sma5 > sma10（且数据可用）：将视为短期上升趋势；进一步判断是否存在黄金交叉且 price >= sma5 * TOLERANCE（机会）或 price < sma5 * TOLERANCE（安全/稳健），按 PRD 已定义逻辑给出 reasons 与 action。
+4. 短期弱势或下穿：
+   - 若 sma5 <= sma10：判为谨慎（并根据是否跌破 10 日线给出额外 reasons）。
+
+边界与降级逻辑
+- 若某些均线数据不可用（例如历史点不足），computeRiskRating 应尽量使用已有数据并在 reasons 中标注“数据不足”类理由；不得抛异常。
+- 若 prevIndex 不可用，则不认定金叉/死叉（必须有上一日数据支持交叉判定）。
+- TOLERANCE（来自 `maConfig`）用于判断 price 对 sma5 的“回踩未破”条件：price >= sma5 * TOLERANCE 视为未破。
+
+示例：在 tooltip 中应显示至少 1-3 条 reasons，按优先级（交叉>跌破20日>短期排列等）排序。
+
+验收标准（Risk）
+- `utils/riskTooltip.computeRiskRating` 对给定的 maValues 与 price 在单元测试中输出可预测、可解释的 reasons；覆盖金叉、死叉、跌破 20 日、数据不足四类场景。
+
+
+### 整体收益（盈亏）计算规范（必须保留）
+
+目的：对某一 symbol 给出准确、可复现的“整体收益”指标，包含已实现收益（realized P&L）、未实现收益（unrealized P&L）、持仓数量、平均成本与累计投资额，供 UI 展示（例如 FundDetailsModal 的 summary 或 TradeManager 的头部统计）。
+
+核心定义（术语）
+- 逐笔交易的字段：date (YYYY-MM-DD local), type (buy/sell), shares, price, fee
+- 持仓（position）：对 trades 按时间顺序应用后的净份额（买入为正，卖出为负）
+- 成本计量：采用 FIFO（先进先出）或加权平均成本（可在 PRD 中指定默认为 FIFO，并在未来提供配置）。本 PRD 默认：使用 FIFO 计算已实现收益，并用加权平均（running average）辅助展示当前平均成本。
+
+算法（建议实现步骤，开发可直接实现）
+1. 对该 symbol 的交易按 `date` 升序排序；在同日存在多笔交易时按记录顺序处理。所有比较与时间点均使用本地日期的当日 23:59:59 时间戳作为交易“发生时点”。
+2. 初始化：position = 0，realizedPL = 0，inventory queue = []（每项 { shares, price, feePerShare }）
+3. 处理每笔 trade：
+   - 若 type === 'buy'：将 { shares, price, feeDistributed } 推入 inventory queue，position += shares，累计投入金额 += shares * price + fee
+   - 若 type === 'sell'：从 inventory queue 按 FIFO 弹出份额直至满足卖出份额，针对每个匹配批次计算 realized 部分：(sellPrice - buyPrice) * matchedShares - proRatedFees；position -= soldShares；若超卖（卖出大于当前持仓），应允许并把超出部分记为负持仓（短仓），并在 UI 中用特殊标识提示用户（并在 PRD 中建议阻止或提示超卖情况）。
+4. 计算未实现收益（unrealized）：使用当前位置 position 与最新市场价（data.currentPrice 或历史价点的对应 price），unrealizedPL = position * (marketPrice - currentAvgCost)（若 position < 0，解释为空头），并注明计算所用 cost 方法（FIFO 平均或加权平均）。
+5. 输出汇总：{ position, avgCost, investedAmount, realizedPL, unrealizedPL, totalPL = realizedPL + unrealizedPL }
+
+额外细节：
+- 手续费分配：在买入时将手续费计入成本（分摊到每股/份），在卖出时手续费从 realizedPL 中扣除（或同样分摊），实现时保持一致性并在输出中说明。导出/展示中的 total 精度按 PRD 规范（price 4 位、total 2 位）。
+- 历史时间序列（每日市值）：为了在图上叠加“账户净值曲线”或“持仓市值”，生成每日时间序列：对每个历史点（timestamp ordered），计算当日 23:59:59 之前的 trades 累计位置 position_t，然后市值 = position_t * price_t，记录 dailyInvested（累计投入）与 dailyRealized（当日实现）以便绘制多线图（净值、持仓市值、累计投入）。
+
+测试与验收（收益计算）
+- 单元测试案例包括：单次买入、买入后部分卖出（部分实现收益）、多笔买入后卖出（FIFO 匹配），手续费影响验证，超卖场景处理。
+- 在 TradeManager 的 UI 中显示的汇总数字应与该逻辑输出一致（保留小数位说明）。
+
+
+### 在基金趋势图上展示交易记录（可交互规范）
+
+目的：在 `FundDetailsModal` 的历史净值图（或 IndexDetailsModal 的图）上直观展示相关交易（买/卖）以帮助用户回顾交易决策与绩效。
+
+要素与行为（可直接开发实现）
+1. 标记类型：为每笔交易绘制一个 marker（marker 类型：buy -> 绿色向上三角或圆点，sell -> 红色向下三角或空心圆），并在 marker 上显示小型标签（例如买入份额或净额）。
+2. X 轴 对齐：将交易的 `date`（local YYYY-MM-DD）映射到图表上的对应 timestamp，使用与 `TradeManager` 相同的回溯逻辑以决定在图上放置的价格点：
+   - 若历史点包含该日期 exact match，marker 位置使用该点的 value；
+   - 否则使用当日 23:59:59 的回溯结果（即取 <= 当日结束时间的最近点）；
+   - 若仍然没有历史点，则 marker 放在图表最早点处并在 tooltip 中注明“使用回退价格”。
+3. 多笔同日交易聚合：若同一日存在多笔交易，支持两种可选展示策略（在 PRD 中默认采用“堆叠”展示）：
+   - Stack（默认）：在同一 x 位置沿 y 方向堆叠多个 marker（保留每笔的颜色与顺序），hover 时显示每笔交易的详细 tooltip；
+   - Aggregate（可选）：合并为一笔净交易（显示总买入/卖出数量与净资金流），Tooltip 展示拆分明细。
+4. Tooltip 内容（必须包含）:
+   - date, type (买/卖), shares, price (用于该点显示的 price), fee, total (计算值), 累计持仓（交易后的 position）以及该笔交易对整体收益的即时影响（例如本笔 realized 增量或对 unrealized 的影响）。
+5. 交互
+   - Hover marker：显示 Tooltip；
+   - Click marker：在图表侧边或 modal 下方高亮该条交易并在 TradeManager 中滚动到对应记录（若 TradeManager 可见或在子页面间联动）
+   - 开关：在 FundDetailsModal 的图表控件内提供开关（显示/隐藏 交易 markers）以节省视图空间
+6. 性能注意
+   - 若历史点与交易数目较大（例如 trade 数以千计），在图上渲染 markers 应做采样或分页（例如只显示最近 N 笔或聚合早期批次），并在 tooltip/详情中允许查询完整历史。
+
+验收标准（图表交易展示）
+- 在不同历史/交易组合下，marker 正确对应交易日期并展示正确 price（遵循回溯规则）；同日多笔正确堆叠或聚合；hover 与 click 行为工作正常并能联动 TradeManager。
+- 单元/集成测试覆盖：映射规则（date->timestamp）与聚合/堆叠逻辑应有对应测试用例。
+
+
+### 文档变更与测试目录指令（快速引用）
+- 新增/扩充的单元测试文件建议：
+  - `tests/utils/riskTooltip.test.ts`（覆盖交叉、跌破 20 日、数据不足）
+  - `tests/utils/returnsCalculator.test.ts`（收益计算：FIFO、手续费、超卖）
+  - `tests/components/FundDetailsModal.trades.test.tsx`（图表 markers 映射/聚合/交互）
+
+- 验证命令（开发者本地运行）
+
+```powershell
+npm test -- tests/utils/riskTooltip.test.ts
+npm test -- tests/utils/returnsCalculator.test.ts
+npm test -- tests/components/FundDetailsModal.trades.test.tsx
+```
