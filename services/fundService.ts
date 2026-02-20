@@ -1,4 +1,3 @@
-
 import { ValuationData, MarketIndex, HistoricalPoint } from "../types";
 
 const historyCache: Record<string, HistoricalPoint[]> = {};
@@ -213,7 +212,7 @@ export async function fetchIndexHistory(symbol: string): Promise<HistoricalPoint
  * 获取实时市场热点 (替代受限的异动接口)
  * 使用 push2 排行榜接口，通常比异动接口更稳定且无跨域限制
  */
-export async function fetchMarketNews(): Promise<{ id: string, title: string, time: string, url: string }[]> {
+export async function fetchMarketNews(): Promise<{ id: string, title: string, time: string, url: string, altUrls?: { label: string; url: string }[] }[]> {
   // 获取领涨板块或热门个股，作为“市场动态”展示
   const ut = 'fa1a66105171779fbdd067425f38a7c2';
   // 综合排行榜接口，获取当前涨幅前列的板块
@@ -227,12 +226,60 @@ export async function fetchMarketNews(): Promise<{ id: string, title: string, ti
       const now = new Date();
       const timeStr = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}`;
 
-      return Object.values(diff).map((item: any, idx: number) => ({
-        id: `news-${item.f12}-${idx}`,
-        title: `🔥 热门领涨: ${item.f14} 涨幅 ${item.f3}%`,
-        time: timeStr,
-        url: `https://quote.eastmoney.com/unify/grid.html?fixed=1&kind=2&type=90&code=${item.f12}`
-      }));
+      return Object.values(diff).map((item: any, idx: number) => {
+        const code = item.f12;
+        // build candidate links and altUrls
+        const alt: { label: string; url: string }[] = [];
+        let candidate = 'https://quote.eastmoney.com/';
+
+        if (code && typeof code === 'string') {
+          const trimmed = code.trim();
+          if (/^\d{6}$/.test(trimmed)) {
+            candidate = `https://fund.eastmoney.com/${trimmed}.html`;
+            alt.push({ label: '基金页', url: candidate });
+            alt.push({ label: '统一行情页', url: `https://quote.eastmoney.com/unify/grid.html?fixed=1&kind=2&type=90&code=${encodeURIComponent(trimmed)}` });
+          } else if (/^BK\w+/i.test(trimmed)) {
+            candidate = `https://quote.eastmoney.com/unify/grid.html?fixed=1&kind=2&type=90&code=${encodeURIComponent(trimmed)}`;
+            alt.push({ label: '统一页', url: candidate });
+            alt.push({ label: '板块页', url: `https://quote.eastmoney.com/bk/${trimmed}.html` });
+          } else if (/^\d+\.\d+$/.test(trimmed)) {
+            const parts = trimmed.split('.');
+            const suffix = parts[1];
+            if (/^\d{6}$/.test(suffix)) {
+              candidate = `https://quote.eastmoney.com/zs${suffix}.html`;
+              alt.push({ label: '指数页', url: candidate });
+              alt.push({ label: '统一页', url: `https://quote.eastmoney.com/unify/grid.html?fixed=1&kind=2&type=90&code=${encodeURIComponent(trimmed)}` });
+            } else {
+              candidate = `https://quote.eastmoney.com/unify/grid.html?fixed=1&kind=2&type=90&code=${encodeURIComponent(trimmed)}`;
+              alt.push({ label: '统一页', url: candidate });
+            }
+          } else {
+            candidate = `https://quote.eastmoney.com/unify/grid.html?fixed=1&kind=2&type=90&code=${encodeURIComponent(trimmed)}`;
+            alt.push({ label: '统一页', url: candidate });
+          }
+        }
+
+        // fallback search if candidate is default or missing
+        const searchFallback = `https://so.eastmoney.com/web/s?keyword=${encodeURIComponent(code || '')}`;
+        if (!candidate || candidate === 'https://quote.eastmoney.com/') {
+          candidate = searchFallback;
+          alt.unshift({ label: '搜索结果', url: candidate });
+        }
+
+        // ensure primary search URL is first (per requirement)
+        const primary = code ? searchFallback : candidate;
+        // prefer primary as the returned url, keep altUrls for picker
+        // ensure alt includes primary as first option
+        const altUrls = [{ label: '搜索', url: primary }, ...alt.filter(a => a.url !== primary)];
+
+        return {
+          id: `news-${item.f12}-${idx}`,
+          title: `🔥 热门领涨: ${item.f14} 涨幅 ${item.f3}%`,
+          time: timeStr,
+          url: primary,
+          altUrls
+        };
+      });
     }
   } catch (e) {
     // 如果排行榜也挂了，最后保底尝试直接从上证指数获取简要状态
