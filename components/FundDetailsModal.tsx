@@ -454,21 +454,21 @@ export const FundDetailsModal: React.FC<FundDetailsModalProps> = ({ data, onClos
             </div>
             {/* Position summary: show only when configured (fullCapacity > 0 or startDate present) */}
             {(fullCapacity > 0 || startDate || initialPrice !== null) && (
-             <div className="mt-2 text-xs text-gray-600 flex items-baseline space-x-6 whitespace-nowrap overflow-hidden">
-               {fullCapacity > 0 && (
-                 <span className="whitespace-nowrap">满仓份额：<span className="font-medium">{fullCapacity.toFixed(2)}份</span></span>
-               )}
-               {initialPosition > 0 && (
-                 <span className="whitespace-nowrap">初始份额：<span className="font-medium">{initialPosition.toFixed(2)}份</span></span>
-               )}
-               {startDate && (
-                 <span className="whitespace-nowrap">起始日期：<span className="font-medium">{startDate}</span></span>
-               )}
-               {initialPrice !== null && (
+             <div className="mt-2 text-xs text-gray-600 flex items-baseline space-x-6 whitespace-nowrap overflow-visible">
+                {fullCapacity > 0 && (
+                  <span className="whitespace-nowrap">满仓份额：<span className="font-medium">{fullCapacity.toFixed(2)}份</span></span>
+                )}
+                {initialPosition > 0 && (
+                  <span className="whitespace-nowrap">初始份额：<span className="font-medium">{initialPosition.toFixed(2)}份</span></span>
+                )}
+                {startDate && (
+                  <span className="whitespace-nowrap">起始日期：<span className="font-medium">{startDate}</span></span>
+                )}
+                {initialPrice !== null && (
                  <span className="whitespace-nowrap">初始价格：<span className="font-medium">{initialPrice.toFixed(4)}</span></span>
-               )}
-             </div>
-           )}
+                )}
+              </div>
+            )}
 
            {/* Market / position / profit row - always visible but show placeholders when unknown */}
            <div className="mt-1 text-xs text-gray-600 flex items-baseline space-x-6 whitespace-nowrap">
@@ -737,7 +737,7 @@ export const FundDetailsModal: React.FC<FundDetailsModalProps> = ({ data, onClos
                            aria-label="modal-initial-price"
                            type="text"
                            readOnly
-                           className="w-36 px-2 py-1 border rounded text-right bg-gray-50"
+                           className="w-44 px-2 py-1 border rounded text-right bg-gray-50"
                            value={
                              // during editing, prefer the temporary computed price for the tmpStartDate; fallback to persisted initialPrice
                             (tmpStartDate && tmpStartDate.trim()) ? (tmpInitialPrice !== null ? tmpInitialPrice.toFixed(4) : '—') : (initialPrice !== null ? initialPrice.toFixed(4) : '—')
