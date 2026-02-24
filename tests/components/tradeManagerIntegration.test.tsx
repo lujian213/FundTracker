@@ -4,6 +4,12 @@ import { FundDetailsModal } from '../../components/FundDetailsModal';
 import { ValuationData } from '../../types';
 
 describe('FundDetailsModal -> TradeManager integration', () => {
+  beforeEach(() => {
+    // ensure this fund has a configured fullCapacity so the trade button is enabled
+    const key = `fund_position_TEST001`;
+    try { localStorage.setItem(key, JSON.stringify({ fullCapacity: 100, initialPosition: 0, startDate: null, initialPrice: null })); } catch (e) {}
+  });
+
   const mockFetchHistory = jest.fn().mockResolvedValue([
     { date: Date.now() - 3 * 24 * 3600 * 1000, value: 1.0, equityReturn: 0 },
     { date: Date.now() - 2 * 24 * 3600 * 1000, value: 1.0, equityReturn: 0 },
@@ -41,4 +47,3 @@ describe('FundDetailsModal -> TradeManager integration', () => {
     expect(screen.getByText(/当前净值：/).textContent).toContain('1.2345');
   });
 });
-
