@@ -434,7 +434,7 @@ export const FundDetailsModal: React.FC<FundDetailsModalProps> = ({ data, onClos
     <div className="fixed inset-0 z-[110] flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/60 backdrop-blur-md animate-in fade-in duration-300" onClick={onClose}></div>
 
-      <div className="relative bg-white rounded-3xl w-full max-w-2xl overflow-hidden shadow-2xl animate-in zoom-in-95 duration-300 flex flex-col max-h-[90vh]">
+      <div className="relative bg-white rounded-3xl w-full max-w-2xl overflow-hidden shadow-2xl animate-in zoom-in-95 duration-300 flex flex-col max-h-[90vh]" style={{ maxWidth: '46.3rem' }}>
         <div className="px-6 py-6 border-b border-gray-50 flex justify-between items-start">
           <div className="min-w-0"> {/* allow left column to shrink and not push actions out */}
              <div className="flex items-center space-x-2 mb-1">
