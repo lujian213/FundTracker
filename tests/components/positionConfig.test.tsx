@@ -140,4 +140,40 @@ describe('position config persistence and UI', () => {
     // the modal initial price should reflect SAMPLE_HISTORY[0].value (1.0)
     expect(await screen.findByDisplayValue('1.0000')).toBeTruthy();
   });
+
+  test('trade manager disabled and market row hidden until fullCapacity configured', async () => {
+    render(<FundDetailsModal data={data as any} onClose={() => {}} />);
+    await waitFor(() => expect(fetchFundHistory).toHaveBeenCalled());
+
+    // market/value/profit row should not be displayed when fullCapacity not configured
+    expect(screen.queryByText(/市场价值/)).toBeNull();
+    expect(screen.queryByText(/整体盈利/)).toBeNull();
+
+    // trade manager button should be present but disabled
+    const tradeBtn = screen.getByLabelText(/交易管理/) as HTMLButtonElement;
+    expect(tradeBtn).toBeTruthy();
+    expect(tradeBtn).toBeDisabled();
+
+    // configure fullCapacity via modal
+    const gear = screen.getByLabelText(/配置仓位/);
+    fireEvent.click(gear);
+
+    const fullInput = await screen.findByLabelText('modal-full') as HTMLInputElement;
+    const initialInput = await screen.findByLabelText('modal-initial') as HTMLInputElement;
+
+    fireEvent.change(fullInput, { target: { value: '100' } });
+    fireEvent.change(initialInput, { target: { value: '25' } });
+
+    fireEvent.click(screen.getByText('保存'));
+
+    // after saving, header should show values and trade button should be enabled
+    await waitFor(() => expect(screen.getByText(/满仓份额/)).toBeTruthy());
+    expect(screen.getByText(/100.00份/)).toBeTruthy();
+
+    const tradeBtnAfter = screen.getByLabelText(/交易管理/) as HTMLButtonElement;
+    expect(tradeBtnAfter).not.toBeDisabled();
+
+    // market/value row should now be visible
+    expect(screen.getByText(/市场价值/)).toBeTruthy();
+  });
 });

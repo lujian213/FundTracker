@@ -403,10 +403,12 @@ export const FundDetailsModal: React.FC<FundDetailsModalProps> = ({ data, onClos
   // holdings summary from trades
   const { trades: tradeList } = useTrades(data.symbol);
 
-  // Compute holdings and profit using initialPosition and trades per requirements:
-  // currentShares = initialPosition + sum(buy.shares) - sum(sell.shares)
-  // profit = currentShares*currentPrice + sum(sellAmount) - sum(buyAmount) - initialPosition*initialPrice
+  // Compute holdings and profit using initialPosition and trades per requirements, but only when fullCapacity configured (>0)
+  // If fullCapacity is 0 (not configured), we treat these values as not-applicable (null) so they don't appear in other aggregations.
   const holdings = useMemo(() => {
+    if (!fullCapacity || fullCapacity <= 0) {
+      return { totalShares: 0, buyShares: 0, sellShares: 0, buyAmount: 0, sellAmount: 0, marketValue: null as number | null, profit: null as number | null };
+    }
     let buyShares = 0;
     let sellShares = 0;
     let buyAmount = 0; // sum of buy: price*shares + fee
@@ -426,7 +428,7 @@ export const FundDetailsModal: React.FC<FundDetailsModalProps> = ({ data, onClos
     const initPrice = initialPrice !== null ? initialPrice : 0;
     const profit = (totalShares * data.currentPrice) + sellAmount - buyAmount - (initialPosition * initPrice);
     return { totalShares, buyShares, sellShares, buyAmount, sellAmount, marketValue, profit };
-  }, [tradeList, data.currentPrice, initialPosition, initialPrice]);
+  }, [tradeList, data.currentPrice, initialPosition, initialPrice, fullCapacity]);
 
   const { totalShares, buyShares, sellShares, buyAmount, sellAmount, marketValue, profit } = holdings;
 
@@ -470,20 +472,24 @@ export const FundDetailsModal: React.FC<FundDetailsModalProps> = ({ data, onClos
               </div>
             )}
 
-           {/* Market / position / profit row - always visible but show placeholders when unknown */}
-           <div className="mt-1 text-xs text-gray-600 flex items-baseline space-x-6 whitespace-nowrap">
-             <span className="whitespace-nowrap">市场价值：<span className="font-medium">{(marketValue !== null && !isNaN(marketValue)) ? formatCurrency(marketValue, 2) : '—'}</span></span>
-             <span className="whitespace-nowrap">当前仓位：<span className="font-medium">{(typeof totalShares === 'number') ? `${totalShares.toFixed(2)} 份` : '—'}</span></span>
-             <span className="whitespace-nowrap">仓位占比：<span className="font-medium">{(fullCapacity > 0) ? `${((totalShares / fullCapacity) * 100).toFixed(2)}%` : '—'}</span></span>
-             <span className="whitespace-nowrap">整体盈利：<span className={`font-medium ${typeof profit === 'number' ? (profit < 0 ? 'text-green-600' : profit > 0 ? 'text-red-600' : 'text-gray-600') : ''}`}>{(typeof profit === 'number') ? formatCurrency(profit, 2) : '—'}</span></span>
-           </div>
+           {/* Market / position / profit row - only show when fullCapacity configured (>0) */}
+           {fullCapacity && fullCapacity > 0 ? (
+             <div className="mt-1 text-xs text-gray-600 flex items-baseline space-x-6 whitespace-nowrap">
+               <span className="whitespace-nowrap">市场价值：<span className="font-medium">{(marketValue !== null && !isNaN(marketValue as any)) ? formatCurrency(marketValue as number, 2) : '—'}</span></span>
+               <span className="whitespace-nowrap">当前仓位：<span className="font-medium">{(typeof totalShares === 'number') ? `${totalShares.toFixed(2)} 份` : '—'}</span></span>
+               <span className="whitespace-nowrap">仓位占比：<span className="font-medium">{(fullCapacity > 0) ? `${((totalShares / fullCapacity) * 100).toFixed(2)}%` : '—'}</span></span>
+               <span className="whitespace-nowrap">整体盈利：<span className={`font-medium ${typeof profit === 'number' ? (profit < 0 ? 'text-green-600' : profit > 0 ? 'text-red-600' : 'text-gray-600') : ''}`}>{(typeof profit === 'number') ? formatCurrency(profit, 2) : '—'}</span></span>
+             </div>
+           ) : null}
           </div>
           <div className="flex-shrink-0 flex items-center space-x-2"> {/* lock actions to avoid being pushed out */}
              {/* 配置与交易按钮 */}
              <button aria-label="配置仓位" title="配置仓位" onClick={openConfig} className="w-10 h-10 rounded-full bg-gray-50 flex items-center justify-center text-gray-500 hover:bg-gray-100 transition-colors">
                <i className="fas fa-cog"></i>
              </button>
-             <button aria-label="交易管理" aria-haspopup="dialog" title="交易管理" onClick={() => { setShowTrade(true); }} className="w-10 h-10 rounded-full bg-gray-50 flex items-center justify-center text-gray-500 hover:bg-gray-100 transition-colors">
+             <button aria-label="交易管理" aria-haspopup="dialog" title="交易管理" onClick={() => { if (fullCapacity && fullCapacity > 0) setShowTrade(true); }}
+              className={`w-10 h-10 rounded-full flex items-center justify-center transition-colors ${fullCapacity && fullCapacity > 0 ? 'bg-gray-50 text-gray-500 hover:bg-gray-100' : 'bg-gray-100 text-gray-300 cursor-not-allowed'}`}
+              disabled={!(fullCapacity && fullCapacity > 0)}>
                <i className="fas fa-exchange-alt"></i>
              </button>
              <button onClick={onClose} className="w-10 h-10 rounded-full bg-gray-50 flex items-center justify-center text-gray-400 hover:bg-gray-100 transition-colors">
