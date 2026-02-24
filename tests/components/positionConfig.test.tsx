@@ -117,4 +117,27 @@ describe('position config persistence and UI', () => {
     await waitFor(() => expect(screen.queryByText(/满仓/)).toBeNull());
     expect(localStorage.getItem(key)).toBeNull();
   });
+
+  test('start date uses date picker and initial price updates with date change', async () => {
+    render(<FundDetailsModal data={data as any} onClose={() => {}} />);
+    await waitFor(() => expect(fetchFundHistory).toHaveBeenCalled());
+
+    // open modal
+    const gear = screen.getByLabelText(/配置仓位/);
+    fireEvent.click(gear);
+
+    const startInput = await screen.findByLabelText('modal-start-date') as HTMLInputElement;
+    const initialPriceInput = await screen.findByLabelText('modal-initial-price') as HTMLInputElement;
+
+    // initially tmpStartDate should be set to realtimeDate, which is in SAMPLE_HISTORY (use first entry date as ISO)
+    // Convert SAMPLE_HISTORY[0].date to YYYY-MM-DD
+    const sampleDate = new Date(SAMPLE_HISTORY[0].date);
+    const iso = `${sampleDate.getFullYear()}-${String(sampleDate.getMonth() + 1).padStart(2, '0')}-${String(sampleDate.getDate()).padStart(2, '0')}`;
+
+    // change the date picker to the sampleDate
+    fireEvent.change(startInput, { target: { value: iso } });
+
+    // the modal initial price should reflect SAMPLE_HISTORY[0].value (1.0)
+    expect(await screen.findByDisplayValue('1.0000')).toBeTruthy();
+  });
 });

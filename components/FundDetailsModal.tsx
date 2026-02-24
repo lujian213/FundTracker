@@ -436,13 +436,13 @@ export const FundDetailsModal: React.FC<FundDetailsModalProps> = ({ data, onClos
 
       <div className="relative bg-white rounded-3xl w-full max-w-2xl overflow-hidden shadow-2xl animate-in zoom-in-95 duration-300 flex flex-col max-h-[90vh]">
         <div className="px-6 py-6 border-b border-gray-50 flex justify-between items-start">
-          <div>
-            <div className="flex items-center space-x-2 mb-1">
-               <h2 className="text-xl font-black text-gray-800 leading-tight">{data.name}</h2>
+          <div className="min-w-0"> {/* allow left column to shrink and not push actions out */}
+             <div className="flex items-center space-x-2 mb-1">
+               <h2 className="text-xl font-black text-gray-800 leading-tight truncate">{data.name}</h2>
                <span className="px-2 py-0.5 bg-gray-100 text-gray-500 rounded text-[10px] font-mono">{data.symbol}</span>
-               {/* Rating badge */}
-               <RatingTooltip ratingInfo={ratingInfo} open={showTooltip} onOpen={() => setShowTooltip(true)} onClose={() => setShowTooltip(false)} alignRight={false} />
-            </div>
+                {/* Rating badge */}
+                <RatingTooltip ratingInfo={ratingInfo} open={showTooltip} onOpen={() => setShowTooltip(true)} onClose={() => setShowTooltip(false)} alignRight={false} />
+             </div>
             <div className="flex items-baseline space-x-3">
               <span className={`text-2xl font-normal ${data.changePercentage >= 0 ? 'text-red-600' : 'text-green-600'}`}>
                 {data.currentPrice.toFixed(4)}
@@ -478,18 +478,18 @@ export const FundDetailsModal: React.FC<FundDetailsModalProps> = ({ data, onClos
              <span className="whitespace-nowrap">整体盈利：<span className={`font-medium ${typeof profit === 'number' ? (profit < 0 ? 'text-green-600' : profit > 0 ? 'text-red-600' : 'text-gray-600') : ''}`}>{(typeof profit === 'number') ? formatCurrency(profit, 2) : '—'}</span></span>
            </div>
           </div>
-          <div className="flex items-center space-x-2">
-            {/* 配置与交易按钮 */}
-            <button aria-label="配置仓位" title="配置仓位" onClick={openConfig} className="w-10 h-10 rounded-full bg-gray-50 flex items-center justify-center text-gray-500 hover:bg-gray-100 transition-colors">
-              <i className="fas fa-cog"></i>
-            </button>
-            <button aria-label="交易管理" aria-haspopup="dialog" title="交易管理" onClick={() => { setShowTrade(true); }} className="w-10 h-10 rounded-full bg-gray-50 flex items-center justify-center text-gray-500 hover:bg-gray-100 transition-colors">
-              <i className="fas fa-exchange-alt"></i>
-            </button>
-            <button onClick={onClose} className="w-10 h-10 rounded-full bg-gray-50 flex items-center justify-center text-gray-400 hover:bg-gray-100 transition-colors">
-              <i className="fas fa-times"></i>
-            </button>
-          </div>
+          <div className="flex-shrink-0 flex items-center space-x-2"> {/* lock actions to avoid being pushed out */}
+             {/* 配置与交易按钮 */}
+             <button aria-label="配置仓位" title="配置仓位" onClick={openConfig} className="w-10 h-10 rounded-full bg-gray-50 flex items-center justify-center text-gray-500 hover:bg-gray-100 transition-colors">
+               <i className="fas fa-cog"></i>
+             </button>
+             <button aria-label="交易管理" aria-haspopup="dialog" title="交易管理" onClick={() => { setShowTrade(true); }} className="w-10 h-10 rounded-full bg-gray-50 flex items-center justify-center text-gray-500 hover:bg-gray-100 transition-colors">
+               <i className="fas fa-exchange-alt"></i>
+             </button>
+             <button onClick={onClose} className="w-10 h-10 rounded-full bg-gray-50 flex items-center justify-center text-gray-400 hover:bg-gray-100 transition-colors">
+               <i className="fas fa-times"></i>
+             </button>
+           </div>
         </div>
 
         <div className="flex-1 overflow-y-auto p-6">
@@ -725,7 +725,7 @@ export const FundDetailsModal: React.FC<FundDetailsModalProps> = ({ data, onClos
                            aria-label="modal-start-date"
                            aria-invalid={!!tmpStartDateError}
                            aria-describedby={tmpStartDateError ? 'modal-errors' : undefined}
-                           type="text"
+                           type="date"
                            className="w-36 px-2 py-1 border rounded text-right"
                            value={tmpStartDate}
                            onChange={e => { setTmpStartDate(e.target.value); }}
@@ -738,7 +738,10 @@ export const FundDetailsModal: React.FC<FundDetailsModalProps> = ({ data, onClos
                            type="text"
                            readOnly
                            className="w-36 px-2 py-1 border rounded text-right bg-gray-50"
-                           value={initialPrice !== null ? initialPrice.toFixed(4) : '—'}
+                           value={
+                             // during editing, prefer the temporary computed price for the tmpStartDate; fallback to persisted initialPrice
+                            (tmpStartDate && tmpStartDate.trim()) ? (tmpInitialPrice !== null ? tmpInitialPrice.toFixed(4) : '—') : (initialPrice !== null ? initialPrice.toFixed(4) : '—')
+                           }
                          />
                        </div>
                        <div className="mt-3 flex items-center justify-end space-x-2">
