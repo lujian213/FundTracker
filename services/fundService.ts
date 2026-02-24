@@ -119,7 +119,165 @@ export async function fetchFundData(symbol: string): Promise<ValuationData | nul
       };
     }
   } catch (e) {}
+
+  // Fallback: try EastMoney pingzhongdata JS which contains full fund info and history
+  try {
+    const fallback = await fetchFundDataFromEastMoney(code);
+    if (fallback) return fallback;
+  } catch (e) {}
+
   return null;
+}
+
+// helper to format timestamp as yyyyMMddHHmmss
+function formatYMDHMS(d: Date) {
+  const pad = (n: number) => n.toString().padStart(2, '0');
+  return `${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}${pad(d.getHours())}${pad(d.getMinutes())}${pad(d.getSeconds())}`;
+}
+
+async function fetchFundDataFromEastMoney(code: string): Promise<ValuationData | null> {
+  const ts = formatYMDHMS(new Date());
+  const url = `https://fund.eastmoney.com/pingzhongdata/${code}.js?v=${ts}`;
+  try {
+    const script = document.createElement('script');
+    script.src = url;
+
+    // snapshot existing window keys so we can detect what the script adds
+    const beforeKeys = new Set(Object.keys(window as any));
+
+    await new Promise<void>((resolve, reject) => {
+      const timeoutLimit = 2000;
+      const timeoutId = setTimeout(() => {
+        if (script.parentNode) script.parentNode.removeChild(script);
+        reject(new Error('TIMEOUT'));
+      }, timeoutLimit);
+
+      script.onload = () => {
+        clearTimeout(timeoutId);
+        resolve();
+      };
+      script.onerror = () => {
+        clearTimeout(timeoutId);
+        if (script.parentNode) script.parentNode.removeChild(script);
+        reject(new Error('SCRIPT_ERROR'));
+      };
+      document.head.appendChild(script);
+    });
+
+    // After load, compute newly added globals
+    const afterKeys = Object.keys(window as any);
+    const addedKeys = afterKeys.filter(k => !beforeKeys.has(k));
+
+    const g: any = window as any;
+
+    // helper to try extract trend and name from an object
+    const extractFromObj = (obj: any) => {
+      if (!obj) return null as any;
+      // prefer Data_netWorthTrend
+      if (Array.isArray(obj.Data_netWorthTrend)) return { trend: obj.Data_netWorthTrend, name: obj.FundName || obj.fundName || obj.name || obj.fund || null };
+      // some variants
+      if (Array.isArray(obj.data && obj.data.netWorthTrend)) return { trend: obj.data.netWorthTrend, name: obj.data.name || obj.name || null };
+      if (Array.isArray(obj.NetWorthTrend)) return { trend: obj.NetWorthTrend, name: obj.FundName || obj.name || null };
+      return null;
+    };
+
+    // Try known global locations first
+    let trend: any = (g as any).Data_netWorthTrend || (g as any).Data_netValueTrend || (g as any).Data_netWorth || null;
+    let name: string | null = (g as any).FundName || (g as any).fundName || (g as any).name || null;
+
+    // If not found, scan newly added globals
+    if (!trend || !Array.isArray(trend)) {
+      for (const k of addedKeys) {
+        try {
+          const val = (g as any)[k];
+          const res = extractFromObj(val);
+          if (res && Array.isArray(res.trend)) {
+            trend = res.trend;
+            if (!name && res.name) name = res.name;
+            break;
+          }
+        } catch (e) {
+          // continue
+        }
+      }
+    }
+
+    // also try scanning some existing globals that the script might populate directly
+    if ((!trend || !Array.isArray(trend))) {
+      const candidates = ['Data_fund', 'Data_netWorthTrend', 'Data_netValueTrend', 'fund', 'FundName', 'fundName'];
+      for (const k of candidates) {
+        try {
+          const val = (g as any)[k];
+          const res = extractFromObj(val);
+          if (res && Array.isArray(res.trend)) {
+            trend = res.trend;
+            if (!name && res.name) name = res.name;
+            break;
+          }
+          // if val itself is array and looks like trend
+          if (Array.isArray(val) && val.length && val[0] && (val[0].y !== undefined || val[0].x !== undefined)) {
+            trend = val;
+            break;
+          }
+        } catch (e) {}
+      }
+    }
+
+    // Fallback: sometimes the script exposes name via a small var like "fundName" or fS_name
+    if (!name) {
+      for (const k of addedKeys.concat(['FundName', 'fundName', 'name', 'fS_name'])) {
+        try {
+          const v = (g as any)[k];
+          if (typeof v === 'string' && v.trim()) {
+            name = v.trim();
+            break;
+          }
+        } catch (e) {}
+      }
+    }
+
+    // If trend still not found, give up
+    if (!trend || !Array.isArray(trend) || trend.length === 0) {
+      // clean up script node
+      if (script.parentNode) script.parentNode.removeChild(script);
+      return null;
+    }
+
+    // find last and previous
+    const last = trend[trend.length - 1];
+    const prev = trend.length > 1 ? trend[trend.length - 2] : null;
+
+    const parseDate = (x: any) => {
+      if (typeof x === 'number') return new Date(x);
+      const n = Number(x);
+      if (!isNaN(n)) return new Date(n);
+      return new Date(String(x));
+    };
+
+    const currentPrice = parseFloat(last.y) || 0;
+    const previousPrice = prev ? (parseFloat(prev.y) || 0) : 0;
+    const lastUpdated = last.x ? parseDate(last.x).toISOString().replace('T', ' ').split('.')[0] : '---';
+
+    const changePercentage = previousPrice > 0 ? ((currentPrice - previousPrice) / previousPrice) * 100 : 0;
+
+    // cleanup injected script tag to avoid cluttering DOM
+    if (script.parentNode) script.parentNode.removeChild(script);
+
+    return {
+      symbol: code,
+      name: name || `基金 ${code}`,
+      currentPrice,
+      previousPrice,
+      changePercentage,
+      lastUpdated,
+      realtimeDate: lastUpdated.split(' ')[0] || new Date().toISOString().split('T')[0],
+      netWorthDate: lastUpdated.split(' ')[0] || new Date().toISOString().split('T')[0],
+      valuationDate: lastUpdated || new Date().toISOString().replace('T', ' ').split('.')[0],
+      sourceUrl: `https://fund.eastmoney.com/${code}.html`
+    } as ValuationData;
+  } catch (e) {
+    return null;
+  }
 }
 
 export async function fetchSingleIndex(symbol: string): Promise<MarketIndex | null> {
@@ -163,7 +321,8 @@ export async function fetchMarketIndices(symbols: string[]): Promise<MarketIndex
 export async function fetchFundHistory(symbol: string): Promise<HistoricalPoint[]> {
   const code = symbol.padStart(6, '0');
   if (historyCache[code]) return historyCache[code];
-  const url = `https://fund.eastmoney.com/pingzhongdata/${code}.js?v=${Date.now()}`;
+  const ts = formatYMDHMS(new Date());
+  const url = `https://fund.eastmoney.com/pingzhongdata/${code}.js?v=${ts}`;
   try {
     const script = document.createElement('script');
     script.src = url;

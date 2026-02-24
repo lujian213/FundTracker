@@ -10,6 +10,15 @@ describe('fundService', () => {
     // Clear any global JSONP registries or data used by the service
     // @ts-ignore
     delete (window as any).Data_netWorthTrend;
+    // Clear possible globals added by pingzhongdata scripts between tests
+    // @ts-ignore
+    delete (window as any).fundName;
+    // @ts-ignore
+    delete (window as any).FundName;
+    // @ts-ignore
+    delete (window as any).fS_name;
+    // @ts-ignore
+    delete (window as any).name;
     // Ensure jsonpgz exists to avoid runtime errors when tests call it
     if (!(window as any).jsonpgz) {
       (window as any).jsonpgz = (d: any) => {};
@@ -207,6 +216,77 @@ describe('fundService', () => {
     const afterCount = document.head.querySelectorAll('script').length;
     expect(r2).toBe(r1);
     expect(afterCount).toBe(beforeCount);
+  });
+
+  test('fetchFundData falls back to EastMoney pingzhongdata and extracts name for 019005', async () => {
+    const symbol = '019005';
+    const promise = fetchFundData(symbol);
+
+    // Wait for RequestQueue to inject the primary script
+    await wait(400);
+    const primaryScript = document.head.querySelector('script') as any;
+    expect(primaryScript).toBeTruthy();
+
+    // Simulate primary script load error to trigger fallback
+    if (primaryScript && primaryScript.onerror) primaryScript.onerror(new Error('script error'));
+
+    // Wait briefly for fallback to inject its script
+    await wait(100);
+    const scripts = Array.from(document.head.querySelectorAll('script'));
+    const fallbackScript = scripts[scripts.length - 1] as any;
+    expect(fallbackScript).toBeTruthy();
+
+    // Prepare globals that pingzhongdata would expose
+    (window as any).fundName = '东方基金 019005';
+    (window as any).Data_netWorthTrend = [
+      { x: 1700000000000, y: '1.0000', equityReturn: '0' },
+      { x: 1700000001000, y: '1.1000', equityReturn: '0.1' }
+    ];
+
+    // Trigger fallback script onload
+    // @ts-ignore
+    if (fallbackScript && fallbackScript.onload) fallbackScript.onload();
+
+    const result = await promise;
+    expect(result).not.toBeNull();
+    expect(result!.symbol).toBe('019005');
+    expect(result!.name).toBe('东方基金 019005');
+  });
+
+  test('fetchFundData treats jsonpgz() empty callback as failure and falls back extracting fS_name', async () => {
+    const symbol = '019005';
+    const promise = fetchFundData(symbol);
+
+    // Wait for RequestQueue to inject primary script
+    await wait(400);
+    const primaryScript = document.head.querySelector('script') as any;
+    expect(primaryScript).toBeTruthy();
+
+    // Simulate the remote script invoking jsonpgz() with no args (empty callback)
+    // This should resolve the primary jsonp but with undefined data, so fetchFundData should treat it as failure and try fallback
+    (window as any).jsonpgz();
+
+    // Wait briefly for fallback to be injected
+    await wait(100);
+    const scripts = Array.from(document.head.querySelectorAll('script'));
+    const fallbackScript = scripts[scripts.length - 1] as any;
+    expect(fallbackScript).toBeTruthy();
+
+    // Simulate pingzhongdata exposing fS_name and Data_netWorthTrend
+    (window as any).fS_name = '国投瑞银白银期货(LOF)C';
+    (window as any).Data_netWorthTrend = [
+      { x: 1700000000000, y: '1.0000', equityReturn: '0' },
+      { x: 1700000001000, y: '1.1000', equityReturn: '0.1' }
+    ];
+
+    // Trigger fallback script onload
+    // @ts-ignore
+    if (fallbackScript && fallbackScript.onload) fallbackScript.onload();
+
+    const result = await promise;
+    expect(result).not.toBeNull();
+    expect(result!.symbol).toBe('019005');
+    expect(result!.name).toBe('国投瑞银白银期货(LOF)C');
   });
 
 });
