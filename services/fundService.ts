@@ -169,8 +169,8 @@ async function fetchFundDataFromEastMoney(code: string): Promise<ValuationData |
     const addedKeys = afterKeys.filter(k => !beforeKeys.has(k));
 
     const g: any = window as any;
-    console.log('DEBUG: window.Data_netWorthTrend exists?', !!(g as any).Data_netWorthTrend);
-    try { console.log('DEBUG: Data_netWorthTrend sample:', JSON.stringify((g as any).Data_netWorthTrend && (g as any).Data_netWorthTrend.slice(-3))); } catch(e) {}
+    // console.log('DEBUG: window.Data_netWorthTrend exists?', !!(g as any).Data_netWorthTrend);
+    // try { console.log('DEBUG: Data_netWorthTrend sample:', JSON.stringify((g as any).Data_netWorthTrend && (g as any).Data_netWorthTrend.slice(-3))); } catch(e) {}
 
     // helper to try extract trend and name from an object
     const extractFromObj = (obj: any) => {
@@ -276,6 +276,9 @@ async function fetchFundDataFromEastMoney(code: string): Promise<ValuationData |
     // compute percentage change relative to previous historical value if available
     const changePercentage = prevPriceHist > 0 ? ((confirmedPrice - prevPriceHist) / prevPriceHist) * 100 : 0;
 
+    // ensure d is parsed from last.x
+    const d = last.x ? parseDate(last.x) : null;
+
     // Deterministically compute Shanghai local date/time by shifting UTC ms by +8h and using UTC getters.
     let lastUpdated = '---';
     let netWorthDate = new Date().toISOString().split('T')[0];
@@ -318,7 +321,6 @@ async function fetchFundDataFromEastMoney(code: string): Promise<ValuationData |
       sourceUrl: `https://fund.eastmoney.com/${code}.html`
     } as ValuationData;
   } catch (e) {
-    console.error('ERROR fetchFundDataFromEastMoney', e && (e.stack || e));
     return null;
   }
 }
