@@ -169,6 +169,8 @@ async function fetchFundDataFromEastMoney(code: string): Promise<ValuationData |
     const addedKeys = afterKeys.filter(k => !beforeKeys.has(k));
 
     const g: any = window as any;
+    console.log('DEBUG: window.Data_netWorthTrend exists?', !!(g as any).Data_netWorthTrend);
+    try { console.log('DEBUG: Data_netWorthTrend sample:', JSON.stringify((g as any).Data_netWorthTrend && (g as any).Data_netWorthTrend.slice(-3))); } catch(e) {}
 
     // helper to try extract trend and name from an object
     const extractFromObj = (obj: any) => {
@@ -184,7 +186,6 @@ async function fetchFundDataFromEastMoney(code: string): Promise<ValuationData |
     // Try known global locations first
     let trend: any = (g as any).Data_netWorthTrend || (g as any).Data_netValueTrend || (g as any).Data_netWorth || null;
     let name: string | null = (g as any).FundName || (g as any).fundName || (g as any).name || null;
-
     // If not found, scan newly added globals
     if (!trend || !Array.isArray(trend)) {
       for (const k of addedKeys) {
@@ -238,6 +239,7 @@ async function fetchFundDataFromEastMoney(code: string): Promise<ValuationData |
 
     // If trend still not found, give up
     if (!trend || !Array.isArray(trend) || trend.length === 0) {
+      console.log('DEBUG fetchFundDataFromEastMoney no trend found, afterKeys:', Object.keys(window as any).slice(-20));
       // clean up script node
       if (script.parentNode) script.parentNode.removeChild(script);
       return null;
@@ -274,26 +276,31 @@ async function fetchFundDataFromEastMoney(code: string): Promise<ValuationData |
     // compute percentage change relative to previous historical value if available
     const changePercentage = prevPriceHist > 0 ? ((confirmedPrice - prevPriceHist) / prevPriceHist) * 100 : 0;
 
-    // Format the timestamp using local time (avoid toISOString -> UTC date shift)
-    const d = last.x ? parseDate(last.x) : null;
-    // If the timestamp represents midnight (00:00:00), adjust to 15:00 local time.
-    // This handles the case where pingzhongdata only provides a date (or timestamp at 00:00:00)
-    // and we are using confirmed net worth as the realtime valuation; showing 15:00 is
-    // more representative of the market close time for that date.
+    // Deterministically compute Shanghai local date/time by shifting UTC ms by +8h and using UTC getters.
+    let lastUpdated = '---';
+    let netWorthDate = new Date().toISOString().split('T')[0];
     if (d) {
-      if (d.getHours() === 0 && d.getMinutes() === 0 && d.getSeconds() === 0) {
-        d.setHours(15, 0, 0, 0);
+      // shift to Shanghai by adding 8 hours (in ms)
+      const shMs = d.getTime() + 8 * 3600 * 1000;
+      const sh = new Date(shMs);
+      const year = sh.getUTCFullYear();
+      const month = String(sh.getUTCMonth() + 1).padStart(2, '0');
+      const day = String(sh.getUTCDate()).padStart(2, '0');
+      let hour = sh.getUTCHours();
+      const minute = String(sh.getUTCMinutes()).padStart(2, '0');
+      const second = String(sh.getUTCSeconds()).padStart(2, '0');
+
+      // If the timestamp represents midnight in Shanghai, treat it as 15:00 (Shanghai)
+      if (hour === 0 && minute === '00' && second === '00') {
+        hour = 15;
       }
+
+      lastUpdated = `${year}-${month}-${day} ${String(hour).padStart(2, '0')}:${minute}:${second}`;
+      netWorthDate = `${year}-${month}-${day}`;
     }
-    const pad = (n: number) => n.toString().padStart(2, '0');
-    const formatLocal = (dt: Date) => `${dt.getFullYear()}-${pad(dt.getMonth() + 1)}-${pad(dt.getDate())} ${pad(dt.getHours())}:${pad(dt.getMinutes())}:${pad(dt.getSeconds())}`;
 
-    const lastUpdated = d ? formatLocal(d) : '---';
-    const netWorthDate = d ? `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}` : new Date().toISOString().split('T')[0];
-    // In EastMoney fallback we only have historical net worth (no gsz). Per spec, if there is no realtime gsz we
-    // treat the confirmed net worth as the realtime valuation and use its date as the realtimeDate.
+    // set realtimeDate to netWorthDate for fallback (no realtime gsz)
     const realtimeDate = netWorthDate;
-
     // cleanup injected script tag to avoid cluttering DOM
     if (script.parentNode) script.parentNode.removeChild(script);
 
@@ -311,6 +318,7 @@ async function fetchFundDataFromEastMoney(code: string): Promise<ValuationData |
       sourceUrl: `https://fund.eastmoney.com/${code}.html`
     } as ValuationData;
   } catch (e) {
+    console.error('ERROR fetchFundDataFromEastMoney', e && (e.stack || e));
     return null;
   }
 }
