@@ -248,17 +248,51 @@ async function fetchFundDataFromEastMoney(code: string): Promise<ValuationData |
     const prev = trend.length > 1 ? trend[trend.length - 2] : null;
 
     const parseDate = (x: any) => {
-      if (typeof x === 'number') return new Date(x);
+      // EastMoney sometimes provides timestamps as milliseconds (ms) or seconds (s),
+      // and sometimes as strings. Normalize to JS Date using ms.
+      if (x == null) return new Date();
+      if (typeof x === 'number') {
+        // if timestamp looks like seconds (10 digits), convert to ms
+        if (x > 0 && x < 1e11) return new Date(x * 1000);
+        return new Date(x);
+      }
       const n = Number(x);
-      if (!isNaN(n)) return new Date(n);
+      if (!isNaN(n)) {
+        if (n > 0 && n < 1e11) return new Date(n * 1000);
+        return new Date(n);
+      }
+      // fallback: let Date parse the string
       return new Date(String(x));
     };
 
-    const currentPrice = parseFloat(last.y) || 0;
-    const previousPrice = prev ? (parseFloat(prev.y) || 0) : 0;
-    const lastUpdated = last.x ? parseDate(last.x).toISOString().replace('T', ' ').split('.')[0] : '---';
+    const confirmedPrice = parseFloat(last.y) || 0; // latest confirmed net worth from history
+    const prevPriceHist = prev ? (parseFloat(prev.y) || 0) : 0; // previous historical net worth (for change%)
+    // For display purposes, treat `previousPrice` as the confirmed net worth when there is no realtime gsz.
+    // `currentPrice` is also set to the confirmed price (used as realtime valuation fallback).
+    const currentPrice = confirmedPrice;
+    const previousPrice = confirmedPrice;
+    // compute percentage change relative to previous historical value if available
+    const changePercentage = prevPriceHist > 0 ? ((confirmedPrice - prevPriceHist) / prevPriceHist) * 100 : 0;
 
-    const changePercentage = previousPrice > 0 ? ((currentPrice - previousPrice) / previousPrice) * 100 : 0;
+    // Format the timestamp using local time (avoid toISOString -> UTC date shift)
+    const d = last.x ? parseDate(last.x) : null;
+    // If the timestamp represents midnight (00:00:00), adjust to 15:00 local time.
+    // This handles the case where pingzhongdata only provides a date (or timestamp at 00:00:00)
+    // and we are using confirmed net worth as the realtime valuation; showing 15:00 is
+    // more representative of the market close time for that date.
+    if (d) {
+      if (d.getHours() === 0 && d.getMinutes() === 0 && d.getSeconds() === 0) {
+        d.setHours(15, 0, 0, 0);
+      }
+    }
+    const pad = (n: number) => n.toString().padStart(2, '0');
+    const formatLocal = (dt: Date) => `${dt.getFullYear()}-${pad(dt.getMonth() + 1)}-${pad(dt.getDate())} ${pad(dt.getHours())}:${pad(dt.getMinutes())}:${pad(dt.getSeconds())}`;
+
+    const lastUpdated = d ? formatLocal(d) : '---';
+    const netWorthDate = d ? `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}` : new Date().toISOString().split('T')[0];
+    // In EastMoney fallback we only have historical net worth (no gsz). Per spec, if there is no realtime gsz we
+    // treat the confirmed net worth as the realtime valuation and use its date as the realtimeDate.
+    const realtimeDate = netWorthDate;
 
     // cleanup injected script tag to avoid cluttering DOM
     if (script.parentNode) script.parentNode.removeChild(script);
@@ -266,13 +300,14 @@ async function fetchFundDataFromEastMoney(code: string): Promise<ValuationData |
     return {
       symbol: code,
       name: name || `基金 ${code}`,
+      // No estimated gsz in pingzhongdata fallback; use the latest confirmed net worth as "currentPrice" per spec
       currentPrice,
       previousPrice,
       changePercentage,
       lastUpdated,
-      realtimeDate: lastUpdated.split(' ')[0] || new Date().toISOString().split('T')[0],
-      netWorthDate: lastUpdated.split(' ')[0] || new Date().toISOString().split('T')[0],
-      valuationDate: lastUpdated || new Date().toISOString().replace('T', ' ').split('.')[0],
+      realtimeDate,
+      netWorthDate,
+      valuationDate: lastUpdated,
       sourceUrl: `https://fund.eastmoney.com/${code}.html`
     } as ValuationData;
   } catch (e) {
@@ -375,7 +410,7 @@ export async function fetchMarketNews(): Promise<{ id: string, title: string, ti
   // 获取领涨板块或热门个股，作为“市场动态”展示
   const ut = 'fa1a66105171779fbdd067425f38a7c2';
   // 综合排行榜接口，获取当前涨幅前列的板块
-  const url = `https://push2.eastmoney.com/api/qt/clist/get?pn=1&pz=10&po=1&np=1&ut=${ut}&fltt=2&invt=2&fid=f3&fs=m:90+t:2&fields=f12,f14,f2,f3,f4&_=${Date.now()}`;
+  const url = `https://push2.eastmoney.com/api/qt/clist/get?pn=1&pz=10&po=1&np=1&ut=${ut}&fltt=2&invt=2&fid=f3&fs=m:90+t:2&type=90&fields=f12,f14,f2,f3,f4&_=${Date.now()}`;
 
   try {
     const response: any = await jsonp(url, 'cb');
