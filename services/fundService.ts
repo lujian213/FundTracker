@@ -388,19 +388,20 @@ export async function fetchFundHistory(symbol: string): Promise<HistoricalPoint[
   } catch (e) { return []; }
 }
 
+// Index history: fetch Kline data for indices via push2his and convert to HistoricalPoint[]
 export async function fetchIndexHistory(symbol: string): Promise<HistoricalPoint[]> {
   let secid = symbol;
   if (secid === 'NDX') secid = '100.NDX';
   if (secid === 'SPX') secid = '100.SPX';
   if (secid === 'HSI') secid = '100.HSI';
-  // 修改 fields2 以获取准确的：日期(f51)、收盘价(f53)、涨跌幅(f59)
+  // fields2: date(f51), close price(f53), change percent(f59)
   const url = `https://push2his.eastmoney.com/api/qt/stock/kline/get?secid=${secid}&fields1=f1,f2,f3,f4,f5,f6&fields2=f51,f53,f59&klt=101&fqt=1&end=20500101&lmt=90`;
   try {
     const response: any = await jsonp(url, 'cb');
     if (response?.data?.klines) {
       return response.data.klines.map((line: string) => {
         const parts = line.split(',');
-        // parts[0]: date, parts[1]: close price, parts[2]: change percentage
+        // parts[0]: date string like '2026-02-20' or '20260220', parts[1]: close price, parts[2]: change percentage
         return {
           date: new Date(parts[0]).getTime(),
           value: parseFloat(parts[1]) || 0,
@@ -410,6 +411,43 @@ export async function fetchIndexHistory(symbol: string): Promise<HistoricalPoint
     }
   } catch (e) {}
   return [];
+}
+
+// 新增：根据历史净值计算每日净值变化（每份的日盈亏）并返回可供前端展示的数据
+export interface DailyProfitPoint {
+  date: string; // YYYY-MM-DD
+  dailyProfit: number; // 基于每份的净值变动：today.value - yesterday.value
+  cumulativeProfit?: number; // 累计净值变动（以每日净值变动求和）
+  pctReturn?: number; // 当日净值收益率（%）
+}
+
+export async function fetchFundDailyProfit(symbol: string): Promise<DailyProfitPoint[]> {
+  try {
+    const history = await fetchFundHistory(symbol);
+    if (!history || history.length === 0) return [];
+    // sort by date ascending (history from oldest to newest is typical but normalize)
+    const sorted = [...history].sort((a, b) => (a.date as number) - (b.date as number));
+    const points: DailyProfitPoint[] = [];
+    let cumulative = 0;
+    for (let i = 0; i < sorted.length; i++) {
+      const cur = sorted[i];
+      const prev = i > 0 ? sorted[i - 1] : null;
+      const curVal = Number(cur.value || 0);
+      const prevVal = prev ? Number(prev.value || 0) : curVal;
+      const daily = curVal - prevVal;
+      cumulative += daily;
+      const pct = prevVal !== 0 ? (daily / prevVal) * 100 : 0;
+      // normalize date to YYYY-MM-DD
+      const d = new Date(cur.date as any);
+      const y = d.getFullYear();
+      const m = String(d.getMonth() + 1).padStart(2, '0');
+      const day = String(d.getDate()).padStart(2, '0');
+      points.push({ date: `${y}-${m}-${day}`, dailyProfit: Number(daily.toFixed(4)), cumulativeProfit: Number(cumulative.toFixed(4)), pctReturn: Number(pct.toFixed(4)) });
+    }
+    return points;
+  } catch (e) {
+    return [];
+  }
 }
 
 /**

@@ -9,6 +9,7 @@ import { computeRatingFromHistory } from '../utils/ratingHelper';
 import RatingTooltip from './RatingTooltip';
 import TradeManager from './TradeManager';
 import useTrades from '../hooks/useTrades';
+import ProfitModal from './ProfitModal';
 
 interface FundDetailsModalProps {
   data: ValuationData;
@@ -34,6 +35,7 @@ export const FundDetailsModal: React.FC<FundDetailsModalProps> = ({ data, onClos
   const [tmpInitial, setTmpInitial] = useState<string>('0');
   const [tmpStartDate, setTmpStartDate] = useState<string>('');
   const [showTrade, setShowTrade] = useState(false);
+  const [showProfit, setShowProfit] = useState(false);
   // validation errors for modal inputs
   const [tmpFullError, setTmpFullError] = useState<string | null>(null);
   const [tmpInitialError, setTmpInitialError] = useState<string | null>(null);
@@ -412,7 +414,7 @@ export const FundDetailsModal: React.FC<FundDetailsModalProps> = ({ data, onClos
     let buyShares = 0;
     let sellShares = 0;
     let buyAmount = 0; // sum of buy: price*shares + fee
-    let sellAmount = 0; // sum of sell: price*shares - fee
+    let sellAmount = 0; // sum of sell: price*shares - (t.fee || 0);
     for (const t of tradeList || []) {
       if (t.type === 'buy') {
         buyShares += t.shares;
@@ -488,14 +490,20 @@ export const FundDetailsModal: React.FC<FundDetailsModalProps> = ({ data, onClos
                <i className="fas fa-cog"></i>
              </button>
              <button aria-label="交易管理" aria-haspopup="dialog" title="交易管理" onClick={() => { if (fullCapacity && fullCapacity > 0) setShowTrade(true); }}
-              className={`w-10 h-10 rounded-full flex items-center justify-center transition-colors ${fullCapacity && fullCapacity > 0 ? 'bg-gray-50 text-gray-500 hover:bg-gray-100' : 'bg-gray-100 text-gray-300 cursor-not-allowed'}`}
-              disabled={!(fullCapacity && fullCapacity > 0)}>
-               <i className="fas fa-exchange-alt"></i>
+               className={`w-10 h-10 rounded-full flex items-center justify-center transition-colors ${fullCapacity && fullCapacity > 0 ? 'bg-gray-50 text-gray-500 hover:bg-gray-100' : 'bg-gray-100 text-gray-300 cursor-not-allowed'}`}
+               disabled={!(fullCapacity && fullCapacity > 0)}>
+                <i className="fas fa-exchange-alt"></i>
+              </button>
+             {/* 盈利按钮：放在交易按钮右侧 */}
+             <button aria-label="查看盈利" aria-haspopup="dialog" title="查看每日盈利" onClick={() => { if (fullCapacity && fullCapacity > 0) setShowProfit(true); }}
+               className={`w-10 h-10 rounded-full flex items-center justify-center transition-colors ${fullCapacity && fullCapacity > 0 ? 'bg-gray-50 text-gray-500 hover:bg-gray-100' : 'bg-gray-100 text-gray-300 cursor-not-allowed'}`}
+               disabled={!(fullCapacity && fullCapacity > 0)}>
+               <i className="fas fa-chart-line"></i>
              </button>
-             <button onClick={onClose} className="w-10 h-10 rounded-full bg-gray-50 flex items-center justify-center text-gray-400 hover:bg-gray-100 transition-colors">
-               <i className="fas fa-times"></i>
-             </button>
-           </div>
+              <button onClick={onClose} className="w-10 h-10 rounded-full bg-gray-50 flex items-center justify-center text-gray-400 hover:bg-gray-100 transition-colors">
+                <i className="fas fa-times"></i>
+              </button>
+            </div>
         </div>
 
         <div className="flex-1 overflow-y-auto p-6">
@@ -771,6 +779,10 @@ export const FundDetailsModal: React.FC<FundDetailsModalProps> = ({ data, onClos
                  <TradeManager name={data.name} symbol={data.symbol} currentPrice={data.currentPrice} onClose={() => setShowTrade(false)} />,
                  document.body
                ) : <TradeManager name={data.name} symbol={data.symbol} currentPrice={data.currentPrice} onClose={() => setShowTrade(false)} />)}
+               {showProfit && (typeof document !== 'undefined' && document.body ? createPortal(
+                 <ProfitModal symbol={data.symbol} fundName={data.name} currentPrice={data.currentPrice} realtimeDate={data.realtimeDate} initialPosition={initialPosition} initialPrice={initialPrice} initialStartDate={startDate} onClose={() => setShowProfit(false)} />,
+                 document.body
+               ) : <ProfitModal symbol={data.symbol} fundName={data.name} currentPrice={data.currentPrice} realtimeDate={data.realtimeDate} initialPosition={initialPosition} initialPrice={initialPrice} initialStartDate={startDate} onClose={() => setShowProfit(false)} />)}
             </div>
           )}
         </div>
