@@ -213,80 +213,82 @@ const ProfitModal: React.FC<ProfitModalProps> = ({ symbol, fundName, currentPric
                 </div>
                 <div className="text-xs text-gray-500">&nbsp;</div>
               </div>
-              {validationError && <div className="text-xs text-red-600">{validationError}</div>}
-
-              <div className="bg-gray-50 rounded p-3 relative">
-                {(isRefreshing || cleared) ? null : (
-                  <svg className="w-full h-40" viewBox={`0 0 ${chart.width ?? 760} ${chart.height ?? 160}`} preserveAspectRatio="none" style={{ overflow: 'visible' }}>
-                    <rect x={0} y={0} width={760} height={160} fill="#fff" />
-                    {/* y axis ticks */}
-                    {chart.yTicks && chart.yTicks.map((t, i) => (
-                      <g key={'y'+i}>
-                        <line x1={chart.padLeft ? chart.padLeft - 20 : 30} x2={760 - (chart.padRight ?? 24)} y1={t.y} y2={t.y} stroke="#eef2f7" />
-                        <text x={(chart.padLeft ? chart.padLeft - 12 : 44)} y={t.y} textAnchor="end" alignmentBaseline="middle" style={{ fontSize: '10px', fill: '#9ca3af', fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, "Roboto Mono", "Helvetica Neue", monospace' }}>{t.label}</text>
-                      </g>
-                    ))}
-                    {/* x axis ticks */}
-                    {chart.xTicks && chart.xTicks.map((t, i) => (
-                      <text key={'x'+i} x={t.x} y={150} textAnchor="middle" style={{ fontSize: '10px', fill: '#9ca3af' }}>{t.label}</text>
-                    ))}
-                    <path d={chart.path} fill="none" stroke="#ef4444" strokeWidth={2} strokeLinecap="round" style={{ pointerEvents: 'none' }} />
-                    {chart.points.map((pt, i) => (
-                      <g key={i} onMouseEnter={() => handlePointEnter(i)} onMouseLeave={() => handlePointLeave()} onFocus={() => handlePointEnter(i)} onBlur={() => handlePointLeave()}>
-                        {/* larger transparent hit area for stable hover (bigger to avoid flicker) */}
-                        <circle cx={pt.x} cy={pt.y} r={18} fill="rgba(0,0,0,0)" style={{ pointerEvents: 'all' }} />
-                        {/* visible point */}
-                        <circle cx={pt.x} cy={pt.y} r={5} fill={hoverIndex === i ? '#ef4444' : '#fff'} stroke="#ef4444" strokeWidth={2} />
-                      </g>
-                    ))}
-                  </svg>
-                )}
-                {hoverIndex !== null && chart.points[hoverIndex] && (
-                  <div className="absolute z-20 bg-white p-2 rounded shadow" style={{ left: Math.max(8, Math.min((chart.width ?? 760) - 120, chart.points[hoverIndex].x - 40)), top: Math.max(8, chart.points[hoverIndex].y - 50), pointerEvents: 'none' }}>
-                    <div className="text-xs text-gray-500">{chart.points[hoverIndex].data.date}</div>
-                    <div className="text-sm">当日: {chart.points[hoverIndex].data.dailyProfit === 0 ? '-' : (chart.points[hoverIndex].data.dailyProfit > 0 ? '+' : '') + chart.points[hoverIndex].data.dailyProfit.toFixed(2)}</div>
-                    <div className="text-sm">累计: {chart.points[hoverIndex].data.cumulativeProfit === 0 ? '-' : (chart.points[hoverIndex].data.cumulativeProfit > 0 ? '+' : '') + chart.points[hoverIndex].data.cumulativeProfit.toFixed(2)}</div>
+              {validationError ? (
+                <div className="text-sm text-red-600">{validationError}</div>
+              ) : (
+                <>
+                  <div className="bg-gray-50 rounded p-3 relative">
+                    {(isRefreshing || cleared) ? null : (
+                      <svg className="w-full h-40" viewBox={`0 0 ${chart.width ?? 760} ${chart.height ?? 160}`} preserveAspectRatio="none" style={{ overflow: 'visible' }}>
+                        <rect x={0} y={0} width={760} height={160} fill="#fff" />
+                        {/* y axis ticks */}
+                        {chart.yTicks && chart.yTicks.map((t, i) => (
+                          <g key={'y'+i}>
+                            <line x1={chart.padLeft ? chart.padLeft - 20 : 30} x2={760 - (chart.padRight ?? 24)} y1={t.y} y2={t.y} stroke="#eef2f7" />
+                            <text x={(chart.padLeft ? chart.padLeft - 12 : 44)} y={t.y} textAnchor="end" alignmentBaseline="middle" style={{ fontSize: '10px', fill: '#9ca3af', fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, "Roboto Mono", "Helvetica Neue", monospace' }}>{t.label}</text>
+                          </g>
+                        ))}
+                        {/* x axis ticks */}
+                        {chart.xTicks && chart.xTicks.map((t, i) => (
+                          <text key={'x'+i} x={t.x} y={150} textAnchor="middle" style={{ fontSize: '10px', fill: '#9ca3af' }}>{t.label}</text>
+                        ))}
+                        <path d={chart.path} fill="none" stroke="#ef4444" strokeWidth={2} strokeLinecap="round" style={{ pointerEvents: 'none' }} />
+                        {chart.points.map((pt, i) => (
+                          <g key={i} onMouseEnter={() => handlePointEnter(i)} onMouseLeave={() => handlePointLeave()} onFocus={() => handlePointEnter(i)} onBlur={() => handlePointLeave()}>
+                            {/* larger transparent hit area for stable hover (bigger to avoid flicker) */}
+                            <circle cx={pt.x} cy={pt.y} r={18} fill="rgba(0,0,0,0)" style={{ pointerEvents: 'all' }} />
+                            {/* visible point */}
+                            <circle cx={pt.x} cy={pt.y} r={5} fill={hoverIndex === i ? '#ef4444' : '#fff'} stroke="#ef4444" strokeWidth={2} />
+                          </g>
+                        ))}
+                      </svg>
+                    )}
+                    {hoverIndex !== null && chart.points[hoverIndex] && (
+                      <div className="absolute z-20 bg-white p-2 rounded shadow" style={{ left: Math.max(8, Math.min((chart.width ?? 760) - 120, chart.points[hoverIndex].x - 40)), top: Math.max(8, chart.points[hoverIndex].y - 50), pointerEvents: 'none' }}>
+                        <div className="text-xs text-gray-500">{chart.points[hoverIndex].data.date}</div>
+                        <div className="text-sm">当日: {chart.points[hoverIndex].data.dailyProfit === 0 ? '-' : (chart.points[hoverIndex].data.dailyProfit > 0 ? '+' : '') + chart.points[hoverIndex].data.dailyProfit.toFixed(2)}</div>
+                        <div className="text-sm">累计: {chart.points[hoverIndex].data.cumulativeProfit === 0 ? '-' : (chart.points[hoverIndex].data.cumulativeProfit > 0 ? '+' : '') + chart.points[hoverIndex].data.cumulativeProfit.toFixed(2)}</div>
+                      </div>
+                    )}
                   </div>
-                )}
-              </div>
 
-              {/* brief refresh/cleared banners removed per user request */}
-
-              {/* Table of daily profits (max 10 per page */}
-              <div className="overflow-auto" style={{ maxHeight: '320px' }}>
-                <table className="w-full text-sm text-left">
-                  <thead>
-                    <tr className="text-xs text-gray-500">
-                      <th className="px-3 py-2">日期</th>
-                      <th className="px-3 py-2 text-right">净值</th>
-                      <th className="px-3 py-2 text-right">当日盈利</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {page.map(row => (
-                      <tr key={row.date} className="border-t">
-                        <td className="px-3 py-2 align-top">{row.date}</td>
-                        <td className="px-3 py-2 align-top text-right">{(row.netValue !== undefined && row.netValue !== null) ? row.netValue.toFixed(4) : '-'}</td>
-                        <td className="px-3 py-2 align-top text-right">{moneyCell(row.dailyProfit)}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-              {/* paging controls and period total */}
-              <div className="flex items-center justify-between text-xs mt-2">
-                <div>
-                  {displayedTimeline.length > 10 && (
-                    <div className="space-x-2">
-                      <button className="px-2 py-1 border rounded" disabled={pageStartIndex === 0} onClick={() => setPageStartIndex(Math.max(0, pageStartIndex - 10))}>上一页</button>
-                      <button className="px-2 py-1 border rounded" disabled={pageStartIndex + 10 >= displayedTimeline.length} onClick={() => setPageStartIndex(Math.min(displayedTimeline.length - 10, pageStartIndex + 10))}>下一页</button>
+                  {/* Table of daily profits (max 10 per page */}
+                  <div className="overflow-auto" style={{ maxHeight: '320px' }}>
+                    <table className="w-full text-sm text-left">
+                      <thead>
+                        <tr className="text-xs text-gray-500">
+                          <th className="px-3 py-2">日期</th>
+                          <th className="px-3 py-2 text-right">净值</th>
+                          <th className="px-3 py-2 text-right">当日盈利</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {page.map(row => (
+                          <tr key={row.date} className="border-t">
+                            <td className="px-3 py-2 align-top">{row.date}</td>
+                            <td className="px-3 py-2 align-top text-right">{(row.netValue !== undefined && row.netValue !== null) ? row.netValue.toFixed(4) : '-'}</td>
+                            <td className="px-3 py-2 align-top text-right">{moneyCell(row.dailyProfit)}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                  {/* paging controls and period total */}
+                  <div className="flex items-center justify-between text-xs mt-2">
+                    <div>
+                      {displayedTimeline.length > 10 && (
+                        <div className="space-x-2">
+                          <button className="px-2 py-1 border rounded" disabled={pageStartIndex === 0} onClick={() => setPageStartIndex(Math.max(0, pageStartIndex - 10))}>上一页</button>
+                          <button className="px-2 py-1 border rounded" disabled={pageStartIndex + 10 >= displayedTimeline.length} onClick={() => setPageStartIndex(Math.min(displayedTimeline.length - 10, pageStartIndex + 10))}>下一页</button>
+                        </div>
+                      )}
                     </div>
-                  )}
-                </div>
-                <div>期间累计: {
-                  periodTotal === 0 ? <span className="text-black">-</span> : (periodTotal > 0 ? <span className="text-red-600">+{periodTotal.toFixed(2)}</span> : <span className="text-green-600">{periodTotal.toFixed(2)}</span>)
-                }</div>
-              </div>
+                    <div>期间累计: {
+                      periodTotal === 0 ? <span className="text-black">-</span> : (periodTotal > 0 ? <span className="text-red-600">+{periodTotal.toFixed(2)}</span> : <span className="text-green-600">{periodTotal.toFixed(2)}</span>)
+                    }</div>
+                  </div>
+                </>
+              )}
             </div>
           )}
         </div>

@@ -646,9 +646,18 @@ export const FundDetailsModal: React.FC<FundDetailsModalProps> = ({ data, onClos
                       );
                     });
                   })()}
-                   {hoveredPoint && (
-                      <line x1={points.find(p => p.data === hoveredPoint)?.x} y1="40" x2={points.find(p => p.data === hoveredPoint)?.x} y2="380" stroke="#ef4444" strokeWidth="1" strokeDasharray="4 2" className="pointer-events-none" />
-                   )}
+                   {hoveredPoint && (() => {
+                      const pt = points.find(p => p.data === hoveredPoint);
+                      const dateLabel = hoveredPoint && hoveredPoint.date ? new Date(hoveredPoint.date).toISOString().split('T')[0] : '';
+                      const x = pt ? pt.x : 0;
+                      return (
+                        <g>
+                          <line x1={x} y1="40" x2={x} y2="380" stroke="#ef4444" strokeWidth="1" strokeDasharray="4 2" className="pointer-events-none" />
+                          {/* date label above the chart for hovered point */}
+                          <text x={x} y={30} textAnchor="middle" className="text-[12px] font-medium fill-gray-700 pointer-events-none">{dateLabel}</text>
+                        </g>
+                      );
+                   })()}
                  </svg>
 
                  <div className="mt-3 flex items-center space-x-2">
