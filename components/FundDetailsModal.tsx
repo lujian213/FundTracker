@@ -521,7 +521,7 @@ export const FundDetailsModal: React.FC<FundDetailsModalProps> = ({ data, onClos
                      <div className="animate-in fade-in slide-in-from-left-2 duration-150">
                         <p className="text-lg font-normal text-gray-800">{(hoveredPoint as any).value !== undefined ? (hoveredPoint as any).value.toFixed(4) : '—'}</p>
                         <p className="text-[10px] text-gray-500 font-bold">
-                           {hoveredPoint.date ? new Date(hoveredPoint.date).toLocaleDateString() : ''}
+                           {hoveredPoint.date ? localDateKey((hoveredPoint as any).date) : ''}
                            <span className={`ml-2 font-medium ${hoveredPoint.equityReturn >= 0 ? 'text-red-500' : 'text-green-500'}`}>
                              {hoveredPoint.equityReturn > 0 ? '+' : ''}{hoveredPoint.equityReturn !== undefined ? hoveredPoint.equityReturn.toFixed(2) : '0.00'}%
                            </span>
@@ -648,7 +648,7 @@ export const FundDetailsModal: React.FC<FundDetailsModalProps> = ({ data, onClos
                   })()}
                    {hoveredPoint && (() => {
                       const pt = points.find(p => p.data === hoveredPoint);
-                      const dateLabel = hoveredPoint && hoveredPoint.date ? new Date(hoveredPoint.date).toISOString().split('T')[0] : '';
+                      const dateLabel = hoveredPoint && hoveredPoint.date ? localDateKey((hoveredPoint as any).date) : '';
                       const x = pt ? pt.x : 0;
                       return (
                         <g>

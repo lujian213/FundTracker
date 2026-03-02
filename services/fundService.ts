@@ -1,4 +1,6 @@
-import { ValuationData, MarketIndex, HistoricalPoint } from "../types";
+import { ValuationData, MarketIndex, HistoricalPoint, OverallProfitSummary, OverallFundRow } from "../types";
+import { computeProfitTimeline, ProfitPoint } from '../utils/profitCalculator';
+import { getTradesForSymbol } from '../hooks/useTrades';
 
 const historyCache: Record<string, HistoricalPoint[]> = {};
 
@@ -540,4 +542,217 @@ export async function fetchMarketNews(): Promise<{ id: string, title: string, ti
   }
 
   return [];
+}
+
+/**
+ * 计算整体盈亏：对一组基金按日期对各基金的累计盈亏求和，返回按日的累计与当日盈利，以及按基金的区间盈亏对比
+ * - 如果没有提供 symbols，则会从 localStorage 的 'fund_portfolio' 中读取（与 App.tsx 的存储保持一致）
+ * - 只有持仓起始日期位于用户选择范围内的基金会被纳入计算（若该配置不存在，则以历史净值最早日期为起始）
+ */
+export async function computeOverallProfit(opts: { symbols?: string[]; fromDate?: string | null; toDate?: string | null }): Promise<OverallProfitSummary> {
+   const { symbols, fromDate, toDate } = opts || {};
+
+  // if no symbols provided, try read portfolio from localStorage (same key used in App.tsx)
+  let syms: string[] = [];
+  let portfolioArr: any[] = [];
+  if (Array.isArray(symbols) && symbols.length > 0) syms = symbols;
+  else {
+    try {
+      const raw = localStorage.getItem('fund_portfolio');
+      if (raw) {
+        const arr = JSON.parse(raw) as any[];
+        portfolioArr = Array.isArray(arr) ? arr : [];
+        syms = portfolioArr.map(a => a.symbol).filter(Boolean);
+      }
+    } catch (e) { syms = []; }
+  }
+
+  const includedFundTimelines: Record<string, ProfitPoint[]> = {};
+  const perFundRows: OverallFundRow[] = [];
+
+  for (const sym of syms) {
+    try {
+      const history = await fetchFundHistory(sym);
+      if (!history || history.length === 0) continue;
+
+      // trades from local storage helper
+      const trades = getTradesForSymbol(sym) || [];
+
+      // read stored position config if exists
+      let startDateFromStorage: string | null = null;
+      let initialPosition = 0;
+      let initialPrice: number | null = null;
+      try {
+        const key = `fund_position_${sym}`;
+        const raw = localStorage.getItem(key);
+        if (raw) {
+          const cfg = JSON.parse(raw);
+          if (cfg) {
+            if (typeof cfg.startDate === 'string') startDateFromStorage = cfg.startDate;
+            if (typeof cfg.initialPosition === 'number') initialPosition = Number(cfg.initialPosition) || 0;
+            if (cfg.initialPrice !== undefined) initialPrice = cfg.initialPrice === null ? null : Number(cfg.initialPrice);
+          }
+        }
+      } catch (e) {}
+
+      // determine fund start date (use stored startDate if present, otherwise earliest history date)
+      const earliestHistoryDate = new Date(history[0].date as number).toISOString().split('T')[0];
+      const fundStartDate = startDateFromStorage || earliestHistoryDate;
+
+      // NEW: exclude funds that do not have an explicitly stored startDate
+      if (!startDateFromStorage) {
+        // skip funds without configured startDate; they should not participate in overall aggregation or table
+        continue;
+      }
+
+      // filter inclusion: only include funds whose startDate is within [fromDate, toDate] if fromDate/toDate provided
+      if (toDate && fundStartDate > toDate) continue;
+
+      // Ensure history contains a point at the desired end date so overall aggregation can extend to that date.
+      // Desired end date: user-specified toDate, otherwise today's date (local YYYY-MM-DD).
+      const desiredEndDate = toDate || new Date().toISOString().split('T')[0];
+      // Helper to check whether history already contains a point on desiredEndDate (<= end of day)
+      const hasPointOnDate = (hist: HistoricalPoint[], isoDate: string) => {
+        const end = new Date(isoDate);
+        end.setHours(23, 59, 59, 999);
+        const endTs = end.getTime();
+        return hist.some(h => h.date <= endTs && (new Date(h.date)).toISOString().split('T')[0] === isoDate);
+      };
+
+      let historyToUse = history.slice();
+      try {
+        // Fetch available realtime/valuation (one network call) and, if its dates fall inside the window and are missing in history, append them.
+        try {
+          const fd = await fetchFundData(sym);
+          if (fd) {
+            const candidates: { iso: string; value: number }[] = [];
+            if (fd.netWorthDate && fd.previousPrice !== undefined && fd.previousPrice !== null) candidates.push({ iso: fd.netWorthDate, value: fd.previousPrice });
+            if (fd.realtimeDate && fd.currentPrice !== undefined && fd.currentPrice !== null) candidates.push({ iso: fd.realtimeDate, value: fd.currentPrice });
+            // include desiredEndDate fallback last
+            // for each candidate, if it's within [earliestHistoryDate, desiredEndDate] and not already present, append synthetic point
+            for (const c of candidates) {
+              try {
+                if (c.iso && c.iso >= earliestHistoryDate && c.iso <= desiredEndDate && !hasPointOnDate(historyToUse, c.iso)) {
+                  const ts = new Date(`${c.iso} 15:00`).getTime();
+                  // append if ts greater than last history date
+                  const lastTs = historyToUse.length > 0 ? historyToUse[historyToUse.length - 1].date : 0;
+                  if (ts >= lastTs) historyToUse = [...historyToUse, { date: ts, value: c.value, equityReturn: 0 }];
+                }
+              } catch (inner) { }
+            }
+          }
+        } catch (e) {
+          // ignore fetch errors
+        }
+
+        // Finally, ensure desiredEndDate is represented (existing behavior)
+        if (!hasPointOnDate(historyToUse, desiredEndDate)) {
+          if (historyToUse && historyToUse.length > 0) {
+            const last = historyToUse[historyToUse.length - 1];
+            const chosenValue = last.value || 0;
+            const d = new Date(`${desiredEndDate} 15:00`);
+            const chosenTs = d.getTime();
+            const lastTs = historyToUse.length > 0 ? historyToUse[historyToUse.length - 1].date : 0;
+            if (chosenTs >= lastTs) historyToUse = [...historyToUse, { date: chosenTs, value: chosenValue, equityReturn: 0 }];
+          }
+        }
+      } catch (e) {
+        // ignore any unexpected errors
+      }
+
+      // compute timeline for this fund scoped to requested range (computeProfitTimeline will crop by from/to)
+      const timeline = computeProfitTimeline({ history: historyToUse, trades, initialPosition: initialPosition || 0, initialPrice: initialPrice ?? null, fromDate: fromDate ?? null, toDate: toDate ?? null });
+     if (!timeline || timeline.length === 0) continue;
+
+      includedFundTimelines[sym] = timeline;
+
+      // Determine effective fromDate used by this timeline (computeProfitTimeline may have cropped it)
+      const effectiveFrom = fromDate ?? timeline[0].date;
+      let profitFrom = timeline[0].cumulativeProfit || 0;
+      const profitTo = timeline[timeline.length - 1].cumulativeProfit || 0;
+      // If the fund has a configured startDate (from storage) and it is later than effectiveFrom,
+      // then its cumulative profit at effectiveFrom (date1) should be considered 0 per requirement.
+      // Per latest rule: if startDate >= effectiveFrom (including equal), the cumulative at effectiveFrom is 0.
+      if (startDateFromStorage && effectiveFrom && startDateFromStorage >= effectiveFrom) {
+        profitFrom = 0;
+      }
+
+      // record whether startDate came from storage and the configured initialPosition
+      const hasStoredStartDate = !!startDateFromStorage;
+      const displayName = portfolioArr.find(p => p && p.symbol === sym)?.name || undefined;
+      perFundRows.push({ symbol: sym, name: displayName, startDate: fundStartDate || null, profitFrom, profitTo, profitDiff: Number((profitTo - profitFrom).toFixed(4)), initialPosition: initialPosition || 0, hasStoredStartDate });
+    } catch (e) {
+      // skip failing fund
+      continue;
+    }
+  }
+
+  // Build per-fund date->cumulative maps and collect all dates. Also track per-fund configured start dates.
+  const perFundMaps: Record<string, Record<string, number>> = {};
+  const allDatesSet = new Set<string>();
+  const fundStartDates: Record<string, string | null> = {};
+  for (const pf of perFundRows) {
+    fundStartDates[pf.symbol] = pf.startDate || null;
+  }
+  for (const sym of Object.keys(includedFundTimelines)) {
+    const t = includedFundTimelines[sym];
+    const map: Record<string, number> = {};
+    for (const p of t) {
+      map[p.date] = Number((p.cumulativeProfit || 0).toFixed(4));
+      allDatesSet.add(p.date);
+    }
+    perFundMaps[sym] = map;
+  }
+
+  const dates = Array.from(allDatesSet).sort();
+
+  // build perFundTimelines: ordered arrays of {date, cumulativeProfit} for each fund
+  // Use forward-fill for dates missing in a fund's own timeline: carry the last known cumulative forward.
+  // Still enforce that for dates <= startDate (inclusive) the value is 0.
+  const perFundTimelines: Record<string, { date: string; cumulativeProfit: number }[]> = {};
+  for (const sym of Object.keys(perFundMaps)) {
+    const map = perFundMaps[sym] || {};
+    const start = fundStartDates[sym];
+    const arr: { date: string; cumulativeProfit: number }[] = [];
+    let lastVal: number | null = null;
+    for (const d of dates) {
+      let val: number;
+      if (map[d] !== undefined) {
+        val = map[d];
+        lastVal = val;
+      } else if (lastVal !== null) {
+        val = lastVal; // forward-fill
+      } else {
+        val = 0;
+      }
+      // enforce startDate inclusive rule: dates <= start -> 0
+      if (start && d <= start) {
+        val = 0;
+      }
+      arr.push({ date: d, cumulativeProfit: Number(val.toFixed(4)) });
+    }
+    perFundTimelines[sym] = arr;
+  }
+
+  // compute timelineOut by summing forward-filled perFundTimelines so chart and table agree
+  const timelineOut: { date: string; cumulativeProfit: number; dailyProfit: number }[] = [];
+  let prev = 0;
+  for (let i = 0; i < dates.length; i++) {
+    const d = dates[i];
+    let cumSum = 0;
+    for (const sym of Object.keys(perFundTimelines)) {
+      const arr = perFundTimelines[sym];
+      // find entry for this date (same index corresponds across arr since built on same dates)
+      const entry = arr[i];
+      if (entry && entry.cumulativeProfit !== undefined) cumSum += entry.cumulativeProfit;
+    }
+    const cum = Number(cumSum.toFixed(4));
+    const daily = Number((cum - prev).toFixed(4));
+    timelineOut.push({ date: d, cumulativeProfit: cum, dailyProfit: daily });
+    prev = cum;
+  }
+
+  const totalDiff = timelineOut.length > 0 ? Number((timelineOut[timelineOut.length - 1].cumulativeProfit - (timelineOut[0].cumulativeProfit || 0)).toFixed(4)) : 0;
+
+  return { timeline: timelineOut, perFund: perFundRows, perFundTimelines, totalDiff };
 }

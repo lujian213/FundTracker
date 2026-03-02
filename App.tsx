@@ -7,6 +7,7 @@ import { ConfirmDialog } from './components/ConfirmDialog';
 import { FundDetailsModal } from './components/FundDetailsModal';
 import { IndexDetailsModal } from './components/IndexDetailsModal';
 import { MarketNewsTicker } from './components/MarketNewsTicker';
+import OverallProfitModal from './components/OverallProfitModal';
 
 type SortOrder = 'asc' | 'desc';
 
@@ -65,6 +66,7 @@ const App: React.FC = () => {
   const [isModalOpen, setIsModalOpen] = useState<boolean>(false);
   const [isMenuOpen, setIsMenuOpen] = useState<boolean>(false);
   const [isSelectionMode, setIsSelectionMode] = useState<boolean>(false);
+  const [showOverallProfit, setShowOverallProfit] = useState<boolean>(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [backgroundTasks, setBackgroundTasks] = useState<number>(0);
 
@@ -309,6 +311,7 @@ const App: React.FC = () => {
             <div className="flex items-center space-x-2">
               {!isSelectionMode ? (
                 <>
+                  <button onClick={() => setShowOverallProfit(true)} className="px-4 py-1.5 rounded-full bg-blue-600 shadow-md text-[11px] font-bold text-white hover:bg-blue-700 transition-all">盈利</button>
                   <button onClick={() => setIsSelectionMode(true)} className="px-4 py-1.5 rounded-full bg-blue-600 shadow-md text-[11px] font-bold text-white hover:bg-blue-700 transition-all">管理</button>
                   <button onClick={() => setSortOrder(o => o === 'desc' ? 'asc' : 'desc')} className="w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center text-gray-500">
                     <i className={`fas fa-sort-amount-${sortOrder === 'asc' ? 'up' : 'down'}`}></i>
@@ -341,6 +344,7 @@ const App: React.FC = () => {
       )}
 
       {isModalOpen && <AddTickerModal onClose={() => setIsModalOpen(false)} onAdd={async (symbols, type) => { if (type === MarketType.INDEX) { const isGlobal = (s: string) => /[A-Za-z]/.test(s) || /^(100|101|102)\./.test(s); const newDomestic = symbols.filter(s => !isGlobal(s) && !indicesConfig.includes(s)); const newGlobal = symbols.filter(s => isGlobal(s) && !globalIndicesConfig.includes(s)); if (newDomestic.length) setIndicesConfig(p => [...p, ...newDomestic]); if (newGlobal.length) setGlobalIndicesConfig(p => [...p, ...newGlobal]); } else { const existing = new Set(portfolio.map(p => p.symbol)); const news = symbols.filter(s => !existing.has(s)).map(s => ({ id: Math.random().toString(36).substr(2, 9), symbol: s, name: '', market: MarketType.FUND })); if (news.length) { setPortfolio(p => [...p, ...news]); runBatchUpdate(news); } } setIsModalOpen(false); }} isLoading={false} />}
+      {showOverallProfit && <OverallProfitModal onClose={() => setShowOverallProfit(false)} />}
       {viewingSymbol && marketData[viewingSymbol] && <FundDetailsModal data={marketData[viewingSymbol]} onClose={() => setViewingSymbol(null)} />}
       {viewingIndex && <IndexDetailsModal data={viewingIndex} onClose={() => setViewingIndex(null)} />}
       <ConfirmDialog isOpen={!!pendingDelete} title={pendingDelete?.bulk ? "批量删除" : "移除确认"} message={pendingDelete?.bulk ? `确定删除选中的 ${selectedIds.size} 个项目吗？` : `确定移除 "${pendingDelete?.name || pendingDelete?.symbol}" 吗？`} onConfirm={() => { if (pendingDelete?.bulk) { setPortfolio(p => p.filter(t => !selectedIds.has(t.id))); setSelectedIds(new Set()); setIsSelectionMode(false); } else if (pendingDelete?.type === 'index') { setIndicesConfig(p => p.filter(s => s !== pendingDelete.symbol)); } else if (pendingDelete?.type === 'global_index') { setGlobalIndicesConfig(p => p.filter(s => s !== pendingDelete.symbol)); } else if (pendingDelete?.id) { setPortfolio(p => p.filter(t => t.id !== pendingDelete.id)); } setPendingDelete(null); }} onCancel={() => setPendingDelete(null)} />

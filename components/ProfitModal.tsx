@@ -137,6 +137,7 @@ const ProfitModal: React.FC<ProfitModalProps> = ({ symbol, fundName, currentPric
     if (fromDate && initialStartDate && fromDate === initialStartDate) {
       if (dedup.length > 0 && dedup[0].date === fromDate) {
         dedup[0].dailyProfit = 0;
+        dedup[0].cumulativeProfit = 0; // ensure cumulative is 0 on start date per inclusive rule
       }
     }
     return dedup;

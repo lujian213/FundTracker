@@ -1,4 +1,3 @@
-
 export enum MarketType {
   FUND = 'Fund',
   INDEX = 'Index'
@@ -42,4 +41,31 @@ export interface HistoricalPoint {
 export interface FundHistory {
   netWorthTrend: HistoricalPoint[];
   accumulatedTrend: any[];
+}
+
+// New: types for overall profit aggregation
+export interface OverallProfitPoint {
+  date: string; // YYYY-MM-DD
+  cumulativeProfit: number; // sum of per-fund cumulative profits on this date
+  dailyProfit: number; // daily change of cumulativeProfit
+}
+
+export interface OverallFundRow {
+  symbol: string;
+  name?: string;
+  startDate: string | null;
+  profitFrom: number; // cumulative at start
+  profitTo: number; // cumulative at end
+  profitDiff: number; // profitTo - profitFrom
+  // added: configured initial position and flag whether startDate came from storage
+  initialPosition?: number;
+  hasStoredStartDate?: boolean;
+}
+
+export interface OverallProfitSummary {
+  timeline: OverallProfitPoint[];
+  perFund: OverallFundRow[];
+  // per-fund time series used to build table and for efficient filtering without recomputation
+  perFundTimelines?: Record<string, { date: string; cumulativeProfit: number }[]>;
+  totalDiff: number;
 }
