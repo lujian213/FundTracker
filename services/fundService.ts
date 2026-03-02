@@ -552,7 +552,7 @@ export async function fetchMarketNews(): Promise<{ id: string, title: string, ti
 export async function computeOverallProfit(opts: { symbols?: string[]; fromDate?: string | null; toDate?: string | null }): Promise<OverallProfitSummary> {
    const { symbols, fromDate, toDate } = opts || {};
 
-  // if no symbols provided, try read portfolio from localStorage (same key used in App.tsx)
+ // if no symbols provided, try read portfolio from localStorage (same key used in App.tsx)
   let syms: string[] = [];
   let portfolioArr: any[] = [];
   if (Array.isArray(symbols) && symbols.length > 0) syms = symbols;
@@ -566,6 +566,7 @@ export async function computeOverallProfit(opts: { symbols?: string[]; fromDate?
       }
     } catch (e) { syms = []; }
   }
+
 
   const includedFundTimelines: Record<string, ProfitPoint[]> = {};
   const perFundRows: OverallFundRow[] = [];
