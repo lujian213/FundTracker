@@ -9,6 +9,7 @@ interface Props {
   portfolio: Ticker[];
   marketData: Record<string, ValuationData>;
   onClose: () => void;
+  onSelectFund?: (symbol: string) => void;
 }
 
 // Parse a local YYYY-MM-DD string into a local Date (midnight)
@@ -35,11 +36,10 @@ function formatNum(v: number): React.ReactNode {
   return <span>{fmt.format(v)}</span>;
 }
 
-const TransactionsModal: React.FC<Props> = ({ portfolio, marketData, onClose }) => {
+const TransactionsModal: React.FC<Props> = ({ portfolio, marketData, onClose, onSelectFund }) => {
   const [tradeDateStrs, setTradeDateStrs] = useState<string[]>([]);
   const [selectedDateStr, setSelectedDateStr] = useState<string | null>(null);
   const [pickerOpen, setPickerOpen] = useState(false);
-  // month shown in DayPicker
   const [pickerMonth, setPickerMonth] = useState<Date>(new Date());
 
   // Load trade dates on mount (fresh read each time modal opens)
@@ -214,7 +214,17 @@ const TransactionsModal: React.FC<Props> = ({ portfolio, marketData, onClose }) 
                         return (
                           <tr key={i} className="border-b border-gray-50 hover:bg-gray-50 transition-colors">
                             <td className="px-3 py-2 text-left">
-                              <span className="block truncate text-xs text-gray-700" title={label}>{label}</span>
+                              {onSelectFund ? (
+                                <button
+                                  className="block truncate text-xs text-left w-full hover:text-blue-600 transition-colors"
+                                  title={label}
+                                  onClick={() => { onSelectFund(r.symbol); onClose(); }}
+                                >
+                                  {label}
+                                </button>
+                              ) : (
+                                <span className="block truncate text-xs text-gray-700" title={label}>{label}</span>
+                              )}
                             </td>
                             <td className="px-3 py-2 text-left">
                               <span className={`text-xs font-medium ${r.type === 'buy' ? 'text-red-500' : 'text-green-600'}`}>
@@ -258,7 +268,4 @@ const TransactionsModal: React.FC<Props> = ({ portfolio, marketData, onClose }) 
 };
 
 export default TransactionsModal;
-
-
-
 

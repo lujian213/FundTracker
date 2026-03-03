@@ -6,9 +6,10 @@ import { OverallProfitSummary, OverallProfitPoint, OverallFundRow } from '../typ
 interface Props {
   symbols?: string[];
   onClose: () => void;
+  onSelectFund?: (symbol: string) => void;
 }
 
-const OverallProfitModal: React.FC<Props> = ({ symbols, onClose }) => {
+const OverallProfitModal: React.FC<Props> = ({ symbols, onClose, onSelectFund }) => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [summary, setSummary] = useState<OverallProfitSummary | null>(null);
@@ -257,7 +258,19 @@ const OverallProfitModal: React.FC<Props> = ({ symbols, onClose }) => {
                       <tbody>
                         {(tableRows || []).map(p => (
                           <tr key={p.symbol} className="border-b border-gray-50 hover:bg-gray-50 transition-colors">
-                            <td className="px-3 py-2 text-left text-xs text-gray-700">{(p.name && p.name.trim()) ? `${p.name} (${String(p.symbol).padStart(6,'0')})` : `(${String(p.symbol).padStart(6,'0')})`}</td>
+                            <td className="px-3 py-2 text-left text-xs text-gray-700">
+                              {onSelectFund ? (
+                                <button
+                                  className="text-left w-full truncate hover:text-blue-600 transition-colors"
+                                  title={`${p.name} (${String(p.symbol).padStart(6,'0')})`}
+                                  onClick={() => { onSelectFund(String(p.symbol)); onClose(); }}
+                                >
+                                  {(p.name && p.name.trim()) ? `${p.name} (${String(p.symbol).padStart(6,'0')})` : `(${String(p.symbol).padStart(6,'0')})`}
+                                </button>
+                              ) : (
+                                (p.name && p.name.trim()) ? `${p.name} (${String(p.symbol).padStart(6,'0')})` : `(${String(p.symbol).padStart(6,'0')})`
+                              )}
+                            </td>
                             <td className="px-3 py-2 text-right text-xs">{(p.profitFrom||0)===0? <span className="text-black">-</span> : <span className={`${(p.profitFrom||0)>0? 'text-red-600':'text-green-600'}`}>{(p.profitFrom||0).toFixed(2)}</span>}</td>
                             <td className="px-3 py-2 text-right text-xs">{(p.profitTo||0)===0? <span className="text-black">-</span> : <span className={`${(p.profitTo||0)>0? 'text-red-600':'text-green-600'}`}>{(p.profitTo||0).toFixed(2)}</span>}</td>
                             <td className="px-3 py-2 text-right text-xs">{moneyCell(p.profitDiff||0)}</td>
