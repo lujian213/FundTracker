@@ -178,12 +178,12 @@ const OverallProfitModal: React.FC<Props> = ({ symbols, onClose }) => {
   const content = (
     <div className="fixed inset-0 z-[130] flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/40" onClick={onClose} />
-      <div className="relative bg-white rounded-2xl w-full max-w-4xl overflow-hidden shadow-2xl animate-in zoom-in-95 duration-200" style={{ maxWidth: '64rem' }} role="dialog" aria-modal="true">
-        <div className="px-6 py-4 border-b border-gray-100 flex justify-between items-center">
+      <div className="relative bg-white rounded-2xl w-full max-w-4xl shadow-2xl animate-in zoom-in-95 duration-200 flex flex-col" style={{ maxWidth: '64rem', maxHeight: '90vh' }} role="dialog" aria-modal="true">
+        <div className="px-6 py-4 border-b border-gray-100 flex justify-between items-center flex-shrink-0">
           <h3 className="text-lg font-bold">整体盈亏</h3>
           <button aria-label="关闭整体盈亏窗口" className="w-8 h-8 rounded-full bg-gray-50 flex items-center justify-center text-gray-400 hover:bg-gray-100" onClick={onClose}><i className="fas fa-times"></i></button>
         </div>
-        <div className="p-6">
+        <div className="p-6 overflow-y-auto flex-1 min-h-0">
           {loading ? (
             <div className="flex flex-col items-center justify-center py-6"><i className="fas fa-circle-notch animate-spin text-red-500 text-3xl" /><p className="text-xs text-gray-400 font-bold uppercase tracking-widest mt-3">正在计算整体盈亏...</p></div>
           ) : error ? (
@@ -236,77 +236,52 @@ const OverallProfitModal: React.FC<Props> = ({ symbols, onClose }) => {
               </div>
 
               <div className="pt-4 border-t">
-                {/* Table header stays visible outside the scroll area */}
-                <div className="w-full">
-                  <table className="w-full text-sm text-left table-fixed">
-                    <colgroup>
-                      <col style={{ width: '50%' }} />
-                      <col style={{ width: '16.6667%' }} />
-                      <col style={{ width: '16.6667%' }} />
-                      <col style={{ width: '16.6667%' }} />
-                    </colgroup>
-                    <thead>
-                      <tr className="text-xs text-gray-500">
-                        <th className="px-3 py-2 bg-white">基金名称（基金代码）</th>
-                        <th className="px-3 py-2 bg-white text-right">日期1累计盈利</th>
-                        <th className="px-3 py-2 bg-white text-right">日期2累计盈利</th>
-                        <th className="px-3 py-2 bg-white text-right">差额</th>
-                      </tr>
-                    </thead>
-                  </table>
-                </div>
-
-                {/* Scrollable body: show up to 10 rows (approx 400px height) */}
-                <div className="overflow-auto" style={{ maxHeight: '400px' }}>
-                  <table className="w-full text-sm text-left table-fixed">
-                    <colgroup>
-                      <col style={{ width: '50%' }} />
-                      <col style={{ width: '16.6667%' }} />
-                      <col style={{ width: '16.6667%' }} />
-                      <col style={{ width: '16.6667%' }} />
-                    </colgroup>
-                    <tbody>
-                      {(() => {
-                        const displayed = tableRows || [];
-                        return displayed.map(p => (
-                          <tr key={p.symbol} className="border-t">
-                            <td className="px-3 py-2 align-top">{(p.name && p.name.trim()) ? `${p.name} (${String(p.symbol).padStart(6,'0')})` : `(${String(p.symbol).padStart(6,'0')})`}</td>
-                            <td className="px-3 py-2 align-top text-right">{(p.profitFrom||0)===0? <span className="text-black">-</span> : <span className={`${(p.profitFrom||0)>0? 'text-red-600':'text-green-600'}`}>{(p.profitFrom||0).toFixed(2)}</span>}</td>
-                            <td className="px-3 py-2 align-top text-right">{(p.profitTo||0)===0? <span className="text-black">-</span> : <span className={`${(p.profitTo||0)>0? 'text-red-600':'text-green-600'}`}>{(p.profitTo||0).toFixed(2)}</span>}</td>
-                            <td className="px-3 py-2 align-top text-right">{moneyCell(p.profitDiff||0)}</td>
+                {/* Single table with sticky thead/tfoot — scrollbar stays inside tbody only */}
+                <div className="border border-gray-100 rounded-xl overflow-hidden">
+                  <div className="overflow-y-auto" style={{ maxHeight: '330px' }}>
+                    <table className="w-full text-sm table-fixed border-collapse">
+                      <colgroup>
+                        <col style={{ width: '50%' }} />
+                        <col style={{ width: '16.6667%' }} />
+                        <col style={{ width: '16.6667%' }} />
+                        <col style={{ width: '16.6667%' }} />
+                      </colgroup>
+                      <thead className="sticky top-0 z-10 bg-gray-50">
+                        <tr className="border-b border-gray-200">
+                          <th className="px-3 py-2 text-left text-xs font-semibold text-gray-500">基金名称（基金代码）</th>
+                          <th className="px-3 py-2 text-right text-xs font-semibold text-gray-500">日期1累计盈利</th>
+                          <th className="px-3 py-2 text-right text-xs font-semibold text-gray-500">日期2累计盈利</th>
+                          <th className="px-3 py-2 text-right text-xs font-semibold text-gray-500">差额</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {(tableRows || []).map(p => (
+                          <tr key={p.symbol} className="border-b border-gray-50 hover:bg-gray-50 transition-colors">
+                            <td className="px-3 py-2 text-left text-xs text-gray-700">{(p.name && p.name.trim()) ? `${p.name} (${String(p.symbol).padStart(6,'0')})` : `(${String(p.symbol).padStart(6,'0')})`}</td>
+                            <td className="px-3 py-2 text-right text-xs">{(p.profitFrom||0)===0? <span className="text-black">-</span> : <span className={`${(p.profitFrom||0)>0? 'text-red-600':'text-green-600'}`}>{(p.profitFrom||0).toFixed(2)}</span>}</td>
+                            <td className="px-3 py-2 text-right text-xs">{(p.profitTo||0)===0? <span className="text-black">-</span> : <span className={`${(p.profitTo||0)>0? 'text-red-600':'text-green-600'}`}>{(p.profitTo||0).toFixed(2)}</span>}</td>
+                            <td className="px-3 py-2 text-right text-xs">{moneyCell(p.profitDiff||0)}</td>
                           </tr>
-                        ));
-                      })()}
-                    </tbody>
-                  </table>
-                </div>
-
-                {/* Totals row stays visible below the scroll area */}
-                <div className="w-full border-t bg-gray-50 font-bold">
-                  <table className="w-full text-sm text-left table-fixed">
-                    <colgroup>
-                      <col style={{ width: '50%' }} />
-                      <col style={{ width: '16.6667%' }} />
-                      <col style={{ width: '16.6667%' }} />
-                      <col style={{ width: '16.6667%' }} />
-                    </colgroup>
-                    <tbody>
-                      {(() => {
-                        const rows = tableRows || [];
-                        const totalFrom = rows.reduce((s, r) => s + (r.profitFrom || 0), 0);
-                        const totalTo = rows.reduce((s, r) => s + (r.profitTo || 0), 0);
-                        const totalDiff = rows.reduce((s, r) => s + (r.profitDiff || 0), 0);
-                        return (
-                          <tr>
-                            <td className="px-3 py-2">总计</td>
-                            <td className="px-3 py-2 text-right">{totalFrom===0? <span className="text-black">-</span> : <span className={`${totalFrom>0? 'text-red-600':'text-green-600'}`}>{totalFrom.toFixed(2)}</span>}</td>
-                            <td className="px-3 py-2 text-right">{totalTo===0? <span className="text-black">-</span> : <span className={`${totalTo>0? 'text-red-600':'text-green-600'}`}>{totalTo.toFixed(2)}</span>}</td>
-                            <td className="px-3 py-2 text-right">{totalDiff===0? <span className="text-black">-</span> : totalDiff>0? <span className="text-red-600">+{totalDiff.toFixed(2)}</span> : <span className="text-green-600">{totalDiff.toFixed(2)}</span>}</td>
-                          </tr>
-                        );
-                      })()}
-                    </tbody>
-                  </table>
+                        ))}
+                      </tbody>
+                      <tfoot className="sticky bottom-0 z-10 bg-gray-50">
+                        {(() => {
+                          const rows = tableRows || [];
+                          const totalFrom = rows.reduce((s, r) => s + (r.profitFrom || 0), 0);
+                          const totalTo = rows.reduce((s, r) => s + (r.profitTo || 0), 0);
+                          const totalDiff = rows.reduce((s, r) => s + (r.profitDiff || 0), 0);
+                          return (
+                            <tr className="border-t border-gray-200">
+                              <td className="px-3 py-2 text-left text-xs font-bold text-gray-700">总计：{rows.length}条记录</td>
+                              <td className="px-3 py-2 text-right text-xs font-bold">{totalFrom===0? <span className="text-black">-</span> : <span className={`${totalFrom>0? 'text-red-600':'text-green-600'}`}>{totalFrom.toFixed(2)}</span>}</td>
+                              <td className="px-3 py-2 text-right text-xs font-bold">{totalTo===0? <span className="text-black">-</span> : <span className={`${totalTo>0? 'text-red-600':'text-green-600'}`}>{totalTo.toFixed(2)}</span>}</td>
+                              <td className="px-3 py-2 text-right text-xs font-bold">{totalDiff===0? <span className="text-black">-</span> : totalDiff>0? <span className="text-red-600">+{totalDiff.toFixed(2)}</span> : <span className="text-green-600">{totalDiff.toFixed(2)}</span>}</td>
+                            </tr>
+                          );
+                        })()}
+                      </tfoot>
+                    </table>
+                  </div>
                 </div>
               </div>
             </div>

@@ -111,13 +111,13 @@ const TransactionsModal: React.FC<Props> = ({ portfolio, marketData, onClose }) 
     <div className="fixed inset-0 z-[130] flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/40" onClick={onClose} />
       <div
-        className="relative bg-white rounded-2xl w-full max-w-2xl shadow-2xl animate-in zoom-in-95 duration-200 overflow-hidden"
-        style={{ minHeight: '520px' }}
+        className="relative bg-white rounded-2xl w-full max-w-2xl shadow-2xl animate-in zoom-in-95 duration-200 flex flex-col"
+        style={{ maxHeight: '90vh' }}
         role="dialog"
         aria-modal="true"
       >
         {/* Header */}
-        <div className="px-6 py-4 border-b border-gray-100 flex justify-between items-center">
+        <div className="px-6 py-4 border-b border-gray-100 flex justify-between items-center flex-shrink-0">
           <h3 className="text-lg font-bold">基金交易明细</h3>
           <button
             aria-label="关闭"
@@ -128,7 +128,7 @@ const TransactionsModal: React.FC<Props> = ({ portfolio, marketData, onClose }) 
           </button>
         </div>
 
-        <div className="p-6">
+        <div className="p-6 overflow-y-auto flex-1 min-h-0">
           {/* Date picker button */}
           <div className="mb-4 relative">
             <button
@@ -182,10 +182,9 @@ const TransactionsModal: React.FC<Props> = ({ portfolio, marketData, onClose }) 
           {hasNoTrades ? (
             <div className="py-12 text-center text-sm text-gray-400">无任何交易存在</div>
           ) : (
-            <div>
-              {/* Fixed thead */}
-              <div className="w-full">
-                <table className="w-full text-sm text-left table-fixed">
+            <div className="border border-gray-100 rounded-xl overflow-hidden">
+              <div className="overflow-y-auto" style={{ maxHeight: '330px' }}>
+                <table className="w-full text-sm table-fixed border-collapse">
                   <colgroup>
                     <col style={{ width: '30%' }} />
                     <col style={{ width: '10%' }} />
@@ -193,28 +192,15 @@ const TransactionsModal: React.FC<Props> = ({ portfolio, marketData, onClose }) 
                     <col style={{ width: '15%' }} />
                     <col style={{ width: '32%' }} />
                   </colgroup>
-                  <thead>
-                    <tr className="text-xs text-gray-500 bg-white">
-                      <th className="px-3 py-2 font-medium">基金名称</th>
-                      <th className="px-3 py-2 font-medium">类型</th>
-                      <th className="px-3 py-2 font-medium text-right">份额</th>
-                      <th className="px-3 py-2 font-medium text-right">手续费</th>
-                      <th className="px-3 py-2 font-medium text-right">交易总额</th>
+                  <thead className="sticky top-0 z-10 bg-gray-50">
+                    <tr className="border-b border-gray-200">
+                      <th className="px-3 py-2 text-left text-xs font-semibold text-gray-500">基金名称</th>
+                      <th className="px-3 py-2 text-left text-xs font-semibold text-gray-500">类型</th>
+                      <th className="px-3 py-2 text-right text-xs font-semibold text-gray-500">份额</th>
+                      <th className="px-3 py-2 text-right text-xs font-semibold text-gray-500">手续费</th>
+                      <th className="px-3 py-2 text-right text-xs font-semibold text-gray-500">交易总额</th>
                     </tr>
                   </thead>
-                </table>
-              </div>
-
-              {/* Scrollable tbody */}
-              <div className="overflow-y-auto border-t border-gray-100" style={{ maxHeight: '400px' }}>
-                <table className="w-full text-sm text-left table-fixed">
-                  <colgroup>
-                    <col style={{ width: '30%' }} />
-                    <col style={{ width: '10%' }} />
-                    <col style={{ width: '13%' }} />
-                    <col style={{ width: '15%' }} />
-                    <col style={{ width: '32%' }} />
-                  </colgroup>
                   <tbody>
                     {rows.length === 0 ? (
                       <tr>
@@ -226,57 +212,39 @@ const TransactionsModal: React.FC<Props> = ({ portfolio, marketData, onClose }) 
                       rows.map((r, i) => {
                         const label = r.name ? `${r.name}（${r.symbol}）` : `（${r.symbol}）`;
                         return (
-                          <tr key={i} className="border-t border-gray-50 hover:bg-gray-50/60">
-                            <td className="px-3 py-2">
-                              <span
-                                className="block truncate text-xs"
-                                title={label}
-                              >
-                                {label}
-                              </span>
+                          <tr key={i} className="border-b border-gray-50 hover:bg-gray-50 transition-colors">
+                            <td className="px-3 py-2 text-left">
+                              <span className="block truncate text-xs text-gray-700" title={label}>{label}</span>
                             </td>
-                            <td className="px-3 py-2">
+                            <td className="px-3 py-2 text-left">
                               <span className={`text-xs font-medium ${r.type === 'buy' ? 'text-red-500' : 'text-green-600'}`}>
                                 {r.type === 'buy' ? '买入' : '卖出'}
                               </span>
                             </td>
-                            <td className="px-3 py-2 text-right text-xs">{formatNum(r.shares)}</td>
-                            <td className="px-3 py-2 text-right text-xs">{formatNum(r.fee)}</td>
-                            <td className="px-3 py-2 text-right text-xs">{formatNum(r.total)}</td>
+                            <td className="px-3 py-2 text-right text-xs text-gray-700">{formatNum(r.shares)}</td>
+                            <td className="px-3 py-2 text-right text-xs text-gray-700">{formatNum(r.fee)}</td>
+                            <td className="px-3 py-2 text-right text-xs text-gray-700">{formatNum(r.total)}</td>
                           </tr>
                         );
                       })
                     )}
                   </tbody>
-                </table>
-              </div>
-
-              {/* Fixed tfoot / totals row */}
-              <div className="border-t border-gray-200 bg-gray-50">
-                <table className="w-full text-sm text-left table-fixed">
-                  <colgroup>
-                    <col style={{ width: '30%' }} />
-                    <col style={{ width: '10%' }} />
-                    <col style={{ width: '13%' }} />
-                    <col style={{ width: '15%' }} />
-                    <col style={{ width: '32%' }} />
-                  </colgroup>
-                  <tbody>
-                    <tr className="font-semibold text-xs">
-                      <td className="px-3 py-2">总计：{rows.length} 条记录</td>
+                  <tfoot className="sticky bottom-0 z-10 bg-gray-50">
+                    <tr className="border-t border-gray-200">
+                      <td className="px-3 py-2 text-left text-xs font-bold text-gray-700">总计：{rows.length} 条记录</td>
                       <td className="px-3 py-2" />
                       <td className="px-3 py-2" />
-                      <td className="px-3 py-2 text-right">{formatNum(totalFee)}</td>
-                      <td className="px-3 py-2 text-right">
+                      <td className="px-3 py-2 text-right text-xs font-bold text-gray-700">{formatNum(totalFee)}</td>
+                      <td className="px-3 py-2 text-right text-xs font-bold text-gray-700">
                         {totalNet === 0
                           ? <span className="text-black">-</span>
                           : totalNet > 0
-                            ? <span className="text-right">{fmt.format(totalNet)}（入账）</span>
-                            : <span className="text-right">{fmt.format(Math.abs(totalNet))}（出账）</span>
+                            ? <span>{fmt.format(totalNet)}（入账）</span>
+                            : <span>{fmt.format(Math.abs(totalNet))}（出账）</span>
                         }
                       </td>
                     </tr>
-                  </tbody>
+                  </tfoot>
                 </table>
               </div>
             </div>
