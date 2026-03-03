@@ -102,6 +102,8 @@ const OverallProfitModal: React.FC<Props> = ({ symbols, onClose, onSelectFund })
   // Table data built from precomputed perFundTimelines in summary
   const [tableRows, setTableRows] = useState<OverallFundRow[]>([]);
   const [tableError, setTableError] = useState<string | null>(null);
+  // 差额列排序：none → desc → asc → none
+  const [diffSort, setDiffSort] = useState<'none' | 'asc' | 'desc'>('none');
 
   // periodTotal reflects the full chart window (first to last point in the overall timeline), not the date1/date2 table range
   const periodTotal = useMemo(() => {
@@ -175,6 +177,14 @@ const OverallProfitModal: React.FC<Props> = ({ symbols, onClose, onSelectFund })
     // filter out funds whose startDate is not earlier than toDate (i.e., startDate >= toDate excluded)
     setTableRows(rows.filter(r => !!r.startDate && r.startDate < toDate));
   }, [summary, fromDate, toDate]);
+
+  // 按差额排序后的展示行
+  const displayedRows = useMemo(() => {
+    if (diffSort === 'none') return tableRows;
+    return [...tableRows].sort((a, b) =>
+      diffSort === 'desc' ? (b.profitDiff || 0) - (a.profitDiff || 0) : (a.profitDiff || 0) - (b.profitDiff || 0)
+    );
+  }, [tableRows, diffSort]);
 
   const content = (
     <div className="fixed inset-0 z-[130] flex items-center justify-center p-4">
@@ -252,11 +262,24 @@ const OverallProfitModal: React.FC<Props> = ({ symbols, onClose, onSelectFund })
                           <th className="px-3 py-2 text-left text-xs font-semibold text-gray-500">基金名称（基金代码）</th>
                           <th className="px-3 py-2 text-right text-xs font-semibold text-gray-500">日期1累计盈利</th>
                           <th className="px-3 py-2 text-right text-xs font-semibold text-gray-500">日期2累计盈利</th>
-                          <th className="px-3 py-2 text-right text-xs font-semibold text-gray-500">差额</th>
+                          <th className="px-3 py-2 text-right text-xs font-semibold text-gray-500">
+                            <button
+                              className="inline-flex items-center gap-1 hover:text-gray-700 transition-colors select-none"
+                              onClick={() => setDiffSort(s => s === 'none' ? 'desc' : s === 'desc' ? 'asc' : 'none')}
+                              title="点击切换排序"
+                            >
+                              差额
+                              <span className="text-gray-400">
+                                {diffSort === 'none' && <i className="fas fa-sort" />}
+                                {diffSort === 'desc' && <i className="fas fa-sort-down text-blue-500" />}
+                                {diffSort === 'asc'  && <i className="fas fa-sort-up text-blue-500" />}
+                              </span>
+                            </button>
+                          </th>
                         </tr>
                       </thead>
                       <tbody>
-                        {(tableRows || []).map(p => (
+                        {displayedRows.map(p => (
                           <tr key={p.symbol} className="border-b border-gray-50 hover:bg-gray-50 transition-colors">
                             <td className="px-3 py-2 text-left text-xs text-gray-700">
                               {onSelectFund ? (
