@@ -1,6 +1,6 @@
 # FundTracker — 产品需求文档 (PRD)
 
-版本：1.2
+版本：1.3
 最后更新：2026-03-03
 
 ---
@@ -24,8 +24,9 @@
 - 详情弹窗：`FundDetailsModal` / `IndexDetailsModal`（历史曲线 + SMA）
 - 交易管理弹窗：`TradeManager`（新增/编辑/删除/分页/导入/导出）
 - 交易明细弹窗：`TransactionsModal`（按日期展示所有基金当日交易汇总，含统计行）
+- 持仓弹窗：`PositionsModal`（持仓市场价值饼图 + 持仓表格，含空状态）
 - 本地持久化：portfolio/indices 与 trades 存于 localStorage
-- 单元测试：服务层（fundService）和关键组件（AddTickerModal、TickerCard、ConfirmDialog、TradeManager、TransactionsModal）
+- 单元测试：服务层（fundService）和关键组件（AddTickerModal、TickerCard、ConfirmDialog、TradeManager、TransactionsModal、PositionsModal）
 
 关键确认（已由产品在 2026-02-16 确认）
 - 均线默认可视：显示 SMA5、SMA10、SMA20（即 DEFAULT_VISIBLE_MAS = [5,10,20]）。
@@ -80,6 +81,21 @@
 - 工具函数（`hooks/useTrades.ts` 导出）
   - `readAll(): Record<string, TradeRecord[]>`：直接读取并返回 `fund_trades` 中所有 symbol 的交易数组；JSON 损坏时安全返回 `{}`
   - `getAllTradeDates(): string[]`：遍历所有 symbol 的所有 `TradeRecord.date`（本身为 local `YYYY-MM-DD`），去重后降序排列返回；无交易时返回 `[]`
+
+- 持仓配置（localStorage）
+  - 存储 key：`fund_position_${symbol}`（每只基金独立一条）
+  - 存储结构（JSON）：`{ fullCapacity: number, initialPosition: number, startDate: string | null, initialPrice: number | null }`
+  - `fullCapacity > 0` 表示该基金已配置持仓，否则不参与持仓计算
+  - 当前份额计算：`currentShares = initialPosition + Σ buyShares − Σ sellShares`（基于 `fund_trades` 中该 symbol 的全部交易）
+
+- 持仓工具函数（`utils/positionHelper.ts` 导出）
+  - `PositionEntry { symbol, name, currentShares, marketValue, ratio, color }`
+  - `POSITION_COLORS: string[]`：32 色调色板，采用黄金角（≈137.5°）色相跳跃 + 两档亮度（48%/62%）交替，确保相邻颜色视觉差异最大；超出 32 只基金时循环复用
+  - `computePositions(portfolio, marketData): { entries: PositionEntry[], totalMarketValue: number }`：
+    - 仅纳入 `fullCapacity > 0` 且 `currentShares > 0` 的基金
+    - 市场价值 = `currentShares × currentPrice`；若 `currentPrice = 0` 则回退到 `previousPrice`
+    - 无 marketData 或价格仍为 0 时排除该基金
+    - 结果按市场价值降序排列，`ratio` 为占总市场价值比例（0~1），`color` 按索引从 `POSITION_COLORS` 分配
 
 服务层（`services/fundService.ts`）行为约定
 - `fetchFundData(symbol: string): Promise<ValuationData | null>`
@@ -142,6 +158,42 @@ UI / 视觉与交互规范（可直接实现）
     - 第五列：净额 = 卖出总额之和 − 买入总额之和；净额 > 0 → `{千分位}（入账）`；净额 < 0 → `{|净额|千分位}（出账）`；净额 = 0 → 黑色 `"-"`
   - 列宽（table-fixed）：基金名称 30%、类型 10%、份额 13%、手续费 15%、交易总额 32%
 
+- PositionsModal（基金持仓）
+  - 入口：主界面"持仓"按钮，位于"盈利"按钮左侧（同款样式：`px-4 py-1.5 rounded-full bg-blue-600 shadow-md text-[11px] font-bold text-white`）
+  - 弹窗：`createPortal` + 半透明遮罩（`bg-black/40`），`z-[130]`，`max-w-[56rem]`，`maxHeight: 90vh`，样式与 `OverallProfitModal` 一致
+  - 数据来源：调用 `computePositions(portfolio, marketData)`（`utils/positionHelper.ts`），仅纳入 `fullCapacity > 0 && currentShares > 0` 的基金
+  - 弹窗布局（从上到下，内容区不产生外层滚动条）：
+    1. 顶部 header（固定）：标题"基金持仓" + 关闭按钮
+    2. 汇总行（flex-shrink-0）：`n只基金 · 市场总价值：x,xxx.xx元`
+    3. 饼图区（flex-shrink-0）：饼图 + 图例（图例独立滚动，高度与饼图等高）
+    4. 持仓表格（flex-1 min-h-0）：单张表，thead/tfoot `sticky`，tbody 独立滚动
+  - 饼图规格：
+    - 纯 SVG 实现（无外部图表库），直径 220px，从 12 点钟方向起始，顺时针绘制
+    - 每个扇区颜色来自 `POSITION_COLORS[index]`，`stroke="white" strokeWidth=2` 分隔
+    - Hover 扇区：非 hover 扇区 `opacity=0.55`（CSS transition 0.15s），hover 扇区保持 `opacity=1`；SVG 中心区域显示该基金占比（如 `38.50%`）和市场价值（如 `1,234.56元`）
+    - 点击扇区：触发 `onSelectFund(symbol)`，关闭持仓弹窗并打开对应 `FundDetailsModal`（与手动点击 TickerCard 路径一致）
+    - 每个扇区内含 `<title>` 标签供浏览器默认 tooltip 使用（格式：`基金名称（代码）\n市场价值：x,xxx.xx元\n占比：xx.xx%`）
+    - 无持仓数据时，饼图区域显示居中灰色圆形占位"无持仓数据"
+  - 图例规格：
+    - 位于饼图右侧，`max-height=220px`，`overflow-y: auto`
+    - 每行：`● 基金名称（基金代码）`，单行截断（`truncate`）+ `title` 完整内容
+    - 点击某行：触发 `onSelectFund(symbol)`
+    - Hover 图例行：联动饼图（对应扇区高亮，其余半透明），`opacity` 与扇区 hover 逻辑相同
+  - 持仓表格规格：
+    - 单张表（thead + tbody + tfoot 同属一个 `<table>`），外层 `overflow-y: auto` 容器
+    - `thead` 加 `sticky top-0 z-10 bg-gray-50`，`tfoot` 加 `sticky bottom-0 z-10 bg-gray-50`
+    - 四列（列宽：基金名称 42%、持仓份额 18%、市场价值 24%、占比 16%）
+    - 表头对齐：与所在列内容对齐一致（基金名称列左对齐，其余三列右对齐）
+    - 第一列（基金名称）：`基金名称（基金代码）` 格式，单行截断 + `title`，左对齐；色块（8×8px）+ 文字；点击触发 `onSelectFund`
+    - 第二列（持仓份额）：右对齐，千分位两位小数
+    - 第三列（市场价值）：右对齐，千分位两位小数
+    - 第四列（占比）：右对齐，百分比两位小数（如 `38.50%`）
+    - 记录按市场价值降序排列
+    - tbody 最多同屏显示约 10 行（通过 `flex-1 min-h-0 overflow-y-auto` 自适应剩余高度）
+    - tfoot 统计行：第一列"总计：n条记录"、第二列空、第三列总市场价值（千分位两位小数）、第四列"100%"
+  - 空状态：无任何持仓时，饼图区、图例区各显示"无持仓数据"文字，表格区域不渲染，底部另有居中空状态提示（图标 + "无持仓数据" + "请先在基金详情页配置仓位信息"）
+  - onSelectFund 实现：`setShowPositions(false)` + `setViewingSymbol(sym)`，复用 `App.tsx` 已有逻辑，与手动点击 TickerCard 路径完全一致
+
 - 交易记录行高度规范（界面上合理展示多条记录）
   - 目标：每条记录视觉上尽量控制在两行文字内。实现建议：
     - 使用较小字体（text-xs / text-[11px]）、减小垂直内边距（px-2 py-1）
@@ -177,6 +229,18 @@ UI / 视觉与交互规范（可直接实现）
   - 统计行：条数正确、手续费合计正确、净额（入账/出账）正确；净额 = 0 显示黑色 `"-"`
   - 切换日期后表格内容正确更新
   - 0 值全部显示黑色 `"-"`；数值千分位两位小数
+- 持仓弹窗（PositionsModal）：
+  - 无持仓配置（fullCapacity = 0）或持仓净份额为 0 的基金不纳入计算
+  - 无满足条件的基金时，饼图区和图例区各显示"无持仓数据"，底部显示空状态提示，不渲染表格
+  - 汇总行：基金数量正确（n只基金），总市场价值千分位两位小数
+  - 市场价值优先使用 `currentPrice`，`currentPrice=0` 时回退到 `previousPrice`，仍为 0 时排除该基金
+  - 当前份额 = `initialPosition + Σbuy - Σsell`（含所有历史交易记录）
+  - 饼图：扇区数量 = 持仓基金数，各扇区颜色与图例一致；hover 联动（扇区高亮、中心显示占比和市场价值）；点击扇区跳转到对应 `FundDetailsModal`
+  - 图例：点击触发 `onSelectFund`；hover 联动饼图扇区高亮
+  - 表格：记录按市场价值降序；份额保留两位小数；统计行"总计：n条记录"、总市场价值、"100%"
+  - 表头对齐与内容对齐一致（名称列左对齐，数值列右对齐）；thead/tfoot sticky，tbody 独立滚动
+  - 点击表格基金名称列触发 `onSelectFund`，关闭持仓弹窗并打开 `FundDetailsModal`
+  - 调色板：32 色，超出 32 只基金时循环复用
 - 风险评级：在给定历史/当前价样例中输出预期 rating 与 reasons（单元测试覆盖）
 - UI 视觉：交易记录在常见桌面宽度下保持不超过两行显示（或使用多行截断展示两行）
 
@@ -186,9 +250,11 @@ UI / 视觉与交互规范（可直接实现）
   - `tests/utils/movingAverage.test.ts` 与 `tests/utils/riskTooltip.test.ts`：均线算法与交叉检测
   - `tests/hooks/useTrades.test.ts`：localStorage 读写、导入覆盖、导出格式、CustomEvent 与 storage 同步
   - `tests/hooks/getAllTradeDates.test.ts`：`getAllTradeDates` 去重、降序、跨 symbol 合并；`readAll` 正常/损坏 JSON 容错
+  - `tests/utils/positionHelper.test.ts`：`computePositions` 的过滤逻辑（fullCapacity=0、净份额=0、无 marketData）、市场价值计算（currentPrice 优先/previousPrice 回退）、份额累加（含买卖交易）、排序（降序）、ratio 总和为 1、颜色分配与循环复用；`POSITION_COLORS` 数量（32）与格式（hsl 字符串）
 - 组件/集成测试（Medium）
   - `tests/components/AddTickerModal.test.tsx`、`TickerCard.test.tsx`、`ConfirmDialog.test.tsx`、`TradeManager.test.tsx`：交互路径、表单校验、导入导出、分页
   - `tests/components/TransactionsModal.test.tsx`：无交易状态、默认日期、五列表头、基金名称来源、买入/卖出标签、统计行（条数/净额/出入账/零值）、日期切换、零值显示、关闭按钮
+  - `tests/components/PositionsModal.test.tsx`：空状态（无持仓配置、净份额为 0）、汇总行（基金数/总市值）、表格行数与排序、统计行（条数/总价值/"100%"）、交易记录影响份额、SVG 扇区数量、关闭按钮（按钮 + 遮罩）、`onSelectFund` 回调（表格 + 图例点击）
 - 手工/视觉回归
   - 检查 TradeManager 中记录展示在常见窗口尺寸下不超出两行
 
@@ -209,6 +275,12 @@ CI 与发布
 - [x] 安装 `react-day-picker@^8.x` 并在入口引入 CSS
 - [x] 新增测试：`tests/hooks/getAllTradeDates.test.ts`（7 用例）
 - [x] 新增测试：`tests/components/TransactionsModal.test.tsx`（16 用例）
+- [x] 实现 `utils/positionHelper.ts`（`computePositions`、`POSITION_COLORS`）
+- [x] 实现 `components/PositionsModal.tsx`（饼图 + 图例 + 表格，含空状态）
+- [x] 在 `App.tsx` 集成"持仓"按钮与 `PositionsModal` 渲染
+- [x] 在 `index.html` 补充 `.no-scrollbar` 全局 CSS 工具类
+- [x] 新增测试：`tests/utils/positionHelper.test.ts`（15 用例）
+- [x] 新增测试：`tests/components/PositionsModal.test.tsx`（13 用例）
 - [ ] 为 `TradeManager` 添加导入前确认弹窗（若需要，我可以立即实现并添加测试）
 - [ ] 在 tests/ 中补充 `hooks/useTrades.test.ts`、`TradeManager.test.tsx`、`utils/riskTooltip.test.ts`（优先级按上）
 - [ ] 在 CI workflow 中加入 `npm test` 步骤（如需我可以提交 workflow 修改建议）
@@ -217,6 +289,7 @@ CI 与发布
 - 2026-02-11 v1.0：初始 PRD
 - 2026-02-16 v1.1：整合实现对照、产品确认项（均线默认 5/10/20、导入覆盖、local day-end 回溯等）并生成可执行的开发任务清单
 - 2026-03-03 v1.2：新增基金交易明细功能（TransactionsModal）：主界面"交易"按钮、日期选择器（react-day-picker、仅允许有交易日期、日历标注）、五列交易明细表、统计行（条数/手续费合计/净额入出账）；导出 `readAll` 与 `getAllTradeDates`；新增测试 23 个用例
+- 2026-03-03 v1.3：新增基金持仓功能（PositionsModal）：主界面"持仓"按钮（位于"盈利"左侧）、`computePositions` 工具函数、32 色黄金角调色板（`POSITION_COLORS`）、纯 SVG 饼图（含 hover 联动）、持仓表格（单张表 sticky thead/tfoot）、空状态；持仓配置数据模型补充至 PRD；新增测试 28 个用例（positionHelper 15 + PositionsModal 13）
 
 ---
 
