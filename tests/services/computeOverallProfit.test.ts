@@ -97,8 +97,15 @@ describe('computeOverallProfit', () => {
 
     // Dates in overall timeline
     const dates = result.timeline.map((t: any) => t.date);
-    // computeOverallProfit appends a point for the desired end date (today 2026-03-02) when toDate not provided
-    expect(dates).toEqual(['2026-02-12', '2026-02-13', '2026-03-02']);
+    // computeOverallProfit appends a point for the desired end date (today, local) when toDate not provided
+    const todayLocal = (() => {
+      const d = new Date();
+      const y = d.getFullYear();
+      const m = String(d.getMonth() + 1).padStart(2, '0');
+      const day = String(d.getDate()).padStart(2, '0');
+      return `${y}-${m}-${day}`;
+    })();
+    expect(dates).toEqual(['2026-02-12', '2026-02-13', todayLocal]);
 
     // Compute per-fund expected timelines via computeProfitTimeline then forward-fill and apply start-date zeroing
     const aTimeline = computeProfitTimeline({ history: [

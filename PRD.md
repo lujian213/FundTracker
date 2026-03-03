@@ -1,7 +1,7 @@
 # FundTracker — 产品需求文档 (PRD)
 
-版本：1.1
-最后更新：2026-02-16
+版本：1.2
+最后更新：2026-03-03
 
 ---
 
@@ -23,8 +23,9 @@
 - 添加弹窗：`AddTickerModal`（支持批量输入、验证）
 - 详情弹窗：`FundDetailsModal` / `IndexDetailsModal`（历史曲线 + SMA）
 - 交易管理弹窗：`TradeManager`（新增/编辑/删除/分页/导入/导出）
+- 交易明细弹窗：`TransactionsModal`（按日期展示所有基金当日交易汇总，含统计行）
 - 本地持久化：portfolio/indices 与 trades 存于 localStorage
-- 单元测试：服务层（fundService）和关键组件（AddTickerModal、TickerCard、ConfirmDialog、TradeManager）
+- 单元测试：服务层（fundService）和关键组件（AddTickerModal、TickerCard、ConfirmDialog、TradeManager、TransactionsModal）
 
 关键确认（已由产品在 2026-02-16 确认）
 - 均线默认可视：显示 SMA5、SMA10、SMA20（即 DEFAULT_VISIBLE_MAS = [5,10,20]）。
@@ -76,6 +77,10 @@
   - 在写入 localStorage 后触发 `CustomEvent('fund-trades-changed', { detail: { time: Date.now() } })`（用于同窗口刷新）
   - 同时监听 `storage` 事件以支持跨 tab 同步
 
+- 工具函数（`hooks/useTrades.ts` 导出）
+  - `readAll(): Record<string, TradeRecord[]>`：直接读取并返回 `fund_trades` 中所有 symbol 的交易数组；JSON 损坏时安全返回 `{}`
+  - `getAllTradeDates(): string[]`：遍历所有 symbol 的所有 `TradeRecord.date`（本身为 local `YYYY-MM-DD`），去重后降序排列返回；无交易时返回 `[]`
+
 服务层（`services/fundService.ts`）行为约定
 - `fetchFundData(symbol: string): Promise<ValuationData | null>`
   - 内部对 symbol 执行 `padStart(6,'0')` 后构建请求（JSONP 专用）。
@@ -111,6 +116,32 @@ UI / 视觉与交互规范（可直接实现）
   - 导入：覆盖策略；导入前弹出确认（提示备份/导出现有数据），确认后覆盖并触发 UI 刷新事件
   - 导出：导出 JSON / CSV（含动态计算的 total）
 
+- TransactionsModal（基金交易明细）
+  - 入口：主界面"盈利"按钮旁的"交易"按钮（同款样式：`px-4 py-1.5 rounded-full bg-blue-600 shadow-md text-[11px] font-bold text-white`）
+  - 弹窗：`createPortal` + 半透明遮罩，`z-[130]`，`max-w-2xl`，`minHeight: 520px`（确保日历下拉不被遮挡），样式与 `OverallProfitModal` 一致
+  - 日期选择器（顶部）：
+    - 使用 `react-day-picker@^8.x`（内联嵌入 Modal，不额外 portal）
+    - 默认值：`getAllTradeDates()[0]`（最近有交易记录的 local 日期）；无任何交易时按钮 disabled
+    - 有交易的日期在日历上**加粗+蓝色下划线**标注（`modifiers={{ hasTrack }}`）
+    - 仅允许选择有交易记录的日期（无交易日期 disabled）
+    - 选择日期后日历收起，表格内容动态更新
+    - 无任何交易时，日历区域不显示，表格区域显示"无任何交易存在"
+  - 表格（五列）：
+    - 第一列"基金名称"：`名称（代码）` 格式，单行截断（`truncate`）+ `title` tooltip 显示完整内容；名称优先取 `marketData[symbol].name`，兜底用 `portfolio` 中的 `Ticker.name`
+    - 第二列"类型"：买入（红色）/ 卖出（绿色）
+    - 第三列"份额"：右对齐，千分位两位小数
+    - 第四列"手续费"：右对齐，千分位两位小数
+    - 第五列"交易总额"：右对齐，千分位两位小数；计算口径与 `TradeManager` 一致（买入 = `price × shares + fee`，卖出 = `price × shares − fee`）
+    - 0 值全部显示黑色 `"-"`
+    - 结构：外层固定 thead + `max-height: 400px` 滚动 tbody + 外层固定 tfoot 统计行（三段式，与 `OverallProfitModal` 相同）
+    - 选定日期无交易时 tbody 显示"该日期无任何交易"
+  - 统计行（固定在底部）：
+    - 第一列：`总计：n 条记录`
+    - 第二、三列：空
+    - 第四列：所有交易手续费总和
+    - 第五列：净额 = 卖出总额之和 − 买入总额之和；净额 > 0 → `{千分位}（入账）`；净额 < 0 → `{|净额|千分位}（出账）`；净额 = 0 → 黑色 `"-"`
+  - 列宽（table-fixed）：基金名称 30%、类型 10%、份额 13%、手续费 15%、交易总额 32%
+
 - 交易记录行高度规范（界面上合理展示多条记录）
   - 目标：每条记录视觉上尽量控制在两行文字内。实现建议：
     - 使用较小字体（text-xs / text-[11px]）、减小垂直内边距（px-2 py-1）
@@ -137,6 +168,15 @@ UI / 视觉与交互规范（可直接实现）
   - 导出 JSON/CSV 包含正确 total 值（数值精度检验：price 4 位，total 2 位）
   - 导入会在用户确认后覆盖数据并触发 UI 刷新
   - 分页逻辑正确（上一页/下一页、页数显示正确）
+- 交易明细窗口（TransactionsModal）：
+  - 无交易时：日期按钮 disabled，表格区域显示"无任何交易存在"
+  - 默认显示最近有交易记录的 local 日期（`getAllTradeDates()[0]`）
+  - 日历仅允许选择有交易记录的日期；有交易日期加粗+蓝色下划线标注
+  - 五列表头文字正确（基金名称 / 类型 / 份额 / 手续费 / 交易总额）
+  - 基金名称优先取 `marketData.name`，兜底 `portfolio` 的 `Ticker.name`
+  - 统计行：条数正确、手续费合计正确、净额（入账/出账）正确；净额 = 0 显示黑色 `"-"`
+  - 切换日期后表格内容正确更新
+  - 0 值全部显示黑色 `"-"`；数值千分位两位小数
 - 风险评级：在给定历史/当前价样例中输出预期 rating 与 reasons（单元测试覆盖）
 - UI 视觉：交易记录在常见桌面宽度下保持不超过两行显示（或使用多行截断展示两行）
 
@@ -145,8 +185,10 @@ UI / 视觉与交互规范（可直接实现）
   - `tests/services/fundService.test.ts`：fetchFundData 的正常/边界/超时/错误用例；fetchFundHistory 返回结构测试
   - `tests/utils/movingAverage.test.ts` 与 `tests/utils/riskTooltip.test.ts`：均线算法与交叉检测
   - `tests/hooks/useTrades.test.ts`：localStorage 读写、导入覆盖、导出格式、CustomEvent 与 storage 同步
+  - `tests/hooks/getAllTradeDates.test.ts`：`getAllTradeDates` 去重、降序、跨 symbol 合并；`readAll` 正常/损坏 JSON 容错
 - 组件/集成测试（Medium）
   - `tests/components/AddTickerModal.test.tsx`、`TickerCard.test.tsx`、`ConfirmDialog.test.tsx`、`TradeManager.test.tsx`：交互路径、表单校验、导入导出、分页
+  - `tests/components/TransactionsModal.test.tsx`：无交易状态、默认日期、五列表头、基金名称来源、买入/卖出标签、统计行（条数/净额/出入账/零值）、日期切换、零值显示、关闭按钮
 - 手工/视觉回归
   - 检查 TradeManager 中记录展示在常见窗口尺寸下不超出两行
 
@@ -162,6 +204,11 @@ CI 与发布
 
 开发任务清单（可直接执行）
 - [x] 将 PRD 中实现细节与确认结果整合（本文件）
+- [x] 实现 `TransactionsModal`（基金交易明细弹窗）及主界面"交易"按钮入口
+- [x] 在 `hooks/useTrades.ts` 中导出 `readAll` 与 `getAllTradeDates`
+- [x] 安装 `react-day-picker@^8.x` 并在入口引入 CSS
+- [x] 新增测试：`tests/hooks/getAllTradeDates.test.ts`（7 用例）
+- [x] 新增测试：`tests/components/TransactionsModal.test.tsx`（16 用例）
 - [ ] 为 `TradeManager` 添加导入前确认弹窗（若需要，我可以立即实现并添加测试）
 - [ ] 在 tests/ 中补充 `hooks/useTrades.test.ts`、`TradeManager.test.tsx`、`utils/riskTooltip.test.ts`（优先级按上）
 - [ ] 在 CI workflow 中加入 `npm test` 步骤（如需我可以提交 workflow 修改建议）
@@ -169,6 +216,7 @@ CI 与发布
 变更记录
 - 2026-02-11 v1.0：初始 PRD
 - 2026-02-16 v1.1：整合实现对照、产品确认项（均线默认 5/10/20、导入覆盖、local day-end 回溯等）并生成可执行的开发任务清单
+- 2026-03-03 v1.2：新增基金交易明细功能（TransactionsModal）：主界面"交易"按钮、日期选择器（react-day-picker、仅允许有交易日期、日历标注）、五列交易明细表、统计行（条数/手续费合计/净额入出账）；导出 `readAll` 与 `getAllTradeDates`；新增测试 23 个用例
 
 ---
 

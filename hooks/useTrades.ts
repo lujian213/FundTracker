@@ -14,11 +14,20 @@ export interface TradeRecord {
 
 const TRADES_KEY = 'fund_trades';
 
-function readAll(): Record<string, TradeRecord[]> {
+export function readAll(): Record<string, TradeRecord[]> {
   try {
     const raw = localStorage.getItem(TRADES_KEY);
     return raw ? JSON.parse(raw) : {};
   } catch (e) { return {}; }
+}
+
+export function getAllTradeDates(): string[] {
+  const all = readAll();
+  const dateSet = new Set<string>();
+  Object.values(all).forEach(records => {
+    records.forEach(r => { if (r.date) dateSet.add(r.date); });
+  });
+  return Array.from(dateSet).sort((a, b) => b.localeCompare(a)); // descending
 }
 
 function writeAll(obj: Record<string, TradeRecord[]>) {
