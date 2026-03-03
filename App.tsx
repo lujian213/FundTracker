@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { Ticker, ValuationData, MarketType, MarketIndex } from './types';
-import { fetchFundData, fetchMarketIndices } from './services/fundService';
+import { fetchFundData, fetchMarketIndices, forceFetchFundHistory } from './services/fundService';
+import * as cacheService from './services/cacheService';
 import { TickerCard } from './components/TickerCard';
 import { AddTickerModal } from './components/AddTickerModal';
 import { ConfirmDialog } from './components/ConfirmDialog';
@@ -39,6 +40,10 @@ const App: React.FC = () => {
   });
 
   const [marketData, setMarketData] = useState<Record<string, ValuationData>>(() => {
+    // cacheService 在模块加载时已从 localStorage 预读，直接返回内存缓存
+    const fromCache = cacheService.getAllValuations();
+    if (Object.keys(fromCache).length > 0) return fromCache;
+    // 降级：直接从 localStorage 读取（兼容首次加载前 cacheService 未初始化的场景）
     try {
       const saved = localStorage.getItem('fund_market_data');
       return saved ? JSON.parse(saved) : {};
@@ -83,7 +88,7 @@ const App: React.FC = () => {
   useEffect(() => { localStorage.setItem('fund_portfolio', JSON.stringify(portfolio)); }, [portfolio]);
   useEffect(() => { localStorage.setItem('fund_indices_config', JSON.stringify(indicesConfig)); }, [indicesConfig]);
   useEffect(() => { localStorage.setItem('fund_global_indices_config', JSON.stringify(globalIndicesConfig)); }, [globalIndicesConfig]);
-  useEffect(() => { localStorage.setItem('fund_market_data', JSON.stringify(marketData)); }, [marketData]);
+  // fund_market_data 由 cacheService.setValuation() 写入，此处不重复同步
   useEffect(() => { localStorage.setItem('fund_sort_order', sortOrder); }, [sortOrder]);
   useEffect(() => { localStorage.setItem('fund_market_indices_cache', JSON.stringify(marketIndices)); }, [marketIndices]);
   useEffect(() => { localStorage.setItem('fund_global_indices_cache', JSON.stringify(globalIndices)); }, [globalIndices]);
@@ -92,6 +97,8 @@ const App: React.FC = () => {
     try {
       const data = await fetchFundData(symbol);
       if (data) {
+        // 写入内存缓存（cacheService 同时会更新 localStorage）
+        cacheService.setValuation(symbol, data);
         setMarketData(prev => ({ ...prev, [symbol]: data }));
         setPortfolio(prev => prev.map(item =>
           item.symbol === symbol && !item.name ? { ...item, name: data.name } : item
@@ -104,6 +111,7 @@ const App: React.FC = () => {
     if (targets.length === 0) return;
     setBackgroundTasks(prev => prev + targets.length);
     const queue = [...targets];
+    // 并发池大小为 3，与实际网络请求队列（globalQueue）协调
     const workers = Array(Math.min(3, targets.length)).fill(null).map(async () => {
       while (queue.length > 0) {
         const item = queue.shift();
@@ -112,6 +120,21 @@ const App: React.FC = () => {
     });
     await Promise.all(workers);
   }, [updateSingleFund]);
+
+  /** 强制刷新历史净值，绕过缓存，并发池大小为 3 */
+  const runBatchHistoryUpdate = useCallback(async (targets: Ticker[]) => {
+    if (targets.length === 0) return;
+    const queue = [...targets];
+    const workers = Array(Math.min(3, targets.length)).fill(null).map(async () => {
+      while (queue.length > 0) {
+        const item = queue.shift();
+        if (item) {
+          try { await forceFetchFundHistory(item.symbol); } catch { /* ignore individual errors */ }
+        }
+      }
+    });
+    await Promise.all(workers);
+  }, []);
 
   const refreshMarketIndicesAsync = useCallback(async () => {
     const fetchDomestic = async () => {
@@ -132,9 +155,14 @@ const App: React.FC = () => {
     if (isRefreshing) return;
     setIsRefreshing(true);
     try {
-      await Promise.allSettled([runBatchUpdate(portfolio), refreshMarketIndicesAsync()]);
+      // 同时刷新：实时估值 + 市场指数 + 历史净值（手动刷新时全量更新）
+      await Promise.allSettled([
+        runBatchUpdate(portfolio),
+        refreshMarketIndicesAsync(),
+        runBatchHistoryUpdate(portfolio),
+      ]);
     } finally { setIsRefreshing(false); }
-  }, [portfolio, isRefreshing, runBatchUpdate, refreshMarketIndicesAsync]);
+  }, [portfolio, isRefreshing, runBatchUpdate, refreshMarketIndicesAsync, runBatchHistoryUpdate]);
 
   useEffect(() => {
     if (portfolio.length > 0) {
@@ -145,11 +173,19 @@ const App: React.FC = () => {
 
   useEffect(() => { refreshMarketIndicesAsync(); }, [indicesConfig, globalIndicesConfig]);
 
+  // 实时估值：每 3 分钟刷新一次
   useEffect(() => {
     const fundInterval = setInterval(() => runBatchUpdate(portfolio), 180000);
     return () => clearInterval(fundInterval);
   }, [portfolio, runBatchUpdate]);
 
+  // 历史净值：每 20 分钟强制刷新一次
+  useEffect(() => {
+    const histInterval = setInterval(() => runBatchHistoryUpdate(portfolio), 20 * 60 * 1000);
+    return () => clearInterval(histInterval);
+  }, [portfolio, runBatchHistoryUpdate]);
+
+  // 市场指数：每 2 分钟刷新一次
   useEffect(() => {
     const indexInterval = setInterval(() => refreshMarketIndicesAsync(), 120000);
     return () => clearInterval(indexInterval);

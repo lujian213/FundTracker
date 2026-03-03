@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { ValuationData, HistoricalPoint } from '../types';
 import { fetchFundHistory as defaultFetchFundHistory } from '../services/fundService';
+import * as cacheService from '../services/cacheService';
 import { computeMultipleSMAs, MA_COLORS } from '../utils/movingAverage';
 import { TOLERANCE, DEFAULT_VISIBLE_MAS, MA_WINDOWS } from '../utils/maConfig';
 import { computeRiskRating } from '../utils/riskTooltip';
@@ -117,6 +118,17 @@ export const FundDetailsModal: React.FC<FundDetailsModalProps> = ({ data, onClos
   useEffect(() => {
     let mounted = true;
     const load = async () => {
+      // 先查内存缓存，命中则秒开无需网络请求
+      const code = data.symbol.padStart(6, '0');
+      const cached = cacheService.getHistory(code);
+      if (cached && cached.length > 0) {
+        if (mounted) {
+          setHistory(cached.slice(-90));
+          setLoading(false);
+        }
+        return;
+      }
+      // 缓存未命中，走网络请求（fetchFn 内部也会写入 cacheService）
       setLoading(true);
       try {
         const points = await fetchFn(data.symbol);

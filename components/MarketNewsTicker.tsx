@@ -1,9 +1,13 @@
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import { fetchMarketNews } from '../services/fundService';
+import * as cacheService from '../services/cacheService';
 
 export const MarketNewsTicker: React.FC = () => {
-  const [news, setNews] = useState<{ id: string, title: string, time: string, url: string }[]>([]);
+  const [news, setNews] = useState<{ id: string, title: string, time: string, url: string }[]>(() => {
+    // 立即从内存缓存读取上次数据，实现秒开
+    return cacheService.getNews();
+  });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<boolean>(false);
 
@@ -13,6 +17,7 @@ export const MarketNewsTicker: React.FC = () => {
       setError(false);
       const data = await fetchMarketNews();
       if (data && data.length > 0) {
+        cacheService.setNews(data); // 写入缓存供下次秒开使用
         setNews(data);
       } else {
         setNews([]);

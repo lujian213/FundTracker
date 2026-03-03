@@ -15,9 +15,8 @@ const OverallProfitModal: React.FC<Props> = ({ symbols, onClose }) => {
   const [fromDate, setFromDate] = useState<string | null>(null);
   const [toDate, setToDate] = useState<string | null>(null);
   const [hoverIndex, setHoverIndex] = useState<number | null>(null);
-
-  // Manage fetching summary. We do an initial scan to determine defaults, then fetch range-specific summary.
-  const [lastRange, setLastRange] = useState<string | null>(null);
+  // 图表 x 轴起始日期（= defaultFrom，即持仓最早 startDate），与表格日期选择器分离
+  const [chartFromDate, setChartFromDate] = useState<string | null>(null);
 
   useEffect(() => {
     let mounted = true;
@@ -25,10 +24,11 @@ const OverallProfitModal: React.FC<Props> = ({ symbols, onClose }) => {
       setLoading(true);
       setError(null);
       try {
-        // initial fetch without date range to obtain perFund startDates and full timeline
+        // 一次计算：获取完整时间线，用于图表和表格
         const base = await computeOverallProfit({ symbols });
         if (!mounted) return;
-        // Determine default date1 (from) as earliest eligible startDate among funds with stored startDate and positive initialPosition
+
+        // 根据结果确定默认日期范围（与原来逻辑相同）
         let defaultFrom: string | null = null;
         try {
           if (base.perFund && base.perFund.length > 0) {
@@ -47,16 +47,12 @@ const OverallProfitModal: React.FC<Props> = ({ symbols, onClose }) => {
         const defaultTo = base.timeline && base.timeline.length > 0 ? base.timeline[base.timeline.length - 1].date : null;
         setFromDate(defaultFrom);
         setToDate(defaultTo);
-        // fetch summary for this default range
-        if (defaultFrom && defaultTo) {
-          setLoading(true);
-          const ranged = await computeOverallProfit({ symbols, fromDate: defaultFrom, toDate: defaultTo });
-          if (!mounted) return;
-          setSummary(ranged);
-          setLastRange(`${defaultFrom}|${defaultTo}`);
-        } else {
-          setSummary(base);
-        }
+        // 记录图表 x 轴起始日期，用于裁剪 chartTimeline（与表格日期选择器分离）
+        setChartFromDate(defaultFrom);
+
+        // 直接使用第一次计算的完整结果，无需第二次请求
+        // 表格行裁剪由下方的 useEffect（依赖 fromDate/toDate）负责
+        setSummary(base);
       } catch (e: any) {
         setError(e?.message || '计算整体盈亏失败');
       } finally {
@@ -74,11 +70,12 @@ const OverallProfitModal: React.FC<Props> = ({ symbols, onClose }) => {
     // nothing here intentionally
   }, []);
 
-  // Chart always uses the full summary timeline (fixed x-axis start/end)
+  // Chart timeline: 从 chartFromDate 开始裁剪，确保 x 轴从持仓起始日期开始，不显示更早的历史数据
   const chartTimeline = useMemo(() => {
     if (!summary) return [] as OverallProfitPoint[];
-    return summary.timeline;
-  }, [summary]);
+    if (!chartFromDate) return summary.timeline;
+    return summary.timeline.filter(p => p.date >= chartFromDate);
+  }, [summary, chartFromDate]);
 
   const chart = useMemo(() => {
     const pts = chartTimeline;

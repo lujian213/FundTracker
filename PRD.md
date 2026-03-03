@@ -1,6 +1,6 @@
 # FundTracker — 产品需求文档 (PRD)
 
-版本：1.3
+版本：1.4
 最后更新：2026-03-03
 
 ---
@@ -16,6 +16,7 @@
   - 交易记录模块（本地存储、分页、导入/导出、价格回溯策略）
   - 风险评级与 tooltip（基于均线）
   - 本地化时间规则（交易记录价格回溯使用用户本地日终）
+  - **内存数据缓存层（性能优化）**：将数据获取与界面展示分离，实现所有界面操作秒开
   - 测试、验收与 CI 要求
 
 高优先级交付物（v1）
@@ -105,7 +106,104 @@
 - `fetchFundHistory(symbol: string): Promise<HistoricalPoint[]>`
   - 返回抓取到的完整历史（按时间升序），组件决定截断数目。
   - 若失败返回 []
+  - **优先读取内存缓存（`cacheService`）**；缓存命中时直接返回，不发起网络请求；未命中时走网络并将结果写入缓存。
+- `forceFetchFundHistory(symbol: string): Promise<HistoricalPoint[]>`
+  - **强制绕过缓存**，始终从网络重新获取历史净值。
+  - 用于定时刷新（每 20 分钟）和手动全量刷新，获取完成后自动写入 `cacheService`。
 - 请求速率控制：内部有 `RequestQueue` 做排队与随机小延迟（150–350ms）以减缓并发请求
+
+---
+
+## 性能优化：内存数据缓存层
+
+### 目标
+
+- 所有界面操作对应的数据显示做到**秒开**，除首次打开网页（无任何缓存）外不需要任何网络数据获取。
+- 数据刷新在后台进行，不阻塞界面操作；刷新完成后主界面上的对应基金信息能够立即更新。
+- 确保单个基金内的数据不一致情况不会出现——每个基金的数据刷新完成后，主界面立即原子更新该基金的信息。
+- 通过并发池方式提高数据刷新效率，同时不过度占用系统资源。
+
+### 缓存数据范围
+
+| 数据类型 | 缓存 | 说明 |
+|---|---|---|
+| 实时估值（`ValuationData`）| ✅ | 每只基金一条，存入内存 Map 并同步写 localStorage `fund_market_data` |
+| 历史净值（`HistoricalPoint[]`）| ✅ | 每只基金一条，存入内存 Map 并同步写 localStorage `fund_history_{symbol}` |
+| 市场热点（新闻列表）| ✅ | 仅内存缓存，不持久化到 localStorage |
+| 交易记录（`fund_trades`）| ❌ | 更新频率低，沿用现有 localStorage 直读方案 |
+| 基金基本信息（`fund_portfolio`）| ❌ | 更新频率低，沿用现有 localStorage 直读方案 |
+| 历史净值持久化导入/导出 | ❌ | `fund_history_*` 不纳入备份导出/导入，仅用于本地加速 |
+
+### 缓存服务（`services/cacheService.ts`）
+
+- 维护三个内存 `Map`：`valuationMap`、`historyMap`、`newsCache`。
+- **模块加载时自动预读 localStorage**：将 `fund_market_data` 中所有估值条目和所有 `fund_history_{symbol}` 历史净值加载到内存 Map，使页面刷新后无需等待网络即可渲染已有数据。
+- 对外暴露同步接口：
+  - `getValuation(symbol) / setValuation(symbol, data)`
+  - `getHistory(symbol) / setHistory(symbol, points)`
+  - `getAllValuations() / getAllHistories()`
+  - `getNews() / setNews(items)`
+- `setValuation` 写入时同步更新 `localStorage['fund_market_data']`（整体覆盖写入，保持与原 App.tsx 的 key 兼容）。
+- `setHistory` 写入时同步更新 `localStorage['fund_history_{symbol}']`（每基金独立 key）。
+- `setNews` 不写 localStorage（市场热点为纯内存缓存，跨页面刷新不需要保留）。
+
+### 数据获取与缓存集成
+
+- **`fetchFundHistory`**：函数内优先调用 `cacheService.getHistory()`，命中直接返回；未命中才走网络，成功后写入 `cacheService.setHistory()`。
+- **`forceFetchFundHistory`**：始终走网络，成功后写入 `cacheService.setHistory()`，用于定时/手动强制刷新。
+- **`computeOverallProfit`**：内部调用 `fetchFundHistory`（已走缓存优先路径）；补充当天实时数据点时优先读 `cacheService.getValuation()`，缓存未命中才调用 `fetchFundData()`，避免为每个基金发起额外网络请求。
+
+### 刷新机制
+
+#### 定时刷新（自动）
+
+| 数据类型 | 刷新间隔 | 刷新函数 |
+|---|---|---|
+| 实时估值 | **每 3 分钟** | `runBatchUpdate(portfolio)` |
+| 历史净值 | **每 20 分钟** | `runBatchHistoryUpdate(portfolio)`（调用 `forceFetchFundHistory`）|
+| 市场指数 | **每 2 分钟** | `refreshMarketIndicesAsync()` |
+| 市场热点 | **每 3 分钟** | `MarketNewsTicker` 内部自刷新 |
+
+- 上述定时器各自独立（对应四个独立的 `setInterval`），互不干扰，组件卸载时 `clearInterval` 清理。
+
+#### 手动刷新
+
+- 点击右上角刷新按钮触发 `refreshAll()`。
+- `refreshAll()` 并发执行：实时估值刷新 + 市场指数刷新 + **历史净值强制刷新**（三者并行 `Promise.allSettled`）。
+- 刷新期间 `isRefreshing = true`，顶部加载指示器（`animate-spin`）可见；刷新完成后恢复。
+
+#### 并发控制
+
+- `runBatchUpdate` 与 `runBatchHistoryUpdate` 均使用**大小为 3 的并发池**（`Array(Math.min(3, targets.length)).fill(null).map(async () => {...})`）。
+- 并发池确保同时最多 3 个基金在刷新，与 `fundService` 内部的 `RequestQueue`（串行限速 150–350ms）协调，避免过度并发。
+
+### 界面加载行为（冷启动 → 热缓存）
+
+1. **冷启动（首次访问，无任何缓存）**：`cacheService` 预读 localStorage 均为空；`marketData` state 初始化为空对象；`FundDetailsModal` 打开时触发网络请求，正常展示 loading 动画。
+2. **热缓存（刷新页面 / 再次访问）**：`cacheService` 模块加载时从 localStorage 恢复估值和历史净值到内存 Map；`marketData` 初始化直接读 `cacheService.getAllValuations()`，**页面无白屏、无 loading**，所有基金卡片立即展示上次数据；后台定时任务按上述间隔自动刷新最新数据。
+3. **`FundDetailsModal` 打开**：先查 `cacheService.getHistory(symbol)`，命中则同步秒开（`loading` 标志立即置 false）；未命中才走网络请求路径并在完成后写入缓存。
+4. **`OverallProfitModal` 打开**：`computeOverallProfit` 内部的 `fetchFundHistory` 全部走缓存，历史净值已在内存中；实时估值补充点也从 `cacheService.getValuation()` 读取；整体计算**仅调用一次**，结果直接用于图表和表格，不再发起第二次重复计算。
+5. **`MarketNewsTicker` 渲染**：`news` state 初始值从 `cacheService.getNews()` 读取，立即展示上次热点；后台刷新完成后更新 state 并写入缓存。
+
+### 实时估值写入路径
+
+- `updateSingleFund(symbol)` 获取数据后：
+  1. 调用 `cacheService.setValuation(symbol, data)`（同步写内存 + localStorage）。
+  2. 调用 `setMarketData(prev => ({...prev, [symbol]: data}))`（原子更新 React state）。
+- `App.tsx` 中**不再有** `useEffect(() => localStorage.setItem('fund_market_data', ...), [marketData])` 的重复同步，改由 `cacheService` 统一管理。
+
+### 实现文件清单
+
+| 文件 | 角色 |
+|---|---|
+| `services/cacheService.ts` | 集中式内存缓存层（新增）|
+| `services/fundService.ts` | `fetchFundHistory` 走缓存优先；新增 `forceFetchFundHistory`；`computeOverallProfit` 读缓存估值 |
+| `App.tsx` | 初始化读 `getAllValuations()`；`updateSingleFund` 写缓存；新增 `runBatchHistoryUpdate`；20 分钟历史净值定时器 |
+| `components/FundDetailsModal.tsx` | 打开时先查 `cacheService.getHistory()`，命中秒开 |
+| `components/OverallProfitModal.tsx` | 合并为单次 `computeOverallProfit` 调用；图表 timeline 按 `chartFromDate` 客户端裁剪（修复 x 轴日期） |
+| `components/MarketNewsTicker.tsx` | 初始 state 从 `cacheService.getNews()` 读取；刷新后写入缓存 |
+
+---
 
 UI / 视觉与交互规范（可直接实现）
 
@@ -215,6 +313,16 @@ UI / 视觉与交互规范（可直接实现）
 验收标准（可自动化测试/手工验收）
 - 服务函数：`fetchFundData` 在正常/异常/超时场景下行为符合契约（单元测试）
 - 历史数据：`fetchFundHistory` 返回数组并且组件正确截断（TickerCard/FundDetailsModal 90，TradeManager 365）
+- **性能缓存验收**：
+  - `cacheService` 模块加载时从 localStorage 的 `fund_market_data` 与 `fund_history_{symbol}` 预读数据到内存 Map（单元测试覆盖）
+  - `setValuation` / `setHistory` 写入内存后同步更新对应 localStorage key（单元测试覆盖）
+  - `getNews` 默认返回空数组；`setNews` / `getNews` 正确读写；`setNews` 不写 localStorage（单元测试覆盖）
+  - 页面刷新后（热缓存场景），`marketData` 初始 state 来自 `cacheService.getAllValuations()`，无白屏无 loading（手工验收）
+  - `FundDetailsModal` 打开时，历史净值缓存命中则秒开（无 loading 动画）；未命中时正常显示 loading（手工验收）
+  - `OverallProfitModal` 打开时，历史净值全部来自缓存，弹窗加载速度明显快于改造前（手工验收）
+  - `MarketNewsTicker` 渲染时立即展示上次缓存热点，不显示"正在接入..."（热缓存场景，手工验收）
+  - 手动刷新（刷新按钮）正确触发实时估值 + 历史净值 + 市场指数三类数据的并行更新（手工验收）
+  - 定时刷新间隔符合规范：实时估值 3 分钟、历史净值 20 分钟、市场指数 2 分钟（代码审查）
 - 交易管理：
   - 添加/编辑/删除 功能在 UI 上生效并持久化到 `fund_trades`
   - 导出 JSON/CSV 包含正确 total 值（数值精度检验：price 4 位，total 2 位）
@@ -247,6 +355,7 @@ UI / 视觉与交互规范（可直接实现）
 测试计划（开发者可直接运行）
 - 单元测试（High）
   - `tests/services/fundService.test.ts`：fetchFundData 的正常/边界/超时/错误用例；fetchFundHistory 返回结构测试
+  - `tests/services/cacheService.test.ts`：预加载 localStorage → 内存 Map；读写接口正确性；写入时同步更新 localStorage key；news 不写 localStorage（11 用例）
   - `tests/utils/movingAverage.test.ts` 与 `tests/utils/riskTooltip.test.ts`：均线算法与交叉检测
   - `tests/hooks/useTrades.test.ts`：localStorage 读写、导入覆盖、导出格式、CustomEvent 与 storage 同步
   - `tests/hooks/getAllTradeDates.test.ts`：`getAllTradeDates` 去重、降序、跨 symbol 合并；`readAll` 正常/损坏 JSON 容错
@@ -281,6 +390,13 @@ CI 与发布
 - [x] 在 `index.html` 补充 `.no-scrollbar` 全局 CSS 工具类
 - [x] 新增测试：`tests/utils/positionHelper.test.ts`（15 用例）
 - [x] 新增测试：`tests/components/PositionsModal.test.tsx`（13 用例）
+- [x] 实现内存数据缓存层 `services/cacheService.ts`（估值 / 历史净值 / 市场热点三类 Map，含 localStorage 预加载与持久化）
+- [x] 改造 `services/fundService.ts`：`fetchFundHistory` 走缓存优先；新增 `forceFetchFundHistory`；`computeOverallProfit` 读缓存估值代替每次 `fetchFundData` 网络请求
+- [x] 改造 `App.tsx`：初始化读 `getAllValuations()`；`updateSingleFund` 写 `cacheService`；新增 `runBatchHistoryUpdate`；独立 20 分钟历史净值定时器；手动刷新并行覆盖三类数据
+- [x] 改造 `FundDetailsModal.tsx`：打开时先查 `cacheService.getHistory()`，命中秒开
+- [x] 改造 `OverallProfitModal.tsx`：合并为单次 `computeOverallProfit` 调用；新增 `chartFromDate` state 修复图表 x 轴日期错误
+- [x] 改造 `MarketNewsTicker.tsx`：初始 state 读 `cacheService.getNews()`；刷新后写入缓存
+- [x] 新增测试：`tests/services/cacheService.test.ts`（11 用例，覆盖三类缓存的读写、预加载、持久化行为）
 - [ ] 为 `TradeManager` 添加导入前确认弹窗（若需要，我可以立即实现并添加测试）
 - [ ] 在 tests/ 中补充 `hooks/useTrades.test.ts`、`TradeManager.test.tsx`、`utils/riskTooltip.test.ts`（优先级按上）
 - [ ] 在 CI workflow 中加入 `npm test` 步骤（如需我可以提交 workflow 修改建议）
@@ -290,6 +406,7 @@ CI 与发布
 - 2026-02-16 v1.1：整合实现对照、产品确认项（均线默认 5/10/20、导入覆盖、local day-end 回溯等）并生成可执行的开发任务清单
 - 2026-03-03 v1.2：新增基金交易明细功能（TransactionsModal）：主界面"交易"按钮、日期选择器（react-day-picker、仅允许有交易日期、日历标注）、五列交易明细表、统计行（条数/手续费合计/净额入出账）；导出 `readAll` 与 `getAllTradeDates`；新增测试 23 个用例
 - 2026-03-03 v1.3：新增基金持仓功能（PositionsModal）：主界面"持仓"按钮（位于"盈利"左侧）、`computePositions` 工具函数、32 色黄金角调色板（`POSITION_COLORS`）、纯 SVG 饼图（含 hover 联动）、持仓表格（单张表 sticky thead/tfoot）、空状态；持仓配置数据模型补充至 PRD；新增测试 28 个用例（positionHelper 15 + PositionsModal 13）
+- 2026-03-03 v1.4：新增内存数据缓存层（性能优化）：新建 `cacheService.ts`（三类内存 Map + localStorage 预加载/持久化）；改造 `fetchFundHistory` 走缓存优先、新增 `forceFetchFundHistory` 强制刷新；改造 `computeOverallProfit` 读缓存估值（消除每基金额外网络请求）；改造 `App.tsx`（初始化秒开、独立 20 分钟历史净值定时器、并发池大小 3）；改造 `FundDetailsModal`（打开秒开）、`OverallProfitModal`（单次计算 + x 轴日期修复）、`MarketNewsTicker`（读缓存即时展示）；新增测试 11 个用例（cacheService.test.ts）
 
 ---
 

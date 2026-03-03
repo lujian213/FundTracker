@@ -1,7 +1,10 @@
 import { ValuationData, MarketIndex, HistoricalPoint, OverallProfitSummary, OverallFundRow } from "../types";
 import { computeProfitTimeline, ProfitPoint } from '../utils/profitCalculator';
 import { getTradesForSymbol } from '../hooks/useTrades';
+import * as cacheService from './cacheService';
 
+// Module-level in-memory history cache (kept for backward-compat; cacheService is now the
+// single source of truth and also persists to localStorage per-symbol).
 const historyCache: Record<string, HistoricalPoint[]> = {};
 
 /**
@@ -367,7 +370,18 @@ export async function fetchMarketIndices(symbols: string[]): Promise<MarketIndex
 
 export async function fetchFundHistory(symbol: string): Promise<HistoricalPoint[]> {
   const code = symbol.padStart(6, '0');
+
+  // 1. Check cacheService (in-memory + pre-loaded from localStorage)
+  const cached = cacheService.getHistory(code);
+  if (cached) {
+    historyCache[code] = cached; // keep module-level cache in sync
+    return cached;
+  }
+
+  // 2. Fallback to module-level in-memory cache (populated in the same session before cacheService existed)
   if (historyCache[code]) return historyCache[code];
+
+  // 3. Fetch from network
   const ts = formatYMDHMS(new Date());
   const url = `https://fund.eastmoney.com/pingzhongdata/${code}.js?v=${ts}`;
   try {
@@ -377,9 +391,42 @@ export async function fetchFundHistory(symbol: string): Promise<HistoricalPoint[
       script.onload = () => {
         const trendData = (window as any).Data_netWorthTrend;
         if (Array.isArray(trendData)) {
-          historyCache[code] = trendData.map((item: any) => ({
+          const points: HistoricalPoint[] = trendData.map((item: any) => ({
             date: item.x, value: parseFloat(item.y) || 0, equityReturn: parseFloat(item.equityReturn) || 0
           }));
+          historyCache[code] = points;
+          cacheService.setHistory(code, points); // persist to cacheService + localStorage
+        }
+        resolve();
+      };
+      script.onerror = () => reject();
+      document.head.appendChild(script);
+    });
+    return historyCache[code] || [];
+  } catch (e) { return []; }
+}
+
+/**
+ * 强制从网络重新获取历史净值，忽略所有缓存。
+ * 用于定时刷新（每20分钟）和手动刷新中的历史净值更新。
+ * 获取完成后自动写入 cacheService（同时更新 localStorage）。
+ */
+export async function forceFetchFundHistory(symbol: string): Promise<HistoricalPoint[]> {
+  const code = symbol.padStart(6, '0');
+  const ts = formatYMDHMS(new Date());
+  const url = `https://fund.eastmoney.com/pingzhongdata/${code}.js?v=${ts}`;
+  try {
+    const script = document.createElement('script');
+    script.src = url;
+    await new Promise<void>((resolve, reject) => {
+      script.onload = () => {
+        const trendData = (window as any).Data_netWorthTrend;
+        if (Array.isArray(trendData)) {
+          const points: HistoricalPoint[] = trendData.map((item: any) => ({
+            date: item.x, value: parseFloat(item.y) || 0, equityReturn: parseFloat(item.equityReturn) || 0
+          }));
+          historyCache[code] = points;
+          cacheService.setHistory(code, points);
         }
         resolve();
       };
@@ -622,9 +669,11 @@ export async function computeOverallProfit(opts: { symbols?: string[]; fromDate?
 
       let historyToUse = history.slice();
       try {
-        // Fetch available realtime/valuation (one network call) and, if its dates fall inside the window and are missing in history, append them.
+        // 补充当天实时数据点：优先从缓存读取，避免为每个基金发起额外网络请求
         try {
-          const fd = await fetchFundData(sym);
+          const fd = cacheService.getValuation(sym.padStart(6, '0'))
+                  ?? cacheService.getValuation(sym)
+                  ?? await fetchFundData(sym);
           if (fd) {
             const candidates: { iso: string; value: number }[] = [];
             if (fd.netWorthDate && fd.previousPrice !== undefined && fd.previousPrice !== null) candidates.push({ iso: fd.netWorthDate, value: fd.previousPrice });
