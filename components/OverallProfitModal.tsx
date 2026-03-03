@@ -105,11 +105,13 @@ const OverallProfitModal: React.FC<Props> = ({ symbols, onClose }) => {
   const [tableRows, setTableRows] = useState<OverallFundRow[]>([]);
   const [tableError, setTableError] = useState<string | null>(null);
 
-  // periodTotal should reflect the table's filtered rows (sum of profitDiff)
+  // periodTotal reflects the full chart window (first to last point in the overall timeline), not the date1/date2 table range
   const periodTotal = useMemo(() => {
-    const rows = tableRows || [];
-    return rows.reduce((s, r) => s + (r.profitDiff || 0), 0);
-  }, [tableRows]);
+    if (!summary || !summary.timeline || summary.timeline.length === 0) return 0;
+    const first = summary.timeline[0].cumulativeProfit || 0;
+    const last = summary.timeline[summary.timeline.length - 1].cumulativeProfit || 0;
+    return Number((last - first).toFixed(2));
+  }, [summary]);
 
   // Build table rows from perFundTimelines when summary or date pickers change
   useEffect(() => {

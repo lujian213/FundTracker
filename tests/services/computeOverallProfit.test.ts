@@ -196,3 +196,103 @@ describe('computeOverallProfit', () => {
 
 });
 
+// ─────────────────────────────────────────────────────────────────────────────
+// periodTotal semantics: must reflect the full chart window (timeline[0] →
+// timeline[last]), completely independent of the date1 / date2 table filters.
+// ─────────────────────────────────────────────────────────────────────────────
+describe('periodTotal — full chart window cumulative', () => {
+  // Helper: build an OverallProfitSummary-shaped object with a controlled timeline.
+  function makeSummary(points: { date: string; cumulativeProfit: number; dailyProfit: number }[]) {
+    return {
+      timeline: points,
+      perFund: [],
+      perFundTimelines: {},
+      totalDiff: 0,
+    };
+  }
+
+  // Mirrors the exact logic in OverallProfitModal for periodTotal
+  function computePeriodTotal(summary: ReturnType<typeof makeSummary>): number {
+    if (!summary || !summary.timeline || summary.timeline.length === 0) return 0;
+    const first = summary.timeline[0].cumulativeProfit || 0;
+    const last  = summary.timeline[summary.timeline.length - 1].cumulativeProfit || 0;
+    return Number((last - first).toFixed(2));
+  }
+
+  test('returns 0 when timeline is empty', () => {
+    const s = makeSummary([]);
+    expect(computePeriodTotal(s)).toBe(0);
+  });
+
+  test('returns 0 when timeline has a single point', () => {
+    const s = makeSummary([{ date: '2026-02-01', cumulativeProfit: 500, dailyProfit: 0 }]);
+    expect(computePeriodTotal(s)).toBe(0);
+  });
+
+  test('equals last minus first cumulative profit', () => {
+    const s = makeSummary([
+      { date: '2026-02-01', cumulativeProfit: 100,  dailyProfit: 100 },
+      { date: '2026-02-15', cumulativeProfit: 350,  dailyProfit: 250 },
+      { date: '2026-03-01', cumulativeProfit: 1200, dailyProfit: 850 },
+    ]);
+    // 1200 - 100 = 1100
+    expect(computePeriodTotal(s)).toBeCloseTo(1100, 2);
+  });
+
+  test('is negative when cumulative declines over the window', () => {
+    const s = makeSummary([
+      { date: '2026-02-01', cumulativeProfit: 800, dailyProfit:   0 },
+      { date: '2026-02-20', cumulativeProfit: 600, dailyProfit: -200 },
+      { date: '2026-03-01', cumulativeProfit: 300, dailyProfit: -300 },
+    ]);
+    // 300 - 800 = -500
+    expect(computePeriodTotal(s)).toBeCloseTo(-500, 2);
+  });
+
+  test('is independent of a mid-window date1/date2 slice', () => {
+    // Full timeline: 2026-02-01 (cum=0) → 2026-02-15 (cum=400) → 2026-03-01 (cum=900)
+    const s = makeSummary([
+      { date: '2026-02-01', cumulativeProfit: 0,   dailyProfit:   0 },
+      { date: '2026-02-15', cumulativeProfit: 400, dailyProfit: 400 },
+      { date: '2026-03-01', cumulativeProfit: 900, dailyProfit: 500 },
+    ]);
+    const periodTotal = computePeriodTotal(s);
+
+    // Simulate what the table would show for date1='2026-02-15', date2='2026-03-01'
+    // (a sub-range diff of 900 - 400 = 500).  periodTotal must NOT equal that.
+    const tableSubRangeDiff = 900 - 400; // 500
+
+    expect(periodTotal).toBeCloseTo(900, 2);        // full window: 900 - 0
+    expect(periodTotal).not.toBe(tableSubRangeDiff); // must differ from sub-range
+  });
+
+  test('uses only first and last point — ignores intermediate values', () => {
+    // Large spike in the middle should have no effect on periodTotal
+    const s = makeSummary([
+      { date: '2026-01-01', cumulativeProfit: 200,  dailyProfit:    0 },
+      { date: '2026-01-15', cumulativeProfit: 9999, dailyProfit: 9799 }, // big spike
+      { date: '2026-03-01', cumulativeProfit: 700,  dailyProfit: -9299 },
+    ]);
+    // 700 - 200 = 500
+    expect(computePeriodTotal(s)).toBeCloseTo(500, 2);
+  });
+
+  test('rounds result to 2 decimal places', () => {
+    const s = makeSummary([
+      { date: '2026-02-01', cumulativeProfit: 0.001, dailyProfit: 0 },
+      { date: '2026-03-01', cumulativeProfit: 0.009, dailyProfit: 0.008 },
+    ]);
+    // 0.009 - 0.001 = 0.008 → rounded to 2dp → 0.01
+    expect(computePeriodTotal(s)).toBeCloseTo(0.01, 2);
+  });
+
+  test('handles first cumulativeProfit of 0 correctly (no subtraction artefact)', () => {
+    const s = makeSummary([
+      { date: '2026-02-01', cumulativeProfit: 0,   dailyProfit:   0 },
+      { date: '2026-02-10', cumulativeProfit: 150, dailyProfit: 150 },
+      { date: '2026-03-01', cumulativeProfit: 350, dailyProfit: 200 },
+    ]);
+    expect(computePeriodTotal(s)).toBeCloseTo(350, 2);
+  });
+});
+
