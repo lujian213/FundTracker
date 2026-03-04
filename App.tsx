@@ -380,10 +380,15 @@ const App: React.FC = () => {
           )}
         </div>
         {!isSelectionMode && <MarketNewsTicker />}
-        {/* Toolbar — lives inside the sticky header so it never scrolls away */}
+        {/* Column title bar — three-column grid matching the main content layout */}
         <div className={`border-t transition-colors duration-300 ${isSelectionMode ? 'bg-blue-50/80 border-blue-100' : 'bg-gray-50/80 border-gray-100'}`}>
-          <div className="max-w-7xl mx-auto px-4">
-            <div className="h-10 flex justify-between items-center">
+          <div className="max-w-7xl mx-auto px-4 grid grid-cols-1 lg:grid-cols-[224px_1fr_224px] gap-6">
+            {/* 大盘看板 title */}
+            <div className="hidden lg:flex h-10 items-center px-1">
+              <h2 className="text-[10px] font-bold text-gray-400 uppercase tracking-widest leading-none m-0">大盘看板</h2>
+            </div>
+            {/* 中间：自选基金标题 + 操作按钮 */}
+            <div className="h-10 flex justify-between items-center px-1">
               <h2 className="text-[10px] font-bold text-gray-400 uppercase tracking-widest leading-none m-0 flex items-center">
                 {isSelectionMode ? <span className="text-blue-600 font-black">批量管理</span> : '我的自选基金'}
               </h2>
@@ -403,6 +408,10 @@ const App: React.FC = () => {
                 )}
               </div>
             </div>
+            {/* 全球市场 title */}
+            <div className="hidden lg:flex h-10 items-center px-1">
+              <h2 className="text-[10px] font-bold text-gray-400 uppercase tracking-widest leading-none m-0">全球市场</h2>
+            </div>
           </div>
         </div>
       </header>
@@ -410,10 +419,7 @@ const App: React.FC = () => {
       <input type="file" ref={fileInputRef} onChange={handleImport} accept=".json" className="hidden" />
 
       <div className="max-w-7xl mx-auto px-4 py-6 grid grid-cols-1 lg:grid-cols-[224px_1fr_224px] gap-6 items-start">
-        <aside className="sticky lg:top-[var(--header-h,180px)] space-y-4">
-          <div className="h-4 flex items-center px-1">
-            <h2 className="text-[10px] font-bold text-gray-400 uppercase tracking-widest leading-none m-0">大盘看板</h2>
-          </div>
+        <aside className="space-y-3">
           <div className="flex lg:flex-col overflow-x-auto lg:overflow-visible gap-3 pb-2 no-scrollbar">
             {marketIndices.map(idx => renderIndexCard(idx, 'index'))}
           </div>
@@ -427,10 +433,7 @@ const App: React.FC = () => {
           </div>
         </main>
 
-        <aside className="sticky lg:top-[var(--header-h,180px)] space-y-4">
-          <div className="h-4 flex items-center px-1">
-            <h2 className="text-[10px] font-bold text-gray-400 uppercase tracking-widest leading-none m-0">全球市场</h2>
-          </div>
+        <aside className="space-y-3">
           <div className="flex lg:flex-col overflow-x-auto lg:overflow-visible gap-3 pb-2 no-scrollbar">
             {globalIndices.map(idx => renderIndexCard(idx, 'global_index'))}
           </div>
