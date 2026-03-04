@@ -161,25 +161,23 @@ describe('TransactionsModal', () => {
       expect(screen.getByText('总计：2 条记录')).toBeInTheDocument();
     });
 
-    test('net amount = sell total - buy total with （入账）/（出账）label', async () => {
+    test('net amount = sell total - buy total with （卖出）/（买入）label', async () => {
       // 000001 buy: 100 * 1.5 + 1.5 = 151.5  → buy outflow
       // 000002 sell: 50 * 2.0 - 0.5 = 99.5   → sell inflow
-      // net = 99.5 - 151.5 = -52 → 52.00（出账）
+      // net = 99.5 - 151.5 = -52 → 52.00（买入）
       seed();
       render(<TransactionsModal portfolio={portfolio} marketData={marketData} onClose={jest.fn()} />);
-      await waitFor(() => expect(screen.getByText(/出账/)).toBeInTheDocument());
-      expect(screen.getByText(/52\.00（出账）/)).toBeInTheDocument();
+      await waitFor(() => expect(screen.getByText(/52\.00（买入）/)).toBeInTheDocument());
     });
 
-    test('shows net （入账） when sells exceed buys', async () => {
+    test('shows net （卖出） when sells exceed buys', async () => {
       // Only a large sell on 2026-03-01
       setTradesForSymbol('000001', [
         { id: 's1', date: '2026-03-01', type: 'sell', shares: 500, price: 2.0, fee: 1.0 },
       ] as any);
       render(<TransactionsModal portfolio={portfolio} marketData={marketData} onClose={jest.fn()} />);
-      await waitFor(() => expect(screen.getByText(/入账/)).toBeInTheDocument());
       // 500 * 2.0 - 1.0 = 999.00
-      expect(screen.getByText(/999\.00（入账）/)).toBeInTheDocument();
+      await waitFor(() => expect(screen.getByText(/999\.00（卖出）/)).toBeInTheDocument());
     });
 
     test('shows "-" when net is zero', async () => {

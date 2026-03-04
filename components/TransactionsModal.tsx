@@ -249,8 +249,8 @@ const TransactionsModal: React.FC<Props> = ({ portfolio, marketData, onClose, on
                         {totalNet === 0
                           ? <span className="text-black">-</span>
                           : totalNet > 0
-                            ? <span>{fmt.format(totalNet)}（入账）</span>
-                            : <span>{fmt.format(Math.abs(totalNet))}（出账）</span>
+                            ? <span>{fmt.format(totalNet)}（卖出）</span>
+                            : <span>{fmt.format(Math.abs(totalNet))}（买入）</span>
                         }
                       </td>
                     </tr>

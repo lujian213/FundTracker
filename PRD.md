@@ -400,7 +400,7 @@
     - 第一列：`总计：n 条记录`
     - 第二、三列：空
     - 第四列：所有交易手续费总和
-    - 第五列：净额 = 卖出总额之和 − 买入总额之和；净额 > 0 → `{千分位}（入账）`；净额 < 0 → `{|净额|千分位}（出账）`；净额 = 0 → 黑色 `"-"`
+    - 第五列：净额 = 卖出总额之和 − 买入总额之和；净额 > 0 → `{千分位}（卖出）`；净额 < 0 → `{|净额|千分位}（买入）`；净额 = 0 → 黑色 `"-"`
   - 列宽（table-fixed）：基金名称 30%、类型 10%、份额 13%、手续费 15%、交易总额 32%
 
 - PositionsModal（基金持仓）
@@ -464,7 +464,7 @@
   - 状态三（备份完成）：导出完成后切换为"✅ 备份成功"，同底色，保持 3 秒后自动清除回状态一
   - 实现要点：`backupStatus: 'idle' | 'pending' | 'done'` state；`idle` 时 `<div>` 保留高度但不渲染文字；`pending`/`done` 时渲染对应文字与样式
 
-风险评级与均线（实现细节）
+### 风险评级与均线（实现细节）
 - 使用 `utils/movingAverage.ts` 的 `computeSMA` / `computeMultipleSMAs` 计算 SMA5/10/20
 - 使用 `utils/riskTooltip.ts` 的 `computeRiskRating` 进行评级，输入为 price、maValues、index 与 prevIndex，输出包含 rating、color、action、reasons
 - TOLERANCE = 0.995（maConfig）用于判断 price 回踩是否破位
@@ -509,7 +509,7 @@
   - 日历仅允许选择有交易记录的日期；有交易日期加粗+蓝色下划线标注
   - 五列表头文字正确（基金名称 / 类型 / 份额 / 手续费 / 交易总额）
   - 基金名称优先取 `marketData.name`，兜底 `portfolio` 的 `Ticker.name`
-  - 统计行：条数正确、手续费合计正确、净额（入账/出账）正确；净额 = 0 显示黑色 `"-"`
+  - 统计行：条数正确、手续费合计正确、净额（卖出/买入）正确；净额 = 0 显示黑色 `"-"`
   - 切换日期后表格内容正确更新
   - 0 值全部显示黑色 `"-"`；数值千分位两位小数
 - 持仓弹窗（PositionsModal）：
@@ -538,7 +538,7 @@
   - `tests/utils/backupService.test.ts`：`buildBackupData` 数据结构完整性（含 optional 字段从缓存填充）；`downloadBackupFile` 文件名格式（手动含时间戳、自动含 `_auto_`）、Blob 创建；`applyBackupData` 完全覆盖、evict 旧缓存、setValuationIfAbsent fallback；兼容性场景（旧格式 string[] indices、缺少 config/globalIndices、缺少 price/initialPrice 等）；`readBackupConfig` / `writeBackupConfig` 读写与默认值容错
 - 组件/集成测试（Medium）
   - `tests/components/AddTickerModal.test.tsx`、`TickerCard.test.tsx`、`ConfirmDialog.test.tsx`、`TradeManager.test.tsx`：交互路径、表单校验、导入导出、分页
-  - `tests/components/TransactionsModal.test.tsx`：无交易状态、默认日期、五列表头、基金名称来源、买入/卖出标签、统计行（条数/净额/出入账/零值）、日期切换、零值显示、关闭按钮
+  - `tests/components/TransactionsModal.test.tsx`：无交易状态、默认日期、五列表头、基金名称来源、买入/卖出标签、统计行（条数/净额/买卖标签/零值）、日期切换、零值显示、关闭按钮
   - `tests/components/PositionsModal.test.tsx`：空状态（无持仓配置、净份额为 0）、汇总行（基金数/总市值）、表格行数与排序、统计行（条数/总价值/"100%"）、交易记录影响份额、SVG 扇区数量、关闭按钮（按钮 + 遮罩）、`onSelectFund` 回调（表格 + 图例点击）
   - `tests/components/BackupSettingsModal.test.tsx`：渲染初始时间值、倒计时文字显示、修改时间后倒计时更新、保存按钮调用 writeBackupConfig 并回调 onSave、取消/关闭按钮行为、Escape 键关闭、点击遮罩关闭、输入错误后清空错误提示
 - 手工/视觉回归
@@ -591,12 +591,12 @@ CI 与发布
 变更记录
 - 2026-02-11 v1.0：初始 PRD
 - 2026-02-16 v1.1：整合实现对照、产品确认项（均线默认 5/10/20、导入覆盖、local day-end 回溯等）并生成可执行的开发任务清单
-- 2026-03-03 v1.2：新增基金交易明细功能（TransactionsModal）：主界面"交易"按钮、日期选择器（react-day-picker、仅允许有交易日期、日历标注）、五列交易明细表、统计行（条数/手续费合计/净额入出账）；导出 `readAll` 与 `getAllTradeDates`；新增测试 23 个用例
+- 2026-03-03 v1.2：新增基金交易明细功能（TransactionsModal）：主界面"交易"按钮、日期选择器（react-day-picker、仅允许有交易日期、日历标注）、五列交易明细表、统计行（条数/手续费合计/净额买卖标签/零值）、日期切换、零值显示、关闭按钮；导出 `readAll` 与 `getAllTradeDates`；新增测试 23 个用例
 - 2026-03-03 v1.3：新增基金持仓功能（PositionsModal）：主界面"持仓"按钮（位于"盈利"左侧）、`computePositions` 工具函数、32 色黄金角调色板（`POSITION_COLORS`）、纯 SVG 饼图（含 hover 联动）、持仓表格（单张表 sticky thead/tfoot）、空状态；持仓配置数据模型补充至 PRD；新增测试 28 个用例（positionHelper 15 + PositionsModal 13）
 - 2026-03-03 v1.4：新增内存数据缓存层（性能优化）：新建 `cacheService.ts`（三类内存 Map + localStorage 预加载/持久化）；改造 `fetchFundHistory` 走缓存优先、新增 `forceFetchFundHistory` 强制刷新；改造 `computeOverallProfit` 读缓存估值（消除每基金额外网络请求）；改造 `App.tsx`（初始化秒开、独立 20 分钟历史净值定时器、并发池大小 3）；改造 `FundDetailsModal`（打开秒开）、`OverallProfitModal`（单次计算 + x 轴日期修复）、`MarketNewsTicker`（读缓存即时展示）；新增测试 11 个用例（cacheService.test.ts）
 - 2026-03-04 v1.5：新增数据备份与恢复功能（导出/导入）：完整 JSON 备份格式规范（含 portfolio、indices、globalIndices、trades、positions、config 所有字段）；手动导出（本地时间戳文件名）与自动导出（`_auto_` 文件名、定时触发）；主界面顶部备份提示 UI（预留高度避免布局偏移、前 5 秒提示 + 完成后 3 秒提示）；导入前确认弹窗；applyBackupData 完全覆盖逻辑 + 缓存 evict + fallback setValuationIfAbsent；BackupSettingsModal（时间配置、实时倒计时、修改即时更新）；兼容性规范（旧格式 string[] indices、缺失字段归一化）；新增测试文件 backupService.test.ts 和 BackupSettingsModal.test.tsx
 - 2026-03-04 v1.6：整体盈亏日期默认值优化（日期1默认为日期2前一天）；添加版本号管理机制（version.ts + 主界面标题栏显示）
-- 2026-03-04 v1.7：交易添加表单输入模式优化：买入时总额可输入（份额只读，由"(总额-手续费)/价格"计算，保留2位小数）；卖出时份额可输入（总额只读，由"份额×价格-手续费"计算）；切换交易类型时自动清零两个字段；数据结构与持久化不变，仅 UI 层调整；新增测试 5 个用例（tradeManagerIntegration.test.tsx）
+- 2026-03-04 v1.7：交易添加表单输入模式优化：买入时总额可输入、份额只读（2位小数）；卖出时份额可输入、总额只读；类型切换自动清零；编辑回填逻辑适配；新增测试 5 个用例（`tradeManagerIntegration.test.tsx`）
 
 ---
 
@@ -744,56 +744,4 @@ CI 与发布
   - 若某基金在x日无净值或估值，则累计盈利按前推最近可用净值/估值计算。
 
 ---
-
-### 文档变更与测试目录指令（快速引用）
-- 新增/扩充的单元测试文件建议：
-  - `tests/utils/riskTooltip.test.ts`（覆盖交叉、跌破 20 日、数据不足）
-  - `tests/utils/returnsCalculator.test.ts`（收益计算：FIFO、手续费、超卖）
-  - `tests/components/FundDetailsModal.trades.test.tsx`（图表 markers 映射/聚合/交互）
-
-- 验证命令（开发者本地运行）
-
-```powershell
-npm test -- tests/utils/riskTooltip.test.ts
-npm test -- tests/utils/returnsCalculator.test.ts
-npm test -- tests/components/FundDetailsModal.trades.test.tsx
-```
-
----
-
-## 版本管理
-
-### 版本号规则
-- 版本号格式：大版本.小版本（例如：1.7）
-- 版本号存储位置：
-  - PRD.md 文件开头（主要版本记录）
-  - version.ts 文件（代码使用）
-- 版本更新规则：
-  - 小版本更新：每次需求变更时自动更新小版本号
-  - 大版本更新：由用户明确要求时更新大版本号
-- 版本号显示：在应用主界面标题栏显示当前版本号
-
-### 版本历史
-
-#### v1.7 (2026-03-04)
-- **交易添加表单输入模式优化**：
-  - 买入时：总额字段可输入，份额字段只读（标签显示"份额（只读）"），由公式 `(总额 - 手续费) / 价格` 实时计算，保留2位小数
-  - 卖出时：份额字段可输入，总额字段只读（标签显示"总额（只读）"），由公式 `份额 × 价格 - 手续费` 实时计算
-  - 切换交易类型时自动重置份额与总额字段为0，避免跨模式数值混淆
-  - 价格为0时只读份额显示"--"并阻止提交，防止除零错误
-  - 编辑已有卖出记录时回填份额；编辑买入记录时反推总额（`shares × price + fee`）回填
-  - 数据结构与持久化完全不变（仍存储 shares/price/fee），仅 UI 层调整（`TradeManager.tsx`）
-  - 新增测试5个用例（`tests/components/tradeManagerIntegration.test.tsx`）
-
-#### v1.6 (2026-03-04)
-- **整体盈亏日期默认值优化**：日期1的默认值调整为日期2默认值的前一天，而不是所有基金中最早的持仓开始日期
-- **版本号系统**：
-  - 添加版本号管理机制，版本号在 version.ts 中维护
-  - 在应用主界面标题栏显示版本号（格式：v1.6）
-  - 建立版本号与 PRD.md 的同步机制
-
-#### v1.5
-- 内存数据缓存层优化
-- 数据备份与恢复功能完善
-- 持仓与盈利功能优化
 
