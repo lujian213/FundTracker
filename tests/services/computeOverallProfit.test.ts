@@ -69,15 +69,20 @@ describe('computeOverallProfit', () => {
     })();
     expect(dates).toEqual(['2026-02-12', '2026-02-13', todayLocal]);
 
+    // Fund A: startDate='2026-02-11', initialPrice=null in storage.
+    // computeOverallProfit now resolves initialPrice from history: startDate has no exact match,
+    // falls back to first available history point value = 5.0.
     const aTimeline = computeProfitTimeline({ history: [
       { date: mkTs('2026-02-12'), value: 5.0, equityReturn: 0 },
       { date: mkTs('2026-02-13'), value: 6.0, equityReturn: 0 }
-    ], trades: [], initialPosition: 1, initialPrice: null, fromDate: null, toDate: null });
+    ], trades: [], initialPosition: 1, initialPrice: 5.0, fromDate: null, toDate: null });
 
+    // Fund B: startDate='2026-02-13', initialPrice=null in storage.
+    // Resolved: exact match on 2026-02-13 = 1.5.
     const bTimeline = computeProfitTimeline({ history: [
       { date: mkTs('2026-02-12'), value: 1.0, equityReturn: 0 },
       { date: mkTs('2026-02-13'), value: 1.5, equityReturn: 0 }
-    ], trades: [], initialPosition: 2, initialPrice: null, fromDate: null, toDate: null });
+    ], trades: [], initialPosition: 2, initialPrice: 1.5, fromDate: null, toDate: null });
 
     const allDates = dates;
     function buildForwardFilled(pt: any[], startDate: string | null) {
@@ -146,7 +151,96 @@ describe('computeOverallProfit', () => {
 
     expect(res.perFund.map((p: any) => p.symbol)).toEqual(['222222']);
   });
-});
+
+  // ── Regression: duplicate history points (original + synthetic) must not cause
+  //    trades to be double-counted inside computeOverallProfit ────────────────
+  test('trade is not double-counted when history API and fetchFundData both have a point on the same date', async () => {
+    // Mirrors the 023832 bug: the history API returns a point for 2026-03-03 at midnight UTC,
+    // AND fetchFundData returns netWorthDate=2026-03-03 / previousPrice (a confirmed NAV).
+    // computeOverallProfit appends the synthetic 15:00 point even though the date already exists
+    // (because hasPointOnDate compared timestamps).  After the deduplication fix the trade on
+    // 2026-03-03 must be applied exactly once.
+
+    localStorage.setItem('fund_portfolio', JSON.stringify([{ symbol: '023832', name: 'Test' }]));
+    localStorage.setItem('fund_position_023832', JSON.stringify({
+      startDate: '2026-02-13',
+      initialPosition: 13831.32,
+      initialPrice: 1.3737,
+    }));
+
+    // Simulate history API: returns 2026-03-02 and 2026-03-03 at midnight UTC
+    // (which in UTC+8 is 2026-03-03 08:00 — same local date as the synthetic 15:00 point)
+    const midnightTs = (iso: string) => new Date(`${iso}T00:00:00Z`).getTime();
+    const afternoonTs = (iso: string) => new Date(`${iso} 15:00`).getTime();
+
+    _deps.fetchFundHistory = jest.fn().mockResolvedValue([
+      { date: midnightTs('2026-03-02'), value: 1.5956, equityReturn: 0 },
+      { date: midnightTs('2026-03-03'), value: 1.66,   equityReturn: 0 },
+    ]);
+
+    // fetchFundData returns netWorthDate=2026-03-03 — this triggers a synthetic point at 15:00
+    _deps.fetchFundData = jest.fn().mockResolvedValue({
+      symbol: '023832',
+      name: 'Test',
+      currentPrice: 1.66,
+      previousPrice: 1.66,
+      netWorthDate: '2026-03-03',
+      realtimeDate: '2026-03-04',
+      changePercentage: 0,
+      lastUpdated: '',
+      valuationDate: '',
+      sourceUrl: '',
+    });
+
+    // One sell trade on 2026-03-03
+    getTradesForSymbol.mockReturnValue([
+      { id: 's1', date: '2026-03-03', type: 'sell', shares: 7000, price: 1.66, fee: 11.62 },
+    ]);
+
+    const res = await (fundService as any).computeOverallProfit({ toDate: '2026-03-03' });
+
+    const ft: { date: string; cumulativeProfit: number }[] =
+      (res.perFundTimelines || {})['023832'] || [];
+
+    const entry0303 = ft.find((r: any) => r.date === '2026-03-03');
+    expect(entry0303).toBeDefined();
+
+    // Expected cumulative (sell applied ONCE):
+    // shares after sell = 13831.32 - 7000 = 6831.32
+    // sellAmount = 1.66 * 7000 - 11.62 = 11608.38
+    // initCost   = 13831.32 * 1.3737 = (baseline, zeroed by startDate logic)
+    // The perFundTimeline is baseline-offset, so startDate value = 0.
+    // We just verify that the 3/3 value is consistent with a single sell application
+    // i.e. profitDiff between 3/2 and 3/3 equals the daily gain from the single trade.
+    const entry0302 = ft.find((r: any) => r.date === '2026-03-02');
+    expect(entry0302).toBeDefined();
+
+    const daily0303 = (entry0303!.cumulativeProfit) - (entry0302!.cumulativeProfit);
+
+    // With a SINGLE sell of 7000 @ 1.66 fee=11.62 on 2026-03-03:
+    //   shares drop from 13831.32 to 6831.32
+    //   daily ≈ 6831.32*1.66 - 13831.32*1.5956 + (1.66*7000 - 11.62) ... relative to prev
+    // The key invariant: daily must NOT be approximately equal to daily + fee (double-count)
+    // i.e. it must NOT be ~11.62 more negative than expected.
+    // A simpler check: after single-apply, remaining shares = 6831.32.
+    // We derive expected daily from first principles:
+    const sharesAfter = 13831.32 - 7000;   // 6831.32
+    const sharesBefore = 13831.32;          // no trades before 3/3 in this test
+    const net0302 = 1.5956;
+    const net0303 = 1.66;
+    const sellAmt = 1.66 * 7000 - 11.62;   // single application
+    // cum(3/2) relative to baseline =  sharesBefore * net0302 - initCost (already accounted in baseline)
+    // daily = cum(3/3) - cum(3/2)
+    //       = [sharesAfter * net0303 - initCost + sellAmt] - [sharesBefore * net0302 - initCost]
+    //       = sharesAfter * net0303 + sellAmt - sharesBefore * net0302
+    const expectedDaily = sharesAfter * net0303 + sellAmt - sharesBefore * net0302;
+    expect(daily0303).toBeCloseTo(expectedDaily, 1);
+
+    // If the trade were double-counted, daily0303 would be ~11.62 lower (sell fee subtracted twice).
+    // Explicitly confirm the value is NOT shifted by one extra fee.
+    expect(Math.abs(daily0303 - (expectedDaily - 11.62))).toBeGreaterThan(5);
+  });
+}); // end describe('computeOverallProfit')
 
 // ─────────────────────────────────────────────────────────────────────────────
 // periodTotal semantics

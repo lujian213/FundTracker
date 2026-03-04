@@ -29,6 +29,30 @@ const ProfitModal: React.FC<ProfitModalProps> = ({ symbol, fundName, currentPric
   const { trades } = useTrades(symbol);
   const fetchFn = fetchHistory ?? defaultFetchFundHistory;
 
+  // Resolve the effective initialPrice: use the prop if provided, otherwise look up the
+  // startDate net value from the full history. This handles the case where FundDetailsModal
+  // only loaded 90 days and couldn't find the price for an older startDate, or the backup
+  // was exported before history was cached (initialPrice stored as null).
+  const resolvedInitialPrice = useMemo(() => {
+    if (initialPrice !== null) return initialPrice;
+    if (!initialStartDate || !history || history.length === 0) return null;
+    const targetEnd = new Date(`${initialStartDate} 23:59:59.999`).getTime();
+    // exact local-date match first
+    for (const h of history) {
+      const hd = new Date(h.date as number);
+      const hIso = `${hd.getFullYear()}-${String(hd.getMonth()+1).padStart(2,'0')}-${String(hd.getDate()).padStart(2,'0')}`;
+      if (hIso === initialStartDate) return h.value;
+    }
+    // latest point whose timestamp <= end of startDate
+    const sorted = [...history].sort((a, b) => (a.date as number) - (b.date as number));
+    let best: number | null = null;
+    for (const h of sorted) {
+      if ((h.date as number) <= targetEnd) best = h.value;
+      else break;
+    }
+    return best ?? (sorted.length > 0 ? sorted[0].value : null);
+  }, [initialPrice, initialStartDate, history]);
+
   useEffect(() => {
     let mounted = true;
     const load = async () => {
@@ -79,8 +103,8 @@ const ProfitModal: React.FC<ProfitModalProps> = ({ symbol, fundName, currentPric
   // compute full timeline when history or trades change
   const fullTimeline = useMemo(() => {
     if (!history || history.length === 0) return [];
-    return computeProfitTimeline({ history, trades: trades || [], initialPosition: initialPosition || 0, initialPrice: initialPrice ?? null });
-  }, [history, trades, initialPosition, initialPrice]);
+    return computeProfitTimeline({ history, trades: trades || [], initialPosition: initialPosition || 0, initialPrice: resolvedInitialPrice ?? null });
+  }, [history, trades, initialPosition, resolvedInitialPrice]);
 
   const validateDates = (from?: string | null, to?: string | null) => {
     setValidationError(null);
@@ -117,8 +141,18 @@ const ProfitModal: React.FC<ProfitModalProps> = ({ symbol, fundName, currentPric
     }
     if (fromDate && initialStartDate && fromDate === initialStartDate) {
       if (dedup.length > 0 && dedup[0].date === fromDate) {
-        dedup[0].dailyProfit = 0;
-        dedup[0].cumulativeProfit = 0; // ensure cumulative is 0 on start date per inclusive rule
+        // The raw cumulativeProfit on startDate is the baseline — all subsequent days must be
+        // expressed relative to it so the numbers match computeOverallProfit's baseline-offset logic.
+        const baseline = dedup[0].cumulativeProfit || 0;
+        // Apply baseline offset to every row and recompute dailyProfit as consecutive diff.
+        for (let i = 0; i < dedup.length; i++) {
+          const adjusted = (dedup[i].cumulativeProfit || 0) - baseline;
+          dedup[i] = {
+            ...dedup[i],
+            cumulativeProfit: Number(adjusted.toFixed(4)),
+            dailyProfit: i === 0 ? 0 : Number((adjusted - ((dedup[i - 1].cumulativeProfit || 0))).toFixed(4)),
+          };
+        }
       }
     }
     return dedup;

@@ -659,8 +659,48 @@ export async function computeOverallProfit(opts: { symbols?: string[]; fromDate?
       } catch (e) {}
 
       // determine fund start date (use stored startDate if present, otherwise earliest history date)
-      const earliestHistoryDate = new Date(history[0].date as number).toISOString().split('T')[0];
+      const sortedHistoryForPrice = [...history].sort((a, b) => (a.date as number) - (b.date as number));
+      const earliestHistoryDate = (() => {
+        const d = new Date(sortedHistoryForPrice[0].date as number);
+        return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+      })();
       const fundStartDate = startDateFromStorage || earliestHistoryDate;
+
+      // If initialPrice is null but startDate is configured, look it up from history (same as FundDetailsModal auto-fill).
+      // This handles the case where the backup file was exported before history was loaded (initialPrice saved as null).
+      if (initialPrice === null && startDateFromStorage) {
+        // Find the history point whose local date equals startDate; fall back to latest point <= end-of-startDate.
+        const targetEnd = new Date(`${startDateFromStorage} 23:59:59.999`).getTime();
+        const getPriceOnDate = (isoDate: string): number | null => {
+          // exact local-date match
+          for (const h of sortedHistoryForPrice) {
+            const hd = new Date(h.date as number);
+            const hIso = `${hd.getFullYear()}-${String(hd.getMonth()+1).padStart(2,'0')}-${String(hd.getDate()).padStart(2,'0')}`;
+            if (hIso === isoDate) return h.value;
+          }
+          // latest point whose timestamp <= end of startDate
+          let best: number | null = null;
+          for (const h of sortedHistoryForPrice) {
+            if ((h.date as number) <= targetEnd) best = h.value;
+            else break;
+          }
+          return best ?? (sortedHistoryForPrice.length > 0 ? sortedHistoryForPrice[0].value : null);
+        };
+        const resolved = getPriceOnDate(startDateFromStorage);
+        if (resolved !== null) {
+          initialPrice = resolved;
+          // write back so subsequent exports and reads get the correct value
+          try {
+            const key = `fund_position_${sym}`;
+            const raw = localStorage.getItem(key);
+            if (raw) {
+              const cfg = JSON.parse(raw);
+              cfg.initialPrice = resolved;
+              localStorage.setItem(key, JSON.stringify(cfg));
+            }
+          } catch (_) { /* ignore */ }
+        }
+      }
 
       // NEW: exclude funds that do not have an explicitly stored startDate
       if (!startDateFromStorage) {
@@ -726,7 +766,20 @@ export async function computeOverallProfit(opts: { symbols?: string[]; fromDate?
       }
 
       // compute timeline for this fund scoped to requested range (computeProfitTimeline will crop by from/to)
-      const timeline = computeProfitTimeline({ history: historyToUse, trades, initialPosition: initialPosition || 0, initialPrice: initialPrice ?? null, fromDate: fromDate ?? null, toDate: toDate ?? null });
+      // First deduplicate historyToUse by local date: keep only the last (highest-timestamp) point per date.
+      // This prevents a synthetic candidate point sharing the same local date as an existing history point
+      // from causing trades to be applied twice inside computeProfitTimeline.
+      const deduplicatedHistory = (() => {
+        const sorted = [...historyToUse].sort((a, b) => (a.date as number) - (b.date as number));
+        const seen = new Map<string, typeof sorted[0]>();
+        for (const h of sorted) {
+          const hd = new Date(h.date as number);
+          const iso = `${hd.getFullYear()}-${String(hd.getMonth()+1).padStart(2,'0')}-${String(hd.getDate()).padStart(2,'0')}`;
+          seen.set(iso, h); // last writer wins (highest timestamp = most authoritative)
+        }
+        return Array.from(seen.values()).sort((a, b) => (a.date as number) - (b.date as number));
+      })();
+      const timeline = computeProfitTimeline({ history: deduplicatedHistory, trades, initialPosition: initialPosition || 0, initialPrice: initialPrice ?? null, fromDate: fromDate ?? null, toDate: toDate ?? null });
      if (!timeline || timeline.length === 0) continue;
 
       includedFundTimelines[sym] = timeline;

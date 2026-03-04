@@ -55,11 +55,34 @@ export function computeProfitTimeline(params: {
   let cumulativePrevious = 0;
   let runningBuyShares = 0;
   let runningSellShares = 0;
+  // Track which dates have already had their trades applied to avoid double-counting
+  // when history contains multiple points with the same local date (e.g. original + synthetic).
+  const tradesAppliedForDate = new Set<string>();
 
   for (const p of sortedHistory) {
     const dateKey = tsToISODate(p.date);
     if (dateKey < start) {
       // still need to accumulate trades that occur before start because they affect holdings
+      if (!tradesAppliedForDate.has(dateKey)) {
+        tradesAppliedForDate.add(dateKey);
+        const dayTrades = tradesByDate[dateKey] || [];
+        for (const t of dayTrades) {
+          if (t.type === 'buy') {
+            runningBuyShares += t.shares;
+            cumulativeBuyAmount += (t.price || 0) * (t.shares || 0) + (t.fee || 0);
+          } else {
+            runningSellShares += t.shares;
+            cumulativeSellAmount += (t.price || 0) * (t.shares || 0) - (t.fee || 0);
+          }
+        }
+      }
+      continue;
+    }
+    if (dateKey > end) break;
+
+    // process trades for this date only on first encounter of this dateKey
+    if (!tradesAppliedForDate.has(dateKey)) {
+      tradesAppliedForDate.add(dateKey);
       const dayTrades = tradesByDate[dateKey] || [];
       for (const t of dayTrades) {
         if (t.type === 'buy') {
@@ -69,20 +92,6 @@ export function computeProfitTimeline(params: {
           runningSellShares += t.shares;
           cumulativeSellAmount += (t.price || 0) * (t.shares || 0) - (t.fee || 0);
         }
-      }
-      continue;
-    }
-    if (dateKey > end) break;
-
-    // process trades for this date (inclusive)
-    const dayTrades = tradesByDate[dateKey] || [];
-    for (const t of dayTrades) {
-      if (t.type === 'buy') {
-        runningBuyShares += t.shares;
-        cumulativeBuyAmount += (t.price || 0) * (t.shares || 0) + (t.fee || 0);
-      } else {
-        runningSellShares += t.shares;
-        cumulativeSellAmount += (t.price || 0) * (t.shares || 0) - (t.fee || 0);
       }
     }
 
