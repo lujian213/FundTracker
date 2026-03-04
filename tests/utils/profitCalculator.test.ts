@@ -45,27 +45,34 @@ describe('profitCalculator', () => {
 
   test('does not double-count trades when history has two points on the same date', () => {
     // Simulate the scenario seen with 023832:
-    // The original history API returns a point at 00:00 UTC on 2026-03-03,
-    // and computeOverallProfit appends a synthetic point at 15:00 on the same day
-    // (from fd.netWorthDate / fd.previousPrice).  The two timestamps map to the
-    // same local date "2026-03-03".  Before the fix, the sell trade on 2026-03-03
-    // was applied twice — once per history point — causing shares and cumulative
-    // profit to be wrong by exactly the fee amount.
+    // The original history API returns a point for 2026-03-03, and computeOverallProfit
+    // appends a synthetic point at 15:00 local on the same day (from fd.netWorthDate).
+    // Both timestamps map to the same local date "2026-03-03".
+    // Before the fix, the sell trade was applied twice — once per history point.
 
-    const ts = (iso: string, hour = 0) =>
-      new Date(`${iso}T${String(hour).padStart(2,'0')}:00:00+08:00`).getTime();
+    // Use Date.UTC so the timestamps are timezone-independent: tsToISODate uses new Date(ts)
+    // which formats in local time, so we pick UTC hours that stay on 2026-03-03 in any timezone
+    // (UTC+0 to UTC+14): use 12:00 UTC and 07:00 UTC — both are 2026-03-03 in UTC+0..+14.
+    const d0302 = Date.UTC(2026, 2, 2, 12, 0, 0);   // 2026-03-02 12:00 UTC
+    const d0303a = Date.UTC(2026, 2, 3, 7, 0, 0);   // 2026-03-03 07:00 UTC  (original history point)
+    const d0303b = Date.UTC(2026, 2, 3, 12, 0, 0);  // 2026-03-03 12:00 UTC  (synthetic duplicate)
 
     const history: HistoricalPoint[] = [
-      // 2026-03-02: original history point
-      { date: ts('2026-03-02', 15), value: 1.5956, equityReturn: 0 },
-      // 2026-03-03: original history point (e.g. from API at midnight UTC = 08:00 CST)
-      { date: ts('2026-03-03', 0),  value: 1.66,   equityReturn: 0 },
-      // 2026-03-03: synthetic point appended by computeOverallProfit at 15:00 local
-      { date: ts('2026-03-03', 15), value: 1.66,   equityReturn: 0 },
+      { date: d0302,  value: 1.5956, equityReturn: 0 },
+      { date: d0303a, value: 1.66,   equityReturn: 0 },
+      { date: d0303b, value: 1.66,   equityReturn: 0 },
     ];
 
+    // Verify our timestamps actually map to the expected local dates via tsToISODate logic
+    const toISO = (ts: number) => {
+      const d = new Date(ts);
+      return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+    };
+    expect(toISO(d0302)).toBe('2026-03-02');
+    expect(toISO(d0303a)).toBe('2026-03-03');
+    expect(toISO(d0303b)).toBe('2026-03-03');
+
     const trades: TradeRecord[] = [
-      // sell 7000 shares on 2026-03-03 with fee 11.62
       { id: 's1', date: '2026-03-03', type: 'sell', shares: 7000, price: 1.66, fee: 11.62 },
     ];
 
@@ -81,7 +88,6 @@ describe('profitCalculator', () => {
       toDate:   null,
     });
 
-    // Find the 2026-03-03 entries.
     // computeProfitTimeline outputs one row per input history point, so two same-date points
     // → two output rows. What must NOT happen is trades being applied twice.
     const entries0303 = timeline.filter(p => p.date === '2026-03-03');
@@ -110,13 +116,13 @@ describe('profitCalculator', () => {
   });
 
   test('sells on a date that appears twice in history: shares only decrease once', () => {
-    // Simplified version: only check that runningSellShares is not doubled.
-    const mkTs = (iso: string, h: number) =>
-      new Date(`${iso}T${String(h).padStart(2,'0')}:00:00Z`).getTime();
+    // Both points at UTC hours that stay on 2026-03-03 in any timezone (UTC+0..+14)
+    const d0303a = Date.UTC(2026, 2, 3, 7, 0, 0);
+    const d0303b = Date.UTC(2026, 2, 3, 12, 0, 0);
 
     const history: HistoricalPoint[] = [
-      { date: mkTs('2026-03-03', 0),  value: 2.0, equityReturn: 0 }, // first point
-      { date: mkTs('2026-03-03', 7),  value: 2.0, equityReturn: 0 }, // synthetic duplicate
+      { date: d0303a, value: 2.0, equityReturn: 0 },
+      { date: d0303b, value: 2.0, equityReturn: 0 },
     ];
     const trades: TradeRecord[] = [
       { id: 'x1', date: '2026-03-03', type: 'sell', shares: 500, price: 2.0, fee: 1.0 },
