@@ -733,8 +733,18 @@ export async function computeOverallProfit(opts: { symbols?: string[]; fromDate?
 
       // Determine effective fromDate used by this timeline (computeProfitTimeline may have cropped it)
       const effectiveFrom = fromDate ?? timeline[0].date;
-      let profitFrom = timeline[0].cumulativeProfit || 0;
-      const profitTo = timeline[timeline.length - 1].cumulativeProfit || 0;
+      // Compute the baseline: raw cumulativeProfit on startDate (the last timeline point whose date <= startDate).
+      // All values shown in perFundTimelines are offset by this baseline so that startDate contributes 0
+      // and subsequent days show the correct incremental profit.
+      let startDateBaseline = 0;
+      if (startDateFromStorage) {
+        for (const pt of timeline) {
+          if (pt.date <= startDateFromStorage) startDateBaseline = pt.cumulativeProfit || 0;
+          else break;
+        }
+      }
+      let profitFrom = (timeline[0].cumulativeProfit || 0) - startDateBaseline;
+      const profitTo = (timeline[timeline.length - 1].cumulativeProfit || 0) - startDateBaseline;
       // If the fund has a configured startDate (from storage) and it is later than effectiveFrom,
       // then its cumulative profit at effectiveFrom (date1) should be considered 0 per requirement.
       // Per latest rule: if startDate >= effectiveFrom (including equal), the cumulative at effectiveFrom is 0.
@@ -773,12 +783,17 @@ export async function computeOverallProfit(opts: { symbols?: string[]; fromDate?
 
   // build perFundTimelines: ordered arrays of {date, cumulativeProfit} for each fund
   // Use forward-fill for dates missing in a fund's own timeline: carry the last known cumulative forward.
-  // Still enforce that for dates <= startDate (inclusive) the value is 0.
+  // For dates <= startDate the contribution is 0.
+  // For dates > startDate the contribution is rawCumulative - baseline, where baseline is the raw
+  // cumulativeProfit on startDate (forward-filled). This prevents a spurious jump on startDate+1
+  // that would otherwise equal the entire startDate cumulative value.
   const perFundTimelines: Record<string, { date: string; cumulativeProfit: number }[]> = {};
   for (const sym of Object.keys(perFundMaps)) {
     const map = perFundMaps[sym] || {};
     const start = fundStartDates[sym];
-    const arr: { date: string; cumulativeProfit: number }[] = [];
+
+    // First pass: compute raw forward-filled cumulative for every date (ignoring startDate zeroing)
+    const rawVals: number[] = [];
     let lastVal: number | null = null;
     for (const d of dates) {
       let val: number;
@@ -790,9 +805,29 @@ export async function computeOverallProfit(opts: { symbols?: string[]; fromDate?
       } else {
         val = 0;
       }
-      // enforce startDate inclusive rule: dates <= start -> 0
+      rawVals.push(val);
+    }
+
+    // Determine baseline: the raw cumulative on startDate (last date <= start), so that on
+    // startDate+1 the contribution is rawCumulative(startDate+1) - baseline rather than
+    // rawCumulative(startDate+1) - 0 (which was the source of the discrepancy).
+    let baseline = 0;
+    if (start) {
+      for (let i = 0; i < dates.length; i++) {
+        if (dates[i] <= start) baseline = rawVals[i];
+        else break;
+      }
+    }
+
+    // Second pass: build output array
+    const arr: { date: string; cumulativeProfit: number }[] = [];
+    for (let i = 0; i < dates.length; i++) {
+      const d = dates[i];
+      let val: number;
       if (start && d <= start) {
-        val = 0;
+        val = 0; // fund not yet started on this date
+      } else {
+        val = rawVals[i] - baseline; // relative to startDate baseline
       }
       arr.push({ date: d, cumulativeProfit: Number(val.toFixed(4)) });
     }

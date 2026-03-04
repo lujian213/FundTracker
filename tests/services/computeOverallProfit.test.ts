@@ -83,14 +83,31 @@ describe('computeOverallProfit', () => {
     function buildForwardFilled(pt: any[], startDate: string | null) {
       const map: Record<string, number> = {};
       for (const p of pt) map[p.date] = Number(p.cumulativeProfit.toFixed(4));
-      const arr: number[] = [];
+      // First pass: raw forward-fill values
+      const rawVals: number[] = [];
       let lastVal: number | null = null;
       for (const d of allDates) {
         let val: number;
         if (map[d] !== undefined) { val = map[d]; lastVal = val; }
         else if (lastVal !== null) val = lastVal;
         else val = 0;
+        rawVals.push(val);
+      }
+      // Compute baseline: raw cumulative at startDate (last date <= startDate)
+      let baseline = 0;
+      if (startDate) {
+        for (let i = 0; i < allDates.length; i++) {
+          if (allDates[i] <= startDate) baseline = rawVals[i];
+          else break;
+        }
+      }
+      // Second pass: apply baseline offset
+      const arr: number[] = [];
+      for (let i = 0; i < allDates.length; i++) {
+        const d = allDates[i];
+        let val: number;
         if (startDate && d <= startDate) val = 0;
+        else val = rawVals[i] - baseline;
         arr.push(Number(val.toFixed(4)));
       }
       return arr;
