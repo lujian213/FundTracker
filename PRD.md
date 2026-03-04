@@ -1,6 +1,6 @@
 # FundTracker — 产品需求文档 (PRD)
 
-版本：1.6
+版本：1.7
 最后更新：2026-03-04
 
 ---
@@ -583,6 +583,7 @@ CI 与发布
 - [x] 顶部菜单栏新增"备份设置"入口，点击打开 `BackupSettingsModal`
 - [x] 新增测试：`tests/utils/backupService.test.ts`（覆盖 buildBackupData 数据结构、downloadBackupFile 文件名、applyBackupData 覆盖逻辑、兼容性场景、readBackupConfig/writeBackupConfig）
 - [x] 新增测试：`tests/components/BackupSettingsModal.test.tsx`（11 用例）
+- [x] 交易表单输入模式优化（v1.7）：买入时总额可输、份额只读（2位小数）；卖出时份额可输、总额只读；类型切换自动清零；编辑回填逻辑适配；新增测试5个用例（`tradeManagerIntegration.test.tsx`）
 - [ ] 为 `TradeManager` 添加导入前确认弹窗（若需要，我可以立即实现并添加测试）
 - [ ] 在 tests/ 中补充 `hooks/useTrades.test.ts`、`TradeManager.test.tsx`、`utils/riskTooltip.test.ts`（优先级按上）
 - [ ] 在 CI workflow 中加入 `npm test` 步骤（如需我可以提交 workflow 修改建议）
@@ -594,6 +595,8 @@ CI 与发布
 - 2026-03-03 v1.3：新增基金持仓功能（PositionsModal）：主界面"持仓"按钮（位于"盈利"左侧）、`computePositions` 工具函数、32 色黄金角调色板（`POSITION_COLORS`）、纯 SVG 饼图（含 hover 联动）、持仓表格（单张表 sticky thead/tfoot）、空状态；持仓配置数据模型补充至 PRD；新增测试 28 个用例（positionHelper 15 + PositionsModal 13）
 - 2026-03-03 v1.4：新增内存数据缓存层（性能优化）：新建 `cacheService.ts`（三类内存 Map + localStorage 预加载/持久化）；改造 `fetchFundHistory` 走缓存优先、新增 `forceFetchFundHistory` 强制刷新；改造 `computeOverallProfit` 读缓存估值（消除每基金额外网络请求）；改造 `App.tsx`（初始化秒开、独立 20 分钟历史净值定时器、并发池大小 3）；改造 `FundDetailsModal`（打开秒开）、`OverallProfitModal`（单次计算 + x 轴日期修复）、`MarketNewsTicker`（读缓存即时展示）；新增测试 11 个用例（cacheService.test.ts）
 - 2026-03-04 v1.5：新增数据备份与恢复功能（导出/导入）：完整 JSON 备份格式规范（含 portfolio、indices、globalIndices、trades、positions、config 所有字段）；手动导出（本地时间戳文件名）与自动导出（`_auto_` 文件名、定时触发）；主界面顶部备份提示 UI（预留高度避免布局偏移、前 5 秒提示 + 完成后 3 秒提示）；导入前确认弹窗；applyBackupData 完全覆盖逻辑 + 缓存 evict + fallback setValuationIfAbsent；BackupSettingsModal（时间配置、实时倒计时、修改即时更新）；兼容性规范（旧格式 string[] indices、缺失字段归一化）；新增测试文件 backupService.test.ts 和 BackupSettingsModal.test.tsx
+- 2026-03-04 v1.6：整体盈亏日期默认值优化（日期1默认为日期2前一天）；添加版本号管理机制（version.ts + 主界面标题栏显示）
+- 2026-03-04 v1.7：交易添加表单输入模式优化：买入时总额可输入（份额只读，由"(总额-手续费)/价格"计算，保留2位小数）；卖出时份额可输入（总额只读，由"份额×价格-手续费"计算）；切换交易类型时自动清零两个字段；数据结构与持久化不变，仅 UI 层调整；新增测试 5 个用例（tradeManagerIntegration.test.tsx）
 
 ---
 
@@ -761,7 +764,7 @@ npm test -- tests/components/FundDetailsModal.trades.test.tsx
 ## 版本管理
 
 ### 版本号规则
-- 版本号格式：大版本.小版本（例如：1.6）
+- 版本号格式：大版本.小版本（例如：1.7）
 - 版本号存储位置：
   - PRD.md 文件开头（主要版本记录）
   - version.ts 文件（代码使用）
@@ -771,6 +774,16 @@ npm test -- tests/components/FundDetailsModal.trades.test.tsx
 - 版本号显示：在应用主界面标题栏显示当前版本号
 
 ### 版本历史
+
+#### v1.7 (2026-03-04)
+- **交易添加表单输入模式优化**：
+  - 买入时：总额字段可输入，份额字段只读（标签显示"份额（只读）"），由公式 `(总额 - 手续费) / 价格` 实时计算，保留2位小数
+  - 卖出时：份额字段可输入，总额字段只读（标签显示"总额（只读）"），由公式 `份额 × 价格 - 手续费` 实时计算
+  - 切换交易类型时自动重置份额与总额字段为0，避免跨模式数值混淆
+  - 价格为0时只读份额显示"--"并阻止提交，防止除零错误
+  - 编辑已有卖出记录时回填份额；编辑买入记录时反推总额（`shares × price + fee`）回填
+  - 数据结构与持久化完全不变（仍存储 shares/price/fee），仅 UI 层调整（`TradeManager.tsx`）
+  - 新增测试5个用例（`tests/components/tradeManagerIntegration.test.tsx`）
 
 #### v1.6 (2026-03-04)
 - **整体盈亏日期默认值优化**：日期1的默认值调整为日期2默认值的前一天，而不是所有基金中最早的持仓开始日期

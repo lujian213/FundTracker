@@ -37,11 +37,12 @@ export const TradeManager: React.FC<{ name?: string; symbol: string; currentPric
   // form state
   const [date, setDate] = useState<string>(() => new Date().toISOString().split('T')[0]);
   const [type, setType] = useState<TradeType>('buy');
-  const [shares, setShares] = useState<string>('0');
+  const [shares, setShares] = useState<string>('0'); // editable for sell; computed (readonly) for buy
+  const [total, setTotal] = useState<string>('0');   // editable for buy;  computed (readonly) for sell
   const [fee, setFee] = useState<string>('0');
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => { setError(null); }, [date, type, shares, fee]);
+  useEffect(() => { setError(null); }, [date, type, shares, total, fee]);
 
   const visibleTrades = useMemo(() => localTrades.slice(page * pageSize, (page + 1) * pageSize), [localTrades, page]);
 
@@ -72,34 +73,43 @@ export const TradeManager: React.FC<{ name?: string; symbol: string; currentPric
   };
 
   const addOrUpdateTrade = () => {
-    const s = Number(shares);
     const f = Number(fee);
-    if (!s || s <= 0) { setError('请输入正确的份额（>0）'); return; }
     if (isNaN(f) || f < 0) { setError('手续费不能为负'); return; }
 
     const price = getPriceForDate(date);
 
-    // compute total with 2 decimal precision (display only; not persisted)
-    const computedTotal = type === 'sell' ? Number((price * s - f).toFixed(2)) : Number((price * s + f).toFixed(2));
+    // Derive the actual shares to persist:
+    // - sell: user inputs shares; total is computed (readonly)
+    // - buy:  user inputs total;  shares = (total - fee) / price (readonly, 2dp)
+    let s: number;
+    if (type === 'sell') {
+      s = Number(shares);
+      if (!s || s <= 0) { setError('请输入正确的份额（>0）'); return; }
+    } else {
+      const t = Number(total);
+      if (!t || t <= 0) { setError('请输入正确的总额（>0）'); return; }
+      if (price <= 0) { setError('价格无效，无法计算份额'); return; }
+      s = Number(((t - f) / price).toFixed(2));
+      if (s <= 0) { setError('计算所得份额不合理，请检查总额和手续费'); return; }
+    }
 
     if (editingId) {
-      // update existing (do not persist total)
       update(editingId, { date, type, shares: s, price, fee: f });
       setEditingId(null);
     } else {
       const record: TradeRecord = {
         id: Math.random().toString(36).substr(2, 9),
-        date: date,
+        date,
         type,
         shares: s,
-        price: price,
+        price,
         fee: f,
       };
       add(record);
     }
 
     // reset
-    setShares('0'); setFee('0'); setPage(0);
+    setShares('0'); setTotal('0'); setFee('0'); setPage(0);
   };
 
   const removeTrade = (id: string) => { remove(id); };
@@ -108,15 +118,23 @@ export const TradeManager: React.FC<{ name?: string; symbol: string; currentPric
     setEditingId(t.id);
     setDate(t.date);
     setType(t.type);
-    setShares(String(t.shares));
+    if (t.type === 'sell') {
+      // sell: user edits shares directly
+      setShares(String(t.shares));
+      setTotal('0');
+    } else {
+      // buy: user edits total; back-compute from stored shares * price + fee
+      const backTotal = Number((t.shares * t.price + (t.fee || 0)).toFixed(2));
+      setTotal(String(backTotal));
+      setShares('0');
+    }
     setFee(String(t.fee));
-    // ensure history loaded and price will be recalculated on save
   };
 
   const cancelEdit = () => {
     setEditingId(null);
     setDate(new Date().toISOString().split('T')[0]);
-    setShares('0'); setFee('0'); setError(null);
+    setShares('0'); setTotal('0'); setFee('0'); setError(null);
   };
 
   // computed display price for the chosen date (live)
@@ -169,14 +187,48 @@ export const TradeManager: React.FC<{ name?: string; symbol: string; currentPric
           </div>
           <div>
             <label className="text-xs text-gray-500">类型</label>
-            <select value={type} onChange={e => setType(e.target.value as TradeType)} className="w-full px-2 py-1 border rounded">
+            <select
+              value={type}
+              onChange={e => {
+                setType(e.target.value as TradeType);
+                setShares('0');
+                setTotal('0');
+              }}
+              className="w-full px-2 py-1 border rounded"
+            >
               <option value="buy">买入</option>
               <option value="sell">卖出</option>
             </select>
           </div>
           <div>
-            <label className="text-xs text-gray-500">份额</label>
-            <input type="number" step="0.0001" value={shares} onChange={e => setShares(e.target.value)} className="w-full px-2 py-1 border rounded text-right" />
+            {type === 'sell' ? (
+              <>
+                <label className="text-xs text-gray-500">份额</label>
+                <input
+                  type="number"
+                  step="0.01"
+                  value={shares}
+                  onChange={e => setShares(e.target.value)}
+                  className="w-full px-2 py-1 border rounded text-right"
+                />
+              </>
+            ) : (
+              <>
+                <label className="text-xs text-gray-500">份额（只读）</label>
+                <input
+                  type="text"
+                  readOnly
+                  value={(() => {
+                    const t = Number(total) || 0;
+                    const f = Number(fee) || 0;
+                    if (displayPrice <= 0) return '--';
+                    const s = (t - f) / displayPrice;
+                    return s.toFixed(2);
+                  })()}
+                  className="w-full px-2 py-1 border rounded text-right bg-gray-50"
+                />
+              </>
+            )}
           </div>
         </div>
 
@@ -190,18 +242,32 @@ export const TradeManager: React.FC<{ name?: string; symbol: string; currentPric
             <input type="number" step="0.01" value={fee} onChange={e => setFee(e.target.value)} className="w-full px-2 py-1 border rounded text-right" />
           </div>
           <div>
-            <label className="text-xs text-gray-500">总额（计算）</label>
-            <input
-              type="text"
-              readOnly
-              value={(() => {
-                const s = Number(shares) || 0;
-                const f = Number(fee) || 0;
-                const val = type === 'sell' ? (displayPrice * s - f) : (displayPrice * s + f);
-                return val.toFixed(2);
-              })()}
-              className="w-full px-2 py-1 border rounded text-right bg-gray-50"
-            />
+            {type === 'buy' ? (
+              <>
+                <label className="text-xs text-gray-500">总额</label>
+                <input
+                  type="number"
+                  step="0.01"
+                  value={total}
+                  onChange={e => setTotal(e.target.value)}
+                  className="w-full px-2 py-1 border rounded text-right"
+                />
+              </>
+            ) : (
+              <>
+                <label className="text-xs text-gray-500">总额（只读）</label>
+                <input
+                  type="text"
+                  readOnly
+                  value={(() => {
+                    const s = Number(shares) || 0;
+                    const f = Number(fee) || 0;
+                    return (displayPrice * s - f).toFixed(2);
+                  })()}
+                  className="w-full px-2 py-1 border rounded text-right bg-gray-50"
+                />
+              </>
+            )}
           </div>
         </div>
 
@@ -237,15 +303,14 @@ export const TradeManager: React.FC<{ name?: string; symbol: string; currentPric
               {visibleTrades.map(t => {
                 const computed = t.type === 'sell' ? t.price * t.shares - (t.fee || 0) : t.price * t.shares + (t.fee || 0);
                 return (
-                  // compressed record: less padding, top-aligned, small text, inline actions to keep height within ~2 lines
                   <div key={t.id} className={`flex items-start justify-between px-2 py-1 border rounded ${t.type === 'buy' ? 'bg-green-50 border-green-100' : 'bg-red-50 border-red-100'}`}>
-                    <div className="flex flex-col min-w-0">{/* min-w-0 allows truncation inside flex */}
+                    <div className="flex flex-col min-w-0">
                       <div className="text-xs font-medium leading-snug truncate">{t.date} <span className="text-[10px] text-gray-400 ml-2">{t.type === 'buy' ? '买入' : '卖出'}</span></div>
-                      <div className="text-[11px] text-gray-500 leading-snug truncate">{t.shares} 份 · {t.price.toFixed(4)} ({t.fee.toFixed(2)} 手续)</div>
+                      <div className="text-[11px] text-gray-500 leading-snug truncate">{t.shares.toFixed(2)} 份 · {t.price.toFixed(4)} ({(t.fee || 0).toFixed(2)} 手续)</div>
                     </div>
                     <div className="text-right flex flex-col items-end ml-3">
                       <div className="font-bold text-xs">{computed.toFixed(2)}</div>
-                      <div className="flex items-center space-x-2 mt-0.5">{/* inline actions to avoid extra lines */}
+                      <div className="flex items-center space-x-2 mt-0.5">
                         <button onClick={() => startEdit(t)} className="text-xs text-blue-500">编辑</button>
                         <button onClick={() => removeTrade(t.id)} className="text-xs text-red-500">删除</button>
                       </div>
