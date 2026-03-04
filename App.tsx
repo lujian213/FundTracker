@@ -371,28 +371,47 @@ const App: React.FC = () => {
             )}
           </div>
         </div>
-        {/* Auto-backup Banner — always rendered to reserve space, visibility toggled to avoid layout shift */}
+        {/* Auto-backup Banner */}
         <div className={`border-t px-4 py-2 flex items-center justify-center space-x-2 transition-colors duration-300 ${autoBackupStatus ? 'bg-green-50 border-green-100 visible' : 'border-transparent invisible'}`}>
           {autoBackupStatus === 'pending' ? (
-            <>
-              <i className="fas fa-spinner fa-spin text-green-500 text-xs" />
-              <span className="text-xs font-medium text-green-700">正在自动备份数据...</span>
-            </>
+            <><i className="fas fa-spinner fa-spin text-green-500 text-xs" /><span className="text-xs font-medium text-green-700">正在自动备份数据...</span></>
           ) : (
-            <>
-              <i className="fas fa-check-circle text-green-500 text-xs" />
-              <span className="text-xs font-medium text-green-700">备份成功</span>
-            </>
+            <><i className="fas fa-check-circle text-green-500 text-xs" /><span className="text-xs font-medium text-green-700">备份成功</span></>
           )}
         </div>
         {!isSelectionMode && <MarketNewsTicker />}
+        {/* Toolbar — lives inside the sticky header so it never scrolls away */}
+        <div className={`border-t transition-colors duration-300 ${isSelectionMode ? 'bg-blue-50/80 border-blue-100' : 'bg-gray-50/80 border-gray-100'}`}>
+          <div className="max-w-7xl mx-auto px-4">
+            <div className="h-10 flex justify-between items-center">
+              <h2 className="text-[10px] font-bold text-gray-400 uppercase tracking-widest leading-none m-0 flex items-center">
+                {isSelectionMode ? <span className="text-blue-600 font-black">批量管理</span> : '我的自选基金'}
+              </h2>
+              <div className="flex items-center space-x-2">
+                {!isSelectionMode ? (
+                  <>
+                    <button onClick={() => setShowPositions(true)} className="px-4 py-1.5 rounded-full bg-blue-600 shadow-md text-[11px] font-bold text-white hover:bg-blue-700 transition-all">持仓</button>
+                    <button onClick={() => setShowOverallProfit(true)} className="px-4 py-1.5 rounded-full bg-blue-600 shadow-md text-[11px] font-bold text-white hover:bg-blue-700 transition-all">盈利</button>
+                    <button onClick={() => setShowTransactions(true)} className="px-4 py-1.5 rounded-full bg-blue-600 shadow-md text-[11px] font-bold text-white hover:bg-blue-700 transition-all">交易</button>
+                    <button onClick={() => setIsSelectionMode(true)} className="px-4 py-1.5 rounded-full bg-blue-600 shadow-md text-[11px] font-bold text-white hover:bg-blue-700 transition-all">管理</button>
+                    <button onClick={() => setSortOrder(o => o === 'desc' ? 'asc' : 'desc')} className="w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center text-gray-500">
+                      <i className={`fas fa-sort-amount-${sortOrder === 'asc' ? 'up' : 'down'}`}></i>
+                    </button>
+                  </>
+                ) : (
+                  <button onClick={() => setIsSelectionMode(false)} className="px-4 py-1.5 rounded-full bg-white border border-blue-200 text-[10px] font-bold text-blue-600">退出</button>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
       </header>
 
       <input type="file" ref={fileInputRef} onChange={handleImport} accept=".json" className="hidden" />
 
       <div className="max-w-7xl mx-auto px-4 py-6 grid grid-cols-1 lg:grid-cols-[224px_1fr_224px] gap-6 items-start">
-        <aside className="sticky lg:top-[130px] space-y-4">
-          <div className="h-10 flex items-center px-1">
+        <aside className="sticky lg:top-[var(--header-h,180px)] space-y-4">
+          <div className="h-4 flex items-center px-1">
             <h2 className="text-[10px] font-bold text-gray-400 uppercase tracking-widest leading-none m-0">大盘看板</h2>
           </div>
           <div className="flex lg:flex-col overflow-x-auto lg:overflow-visible gap-3 pb-2 no-scrollbar">
@@ -400,27 +419,7 @@ const App: React.FC = () => {
           </div>
         </aside>
 
-        <main className="space-y-4">
-          <div className="h-10 flex justify-between items-center px-1">
-            <h2 className="text-[10px] font-bold text-gray-400 uppercase tracking-widest leading-none m-0 flex items-center">
-              {isSelectionMode ? <span className="text-blue-600 font-black">批量管理</span> : '我的自选基金'}
-            </h2>
-            <div className="flex items-center space-x-2">
-              {!isSelectionMode ? (
-                <>
-                  <button onClick={() => setShowPositions(true)} className="px-4 py-1.5 rounded-full bg-blue-600 shadow-md text-[11px] font-bold text-white hover:bg-blue-700 transition-all">持仓</button>
-                  <button onClick={() => setShowOverallProfit(true)} className="px-4 py-1.5 rounded-full bg-blue-600 shadow-md text-[11px] font-bold text-white hover:bg-blue-700 transition-all">盈利</button>
-                  <button onClick={() => setShowTransactions(true)} className="px-4 py-1.5 rounded-full bg-blue-600 shadow-md text-[11px] font-bold text-white hover:bg-blue-700 transition-all">交易</button>
-                  <button onClick={() => setIsSelectionMode(true)} className="px-4 py-1.5 rounded-full bg-blue-600 shadow-md text-[11px] font-bold text-white hover:bg-blue-700 transition-all">管理</button>
-                  <button onClick={() => setSortOrder(o => o === 'desc' ? 'asc' : 'desc')} className="w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center text-gray-500">
-                    <i className={`fas fa-sort-amount-${sortOrder === 'asc' ? 'up' : 'down'}`}></i>
-                  </button>
-                </>
-              ) : (
-                <button onClick={() => setIsSelectionMode(false)} className="px-4 py-1.5 rounded-full bg-white border border-blue-200 text-[10px] font-bold text-blue-600">退出</button>
-              )}
-            </div>
-          </div>
+        <main>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-1 xl:grid-cols-2 gap-4">
             {sortedPortfolio.map(ticker => (
               <TickerCard key={ticker.id} ticker={ticker} data={marketData[ticker.symbol]} onRemove={() => setPendingDelete({ id: ticker.id, symbol: ticker.symbol, name: ticker.name, bulk: false, type: 'fund' })} onClick={() => marketData[ticker.symbol] && setViewingSymbol(ticker.symbol)} isSelectionMode={isSelectionMode} isSelected={selectedIds.has(ticker.id)} onSelect={() => setSelectedIds(prev => { const next = new Set(prev); if (next.has(ticker.id)) next.delete(ticker.id); else next.add(ticker.id); return next; })} />
@@ -428,8 +427,8 @@ const App: React.FC = () => {
           </div>
         </main>
 
-        <aside className="sticky lg:top-[130px] space-y-4">
-          <div className="h-10 flex items-center px-1">
+        <aside className="sticky lg:top-[var(--header-h,180px)] space-y-4">
+          <div className="h-4 flex items-center px-1">
             <h2 className="text-[10px] font-bold text-gray-400 uppercase tracking-widest leading-none m-0">全球市场</h2>
           </div>
           <div className="flex lg:flex-col overflow-x-auto lg:overflow-visible gap-3 pb-2 no-scrollbar">
