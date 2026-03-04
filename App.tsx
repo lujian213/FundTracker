@@ -16,6 +16,7 @@ import {
   buildBackupData, downloadBackupFile, applyBackupData,
   readBackupConfig,
 } from './utils/backupService';
+import { VERSION } from './version';
 
 type SortOrder = 'asc' | 'desc';
 
@@ -344,7 +345,10 @@ const App: React.FC = () => {
               <i className="fas fa-chart-line text-white text-xl"></i>
             </div>
             <div>
-              <h1 className="text-xl font-bold text-gray-800 leading-tight">极简基金估值</h1>
+              <div className="flex items-baseline space-x-2">
+                <h1 className="text-xl font-bold text-gray-800 leading-tight">极简基金估值</h1>
+                <span className="text-xs text-gray-400 font-medium">v{VERSION}</span>
+              </div>
               <p className="text-[10px] text-gray-400 font-medium uppercase tracking-tighter">
                 同步链路: {backgroundTasks > 0 ? `活跃 (${backgroundTasks})` : '就绪'} | 自动刷新开启
               </p>

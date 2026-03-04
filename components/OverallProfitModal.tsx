@@ -29,27 +29,23 @@ const OverallProfitModal: React.FC<Props> = ({ symbols, onClose, onSelectFund })
         const base = await computeOverallProfit({ symbols });
         if (!mounted) return;
 
-        // 根据结果确定默认日期范围（与原来逻辑相同）
-        let defaultFrom: string | null = null;
-        try {
-          if (base.perFund && base.perFund.length > 0) {
-            const eligible = (base.perFund || []).filter(p => !!p.hasStoredStartDate && !!p.initialPosition && Number(p.initialPosition) > 0);
-            const starts = eligible.map(p => p.startDate).filter(s => !!s) as string[];
-            if (starts.length > 0) {
-              defaultFrom = starts.reduce((a, b) => (a < b ? a : b));
-            }
-          }
-        } catch (e) {
-          defaultFrom = null;
-        }
-        if (!defaultFrom && base.timeline && base.timeline.length > 0) {
-          defaultFrom = base.timeline[0].date;
-        }
+        // 确定 defaultTo（日期2）：时间轴最后一天
         const defaultTo = base.timeline && base.timeline.length > 0 ? base.timeline[base.timeline.length - 1].date : null;
+
+        // 确定 defaultFrom（日期1）：defaultTo 的前一天
+        let defaultFrom: string | null = null;
+        if (defaultTo) {
+          const toDate = new Date(defaultTo);
+          toDate.setDate(toDate.getDate() - 1);
+          defaultFrom = toDate.toISOString().split('T')[0];
+        }
+
         setFromDate(defaultFrom);
         setToDate(defaultTo);
         // 记录图表 x 轴起始日期，用于裁剪 chartTimeline（与表格日期选择器分离）
-        setChartFromDate(defaultFrom);
+        // 使用完整时间线的起始日期作为图表起点
+        const chartStart = base.timeline && base.timeline.length > 0 ? base.timeline[0].date : null;
+        setChartFromDate(chartStart);
 
         // 直接使用第一次计算的完整结果，无需第二次请求
         // 表格行裁剪由下方的 useEffect（依赖 fromDate/toDate）负责
