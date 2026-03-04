@@ -23,6 +23,56 @@ type SortOrder = 'asc' | 'desc';
 const DEFAULT_INDICES = ['1.000001', '0.399001', '0.399006'];
 const DEFAULT_GLOBAL_INDICES = ['100.NDX', '100.SPX', '100.HSI'];
 
+const INDEX_SYMBOL_ALIASES: Record<string, string> = {
+  NDX: '100.NDX',
+  SPX: '100.SPX',
+  HSI: '100.HSI',
+};
+
+const INDEX_NAME_HINTS: Record<string, string> = {
+  '1.000001': '上证指数',
+  '0.399001': '深证成指',
+  '0.399006': '创业板指',
+  '100.NDX': '纳斯达克',
+  '100.SPX': '标普500',
+  '100.HSI': '恒生指数',
+};
+
+const normalizeIndexSymbol = (symbol: string): string => {
+  const normalized = (symbol || '').trim().toUpperCase();
+  if (INDEX_SYMBOL_ALIASES[normalized]) return INDEX_SYMBOL_ALIASES[normalized];
+  return normalized;
+};
+
+const createPlaceholderIndex = (symbol: string): MarketIndex => {
+  const normalized = normalizeIndexSymbol(symbol);
+  return {
+    symbol: normalized,
+    name: INDEX_NAME_HINTS[normalized] || `指数 ${normalized}`,
+    current: 0,
+    change: 0,
+    changePercent: 0,
+    lastUpdated: '等待更新',
+  };
+};
+
+const mergeIndicesForDisplay = (
+  configSymbols: string[],
+  incoming: MarketIndex[],
+  previous: MarketIndex[]
+): MarketIndex[] => {
+  if (configSymbols.length === 0) return [];
+
+  const bySymbol = new Map<string, MarketIndex>();
+  previous.forEach(item => bySymbol.set(normalizeIndexSymbol(item.symbol), { ...item, symbol: normalizeIndexSymbol(item.symbol) }));
+  incoming.forEach(item => bySymbol.set(normalizeIndexSymbol(item.symbol), { ...item, symbol: normalizeIndexSymbol(item.symbol) }));
+
+  return configSymbols.map(sym => {
+    const normalized = normalizeIndexSymbol(sym);
+    return bySymbol.get(normalized) || createPlaceholderIndex(normalized);
+  });
+};
+
 const App: React.FC = () => {
   const [portfolio, setPortfolio] = useState<Ticker[]>(() => {
     try {
@@ -143,18 +193,43 @@ const App: React.FC = () => {
 
   const refreshMarketIndicesAsync = useCallback(async () => {
     const fetchDomestic = async () => {
-      if (indicesConfig.length === 0) return;
-      const data = await fetchMarketIndices(indicesConfig);
-      if (data && data.length > 0) setMarketIndices(data);
+      if (indicesConfig.length === 0) {
+        setMarketIndices([]);
+        return;
+      }
+      try {
+        const data = await fetchMarketIndices(indicesConfig);
+        setMarketIndices(prev => mergeIndicesForDisplay(indicesConfig, data, prev));
+      } catch {
+        setMarketIndices(prev => mergeIndicesForDisplay(indicesConfig, [], prev));
+      }
     };
+
     const fetchGlobal = async () => {
-      if (globalIndicesConfig.length === 0) return;
-      const data = await fetchMarketIndices(globalIndicesConfig);
-      if (data && data.length > 0) setGlobalIndices(data);
+      if (globalIndicesConfig.length === 0) {
+        setGlobalIndices([]);
+        return;
+      }
+      try {
+        const data = await fetchMarketIndices(globalIndicesConfig);
+        setGlobalIndices(prev => mergeIndicesForDisplay(globalIndicesConfig, data, prev));
+      } catch {
+        setGlobalIndices(prev => mergeIndicesForDisplay(globalIndicesConfig, [], prev));
+      }
     };
-    fetchDomestic();
-    fetchGlobal();
+
+    await Promise.allSettled([fetchDomestic(), fetchGlobal()]);
   }, [indicesConfig, globalIndicesConfig]);
+
+  const displayDomesticIndices = useMemo(
+    () => mergeIndicesForDisplay(indicesConfig, marketIndices, marketIndices),
+    [indicesConfig, marketIndices]
+  );
+
+  const displayGlobalIndices = useMemo(
+    () => mergeIndicesForDisplay(globalIndicesConfig, globalIndices, globalIndices),
+    [globalIndicesConfig, globalIndices]
+  );
 
   const refreshAll = useCallback(async () => {
     if (isRefreshing) return;
@@ -303,8 +378,7 @@ const App: React.FC = () => {
   }, [pendingImportData, runBatchUpdate, refreshMarketIndicesAsync]);
 
   const renderIndexCard = (idx: MarketIndex, type: 'index' | 'global_index') => {
-    const currentList = type === 'index' ? indicesConfig : globalIndicesConfig;
-    if (!currentList.includes(idx.symbol)) return null;
+    const isPlaceholder = idx.lastUpdated === '等待更新';
     return (
       <div key={idx.symbol} onClick={() => !isSelectionMode && setViewingIndex(idx)} className={`bg-white rounded-2xl p-4 shadow-sm border transition-all min-w-[180px] lg:min-w-0 relative group cursor-pointer hover:shadow-md ${isSelectionMode ? 'border-blue-200 ring-2 ring-blue-50' : 'border-gray-100'} animate-in fade-in duration-300`}>
         {isSelectionMode && (
@@ -319,12 +393,14 @@ const App: React.FC = () => {
               <p className="text-[9px] text-gray-400 font-mono mt-0.5">{idx.symbol}</p>
             </div>
             <span className={`text-[11px] font-medium whitespace-nowrap ${idx.changePercent >= 0 ? 'text-red-500' : 'text-green-500'}`}>
-              {idx.changePercent >= 0 ? '+' : ''}{idx.changePercent.toFixed(2)}%
+              {isPlaceholder ? '--' : `${idx.changePercent >= 0 ? '+' : ''}${idx.changePercent.toFixed(2)}%`}
             </span>
           </div>
         </div>
         <div className={`text-xl font-normal ${idx.changePercent >= 0 ? 'text-red-600' : 'text-green-600'}`}>
-          {(idx.current || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+          {isPlaceholder
+            ? '--'
+            : (idx.current || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
         </div>
         <div className="flex flex-col mt-2">
           <div className="text-[9px] text-gray-300 flex items-center bg-gray-50/50 rounded-md py-0.5 px-1">
@@ -425,7 +501,7 @@ const App: React.FC = () => {
       <div className="max-w-7xl mx-auto px-4 py-6 grid grid-cols-1 lg:grid-cols-[224px_1fr_224px] gap-6 items-start">
         <aside className="space-y-3">
           <div className="flex lg:flex-col overflow-x-auto lg:overflow-visible gap-3 pb-2 no-scrollbar">
-            {marketIndices.map(idx => renderIndexCard(idx, 'index'))}
+            {displayDomesticIndices.map(idx => renderIndexCard(idx, 'index'))}
           </div>
         </aside>
 
@@ -439,7 +515,7 @@ const App: React.FC = () => {
 
         <aside className="space-y-3">
           <div className="flex lg:flex-col overflow-x-auto lg:overflow-visible gap-3 pb-2 no-scrollbar">
-            {globalIndices.map(idx => renderIndexCard(idx, 'global_index'))}
+            {displayGlobalIndices.map(idx => renderIndexCard(idx, 'global_index'))}
           </div>
         </aside>
       </div>

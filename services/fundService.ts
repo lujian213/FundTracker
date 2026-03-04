@@ -346,12 +346,17 @@ async function fetchFundDataFromEastMoney(code: string): Promise<ValuationData |
 }
 
 export async function fetchSingleIndex(symbol: string): Promise<MarketIndex | null> {
+  const normalizeIndexSymbol = (raw: string): string => {
+    const normalized = (raw || '').trim().toUpperCase();
+    if (normalized === 'NDX') return '100.NDX';
+    if (normalized === 'SPX') return '100.SPX';
+    if (normalized === 'HSI') return '100.HSI';
+    return normalized;
+  };
+
   const ut = 'fa1a66105171779fbdd067425f38a7c2';
   const fields = 'f1,f2,f3,f4,f12,f13,f14,f43,f57,f58,f60,f169,f170,f124';
-  let secid = symbol;
-  if (secid === 'NDX') secid = '100.NDX';
-  if (secid === 'SPX') secid = '100.SPX';
-  if (secid === 'HSI') secid = '100.HSI';
+  const secid = normalizeIndexSymbol(symbol);
 
   const url = `https://push2.eastmoney.com/api/qt/stock/get?ut=${ut}&fltt=2&invt=2&secid=${secid}&fields=${fields}&_=${Date.now()}`;
   try {
@@ -361,7 +366,7 @@ export async function fetchSingleIndex(symbol: string): Promise<MarketIndex | nu
       const timestamp = item.f124 ? new Date(item.f124 * 1000) : new Date();
       const pad = (n: number) => n.toString().padStart(2, '0');
       return {
-        symbol: item.f12 || secid,
+        symbol: secid,
         name: item.f14 || item.f58 || "指数",
         current: parseFloat(item.f43) || 0,
         change: parseFloat(item.f169) || 0,

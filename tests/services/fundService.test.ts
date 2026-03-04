@@ -1,4 +1,4 @@
-import { fetchFundData, fetchFundHistory } from '../../services/fundService';
+import { fetchFundData, fetchFundHistory, fetchSingleIndex } from '../../services/fundService';
 import { ValuationData } from '../../types';
 
 // Advance past the RequestQueue random delay (150–350 ms) without triggering
@@ -262,6 +262,60 @@ describe('fundService', () => {
     expect(result).not.toBeNull();
     expect(result!.symbol).toBe('019005');
     expect(result!.name).toBe('国投瑞银白银期货(LOF)C');
+  });
+
+  test('fetchSingleIndex keeps domestic secid symbol stable (1.000001)', async () => {
+    const promise = fetchSingleIndex('1.000001');
+
+    await Promise.resolve();
+    const script = document.head.querySelector('script') as HTMLScriptElement;
+    expect(script).toBeTruthy();
+
+    const callbackName = new URL(script.src).searchParams.get('cb');
+    expect(callbackName).toBeTruthy();
+
+    (window as any)[callbackName as string]({
+      data: {
+        f12: '000001',
+        f14: '上证指数',
+        f43: '3333.12',
+        f169: '10.2',
+        f170: '0.31',
+        f124: 1700000000,
+      },
+    });
+
+    const result = await promise;
+    expect(result).not.toBeNull();
+    expect(result!.symbol).toBe('1.000001');
+    expect(result!.name).toBe('上证指数');
+  });
+
+  test('fetchSingleIndex normalizes alias NDX to 100.NDX', async () => {
+    const promise = fetchSingleIndex('NDX');
+
+    await Promise.resolve();
+    const script = document.head.querySelector('script') as HTMLScriptElement;
+    expect(script).toBeTruthy();
+    expect(script.src).toContain('secid=100.NDX');
+
+    const callbackName = new URL(script.src).searchParams.get('cb');
+    expect(callbackName).toBeTruthy();
+
+    (window as any)[callbackName as string]({
+      data: {
+        f12: 'NDX',
+        f14: '纳斯达克',
+        f43: '19000',
+        f169: '-50',
+        f170: '-0.26',
+        f124: 1700000000,
+      },
+    });
+
+    const result = await promise;
+    expect(result).not.toBeNull();
+    expect(result!.symbol).toBe('100.NDX');
   });
 
 });
