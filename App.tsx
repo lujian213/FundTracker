@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { Ticker, ValuationData, MarketType, MarketIndex } from './types';
+import { Ticker, ValuationData, MarketType, MarketIndex, BackupData } from './types';
 import { fetchFundData, fetchMarketIndices, forceFetchFundHistory } from './services/fundService';
 import * as cacheService from './services/cacheService';
 import { TickerCard } from './components/TickerCard';
@@ -11,6 +11,11 @@ import { MarketNewsTicker } from './components/MarketNewsTicker';
 import OverallProfitModal from './components/OverallProfitModal';
 import TransactionsModal from './components/TransactionsModal';
 import PositionsModal from './components/PositionsModal';
+import BackupSettingsModal from './components/BackupSettingsModal';
+import {
+  buildBackupData, downloadBackupFile, applyBackupData,
+  readBackupConfig,
+} from './utils/backupService';
 
 type SortOrder = 'asc' | 'desc';
 
@@ -40,10 +45,8 @@ const App: React.FC = () => {
   });
 
   const [marketData, setMarketData] = useState<Record<string, ValuationData>>(() => {
-    // cacheService 在模块加载时已从 localStorage 预读，直接返回内存缓存
     const fromCache = cacheService.getAllValuations();
     if (Object.keys(fromCache).length > 0) return fromCache;
-    // 降级：直接从 localStorage 读取（兼容首次加载前 cacheService 未初始化的场景）
     try {
       const saved = localStorage.getItem('fund_market_data');
       return saved ? JSON.parse(saved) : {};
@@ -82,6 +85,10 @@ const App: React.FC = () => {
   const [viewingSymbol, setViewingSymbol] = useState<string | null>(null);
   const [viewingIndex, setViewingIndex] = useState<MarketIndex | null>(null);
   const [pendingDelete, setPendingDelete] = useState<{ id?: string, symbol?: string, name?: string, bulk: boolean, type?: 'fund' | 'index' | 'global_index' } | null>(null);
+  const [pendingImportData, setPendingImportData] = useState<BackupData | null>(null);
+  const [showBackupSettings, setShowBackupSettings] = useState<boolean>(false);
+  const [autoExportTime, setAutoExportTime] = useState<string>(() => readBackupConfig().autoExportTime);
+  const [autoBackupStatus, setAutoBackupStatus] = useState<'pending' | 'done' | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -97,7 +104,6 @@ const App: React.FC = () => {
     try {
       const data = await fetchFundData(symbol);
       if (data) {
-        // 写入内存缓存（cacheService 同时会更新 localStorage）
         cacheService.setValuation(symbol, data);
         setMarketData(prev => ({ ...prev, [symbol]: data }));
         setPortfolio(prev => prev.map(item =>
@@ -111,7 +117,6 @@ const App: React.FC = () => {
     if (targets.length === 0) return;
     setBackgroundTasks(prev => prev + targets.length);
     const queue = [...targets];
-    // 并发池大小为 3，与实际网络请求队列（globalQueue）协调
     const workers = Array(Math.min(3, targets.length)).fill(null).map(async () => {
       while (queue.length > 0) {
         const item = queue.shift();
@@ -121,7 +126,6 @@ const App: React.FC = () => {
     await Promise.all(workers);
   }, [updateSingleFund]);
 
-  /** 强制刷新历史净值，绕过缓存，并发池大小为 3 */
   const runBatchHistoryUpdate = useCallback(async (targets: Ticker[]) => {
     if (targets.length === 0) return;
     const queue = [...targets];
@@ -155,7 +159,6 @@ const App: React.FC = () => {
     if (isRefreshing) return;
     setIsRefreshing(true);
     try {
-      // 同时刷新：实时估值 + 市场指数 + 历史净值（手动刷新时全量更新）
       await Promise.allSettled([
         runBatchUpdate(portfolio),
         refreshMarketIndicesAsync(),
@@ -191,6 +194,56 @@ const App: React.FC = () => {
     return () => clearInterval(indexInterval);
   }, [refreshMarketIndicesAsync]);
 
+  // 自动导出定时器
+  useEffect(() => {
+    let preBannerTimer: ReturnType<typeof setTimeout> | null = null;
+    let exportTimer: ReturnType<typeof setTimeout> | null = null;
+
+    function msUntil(timeStr: string): number {
+      const [hh, mm] = timeStr.split(':').map(Number);
+      const now = new Date();
+      const target = new Date(now);
+      target.setHours(hh, mm, 0, 0);
+      if (target <= now) target.setDate(target.getDate() + 1);
+      return target.getTime() - now.getTime();
+    }
+
+    function schedule() {
+      const msToExport = msUntil(autoExportTime);
+      const msToPreBanner = Math.max(0, msToExport - 5000);
+
+      preBannerTimer = setTimeout(() => {
+        setAutoBackupStatus('pending');
+        exportTimer = setTimeout(() => {
+          const data = buildBackupData(portfolio, indicesConfig, globalIndicesConfig, marketIndices, globalIndices);
+          downloadBackupFile(data, true);
+          setAutoBackupStatus('done');
+          setTimeout(() => setAutoBackupStatus(null), 3000);
+          schedule(); // schedule next day
+        }, Math.min(5000, msToExport));
+      }, msToPreBanner);
+    }
+
+    schedule();
+
+    // When Tab becomes visible again, re-schedule to correct drift
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') {
+        if (preBannerTimer) clearTimeout(preBannerTimer);
+        if (exportTimer) clearTimeout(exportTimer);
+        schedule();
+      }
+    };
+    document.addEventListener('visibilitychange', onVisible);
+
+    return () => {
+      if (preBannerTimer) clearTimeout(preBannerTimer);
+      if (exportTimer) clearTimeout(exportTimer);
+      document.removeEventListener('visibilitychange', onVisible);
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoExportTime]);
+
   const sortedPortfolio = useMemo(() => {
     return [...portfolio].sort((a, b) => {
       const valA = marketData[a.symbol]?.changePercentage ?? -9999;
@@ -200,16 +253,8 @@ const App: React.FC = () => {
   }, [portfolio, marketData, sortOrder]);
 
   const handleExport = () => {
-    // include trades and positions for full backup
-    const trades = (() => { try { const raw = localStorage.getItem('fund_trades'); return raw ? JSON.parse(raw) : {}; } catch (e) { return {}; } })();
-    const positions = (() => { try { const keys = Object.keys(localStorage).filter(k => k.startsWith('fund_position_')); const obj: Record<string, any> = {}; keys.forEach(k => { try { obj[k.replace('fund_position_', '')] = JSON.parse(localStorage.getItem(k) as string); } catch (e) {} }); return obj; } catch (e) { return {}; } })();
-    const data = { portfolio, indices: indicesConfig, globalIndices: globalIndicesConfig, trades, positions };
-    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = `fund_backup_${new Date().toISOString().split('T')[0]}.json`;
-    link.click();
+    const data = buildBackupData(portfolio, indicesConfig, globalIndicesConfig, marketIndices, globalIndices);
+    downloadBackupFile(data, false);
     setIsMenuOpen(false);
   };
 
@@ -217,47 +262,44 @@ const App: React.FC = () => {
     const file = event.target.files?.[0];
     if (!file) return;
     const reader = new FileReader();
-    reader.onload = async (e) => {
+    reader.onload = (e) => {
       try {
         const imported = JSON.parse(e.target?.result as string);
-        const fundList = imported.portfolio || imported || [];
-        const existingSymbols = new Set(portfolio.map(p => p.symbol));
-        const newItems = fundList.filter((item: any) =>
-          item.symbol && /^\d{5,6}$/.test(item.symbol) && !existingSymbols.has(item.symbol)
-        ).map((item: any) => ({
-          id: Math.random().toString(36).substr(2, 9),
-          symbol: item.symbol, name: item.name || '', market: MarketType.FUND
-        }));
-        if (newItems.length > 0) { setPortfolio(prev => [...prev, ...newItems]); runBatchUpdate(newItems); }
-        if (imported.indices) setIndicesConfig(imported.indices);
-        if (imported.globalIndices) setGlobalIndicesConfig(imported.globalIndices);
-        // import trades if present (overwrite for symbols provided)
-        if (imported.trades) {
-          try {
-            const raw = localStorage.getItem('fund_trades');
-            const all = raw ? JSON.parse(raw) : {};
-            // Overwrite per-symbol: for each symbol in imported.trades, replace existing entries
-            Object.keys(imported.trades).forEach(sym => {
-              const arr = Array.isArray(imported.trades[sym]) ? imported.trades[sym] : [];
-              all[sym] = arr;
-            });
-            localStorage.setItem('fund_trades', JSON.stringify(all));
-          } catch (e) {}
-        }
-        // import positions if present
-        if (imported.positions) {
-          try {
-            Object.keys(imported.positions).forEach(sym => {
-              const key = `fund_position_${sym}`;
-              try { localStorage.setItem(key, JSON.stringify(imported.positions[sym])); } catch (e) {}
-            });
-          } catch (e) {}
-        }
-      } catch (err) {}
+        // Compatibility: support old format (top-level array or object without new fields)
+        // Old format: indices/globalIndices were string[], new format is BackupIndex[]
+        const normalizeIndices = (arr: any[]): any[] =>
+          arr.map(item => typeof item === 'string' ? { symbol: item } : item);
+
+        const normalized: BackupData = {
+          portfolio: Array.isArray(imported) ? imported : (imported.portfolio || []),
+          indices: normalizeIndices(imported.indices || []),
+          globalIndices: normalizeIndices(imported.globalIndices || []),
+          positions: imported.positions || {},
+          trades: imported.trades || {},
+          config: imported.config || { autoExportTime: '16:00' },
+        };
+        setPendingImportData(normalized);
+      } catch { /* ignore parse errors */ }
     };
     reader.readAsText(file);
+    // Reset so the same file can be re-imported if needed
+    event.target.value = '';
     setIsMenuOpen(false);
   };
+
+  const handleConfirmImport = useCallback(() => {
+    if (!pendingImportData) return;
+    const applied = applyBackupData(pendingImportData);
+    setPortfolio(applied.portfolio);
+    setIndicesConfig(applied.indicesConfig);
+    setGlobalIndicesConfig(applied.globalIndicesConfig);
+    if (pendingImportData.config?.autoExportTime) {
+      setAutoExportTime(pendingImportData.config.autoExportTime);
+    }
+    setPendingImportData(null);
+    runBatchUpdate(applied.portfolio);
+    refreshMarketIndicesAsync();
+  }, [pendingImportData, runBatchUpdate, refreshMarketIndicesAsync]);
 
   const renderIndexCard = (idx: MarketIndex, type: 'index' | 'global_index') => {
     const currentList = type === 'index' ? indicesConfig : globalIndicesConfig;
@@ -320,6 +362,7 @@ const App: React.FC = () => {
                 <div className="fixed inset-0 z-10" onClick={() => setIsMenuOpen(false)}></div>
                 <div className="absolute right-0 top-full mt-2 w-48 bg-white rounded-2xl shadow-2xl border py-1 z-20 animate-in fade-in zoom-in-95 duration-150 origin-top-right">
                   <button onClick={handleExport} className="w-full px-4 py-3 text-left text-sm hover:bg-gray-50 flex items-center space-x-3"><i className="fas fa-file-export opacity-70"></i><span>导出备份</span></button>
+                  <button onClick={() => { setShowBackupSettings(true); setIsMenuOpen(false); }} className="w-full px-4 py-3 text-left text-sm hover:bg-gray-50 flex items-center space-x-3"><i className="fas fa-clock opacity-70"></i><span>备份设置</span></button>
                   <button onClick={() => fileInputRef.current?.click()} className="w-full px-4 py-3 text-left text-sm hover:bg-gray-50 flex items-center space-x-3"><i className="fas fa-file-import opacity-70"></i><span>导入备份</span></button>
                   <div className="h-px bg-gray-100 my-1 mx-2"></div>
                   <button onClick={() => { setIndicesConfig([]); setGlobalIndicesConfig([]); setIsMenuOpen(false); }} className="w-full px-4 py-3 text-left text-sm hover:bg-gray-50 flex items-center space-x-3 text-red-500"><i className="fas fa-trash-alt opacity-70"></i><span>清空指数</span></button>
@@ -327,6 +370,20 @@ const App: React.FC = () => {
               </>
             )}
           </div>
+        </div>
+        {/* Auto-backup Banner — always rendered to reserve space, visibility toggled to avoid layout shift */}
+        <div className={`border-t px-4 py-2 flex items-center justify-center space-x-2 transition-colors duration-300 ${autoBackupStatus ? 'bg-green-50 border-green-100 visible' : 'border-transparent invisible'}`}>
+          {autoBackupStatus === 'pending' ? (
+            <>
+              <i className="fas fa-spinner fa-spin text-green-500 text-xs" />
+              <span className="text-xs font-medium text-green-700">正在自动备份数据...</span>
+            </>
+          ) : (
+            <>
+              <i className="fas fa-check-circle text-green-500 text-xs" />
+              <span className="text-xs font-medium text-green-700">备份成功</span>
+            </>
+          )}
         </div>
         {!isSelectionMode && <MarketNewsTicker />}
       </header>
@@ -392,6 +449,23 @@ const App: React.FC = () => {
       {viewingSymbol && marketData[viewingSymbol] && <FundDetailsModal data={marketData[viewingSymbol]} onClose={() => setViewingSymbol(null)} />}
       {viewingIndex && <IndexDetailsModal data={viewingIndex} onClose={() => setViewingIndex(null)} />}
       <ConfirmDialog isOpen={!!pendingDelete} title={pendingDelete?.bulk ? "批量删除" : "移除确认"} message={pendingDelete?.bulk ? `确定删除选中的 ${selectedIds.size} 个项目吗？` : `确定移除 "${pendingDelete?.name || pendingDelete?.symbol}" 吗？`} onConfirm={() => { if (pendingDelete?.bulk) { setPortfolio(p => p.filter(t => !selectedIds.has(t.id))); setSelectedIds(new Set()); setIsSelectionMode(false); } else if (pendingDelete?.type === 'index') { setIndicesConfig(p => p.filter(s => s !== pendingDelete.symbol)); } else if (pendingDelete?.type === 'global_index') { setGlobalIndicesConfig(p => p.filter(s => s !== pendingDelete.symbol)); } else if (pendingDelete?.id) { setPortfolio(p => p.filter(t => t.id !== pendingDelete.id)); } setPendingDelete(null); }} onCancel={() => setPendingDelete(null)} />
+      <ConfirmDialog
+        isOpen={!!pendingImportData}
+        title="导入确认"
+        message="导入将完全替换现有的基金、指数、仓位配置和交易记录，操作不可撤销。确认继续吗？"
+        confirmText="确认导入"
+        cancelText="取消"
+        type="danger"
+        onConfirm={handleConfirmImport}
+        onCancel={() => setPendingImportData(null)}
+      />
+      {showBackupSettings && (
+        <BackupSettingsModal
+          autoExportTime={autoExportTime}
+          onSave={(time) => { setAutoExportTime(time); setShowBackupSettings(false); }}
+          onClose={() => setShowBackupSettings(false)}
+        />
+      )}
     </div>
   );
 };

@@ -82,6 +82,27 @@ export function getAllValuations(): Record<string, ValuationData> {
   return obj;
 }
 
+/** Fallback write: only sets valuation if the symbol is NOT already in the cache. */
+export function setValuationIfAbsent(symbol: string, data: ValuationData): void {
+  if (!valuationMap.has(symbol)) setValuation(symbol, data);
+}
+
+/**
+ * Remove all valuations whose symbol is NOT in keepSymbols, both from the
+ * in-memory map and from the persisted fund_market_data localStorage entry.
+ */
+export function evictValuations(keepSymbols: Set<string>): void {
+  const toDelete: string[] = [];
+  valuationMap.forEach((_, k) => { if (!keepSymbols.has(k)) toDelete.push(k); });
+  toDelete.forEach(k => valuationMap.delete(k));
+  // Re-persist the pruned map
+  try {
+    const obj: Record<string, ValuationData> = {};
+    valuationMap.forEach((v, k) => { obj[k] = v; });
+    localStorage.setItem(VALUATION_STORAGE_KEY, JSON.stringify(obj));
+  } catch {/* ignore quota errors */}
+}
+
 // ─── History (historical net worth) ──────────────────────────────────────────
 export function getHistory(symbol: string): HistoricalPoint[] | undefined {
   return historyMap.get(symbol);
@@ -93,6 +114,11 @@ export function setHistory(symbol: string, points: HistoricalPoint[]): void {
   try {
     localStorage.setItem(historyStorageKey(symbol), JSON.stringify(points));
   } catch {/* ignore quota errors */}
+}
+
+/** Fallback write: only sets history if the symbol is NOT already in the cache. */
+export function setHistoryIfAbsent(symbol: string, points: HistoricalPoint[]): void {
+  if (!historyMap.has(symbol)) setHistory(symbol, points);
 }
 
 export function getAllHistories(): Map<string, HistoricalPoint[]> {

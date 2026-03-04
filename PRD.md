@@ -1,7 +1,7 @@
 # FundTracker — 产品需求文档 (PRD)
 
-版本：1.4
-最后更新：2026-03-03
+版本：1.5
+最后更新：2026-03-04
 
 ---
 
@@ -17,6 +17,7 @@
   - 风险评级与 tooltip（基于均线）
   - 本地化时间规则（交易记录价格回溯使用用户本地日终）
   - **内存数据缓存层（性能优化）**：将数据获取与界面展示分离，实现所有界面操作秒开
+  - **数据备份与恢复（导出/导入）**：全量 JSON 备份、手动导出、定时自动导出、导入覆盖、兼容性保障
   - 测试、验收与 CI 要求
 
 高优先级交付物（v1）
@@ -26,8 +27,9 @@
 - 交易管理弹窗：`TradeManager`（新增/编辑/删除/分页/导入/导出）
 - 交易明细弹窗：`TransactionsModal`（按日期展示所有基金当日交易汇总，含统计行）
 - 持仓弹窗：`PositionsModal`（持仓市场价值饼图 + 持仓表格，含空状态）
+- 备份设置弹窗：`BackupSettingsModal`（配置每日自动导出时间、倒计时显示）
 - 本地持久化：portfolio/indices 与 trades 存于 localStorage
-- 单元测试：服务层（fundService）和关键组件（AddTickerModal、TickerCard、ConfirmDialog、TradeManager、TransactionsModal、PositionsModal）
+- 单元测试：服务层（fundService）和关键组件（AddTickerModal、TickerCard、ConfirmDialog、TradeManager、TransactionsModal、PositionsModal、BackupSettingsModal）
 
 关键确认（已由产品在 2026-02-16 确认）
 - 均线默认可视：显示 SMA5、SMA10、SMA20（即 DEFAULT_VISIBLE_MAS = [5,10,20]）。
@@ -198,14 +200,159 @@
 |---|---|
 | `services/cacheService.ts` | 集中式内存缓存层（新增）|
 | `services/fundService.ts` | `fetchFundHistory` 走缓存优先；新增 `forceFetchFundHistory`；`computeOverallProfit` 读缓存估值 |
-| `App.tsx` | 初始化读 `getAllValuations()`；`updateSingleFund` 写缓存；新增 `runBatchHistoryUpdate`；20 分钟历史净值定时器 |
+| `App.tsx` | 初始化读 `getAllValuations()`；`updateSingleFund` 写缓存；新增 `runBatchHistoryUpdate`；20 分钟历史净值定时器；备份定时器（每分钟检查）；备份提示 state（idle/pending/done） |
 | `components/FundDetailsModal.tsx` | 打开时先查 `cacheService.getHistory()`，命中秒开 |
 | `components/OverallProfitModal.tsx` | 合并为单次 `computeOverallProfit` 调用；图表 timeline 按 `chartFromDate` 客户端裁剪（修复 x 轴日期） |
 | `components/MarketNewsTicker.tsx` | 初始 state 从 `cacheService.getNews()` 读取；刷新后写入缓存 |
+| `utils/backupService.ts` | `buildBackupData`、`downloadBackupFile`、`applyBackupData`、`readBackupConfig`、`writeBackupConfig`（新增）|
+| `components/BackupSettingsModal.tsx` | 自动备份时间配置弹窗（新增）|
 
 ---
 
-UI / 视觉与交互规范（可直接实现）
+## 数据备份与恢复（导出 / 导入）
+
+### 目标
+
+允许用户将所有关键本地数据导出到 JSON 文件，并能从该文件将数据完整恢复，实现跨设备迁移或定期备份。
+
+### 导出内容（JSON 数据结构）
+
+导出文件为单个 JSON，包含以下所有字段（括号内标注为 optional 的字段在导出时**必须导出**，仅为说明该字段相对于关键字段在功能上是可选的辅助信息；实际导出时应尽量填充以保证兼容性）：
+
+```json
+{
+  "portfolio": [
+    {
+      "id": "string",
+      "symbol": "string",
+      "name": "string (optional — 基金名称，从缓存获取)",
+      "market": "MarketType",
+      "currentPrice": "number (optional)",
+      "previousPrice": "number (optional)",
+      "netWorthDate": "string (optional — 最近确认净值日期)",
+      "lastUpdated": "string (optional — 最新估值时间)"
+    }
+  ],
+  "indices": [
+    {
+      "symbol": "string",
+      "name": "string (optional)",
+      "price": "number (optional — 最近行情)",
+      "changePercent": "number (optional)",
+      "time": "string (optional — 最近行情时间)"
+    }
+  ],
+  "globalIndices": [
+    {
+      "symbol": "string",
+      "name": "string (optional)",
+      "price": "number (optional)",
+      "changePercent": "number (optional)",
+      "time": "string (optional)"
+    }
+  ],
+  "trades": {
+    "symbol": [
+      {
+        "id": "string",
+        "date": "YYYY-MM-DD",
+        "type": "buy | sell",
+        "shares": "number",
+        "price": "number (optional)",
+        "fee": "number"
+      }
+    ]
+  },
+  "positions": {
+    "symbol": {
+      "fullCapacity": "number",
+      "initialPosition": "number",
+      "startDate": "string | null",
+      "initialPrice": "number | null (optional)"
+    }
+  },
+  "config": {
+    "autoExportTime": "HH:mm (string — 每日自动导出时间，默认 '16:00')"
+  }
+}
+```
+
+- `fund_history_*`（历史净值缓存）**不纳入**备份导出，仅用于本地加速，恢复后由后台重新拉取。
+- optional 字段由实现层（`utils/backupService.ts` 的 `buildBackupData`）在构建时从 `cacheService` 和当前 state 填充，以确保导入后页面能秒开显示数据。
+
+### 导出行为
+
+#### 手动导出
+
+- 触发方式：顶部菜单栏点击 **"导出备份"**。
+- 文件名格式：`fund_backup_<yyyy-MM-dd>_<HH-mm-ss>.json`（本地时间戳），例如 `fund_backup_2026-02-27_13-05-04.json`。
+- 实现：调用 `buildBackupData()` 构建数据对象，再由 `downloadBackupFile(data, 'manual')` 触发浏览器下载。
+
+#### 自动导出
+
+- 触发方式：系统在每日本地时间达到配置的 `autoExportTime`（默认 `16:00`）时自动触发；由 `App.tsx` 中的定时器（每分钟检查一次）驱动。
+- 文件名格式：`fund_backup_auto_<yyyy-MM-dd>.json`（本地当天日期），例如 `fund_backup_auto_2026-02-27.json`。
+- 实现：调用同样的 `buildBackupData()` + `downloadBackupFile(data, 'auto')`，**无需用户干预，全自动进行**。
+- **UI 提示（主界面顶部固定区域）**：
+  - 自动导出触发前 **5 秒**：显示"正在自动备份数据…"（浅绿色底色）。
+  - 导出完成后：切换为"备份成功"，显示 **3 秒**后自动消失。
+  - 该提示区域在主界面顶部**预先保留高度**（`min-height` 固定），不因提示出现或消失而影响其他内容的布局位置。
+
+### 导入行为
+
+- 触发方式：顶部菜单栏点击 **"导入备份"**，弹出文件选择框（accept=`.json`）。
+- **导入前必须弹出确认框**，明确告知用户"导入将完全覆盖现有的基金列表、大盘/全球市场指数配置、持仓配置及交易记录"，用户确认后方可执行。
+- 导入动作（`applyBackupData`）执行以下步骤：
+  1. 解析 JSON 文件，进行数据归一化（处理旧格式兼容问题，见兼容性章节）。
+  2. **完全清除**原有数据：`fund_portfolio`、`fund_trades`、所有 `fund_position_*` key。
+  3. 写入新 portfolio（`localStorage['fund_portfolio']`）、新 trades（`localStorage['fund_trades']`）、新 positions（`localStorage['fund_position_*']`）、新 indices 配置（`localStorage['fund_indices']`、`localStorage['fund_global_indices']`）、新 `autoExportTime`（`localStorage['fund_backup_config']`）。
+  4. **evict 旧 symbol 的估值缓存**（调用 `cacheService.evictValuations`），并将导入数据中的 optional 估值作为 fallback 写入缓存（仅当缓存中该 symbol 尚无数据时，调用 `cacheService.setValuationIfAbsent`），确保页面能即时展示已有数据。
+  5. **不清除** `fund_history_*` 缓存 key（历史净值保留，用于加速下次展示）。
+  6. 返回新的 `portfolio`、`indicesConfig`、`globalIndicesConfig`，供 `App.tsx` 更新 state 并触发 UI 重新渲染。
+
+### 备份配置（BackupSettingsModal）
+
+- 入口：顶部菜单栏点击 **"备份设置"** 打开弹窗。
+- 功能：
+  - 时间选择器（`<input type="time">`），初始值为当前已保存的 `autoExportTime`（默认 `16:00`）。
+  - 下方实时显示"距下一次自动备份还有 X 小时 Y 分钟"（倒计时，基于当前本地时间和配置时间计算）。
+  - **修改时间后，倒计时文字随即更新**，反映新时间下的剩余时长。
+  - 保存（`保存` 按钮）：调用 `writeBackupConfig({ autoExportTime: newTime })`，持久化到 `localStorage['fund_backup_config']`，并通知 `App.tsx` 更新定时器。
+  - 取消/关闭：不保存，关闭弹窗。
+- 配置持久化 key：`fund_backup_config`；JSON 格式：`{ "autoExportTime": "HH:mm" }`。
+- `readBackupConfig()` 在读取失败或格式不合法时返回默认值 `{ autoExportTime: '16:00' }`。
+
+### 兼容性（旧格式导入）
+
+导入功能**必须兼容原有（旧版）导出的数据文件**，不得出现无法导入或关键数据缺失的情况：
+
+| 旧格式情形 | 处理策略 |
+|---|---|
+| `indices` / `globalIndices` 为纯字符串数组（非对象数组）| 将每个字符串视为 `symbol`，其余字段置空，正常导入 |
+| `indices` 数组中混合字符串和对象 | 逐项判断：字符串直接取为 `symbol`，对象正常解构 |
+| `portfolio` 中无 optional 字段（name、currentPrice 等）| 仅用 `id`、`symbol`、`market` 核心字段，optional 字段置空 |
+| 缺少 `config` 字段 | 取 `localStorage['fund_backup_config']` 中已存储的值；若也无则用默认值 `16:00` |
+| `positions` 中缺少 `initialPrice` | 归一化为 `null` |
+| `trades` 中缺少 `price` | 归一化为 `0` |
+| 缺少 `trades` 或 `positions` 字段 | 视为空对象 `{}` |
+| 缺少 `globalIndices` 字段 | 视为空数组 `[]` |
+
+### 工具函数（`utils/backupService.ts`）
+
+| 函数 | 说明 |
+|---|---|
+| `buildBackupData(portfolio, indicesState, globalIndicesState)` | 构建完整备份数据对象（从 localStorage 读取 trades/positions，从 cacheService 读取估值填充 optional 字段） |
+| `downloadBackupFile(data, mode: 'manual' \| 'auto')` | 生成 Blob，触发浏览器下载；`manual` 模式文件名含本地时间戳，`auto` 模式含 `_auto_` 和日期 |
+| `applyBackupData(raw)` | 解析、归一化、写入 localStorage，更新缓存，返回新 state |
+| `readBackupConfig()` | 读取并验证 `fund_backup_config`，失败时返回默认值 |
+| `writeBackupConfig(cfg)` | 将配置序列化后写入 `fund_backup_config` |
+
+### 数据最终一致性
+
+- 所有 optional 字段（估值、价格等）在页面使用过程中会被实时/历史净值网络数据覆盖更新，写入 `cacheService`；**下次导出时导出的是最新、最准确的数据**。
+- 导入后的 optional fallback 数据为临时展示用途，后台刷新完成后会自动替换，无需用户干预。
+
+---
 
 - 全体风格：Tailwind utility-first。保持现有组件样式约定（rounded-2xl、shadow-sm、text-xs 等）。
 
@@ -299,6 +446,24 @@ UI / 视觉与交互规范（可直接实现）
     - 确保 flex 子项使用 `min-w-0` 以允许截断生效
   - PRD 规范（可作为验收项）：记录行在常用桌面分辨率下不超过两行；超出使用省略号显示
 
+- BackupSettingsModal（备份设置）
+  - 入口：顶部右侧菜单（`···` 按钮展开后）点击 **"备份设置"** 打开；同菜单内保留 **"导出备份"** 和 **"导入备份"** 两个独立入口
+  - 弹窗：`createPortal` + 半透明遮罩（`bg-black/40`），`z-[130]`，`max-w-sm`，居中，样式与其他 Modal 一致（`rounded-2xl shadow-2xl`）
+  - 内容区：
+    - 标题"备份设置" + 右上角关闭按钮（`×`）
+    - 时间选择：标签"每日自动备份时间" + `<input type="time">` 输入框，初始值为已保存的 `autoExportTime`（默认 `16:00`）
+    - 倒计时提示：输入框下方一行文字"距下一次自动备份还有 X 小时 Y 分钟"；**当用户修改时间输入后，倒计时文字随即实时更新**，无需保存即可预览
+    - 底部按钮行：左侧"取消"（灰色），右侧"保存"（绿色/`bg-emerald-500`）
+  - 保存行为：调用 `writeBackupConfig({ autoExportTime })`，关闭弹窗，通知 `App.tsx` 更新定时器基准时间
+  - 取消/关闭/Escape/遮罩点击：不保存，直接关闭
+
+- 主界面备份提示区域（自动导出通知）
+  - 位置：主界面 `<header>` 内部，紧跟导航行之下，**独立占用固定高度**（`min-height: 28px` 或等效固定行高），即使无提示内容时也保留占位，避免页面内容跳动
+  - 状态一（无提示）：区域透明/空白，高度占位不变
+  - 状态二（备份中）：触发自动导出前 5 秒出现，显示"⏳ 正在自动备份数据…"，浅绿色背景（`bg-green-50 text-green-700`），居中，圆角，过渡动画
+  - 状态三（备份完成）：导出完成后切换为"✅ 备份成功"，同底色，保持 3 秒后自动清除回状态一
+  - 实现要点：`backupStatus: 'idle' | 'pending' | 'done'` state；`idle` 时 `<div>` 保留高度但不渲染文字；`pending`/`done` 时渲染对应文字与样式
+
 风险评级与均线（实现细节）
 - 使用 `utils/movingAverage.ts` 的 `computeSMA` / `computeMultipleSMAs` 计算 SMA5/10/20
 - 使用 `utils/riskTooltip.ts` 的 `computeRiskRating` 进行评级，输入为 price、maValues、index 与 prevIndex，输出包含 rating、color、action、reasons
@@ -328,6 +493,16 @@ UI / 视觉与交互规范（可直接实现）
   - 导出 JSON/CSV 包含正确 total 值（数值精度检验：price 4 位，total 2 位）
   - 导入会在用户确认后覆盖数据并触发 UI 刷新
   - 分页逻辑正确（上一页/下一页、页数显示正确）
+- 数据备份与恢复验收：
+  - **手动导出**：点击"导出备份"生成文件，文件名形式为 `fund_backup_yyyy-MM-dd_HH-mm-ss.json`（本地时间戳）；文件内容包含 portfolio、indices、globalIndices、trades、positions、config 所有字段（含 optional 字段）
+  - **自动导出**：系统在配置时间触发，生成文件名形式为 `fund_backup_auto_yyyy-MM-dd.json`；无需用户操作，全自动
+  - **备份提示 UI**：自动导出前 5 秒主界面顶部出现"正在自动备份数据…"（浅绿色底色），完成后切换为"备份成功"并在 3 秒后消失；提示区域高度预先保留，不引起其他内容布局偏移
+  - **导入确认**：点击"导入备份"后必须弹出确认框，提示数据覆盖风险；取消则不执行导入
+  - **导入覆盖**：确认后完全覆盖 portfolio、trades、positions、indices 配置；`fund_history_*` 不受影响
+  - **兼容性**：旧版导出文件（indices 为字符串数组、缺少 config/globalIndices 等字段）可正常导入，关键数据（portfolio、trades、positions）不丢失（单元测试覆盖所有兼容场景）
+  - **Fallback 数据**：导入后 optional 字段（估值、价格）作为初始展示 fallback，页面能秒开；后台刷新完成后自动更新为最新数据
+  - **备份配置弹窗**：`BackupSettingsModal` 能正确读取/保存 autoExportTime；保存后倒计时文字更新；修改时间输入后倒计时随即更新（单元测试覆盖）
+  - **倒计时准确性**：`BackupSettingsModal` 中显示的"距下一次自动备份"倒计时正确反映当前本地时间与配置时间的差值
 - 交易明细窗口（TransactionsModal）：
   - 无交易时：日期按钮 disabled，表格区域显示"无任何交易存在"
   - 默认显示最近有交易记录的 local 日期（`getAllTradeDates()[0]`）
@@ -360,10 +535,12 @@ UI / 视觉与交互规范（可直接实现）
   - `tests/hooks/useTrades.test.ts`：localStorage 读写、导入覆盖、导出格式、CustomEvent 与 storage 同步
   - `tests/hooks/getAllTradeDates.test.ts`：`getAllTradeDates` 去重、降序、跨 symbol 合并；`readAll` 正常/损坏 JSON 容错
   - `tests/utils/positionHelper.test.ts`：`computePositions` 的过滤逻辑（fullCapacity=0、净份额=0、无 marketData）、市场价值计算（currentPrice 优先/previousPrice 回退）、份额累加（含买卖交易）、排序（降序）、ratio 总和为 1、颜色分配与循环复用；`POSITION_COLORS` 数量（32）与格式（hsl 字符串）
+  - `tests/utils/backupService.test.ts`：`buildBackupData` 数据结构完整性（含 optional 字段从缓存填充）；`downloadBackupFile` 文件名格式（手动含时间戳、自动含 `_auto_`）、Blob 创建；`applyBackupData` 完全覆盖、evict 旧缓存、setValuationIfAbsent fallback；兼容性场景（旧格式 string[] indices、缺少 config/globalIndices、缺少 price/initialPrice 等）；`readBackupConfig` / `writeBackupConfig` 读写与默认值容错
 - 组件/集成测试（Medium）
   - `tests/components/AddTickerModal.test.tsx`、`TickerCard.test.tsx`、`ConfirmDialog.test.tsx`、`TradeManager.test.tsx`：交互路径、表单校验、导入导出、分页
   - `tests/components/TransactionsModal.test.tsx`：无交易状态、默认日期、五列表头、基金名称来源、买入/卖出标签、统计行（条数/净额/出入账/零值）、日期切换、零值显示、关闭按钮
   - `tests/components/PositionsModal.test.tsx`：空状态（无持仓配置、净份额为 0）、汇总行（基金数/总市值）、表格行数与排序、统计行（条数/总价值/"100%"）、交易记录影响份额、SVG 扇区数量、关闭按钮（按钮 + 遮罩）、`onSelectFund` 回调（表格 + 图例点击）
+  - `tests/components/BackupSettingsModal.test.tsx`：渲染初始时间值、倒计时文字显示、修改时间后倒计时更新、保存按钮调用 writeBackupConfig 并回调 onSave、取消/关闭按钮行为、Escape 键关闭、点击遮罩关闭、输入错误后清空错误提示
 - 手工/视觉回归
   - 检查 TradeManager 中记录展示在常见窗口尺寸下不超出两行
 
@@ -397,6 +574,15 @@ CI 与发布
 - [x] 改造 `OverallProfitModal.tsx`：合并为单次 `computeOverallProfit` 调用；新增 `chartFromDate` state 修复图表 x 轴日期错误
 - [x] 改造 `MarketNewsTicker.tsx`：初始 state 读 `cacheService.getNews()`；刷新后写入缓存
 - [x] 新增测试：`tests/services/cacheService.test.ts`（11 用例，覆盖三类缓存的读写、预加载、持久化行为）
+- [x] 实现 `utils/backupService.ts`（`buildBackupData`、`downloadBackupFile`、`applyBackupData`、`readBackupConfig`、`writeBackupConfig`）
+- [x] 实现 `components/BackupSettingsModal.tsx`（autoExportTime 时间选择、倒计时显示、保存/取消/关闭）
+- [x] 改造 `App.tsx` 导出功能：调用 `buildBackupData` + `downloadBackupFile`（含所有字段、正确文件名格式），替换旧的简易导出逻辑
+- [x] 改造 `App.tsx` 导入功能：调用 `applyBackupData`，导入前弹出 `ConfirmDialog` 确认，确认后更新 state 并触发 UI 重渲染
+- [x] 改造 `App.tsx` 自动导出定时器：每分钟检查本地时间是否达到 `autoExportTime`，触发时调用 `downloadBackupFile(data, 'auto')`
+- [x] 实现主界面顶部备份提示区域（高度预先保留，避免布局偏移）：自动备份前 5 秒显示"正在自动备份数据…"，完成后显示"备份成功"3 秒
+- [x] 顶部菜单栏新增"备份设置"入口，点击打开 `BackupSettingsModal`
+- [x] 新增测试：`tests/utils/backupService.test.ts`（覆盖 buildBackupData 数据结构、downloadBackupFile 文件名、applyBackupData 覆盖逻辑、兼容性场景、readBackupConfig/writeBackupConfig）
+- [x] 新增测试：`tests/components/BackupSettingsModal.test.tsx`（11 用例）
 - [ ] 为 `TradeManager` 添加导入前确认弹窗（若需要，我可以立即实现并添加测试）
 - [ ] 在 tests/ 中补充 `hooks/useTrades.test.ts`、`TradeManager.test.tsx`、`utils/riskTooltip.test.ts`（优先级按上）
 - [ ] 在 CI workflow 中加入 `npm test` 步骤（如需我可以提交 workflow 修改建议）
@@ -407,6 +593,7 @@ CI 与发布
 - 2026-03-03 v1.2：新增基金交易明细功能（TransactionsModal）：主界面"交易"按钮、日期选择器（react-day-picker、仅允许有交易日期、日历标注）、五列交易明细表、统计行（条数/手续费合计/净额入出账）；导出 `readAll` 与 `getAllTradeDates`；新增测试 23 个用例
 - 2026-03-03 v1.3：新增基金持仓功能（PositionsModal）：主界面"持仓"按钮（位于"盈利"左侧）、`computePositions` 工具函数、32 色黄金角调色板（`POSITION_COLORS`）、纯 SVG 饼图（含 hover 联动）、持仓表格（单张表 sticky thead/tfoot）、空状态；持仓配置数据模型补充至 PRD；新增测试 28 个用例（positionHelper 15 + PositionsModal 13）
 - 2026-03-03 v1.4：新增内存数据缓存层（性能优化）：新建 `cacheService.ts`（三类内存 Map + localStorage 预加载/持久化）；改造 `fetchFundHistory` 走缓存优先、新增 `forceFetchFundHistory` 强制刷新；改造 `computeOverallProfit` 读缓存估值（消除每基金额外网络请求）；改造 `App.tsx`（初始化秒开、独立 20 分钟历史净值定时器、并发池大小 3）；改造 `FundDetailsModal`（打开秒开）、`OverallProfitModal`（单次计算 + x 轴日期修复）、`MarketNewsTicker`（读缓存即时展示）；新增测试 11 个用例（cacheService.test.ts）
+- 2026-03-04 v1.5：新增数据备份与恢复功能（导出/导入）：完整 JSON 备份格式规范（含 portfolio、indices、globalIndices、trades、positions、config 所有字段）；手动导出（本地时间戳文件名）与自动导出（`_auto_` 文件名、定时触发）；主界面顶部备份提示 UI（预留高度避免布局偏移、前 5 秒提示 + 完成后 3 秒提示）；导入前确认弹窗；applyBackupData 完全覆盖逻辑 + 缓存 evict + fallback setValuationIfAbsent；BackupSettingsModal（时间配置、实时倒计时、修改即时更新）；兼容性规范（旧格式 string[] indices、缺失字段归一化）；新增测试文件 backupService.test.ts 和 BackupSettingsModal.test.tsx
 
 ---
 

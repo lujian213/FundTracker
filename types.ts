@@ -69,3 +69,53 @@ export interface OverallProfitSummary {
   perFundTimelines?: Record<string, { date: string; cumulativeProfit: number }[]>;
   totalDiff: number;
 }
+
+// ─── Backup / Export-Import types ────────────────────────────────────────────
+
+export interface BackupFund {
+  symbol: string;
+  name?: string;
+  previousPrice?: number;    // 最近确认净值 (dwjz)
+  netWorthDate?: string;     // 最近确认净值时间 (jzrq) -> "YYYY-MM-DD"
+  currentPrice?: number;     // 最新估值 (gsz)
+  realtimeDate?: string;     // 最新估值时间 -> "YYYY-MM-DD"
+}
+
+export interface BackupIndex {
+  symbol: string;
+  name?: string;
+  current?: number;
+  change?: number;
+  changePercent?: number;
+  lastUpdated?: string;
+}
+
+export interface BackupPosition {
+  fullCapacity: number;
+  initialPosition: number;
+  startDate: string | null;
+  initialPrice: number | null;
+}
+
+export interface BackupTrade {
+  id: string;
+  date: string;              // YYYY-MM-DD
+  type: 'buy' | 'sell';
+  shares: number;
+  price?: number;            // optional fallback; prefer historical NAV from cache
+  fee: number;
+}
+
+export interface BackupConfig {
+  autoExportTime: string;    // "HH:mm" local time, default "16:00"
+}
+
+export interface BackupData {
+  portfolio: BackupFund[];
+  indices: BackupIndex[];
+  globalIndices: BackupIndex[];
+  positions: Record<string, BackupPosition>;
+  trades: Record<string, BackupTrade[]>;
+  config: BackupConfig;
+}
+

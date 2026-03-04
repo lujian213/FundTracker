@@ -3,6 +3,21 @@ import { computeProfitTimeline, ProfitPoint } from '../utils/profitCalculator';
 import { getTradesForSymbol } from '../hooks/useTrades';
 import * as cacheService from './cacheService';
 
+/**
+ * Dependency seam used by computeOverallProfit.
+ * Tests can replace these properties to mock fetchFundHistory / fetchFundData
+ * without going through the real RequestQueue or JSONP machinery.
+ *
+ * Example in a test:
+ *   import { _deps } from '../../services/fundService';
+ *   _deps.fetchFundHistory = jest.fn().mockResolvedValue([...]);
+ *   _deps.fetchFundData    = jest.fn().mockResolvedValue(null);
+ */
+export const _deps = {
+  fetchFundHistory: (symbol: string) => fetchFundHistory(symbol),
+  fetchFundData:    (symbol: string) => fetchFundData(symbol),
+};
+
 // Module-level in-memory history cache (kept for backward-compat; cacheService is now the
 // single source of truth and also persists to localStorage per-symbol).
 const historyCache: Record<string, HistoricalPoint[]> = {};
@@ -620,7 +635,7 @@ export async function computeOverallProfit(opts: { symbols?: string[]; fromDate?
 
   for (const sym of syms) {
     try {
-      const history = await fetchFundHistory(sym);
+      const history = await _deps.fetchFundHistory(sym);
       if (!history || history.length === 0) continue;
 
       // trades from local storage helper
@@ -673,7 +688,7 @@ export async function computeOverallProfit(opts: { symbols?: string[]; fromDate?
         try {
           const fd = cacheService.getValuation(sym.padStart(6, '0'))
                   ?? cacheService.getValuation(sym)
-                  ?? await fetchFundData(sym);
+                  ?? await _deps.fetchFundData(sym);
           if (fd) {
             const candidates: { iso: string; value: number }[] = [];
             if (fd.netWorthDate && fd.previousPrice !== undefined && fd.previousPrice !== null) candidates.push({ iso: fd.netWorthDate, value: fd.previousPrice });

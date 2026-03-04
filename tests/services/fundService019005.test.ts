@@ -1,9 +1,14 @@
 import { fetchFundData } from '../../services/fundService';
 
-const wait = (ms: number) => new Promise((r) => setTimeout(r, ms));
+async function drainQueue() {
+  await jest.advanceTimersByTimeAsync(400);
+  await Promise.resolve();
+  await Promise.resolve();
+}
 
 describe('fetchFundData 019005 specific scenario', () => {
   beforeEach(() => {
+    jest.useFakeTimers();
     document.head.innerHTML = '';
     // ensure jsonpgz exists
     if (!(window as any).jsonpgz) (window as any).jsonpgz = (d: any) => {};
@@ -14,19 +19,24 @@ describe('fetchFundData 019005 specific scenario', () => {
     delete (window as any).fundName;
   });
 
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
   test('uses latest history point as confirmed net worth when fallback', async () => {
     const symbol = '019005';
     const promise = fetchFundData(symbol);
 
-    // Wait for primary script injection
-    await wait(400);
+    // Advance fake timers past RequestQueue delay so primary script is injected
+    await drainQueue();
     const primaryScript = document.head.querySelector('script') as any;
     expect(primaryScript).toBeTruthy();
 
     // Simulate primary script error to trigger fallback
     if (primaryScript && primaryScript.onerror) primaryScript.onerror(new Error('script error'));
 
-    await wait(100);
+    // Advance again so fallback script is injected
+    await drainQueue();
     const scripts = Array.from(document.head.querySelectorAll('script'));
     const fallbackScript = scripts[scripts.length - 1] as any;
     expect(fallbackScript).toBeTruthy();

@@ -10,5 +10,9 @@ module.exports = {
   moduleNameMapper: {
     '\\.(css|less|scss|sass)$': 'identity-obj-proxy',
     '\\.(gif|ttf|eot|svg|png)$': '<rootDir>/__mocks__/fileMock.js'
-  }
+  },
+  // Run suites in parallel across CPU cores (50% of available cores)
+  maxWorkers: '50%',
+  // Default timeout per test: 10 s covers async integration tests; pure unit tests finish in <100 ms
+  testTimeout: 10000,
 };

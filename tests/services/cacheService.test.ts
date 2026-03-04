@@ -154,5 +154,133 @@ describe('cacheService', () => {
       expect(keys.some(k => k.includes('news'))).toBe(false);
     });
   });
+
+  // ── setValuationIfAbsent ─────────────────────────────────────────────────────
+
+  describe('setValuationIfAbsent', () => {
+    test('writes to cache when symbol is absent', () => {
+      const cs = loadCacheService();
+      expect(cs.getValuation('000001')).toBeUndefined();
+      cs.setValuationIfAbsent('000001', SAMPLE_VALUATION);
+      expect(cs.getValuation('000001')).toEqual(SAMPLE_VALUATION);
+    });
+
+    test('does NOT overwrite existing valuation', () => {
+      const cs = loadCacheService();
+      const original = { ...SAMPLE_VALUATION, previousPrice: 9.99 };
+      cs.setValuation('000001', original);
+      // Try to overwrite with a different value
+      cs.setValuationIfAbsent('000001', { ...SAMPLE_VALUATION, previousPrice: 1.11 });
+      // Should still be the original
+      expect(cs.getValuation('000001')!.previousPrice).toBeCloseTo(9.99);
+    });
+
+    test('also persists to localStorage when absent', () => {
+      const cs = loadCacheService();
+      cs.setValuationIfAbsent('000001', SAMPLE_VALUATION);
+      const raw = localStorage.getItem('fund_market_data');
+      const obj = JSON.parse(raw!);
+      expect(obj['000001']).toEqual(SAMPLE_VALUATION);
+    });
+
+    test('does NOT touch localStorage when symbol already cached', () => {
+      const cs = loadCacheService();
+      const original = { ...SAMPLE_VALUATION, previousPrice: 9.99 };
+      cs.setValuation('000001', original);
+      cs.setValuationIfAbsent('000001', { ...SAMPLE_VALUATION, previousPrice: 1.11 });
+      const raw = localStorage.getItem('fund_market_data');
+      const obj = JSON.parse(raw!);
+      expect(obj['000001'].previousPrice).toBeCloseTo(9.99);
+    });
+  });
+
+  // ── setHistoryIfAbsent ───────────────────────────────────────────────────────
+
+  describe('setHistoryIfAbsent', () => {
+    test('writes to cache when symbol is absent', () => {
+      const cs = loadCacheService();
+      expect(cs.getHistory('000001')).toBeUndefined();
+      cs.setHistoryIfAbsent('000001', SAMPLE_HISTORY);
+      expect(cs.getHistory('000001')).toEqual(SAMPLE_HISTORY);
+    });
+
+    test('does NOT overwrite existing history', () => {
+      const cs = loadCacheService();
+      const original = [{ date: 1700000000000, value: 9.99, equityReturn: 0 }];
+      cs.setHistory('000001', original);
+      cs.setHistoryIfAbsent('000001', SAMPLE_HISTORY);
+      expect(cs.getHistory('000001')).toEqual(original);
+    });
+
+    test('also persists to localStorage when absent', () => {
+      const cs = loadCacheService();
+      cs.setHistoryIfAbsent('000001', SAMPLE_HISTORY);
+      const raw = localStorage.getItem('fund_history_000001');
+      expect(JSON.parse(raw!)).toEqual(SAMPLE_HISTORY);
+    });
+
+    test('does NOT touch localStorage when symbol already cached', () => {
+      const cs = loadCacheService();
+      const original = [{ date: 9999999999999, value: 2.5, equityReturn: 0.1 }];
+      cs.setHistory('000001', original);
+      cs.setHistoryIfAbsent('000001', SAMPLE_HISTORY);
+      const raw = localStorage.getItem('fund_history_000001');
+      expect(JSON.parse(raw!)).toEqual(original);
+    });
+  });
+
+  // ── evictValuations ──────────────────────────────────────────────────────────
+
+  describe('evictValuations', () => {
+    test('removes symbols not in keepSymbols from memory', () => {
+      const cs = loadCacheService();
+      const v2 = { ...SAMPLE_VALUATION, symbol: '000002' };
+      cs.setValuation('000001', SAMPLE_VALUATION);
+      cs.setValuation('000002', v2);
+
+      cs.evictValuations(new Set(['000001']));
+
+      expect(cs.getValuation('000001')).toEqual(SAMPLE_VALUATION);
+      expect(cs.getValuation('000002')).toBeUndefined();
+    });
+
+    test('updates fund_market_data in localStorage after eviction', () => {
+      const cs = loadCacheService();
+      const v2 = { ...SAMPLE_VALUATION, symbol: '000002' };
+      cs.setValuation('000001', SAMPLE_VALUATION);
+      cs.setValuation('000002', v2);
+
+      cs.evictValuations(new Set(['000001']));
+
+      const raw = localStorage.getItem('fund_market_data');
+      const obj = JSON.parse(raw!);
+      expect(obj['000001']).toBeDefined();
+      expect(obj['000002']).toBeUndefined();
+    });
+
+    test('keeps all symbols when keepSymbols contains all', () => {
+      const cs = loadCacheService();
+      cs.setValuation('000001', SAMPLE_VALUATION);
+      cs.evictValuations(new Set(['000001']));
+      expect(cs.getValuation('000001')).toEqual(SAMPLE_VALUATION);
+    });
+
+    test('clears all symbols when keepSymbols is empty', () => {
+      const cs = loadCacheService();
+      cs.setValuation('000001', SAMPLE_VALUATION);
+      cs.setValuation('000002', { ...SAMPLE_VALUATION, symbol: '000002' });
+      cs.evictValuations(new Set());
+      expect(cs.getValuation('000001')).toBeUndefined();
+      expect(cs.getValuation('000002')).toBeUndefined();
+      // localStorage should also be empty
+      const raw = localStorage.getItem('fund_market_data');
+      expect(JSON.parse(raw!)).toEqual({});
+    });
+
+    test('no-op when cache is already empty', () => {
+      const cs = loadCacheService();
+      expect(() => cs.evictValuations(new Set(['000001']))).not.toThrow();
+    });
+  });
 });
 

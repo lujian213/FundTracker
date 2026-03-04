@@ -1,25 +1,24 @@
 import { fetchFundData, fetchFundHistory } from '../../services/fundService';
 import { ValuationData } from '../../types';
 
-const wait = (ms: number) => new Promise((r) => setTimeout(r, ms));
+// Advance past the RequestQueue random delay (150–350 ms) without triggering
+// the 8000 ms JSONP timeout.  Multiple Promise.resolve() calls drain the
+// microtask queue that the async RequestQueue.process() loop produces.
+async function drainQueue() {
+  await jest.advanceTimersByTimeAsync(400);
+  await Promise.resolve();
+  await Promise.resolve();
+}
 
 describe('fundService', () => {
   beforeEach(() => {
-    // Clean DOM and globals before each test
+    jest.useFakeTimers();
     document.head.innerHTML = '';
-    // Clear any global JSONP registries or data used by the service
-    // @ts-ignore
     delete (window as any).Data_netWorthTrend;
-    // Clear possible globals added by pingzhongdata scripts between tests
-    // @ts-ignore
     delete (window as any).fundName;
-    // @ts-ignore
     delete (window as any).FundName;
-    // @ts-ignore
     delete (window as any).fS_name;
-    // @ts-ignore
     delete (window as any).name;
-    // Ensure jsonpgz exists to avoid runtime errors when tests call it
     if (!(window as any).jsonpgz) {
       (window as any).jsonpgz = (d: any) => {};
     }
@@ -32,14 +31,11 @@ describe('fundService', () => {
 
   test('fetchFundData parses jsonpgz response into ValuationData', async () => {
     const symbol = '123456';
-
     const promise = fetchFundData(symbol);
 
-    // Wait briefly for RequestQueue delay and script injection
-    await wait(400);
+    await drainQueue();
 
-    // Simulate the JSONP callback invoked by the remote script by calling window.jsonpgz
-    const responseData = {
+    (window as any).jsonpgz({
       fundcode: symbol,
       name: 'Test Fund',
       gsz: '1.2345',
@@ -47,9 +43,7 @@ describe('fundService', () => {
       gszzl: '23.45',
       gztime: '2026-02-11 15:30:00',
       jzrq: '2026-02-11'
-    };
-
-    (window as any).jsonpgz(responseData);
+    });
 
     const result = await promise;
 
@@ -68,14 +62,17 @@ describe('fundService', () => {
     const symbol = '654321';
     const promise = fetchFundData(symbol);
 
-    // Wait for RequestQueue to inject script
-    await wait(400);
+    await drainQueue();
 
     const script = document.head.querySelector('script') as any;
     expect(script).toBeTruthy();
-
-    // Simulate script load error
     if (script && script.onerror) script.onerror(new Error('script error'));
+
+    // After onerror the service tries a fallback (fetchFundDataFromEastMoney) which has a 2000ms
+    // internal timeout. Advance past that so the promise resolves to null.
+    await jest.advanceTimersByTimeAsync(3000);
+    await Promise.resolve();
+    await Promise.resolve();
 
     const result = await promise;
     expect(result).toBeNull();
@@ -84,12 +81,15 @@ describe('fundService', () => {
   test('fetchFundData returns null for non-numeric symbol (invalid input)', async () => {
     const promise = fetchFundData('abc');
 
-    // Wait for RequestQueue to inject script
-    await wait(400);
+    await drainQueue();
 
-    // Simulate script error for invalid input
     const script = document.head.querySelector('script') as any;
     if (script && script.onerror) script.onerror(new Error('invalid symbol'));
+
+    // Advance past the fallback 2000ms timeout
+    await jest.advanceTimersByTimeAsync(3000);
+    await Promise.resolve();
+    await Promise.resolve();
 
     const result = await promise;
     expect(result).toBeNull();
@@ -97,10 +97,6 @@ describe('fundService', () => {
 
   test('fetchFundData deterministic for same symbol when fed identical responses', async () => {
     const symbol = '222222';
-
-    // First call
-    const p1 = fetchFundData(symbol);
-    await wait(400);
     const resp = {
       fundcode: symbol,
       name: 'Det Fund',
@@ -110,12 +106,14 @@ describe('fundService', () => {
       gztime: '2026-02-11 10:00:00',
       jzrq: '2026-02-11'
     };
+
+    const p1 = fetchFundData(symbol);
+    await drainQueue();
     (window as any).jsonpgz(resp);
     const r1 = await p1;
 
-    // Second call with the same response
     const p2 = fetchFundData(symbol);
-    await wait(400);
+    await drainQueue();
     (window as any).jsonpgz(resp);
     const r2 = await p2;
 
@@ -125,7 +123,6 @@ describe('fundService', () => {
   });
 
   test('fetchFundData handles internal exception and returns null', async () => {
-    // Monkeypatch document.createElement to throw when creating script to simulate internal failure
     const origCreate = document.createElement.bind(document);
     // @ts-ignore
     document.createElement = (tag: string) => {
@@ -135,12 +132,10 @@ describe('fundService', () => {
 
     try {
       const promise = fetchFundData('333333');
-      // Wait for RequestQueue to run
-      await wait(500);
+      await drainQueue();
       const res = await promise;
       expect(res).toBeNull();
     } finally {
-      // restore
       // @ts-ignore
       document.createElement = origCreate;
     }
@@ -153,7 +148,7 @@ describe('fundService', () => {
     ['1234567', '1234567']
   ])('fetchFundData handles boundary symbol %s -> code %s', async (input, expectedCode) => {
     const promise = fetchFundData(input as string);
-    await wait(400);
+    await drainQueue();
 
     const script = document.head.querySelector('script') as HTMLScriptElement | null;
     expect(script).toBeTruthy();
@@ -166,26 +161,19 @@ describe('fundService', () => {
   });
 
   test('fetchFundHistory loads Data_netWorthTrend and maps to HistoricalPoint[]', async () => {
-    // Ensure a clean head
     document.head.innerHTML = '';
 
     const symbol = '100001';
     const promise = fetchFundHistory(symbol);
 
-    // The code appends a script to head; find it
-    // Wait briefly to allow script to be appended
-    await wait(50);
+    await Promise.resolve();
     const script = document.head.querySelector('script');
     expect(script).toBeTruthy();
 
-    // Prepare global Data_netWorthTrend that the onload handler reads
-    // Two sample points: x (timestamp), y (net value), equityReturn
     (window as any).Data_netWorthTrend = [
       { x: 1670000000000, y: '1.1000', equityReturn: '0.01' },
       { x: 1670000001000, y: '1.2000', equityReturn: '0.02' }
     ];
-
-    // Trigger the onload handler to simulate script load
     // @ts-ignore
     if ((script as any).onload) (script as any).onload();
 
@@ -201,7 +189,7 @@ describe('fundService', () => {
     const symbol = '200002';
 
     const p1 = fetchFundHistory(symbol);
-    await wait(50);
+    await Promise.resolve();
     const script1 = document.head.querySelector('script');
     (window as any).Data_netWorthTrend = [{ x: 1600000000000, y: '2.000', equityReturn: '0.05' }];
     // @ts-ignore
@@ -209,7 +197,6 @@ describe('fundService', () => {
     const r1 = await p1;
     expect(r1).toHaveLength(1);
 
-    // Call again; should return cached array and not append a new script
     const beforeCount = document.head.querySelectorAll('script').length;
     const p2 = fetchFundHistory(symbol);
     const r2 = await p2;
@@ -222,28 +209,23 @@ describe('fundService', () => {
     const symbol = '019005';
     const promise = fetchFundData(symbol);
 
-    // Wait for RequestQueue to inject the primary script
-    await wait(400);
+    await drainQueue();
     const primaryScript = document.head.querySelector('script') as any;
     expect(primaryScript).toBeTruthy();
 
-    // Simulate primary script load error to trigger fallback
     if (primaryScript && primaryScript.onerror) primaryScript.onerror(new Error('script error'));
 
-    // Wait briefly for fallback to inject its script
-    await wait(100);
+    // Drain queue again for the fallback request to be scheduled and injected
+    await drainQueue();
     const scripts = Array.from(document.head.querySelectorAll('script'));
     const fallbackScript = scripts[scripts.length - 1] as any;
     expect(fallbackScript).toBeTruthy();
 
-    // Prepare globals that pingzhongdata would expose
     (window as any).fundName = '东方基金 019005';
     (window as any).Data_netWorthTrend = [
       { x: 1700000000000, y: '1.0000', equityReturn: '0' },
       { x: 1700000001000, y: '1.1000', equityReturn: '0.1' }
     ];
-
-    // Trigger fallback script onload
     // @ts-ignore
     if (fallbackScript && fallbackScript.onload) fallbackScript.onload();
 
@@ -257,29 +239,22 @@ describe('fundService', () => {
     const symbol = '019005';
     const promise = fetchFundData(symbol);
 
-    // Wait for RequestQueue to inject primary script
-    await wait(400);
+    await drainQueue();
     const primaryScript = document.head.querySelector('script') as any;
     expect(primaryScript).toBeTruthy();
 
-    // Simulate the remote script invoking jsonpgz() with no args (empty callback)
-    // This should resolve the primary jsonp but with undefined data, so fetchFundData should treat it as failure and try fallback
     (window as any).jsonpgz();
 
-    // Wait briefly for fallback to be injected
-    await wait(100);
+    await drainQueue();
     const scripts = Array.from(document.head.querySelectorAll('script'));
     const fallbackScript = scripts[scripts.length - 1] as any;
     expect(fallbackScript).toBeTruthy();
 
-    // Simulate pingzhongdata exposing fS_name and Data_netWorthTrend
     (window as any).fS_name = '国投瑞银白银期货(LOF)C';
     (window as any).Data_netWorthTrend = [
       { x: 1700000000000, y: '1.0000', equityReturn: '0' },
       { x: 1700000001000, y: '1.1000', equityReturn: '0.1' }
     ];
-
-    // Trigger fallback script onload
     // @ts-ignore
     if (fallbackScript && fallbackScript.onload) fallbackScript.onload();
 
