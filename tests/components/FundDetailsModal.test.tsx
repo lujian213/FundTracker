@@ -109,3 +109,71 @@ describe('FundDetailsModal SMA behavior', () => {
     expect(tooltip.textContent).toMatch(/黄金交叉/);
   });
 });
+
+describe('基金份额计算器', () => {
+  const baseData: ValuationData = {
+    symbol: '000001',
+    name: 'Sample Fund',
+    currentPrice: 2.0,
+    previousPrice: 1.9,
+    changePercentage: 0.5,
+    lastUpdated: '2026-03-05 15:00',
+    realtimeDate: '2026-03-05',
+    netWorthDate: '2026-03-04',
+    valuationDate: '2026-03-05',
+    sourceUrl: 'https://example.com',
+  };
+
+  beforeEach(() => {
+    (fetchFundHistory as jest.Mock).mockResolvedValue(SAMPLE_HISTORY);
+  });
+
+  afterEach(() => jest.restoreAllMocks());
+
+  const openCalculator = async (data = baseData) => {
+    render(<FundDetailsModal data={data} onClose={() => {}} />);
+    await waitFor(() => expect(fetchFundHistory).toHaveBeenCalled());
+    fireEvent.click(screen.getByRole('button', { name: '基金份额计算器' }));
+  };
+
+  test('点击计算器按钮打开弹窗', async () => {
+    await openCalculator();
+    expect(screen.getByText('基金份额计算器')).toBeInTheDocument();
+  });
+
+  test('正常金额计算份额（精确到2位小数）', async () => {
+    await openCalculator();
+    fireEvent.change(screen.getByLabelText('计算器金额输入'), { target: { value: '1000' } });
+    // 1000 / 2.0 = 500.00
+    expect(screen.getByLabelText('计算器份额输出').textContent).toBe('500.00');
+  });
+
+  test('千分位金额正确解析', async () => {
+    await openCalculator();
+    fireEvent.change(screen.getByLabelText('计算器金额输入'), { target: { value: '1,000' } });
+    // 1000 / 2.0 = 500.00
+    expect(screen.getByLabelText('计算器份额输出').textContent).toBe('500.00');
+  });
+
+  test('无效金额显示 -', async () => {
+    await openCalculator();
+    fireEvent.change(screen.getByLabelText('计算器金额输入'), { target: { value: 'abc' } });
+    expect(screen.getByLabelText('计算器份额输出').textContent).toBe('-');
+  });
+
+  test('负数金额显示 -', async () => {
+    await openCalculator();
+    fireEvent.change(screen.getByLabelText('计算器金额输入'), { target: { value: '-100' } });
+    expect(screen.getByLabelText('计算器份额输出').textContent).toBe('-');
+  });
+
+  test('无有效估值时显示"无法计算"并用红色字体', async () => {
+    const noPrice = { ...baseData, currentPrice: 0, previousPrice: 0 };
+    await openCalculator(noPrice);
+    fireEvent.change(screen.getByLabelText('计算器金额输入'), { target: { value: '1000' } });
+    const output = screen.getByLabelText('计算器份额输出');
+    expect(output.textContent).toBe('无法计算');
+    expect(output.className).toMatch(/text-red/);
+  });
+});
+

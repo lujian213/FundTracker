@@ -37,6 +37,9 @@ export const FundDetailsModal: React.FC<FundDetailsModalProps> = ({ data, onClos
   const [tmpStartDate, setTmpStartDate] = useState<string>('');
   const [showTrade, setShowTrade] = useState(false);
   const [showProfit, setShowProfit] = useState(false);
+  // 计算器弹窗控制与输入
+  const [showCalculator, setShowCalculator] = useState(false);
+  const [calcAmount, setCalcAmount] = useState<string>('');
   // validation errors for modal inputs
   const [tmpFullError, setTmpFullError] = useState<string | null>(null);
   const [tmpInitialError, setTmpInitialError] = useState<string | null>(null);
@@ -414,6 +417,20 @@ export const FundDetailsModal: React.FC<FundDetailsModalProps> = ({ data, onClos
     return getPriceForISODate(s);
   }, [tmpStartDate, startDate, history]);
 
+  // 基金份额计算器：金额 / 估值，优先 currentPrice，fallback 到 previousPrice
+  const calcShares = useMemo(() => {
+    const price = data.currentPrice > 0 ? data.currentPrice
+                : data.previousPrice > 0 ? data.previousPrice
+                : null;
+    const raw = calcAmount.replace(/,/g, '').trim();
+    if (!price) return { type: 'no-price' as const };
+    if (raw === '') return { type: 'empty' as const };
+    const num = Number(raw);
+    if (Number.isNaN(num) || !isFinite(num)) return { type: 'invalid' as const };
+    if (num < 0) return { type: 'negative' as const };
+    return { type: 'ok' as const, value: (num / price).toFixed(2) };
+  }, [calcAmount, data.currentPrice, data.previousPrice]);
+
   // holdings summary from trades
   const { trades: tradeList } = useTrades(data.symbol);
 
@@ -500,6 +517,10 @@ export const FundDetailsModal: React.FC<FundDetailsModalProps> = ({ data, onClos
              {/* 配置与交易按钮 */}
              <button aria-label="配置仓位" title="配置仓位" onClick={openConfig} className="w-10 h-10 rounded-full bg-gray-50 flex items-center justify-center text-gray-500 hover:bg-gray-100 transition-colors">
                <i className="fas fa-cog"></i>
+             </button>
+             {/* 计算器按钮 */}
+             <button aria-label="基金份额计算器" title="基金份额计算器" onClick={() => setShowCalculator(true)} className="w-10 h-10 rounded-full bg-gray-50 flex items-center justify-center text-gray-500 hover:bg-gray-100 transition-colors">
+               <i className="fas fa-calculator"></i>
              </button>
              <button aria-label="交易管理" aria-haspopup="dialog" title="交易管理" onClick={() => { if (fullCapacity && fullCapacity > 0) setShowTrade(true); }}
                className={`w-10 h-10 rounded-full flex items-center justify-center transition-colors ${fullCapacity && fullCapacity > 0 ? 'bg-gray-50 text-gray-500 hover:bg-gray-100' : 'bg-gray-100 text-gray-300 cursor-not-allowed'}`}
@@ -719,6 +740,50 @@ export const FundDetailsModal: React.FC<FundDetailsModalProps> = ({ data, onClos
                     </div>
                   </div>
                 )}
+               {/* 基金份额计算器弹窗 */}
+               {showCalculator && (
+                 <div className="fixed inset-0 z-[120] flex items-center justify-center">
+                   <div className="absolute inset-0 bg-black/40" onClick={() => { setShowCalculator(false); setCalcAmount(''); }} />
+                   <div className="relative bg-white rounded-lg shadow-lg w-full max-w-sm p-6 z-30">
+                     <h3 className="text-lg font-bold mb-4">基金份额计算器</h3>
+                     <div className="space-y-4">
+                       <div className="flex items-center justify-between">
+                         <label className="text-sm text-gray-600">买入/卖出金额（元）</label>
+                         <input
+                           aria-label="计算器金额输入"
+                           type="text"
+                           inputMode="decimal"
+                           className="w-40 px-2 py-1 border rounded text-right"
+                           placeholder="如 1,000"
+                           value={calcAmount}
+                           onChange={e => setCalcAmount(e.target.value)}
+                         />
+                       </div>
+                       <div className="flex items-center justify-between">
+                         <label className="text-sm text-gray-600">可买份额（份）</label>
+                         <span
+                           aria-label="计算器份额输出"
+                           className={`w-40 px-2 py-1 text-right font-mono text-sm font-medium ${
+                             calcShares.type === 'no-price' || calcShares.type === 'invalid'
+                               ? 'text-red-500'
+                               : 'text-gray-400'
+                           }`}
+                         >
+                           {calcShares.type === 'no-price' ? '无法计算'
+                            : calcShares.type === 'ok' ? calcShares.value
+                            : '-'}
+                         </span>
+                       </div>
+                       <p className="text-xs text-gray-400">
+                         参考估值：{data.currentPrice > 0 ? data.currentPrice.toFixed(4) : data.previousPrice > 0 ? `${data.previousPrice.toFixed(4)}（确认净值）` : '暂无数据'}
+                       </p>
+                     </div>
+                     <div className="mt-4 flex justify-end">
+                       <button className="px-3 py-1 rounded bg-gray-100 text-sm" onClick={() => { setShowCalculator(false); setCalcAmount(''); }}>关闭</button>
+                     </div>
+                   </div>
+                 </div>
+               )}
                {/* Configuration modal (show when user clicks gear) */}
                {showConfig && (
                  <div className="fixed inset-0 z-[120] flex items-center justify-center">

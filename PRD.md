@@ -1,6 +1,6 @@
 # FundTracker — 产品需求文档 (PRD)
 
-版本：1.9
+版本：1.10
 最后更新：2026-03-05
 
 ---
@@ -19,6 +19,7 @@
   - **内存数据缓存层（性能优化）**：将数据获取与界面展示分离，实现所有界面操作秒开
   - **数据备份与恢复（导出/导入）**：全量 JSON 备份、手动导出、定时自动导出、导入覆盖、兼容性保障
   - **卡片增强（Cards Enhancement）**：状态圆点（正常/错误/未知）、尽最大努力内容显示、Card 添加即时展示
+  - **基金份额计算器**：在基金详情页内嵌计算器，支持金额到份额的即时换算
   - 测试、验收与 CI 要求
 
 高优先级交付物（v1）
@@ -444,6 +445,17 @@ export type CardStatus = 'ok' | 'error' | 'unknown';
   - 加载并展示最近 90 个历史点（若可用），svg 曲线 + area + 可切换的 SMA（5/10/20）
   - 默认可见：5/10/20（如上确认）
   - Hover 在图上时显示每条可见均线的数值
+  - **基金份额计算器**（`fas fa-calculator` 按钮，位于"配置仓位"与"交易管理"按钮之间）：
+    - 点击图标打开计算器弹窗（与配置仓位弹窗风格一致：`fixed inset-0 z-[120]`，`max-w-sm`）
+    - 输入框标签"买入/卖出金额（元）"；输出区标签"可买份额（份）"
+    - 估值来源：优先使用 `currentPrice`（实时估值，需 `> 0`），fallback 到 `previousPrice`（最近确认净值，需 `> 0`）
+    - 份额计算：`(金额 / 估值).toFixed(2)`，精确到小数点后 2 位
+    - 支持千分位输入（解析时去除逗号，即 `value.replace(/,/g, '')`）
+    - 金额为空、非数字或 NaN 时：输出框显示 `"-"`（红色字体）
+    - 金额为负数时：输出框显示 `"-"`（灰色字体）
+    - 无有效估值（`currentPrice <= 0` 且 `previousPrice <= 0`）时：输出框显示"无法计算"（红色字体）
+    - 弹窗底部显示"参考估值"：若 `currentPrice > 0` 展示实时估值；否则若 `previousPrice > 0` 展示"确认净值"；均无则展示"暂无数据"
+    - 关闭弹窗时清空输入（`calcAmount` 重置为 `''`）
 
 - TradeManager（交易管理）
   - 弹窗包含：表单（date, type, shares, fee, price(只读按日期), computed total(只读)）、交易记录列表（分页）、导入/导出按钮
@@ -604,6 +616,15 @@ export type CardStatus = 'ok' | 'error' | 'unknown';
   - 点击表格基金名称列触发 `onSelectFund`，关闭持仓弹窗并打开 `FundDetailsModal`
   - 调色板：32 色，超出 32 只基金时循环复用
 - 风险评级：在给定历史/当前价样例中输出预期 rating 与 reasons（单元测试覆盖）
+- 基金份额计算器：
+  - 点击计算器图标按钮弹出计算器弹窗
+  - 正常金额（如 `1000`）计算结果精确到 2 位小数（`1000 / currentPrice`）
+  - 千分位金额（如 `1,000`）去除逗号后正确解析，结果与不含逗号的等效金额一致
+  - 无效金额（非数字字符串）：输出框显示 `"-"`（红色）
+  - 负数金额：输出框显示 `"-"`
+  - `currentPrice <= 0` 且 `previousPrice <= 0` 时：输出框显示"无法计算"（红色）
+  - 关闭弹窗后重新打开，输入框已清空
+  - 单元测试覆盖上述 6 个场景（`tests/components/FundDetailsModal.test.tsx`）
 - UI 视觉：交易记录在常见桌面宽度下保持不超过两行显示（或使用多行截断展示两行）
 
 测试计划（开发者可直接运行）
@@ -666,6 +687,7 @@ CI 与发布
 - [x] 交易表单输入模式优化（v1.7）：买入时总额可输、份额只读（2位小数）；卖出时份额可输、总额只读；类型切换自动清零；编辑回填逻辑适配；新增测试5个用例（`tradeManagerIntegration.test.tsx`）
 - [x] 卡片增强（v1.8）：新增 `CardStatus` 类型（ok/error/unknown）；`App.tsx` 新增 `fundStatuses` / `indexStatuses` state；`updateSingleFund` 和 `refreshMarketIndicesAsync` 更新状态；`TickerCard` 渲染左上角状态圆点（绿/红/灰）+ aria-label；无数据时显示 `'-'` 替代骨架屏；名称兜底显示 symbol；`renderIndexCard` 同步支持状态圆点；新增测试 5 个用例（`TickerCard.test.tsx`）
 - [x] 盈亏计算修复与一致性对齐（v1.9）：引入手续费延迟规范（Fee-Deferral Convention）——交易当日手续费延迟到下一日体现在 dailyProfit 中，与中国基金平台标准一致；`ProfitModal` 基线调整改为由 dailyProfit 累加重建 cumulativeProfit；`computeOverallProfit` 的 `perFundTimelines` 对所有日期均使用 fee-deferral dailyProfit 累加，消除整体盈利与单基金盈利之间的数值差异；移除调试代码（`ProfitDebugRow`、`computeProfitTimelineDebug`、调试按钮）；新增 7 个测试用例
+- [x] 基金份额计算器（v1.10）：`FundDetailsModal` 新增 `showCalculator` / `calcAmount` state 与 `calcShares` useMemo；"配置仓位"与"交易管理"按钮之间插入 `fas fa-calculator` 图标按钮；计算器弹窗含金额输入框（支持千分位解析）和份额输出区（优先 `currentPrice`，fallback `previousPrice`，异常情况友好提示）；新增测试 6 个用例（`FundDetailsModal.test.tsx`）
 - [ ] 为 `TradeManager` 添加导入前确认弹窗（若需要，我可以立即实现并添加测试）
 - [ ] 在 tests/ 中补充 `hooks/useTrades.test.ts`、`TradeManager.test.tsx`、`utils/riskTooltip.test.ts`（优先级按上）
 - [ ] 在 CI workflow 中加入 `npm test` 步骤（如需我可以提交 workflow 修改建议）
@@ -681,6 +703,7 @@ CI 与发布
 - 2026-03-04 v1.7：交易添加表单输入模式优化：买入时总额可输入、份额只读（2位小数）；卖出时份额可输入、总额只读；类型切换自动清零；编辑回填逻辑适配；新增测试 5 个用例（`tradeManagerIntegration.test.tsx`）
 - 2026-03-05 v1.8：卡片增强（Cards Enhancement）：新增 `CardStatus` 联合类型（ok/error/unknown）；新增 `fundStatuses` / `indexStatuses` 运行时 state（不持久化）；`updateSingleFund` 和 `refreshMarketIndicesAsync` 分别按成功/失败更新对应 symbol 的状态；`TickerCard` 与 `renderIndexCard` 渲染左上角状态圆点（绿色正常/红色错误/灰色未知）含 hover 提示与 aria-label；无数据时价格/涨跌幅显示 `'-'` 替代骨架屏动画；名称缺失时兜底显示 symbol；新增 TickerCard 测试 5 个用例（状态圆点 ×3、无数据占位符 ×1、名称兜底 ×1）
 - 2026-03-05 v1.9：盈亏计算修复与一致性对齐：引入手续费延迟规范（Fee-Deferral Convention）——交易当日手续费延迟到下一日体现在 dailyProfit 中，与中国基金平台标准一致；`ProfitModal` 基线调整改为由 dailyProfit 累加重建 cumulativeProfit，不再从 cumulativeProfit 差分重算；`computeOverallProfit` 的 `perFundTimelines` 对 startDate 之后所有日期（含第一日）均使用 computeProfitTimeline 的 fee-deferral dailyProfit 累加，消除整体盈利与单基金盈利之间的数值差异；移除调试代码（`ProfitDebugRow`、`computeProfitTimelineDebug`、调试按钮及 state）；新增 7 个测试用例（fee-deferral 卖出/买入/无交易/基线调整/periodTotal 共 5 个、整体与单基金一致性 2 个）
+- 2026-03-05 v1.10：基金份额计算器——在基金详情页"配置仓位"与"交易管理"按钮之间新增计算器图标按钮；点击弹出基金份额计算器，支持金额到份额的自动换算（优先使用实时估值 currentPrice，fallback 到确认净值 previousPrice）；支持千分位输入（去除逗号后解析）；无有效估值时显示"无法计算"（红色）；无效金额或负数显示"-"；新增测试 6 个用例
 
 ---
 
