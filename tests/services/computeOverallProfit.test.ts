@@ -312,3 +312,156 @@ describe('periodTotal — full chart window cumulative', () => {
     expect(computePeriodTotal(s)).toBeCloseTo(350, 2);
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Chart x-axis start date — must be minimum startDate across all funds
+// ─────────────────────────────────────────────────────────────────────────────
+describe('chart x-axis start date derivation', () => {
+  // Mirrors the logic in OverallProfitModal that computes chartFromDate from base.perFund.
+  // Returns null when no fund has a startDate — the UI must show an empty-state message
+  // "无持仓基金，请先配置" instead of the chart and table.
+  function deriveChartFromDate(
+    perFund: { startDate: string | null }[]
+  ): string | null {
+    const allStartDates = perFund.map(f => f.startDate).filter((d): d is string => !!d);
+    return allStartDates.length > 0 ? allStartDates.reduce((a, b) => (a < b ? a : b)) : null;
+  }
+
+  test('returns the minimum startDate when all funds have a startDate', () => {
+    const perFund = [
+      { startDate: '2026-02-15' },
+      { startDate: '2026-01-10' },
+      { startDate: '2026-03-01' },
+    ];
+    expect(deriveChartFromDate(perFund)).toBe('2026-01-10');
+  });
+
+  test('returns the sole startDate when only one fund has a startDate', () => {
+    const perFund = [{ startDate: '2026-02-20' }];
+    expect(deriveChartFromDate(perFund)).toBe('2026-02-20');
+  });
+
+  test('returns null when no fund has a startDate (triggers empty-state UI, no fallback to timeline)', () => {
+    const perFund = [{ startDate: null }, { startDate: null }];
+    expect(deriveChartFromDate(perFund)).toBeNull();
+  });
+
+  test('returns null when perFund is empty (triggers empty-state UI)', () => {
+    expect(deriveChartFromDate([])).toBeNull();
+  });
+
+  test('ignores null startDates and returns minimum of non-null values', () => {
+    const perFund = [
+      { startDate: null },
+      { startDate: '2026-03-10' },
+      { startDate: '2026-02-01' },
+      { startDate: null },
+    ];
+    expect(deriveChartFromDate(perFund)).toBe('2026-02-01');
+  });
+
+  test('does NOT use timeline[0].date when funds have startDates (regression: old bug used timeline[0].date)', () => {
+    // Bug: chartFromDate was set to timeline[0].date which may predate all fund startDates
+    // Correct: chartFromDate must be the minimum startDate from perFund
+    const perFund = [
+      { startDate: '2026-01-15' },
+      { startDate: '2026-02-10' },
+    ];
+    const result = deriveChartFromDate(perFund);
+    expect(result).toBe('2026-01-15');
+    // Must not equal the hypothetical raw timeline first date (older history)
+    expect(result).not.toBe('2025-06-01');
+  });
+
+  test('null result must NOT fall back to timeline first date (regression: old code had ?? timelineFirstDate)', () => {
+    // Previously the code did: minStartDate ?? timeline[0].date
+    // This was wrong — null must stay null so the UI shows the empty-state message
+    const perFund: { startDate: string | null }[] = [];
+    const chartFromDate = deriveChartFromDate(perFund);
+    // Simulate the old (wrong) fallback — confirm we do NOT do it
+    const oldBugResult = chartFromDate ?? '2025-01-01'; // old fallback to timeline[0].date
+    expect(chartFromDate).toBeNull();          // correct: null → empty-state UI
+    expect(oldBugResult).toBe('2025-01-01');   // old wrong result, kept here as documentation
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// computeOverallProfit — perFund startDate is correctly surfaced for x-axis
+// ─────────────────────────────────────────────────────────────────────────────
+describe('computeOverallProfit — perFund startDate exposed for chart x-axis', () => {
+  let origFetchHistory: typeof _deps.fetchFundHistory;
+  let origFetchData: typeof _deps.fetchFundData;
+  const { getTradesForSymbol } = require('../../hooks/useTrades');
+
+  beforeEach(() => {
+    origFetchHistory = _deps.fetchFundHistory;
+    origFetchData    = _deps.fetchFundData;
+    localStorage.clear();
+    jest.resetAllMocks();
+  });
+
+  afterEach(() => {
+    _deps.fetchFundHistory = origFetchHistory;
+    _deps.fetchFundData    = origFetchData;
+  });
+
+  function mkTs(dateIso: string) {
+    return new Date(`${dateIso} 15:00`).getTime();
+  }
+
+  test('perFund rows carry correct startDates so UI can derive minimum for chart x-axis', async () => {
+    // Fund A started 2026-01-10, Fund B started 2026-02-05
+    // The chart x-axis should start at 2026-01-10 (min of the two), NOT at the earliest history date
+    localStorage.setItem('fund_portfolio', JSON.stringify([
+      { symbol: '100001', name: 'Fund A' },
+      { symbol: '100002', name: 'Fund B' },
+    ]));
+    localStorage.setItem('fund_position_100001', JSON.stringify({ startDate: '2026-01-10', initialPosition: 1 }));
+    localStorage.setItem('fund_position_100002', JSON.stringify({ startDate: '2026-02-05', initialPosition: 1 }));
+
+    _deps.fetchFundHistory = jest.fn().mockImplementation(async (sym: string) => {
+      // history extends before either startDate to simulate older raw data
+      if (sym === '100001') return [
+        { date: mkTs('2025-12-01'), value: 1.0, equityReturn: 0 },
+        { date: mkTs('2026-01-10'), value: 1.1, equityReturn: 0 },
+        { date: mkTs('2026-02-05'), value: 1.2, equityReturn: 0 },
+      ];
+      if (sym === '100002') return [
+        { date: mkTs('2025-12-01'), value: 2.0, equityReturn: 0 },
+        { date: mkTs('2026-02-05'), value: 2.1, equityReturn: 0 },
+      ];
+      return [];
+    });
+    _deps.fetchFundData = jest.fn().mockResolvedValue(null);
+    getTradesForSymbol.mockReturnValue([]);
+
+    const result = await (fundService as any).computeOverallProfit({});
+
+    const perFundMap: Record<string, string | null> = {};
+    for (const row of result.perFund) {
+      perFundMap[row.symbol] = row.startDate;
+    }
+
+    // Both funds must expose their configured startDates
+    expect(perFundMap['100001']).toBe('2026-01-10');
+    expect(perFundMap['100002']).toBe('2026-02-05');
+
+    // Derive chart x-axis start as the modal does — must be min(startDates) not timeline[0].date
+    const allStartDates = result.perFund
+      .map((f: any) => f.startDate)
+      .filter((d: any): d is string => !!d);
+    const chartFromDate = allStartDates.reduce((a: string, b: string) => (a < b ? a : b));
+
+    expect(chartFromDate).toBe('2026-01-10');
+
+    // Explicitly verify it is NOT the earliest raw history date (regression guard)
+    const timelineFirstDate = result.timeline[0]?.date;
+    // timeline[0] would be '2025-12-01' without the chartFromDate fix
+    expect(chartFromDate).not.toBe('2025-12-01');
+    // And the chart timeline filtered by chartFromDate should start on/after chartFromDate
+    const chartTimeline = result.timeline.filter((p: any) => p.date >= chartFromDate);
+    expect(chartTimeline.length).toBeGreaterThan(0);
+    expect(chartTimeline[0].date >= chartFromDate).toBe(true);
+  });
+});
+

@@ -43,9 +43,11 @@ const OverallProfitModal: React.FC<Props> = ({ symbols, onClose, onSelectFund })
         setFromDate(defaultFrom);
         setToDate(defaultTo);
         // 记录图表 x 轴起始日期，用于裁剪 chartTimeline（与表格日期选择器分离）
-        // 使用完整时间线的起始日期作为图表起点
-        const chartStart = base.timeline && base.timeline.length > 0 ? base.timeline[0].date : null;
-        setChartFromDate(chartStart);
+        // 使用所有基金持仓开始日期（startDate）的最小值作为图表 x 轴起点
+        const allStartDates = (base.perFund || []).map(f => f.startDate).filter((d): d is string => !!d);
+        const minStartDate = allStartDates.length > 0 ? allStartDates.reduce((a, b) => (a < b ? a : b)) : null;
+        // 若无任何基金配置持仓开始日期，chartFromDate 保持 null，UI 将显示空状态提示
+        setChartFromDate(minStartDate);
 
         // 直接使用第一次计算的完整结果，无需第二次请求
         // 表格行裁剪由下方的 useEffect（依赖 fromDate/toDate）负责
@@ -197,6 +199,11 @@ const OverallProfitModal: React.FC<Props> = ({ symbols, onClose, onSelectFund })
             <div className="text-sm text-red-600">{error}</div>
           ) : (!summary || !summary.timeline || summary.timeline.length === 0) ? (
             <div className="text-sm text-gray-600">暂无可用数据。</div>
+          ) : (!chartFromDate) ? (
+            <div className="flex flex-col items-center justify-center py-10 text-gray-400">
+              <i className="fas fa-folder-open text-3xl mb-3" />
+              <p className="text-sm font-medium">无持仓基金，请先配置</p>
+            </div>
           ) : (
             <div className="space-y-4">
               <div className="bg-gray-50 rounded p-3 relative">
