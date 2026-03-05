@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { Ticker, ValuationData, MarketType, MarketIndex, BackupData } from './types';
+import { Ticker, ValuationData, MarketType, MarketIndex, BackupData, CardStatus } from './types';
 import { fetchFundData, fetchMarketIndices, forceFetchFundHistory } from './services/fundService';
 import * as cacheService from './services/cacheService';
 import { TickerCard } from './components/TickerCard';
@@ -133,6 +133,10 @@ const App: React.FC = () => {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [backgroundTasks, setBackgroundTasks] = useState<number>(0);
 
+  // Per-symbol card status for funds (keyed by symbol) and indices (keyed by normalized symbol)
+  const [fundStatuses, setFundStatuses] = useState<Record<string, CardStatus>>({});
+  const [indexStatuses, setIndexStatuses] = useState<Record<string, CardStatus>>({});
+
   const [viewingSymbol, setViewingSymbol] = useState<string | null>(null);
   const [viewingIndex, setViewingIndex] = useState<MarketIndex | null>(null);
   const [pendingDelete, setPendingDelete] = useState<{ id?: string, symbol?: string, name?: string, bulk: boolean, type?: 'fund' | 'index' | 'global_index' } | null>(null);
@@ -160,7 +164,12 @@ const App: React.FC = () => {
         setPortfolio(prev => prev.map(item =>
           item.symbol === symbol && !item.name ? { ...item, name: data.name } : item
         ));
+        setFundStatuses(prev => ({ ...prev, [symbol]: 'ok' }));
+      } else {
+        setFundStatuses(prev => ({ ...prev, [symbol]: 'error' }));
       }
+    } catch {
+      setFundStatuses(prev => ({ ...prev, [symbol]: 'error' }));
     } finally { setBackgroundTasks(prev => Math.max(0, prev - 1)); }
   }, []);
 
@@ -200,8 +209,23 @@ const App: React.FC = () => {
       try {
         const data = await fetchMarketIndices(indicesConfig);
         setMarketIndices(prev => mergeIndicesForDisplay(indicesConfig, data, prev));
+        // mark fetched symbols as ok, any configured but missing as error
+        const fetchedSet = new Set(data.map(d => normalizeIndexSymbol(d.symbol)));
+        setIndexStatuses(prev => {
+          const next = { ...prev };
+          indicesConfig.forEach(sym => {
+            const n = normalizeIndexSymbol(sym);
+            next[n] = fetchedSet.has(n) ? 'ok' : 'error';
+          });
+          return next;
+        });
       } catch {
         setMarketIndices(prev => mergeIndicesForDisplay(indicesConfig, [], prev));
+        setIndexStatuses(prev => {
+          const next = { ...prev };
+          indicesConfig.forEach(sym => { next[normalizeIndexSymbol(sym)] = 'error'; });
+          return next;
+        });
       }
     };
 
@@ -213,8 +237,22 @@ const App: React.FC = () => {
       try {
         const data = await fetchMarketIndices(globalIndicesConfig);
         setGlobalIndices(prev => mergeIndicesForDisplay(globalIndicesConfig, data, prev));
+        const fetchedSet = new Set(data.map(d => normalizeIndexSymbol(d.symbol)));
+        setIndexStatuses(prev => {
+          const next = { ...prev };
+          globalIndicesConfig.forEach(sym => {
+            const n = normalizeIndexSymbol(sym);
+            next[n] = fetchedSet.has(n) ? 'ok' : 'error';
+          });
+          return next;
+        });
       } catch {
         setGlobalIndices(prev => mergeIndicesForDisplay(globalIndicesConfig, [], prev));
+        setIndexStatuses(prev => {
+          const next = { ...prev };
+          globalIndicesConfig.forEach(sym => { next[normalizeIndexSymbol(sym)] = 'error'; });
+          return next;
+        });
       }
     };
 
@@ -377,29 +415,37 @@ const App: React.FC = () => {
     refreshMarketIndicesAsync();
   }, [pendingImportData, runBatchUpdate, refreshMarketIndicesAsync]);
 
-  const renderIndexCard = (idx: MarketIndex, type: 'index' | 'global_index') => {
+  const renderIndexCard = (idx: MarketIndex, type: 'index' | 'global_index', status: CardStatus = 'unknown') => {
     const isPlaceholder = idx.lastUpdated === '等待更新';
+    const statusDotClass = status === 'ok' ? 'bg-green-500' : status === 'error' ? 'bg-red-500' : 'bg-gray-400';
+    const statusDotTitle = status === 'ok' ? '正常' : status === 'error' ? '错误' : '未知';
     return (
       <div key={idx.symbol} onClick={() => !isSelectionMode && setViewingIndex(idx)} className={`bg-white rounded-2xl p-4 shadow-sm border transition-all min-w-[180px] lg:min-w-0 relative group cursor-pointer hover:shadow-md ${isSelectionMode ? 'border-blue-200 ring-2 ring-blue-50' : 'border-gray-100'} animate-in fade-in duration-300`}>
+        {/* Status dot — top-left corner */}
+        <div
+          className={`absolute top-2.5 left-2.5 w-2 h-2 rounded-full ${statusDotClass} z-10`}
+          title={statusDotTitle}
+          aria-label={`状态: ${statusDotTitle}`}
+        />
         {isSelectionMode && (
           <button onClick={(e) => { e.stopPropagation(); setPendingDelete({ symbol: idx.symbol, name: idx.name, bulk: false, type }); }} className="absolute -top-2 -right-2 w-6 h-6 bg-red-500 text-white rounded-full flex items-center justify-center shadow-lg hover:bg-red-600 transition-colors z-10 scale-in">
             <i className="fas fa-times text-xs"></i>
           </button>
         )}
-        <div className="mb-2">
+        <div className="mb-2 pl-3">
           <div className="flex justify-between items-start">
             <div className="flex-1 min-w-0 pr-2">
               <h4 className="text-[12px] font-bold text-gray-800 truncate leading-none">{idx.name}</h4>
               <p className="text-[9px] text-gray-400 font-mono mt-0.5">{idx.symbol}</p>
             </div>
             <span className={`text-[11px] font-medium whitespace-nowrap ${idx.changePercent >= 0 ? 'text-red-500' : 'text-green-500'}`}>
-              {isPlaceholder ? '--' : `${idx.changePercent >= 0 ? '+' : ''}${idx.changePercent.toFixed(2)}%`}
+              {isPlaceholder ? '-' : `${idx.changePercent >= 0 ? '+' : ''}${idx.changePercent.toFixed(2)}%`}
             </span>
           </div>
         </div>
         <div className={`text-xl font-normal ${idx.changePercent >= 0 ? 'text-red-600' : 'text-green-600'}`}>
           {isPlaceholder
-            ? '--'
+            ? '-'
             : (idx.current || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
         </div>
         <div className="flex flex-col mt-2">
@@ -501,21 +547,21 @@ const App: React.FC = () => {
       <div className="max-w-7xl mx-auto px-4 py-6 grid grid-cols-1 lg:grid-cols-[224px_1fr_224px] gap-6 items-start">
         <aside className="space-y-3">
           <div className="flex lg:flex-col overflow-x-auto lg:overflow-visible gap-3 pb-2 no-scrollbar">
-            {displayDomesticIndices.map(idx => renderIndexCard(idx, 'index'))}
+            {displayDomesticIndices.map(idx => renderIndexCard(idx, 'index', indexStatuses[normalizeIndexSymbol(idx.symbol)] ?? 'unknown'))}
           </div>
         </aside>
 
         <main>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-1 xl:grid-cols-2 gap-4">
             {sortedPortfolio.map(ticker => (
-              <TickerCard key={ticker.id} ticker={ticker} data={marketData[ticker.symbol]} onRemove={() => setPendingDelete({ id: ticker.id, symbol: ticker.symbol, name: ticker.name, bulk: false, type: 'fund' })} onClick={() => marketData[ticker.symbol] && setViewingSymbol(ticker.symbol)} isSelectionMode={isSelectionMode} isSelected={selectedIds.has(ticker.id)} onSelect={() => setSelectedIds(prev => { const next = new Set(prev); if (next.has(ticker.id)) next.delete(ticker.id); else next.add(ticker.id); return next; })} />
+              <TickerCard key={ticker.id} ticker={ticker} data={marketData[ticker.symbol]} status={fundStatuses[ticker.symbol] ?? 'unknown'} onRemove={() => setPendingDelete({ id: ticker.id, symbol: ticker.symbol, name: ticker.name, bulk: false, type: 'fund' })} onClick={() => marketData[ticker.symbol] && setViewingSymbol(ticker.symbol)} isSelectionMode={isSelectionMode} isSelected={selectedIds.has(ticker.id)} onSelect={() => setSelectedIds(prev => { const next = new Set(prev); if (next.has(ticker.id)) next.delete(ticker.id); else next.add(ticker.id); return next; })} />
             ))}
           </div>
         </main>
 
         <aside className="space-y-3">
           <div className="flex lg:flex-col overflow-x-auto lg:overflow-visible gap-3 pb-2 no-scrollbar">
-            {displayGlobalIndices.map(idx => renderIndexCard(idx, 'global_index'))}
+            {displayGlobalIndices.map(idx => renderIndexCard(idx, 'global_index', indexStatuses[normalizeIndexSymbol(idx.symbol)] ?? 'unknown'))}
           </div>
         </aside>
       </div>

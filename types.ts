@@ -3,6 +3,9 @@ export enum MarketType {
   INDEX = 'Index'
 }
 
+// Card data-fetch status: 'ok' = success, 'error' = failure, 'unknown' = not yet fetched / in-progress
+export type CardStatus = 'ok' | 'error' | 'unknown';
+
 export interface Ticker {
   id: string;
   symbol: string;

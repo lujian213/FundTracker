@@ -1,7 +1,7 @@
 # FundTracker — 产品需求文档 (PRD)
 
-版本：1.7
-最后更新：2026-03-04
+版本：1.8
+最后更新：2026-03-05
 
 ---
 
@@ -18,6 +18,7 @@
   - 本地化时间规则（交易记录价格回溯使用用户本地日终）
   - **内存数据缓存层（性能优化）**：将数据获取与界面展示分离，实现所有界面操作秒开
   - **数据备份与恢复（导出/导入）**：全量 JSON 备份、手动导出、定时自动导出、导入覆盖、兼容性保障
+  - **卡片增强（Cards Enhancement）**：状态圆点（正常/错误/未知）、尽最大努力内容显示、Card 添加即时展示
   - 测试、验收与 CI 要求
 
 高优先级交付物（v1）
@@ -356,8 +357,86 @@
 
 - 全体风格：Tailwind utility-first。保持现有组件样式约定（rounded-2xl、shadow-sm、text-xs 等）。
 
+---
+
+## 卡片增强（Cards Enhancement）
+
+**Cards 定义**：在主界面上，每个基金、大盘指数或全球指数均以一个卡片（Card）的形式展示。每个卡片显示该基金或指数的名称、当前价格、涨跌幅等基本信息。用户可通过点击卡片进入详细信息页面（`FundDetailsModal` / `IndexDetailsModal`）。
+
+### Card 状态
+
+Card 的状态分为三种：正常、错误、未知。以带颜色的小圆点（`w-2 h-2 rounded-full`）展示在 Card 左上角，颜色定义如下：
+
+| 状态 | 颜色 | hover 提示 | Tailwind 类 |
+|---|---|---|---|
+| 正常 | 绿色 | "正常" | `bg-green-500` |
+| 错误 | 红色 | "错误" | `bg-red-500` |
+| 未知 | 灰色 | "未知" | `bg-gray-400` |
+
+圆点通过 `title` 属性与 `aria-label` 属性提供 hover 提示与无障碍支持（格式：`状态: 正常 / 错误 / 未知`）。
+
+**状态语义**：
+- **正常**：最近一次数据获取成功（API 返回有效数据）。
+- **错误**：最近一次数据获取失败（网络异常、API 返回 null 或抛出异常）。
+- **未知**：页面初始化时；或新添加 Card 尚未完成首次数据获取时；或数据获取进行中尚未得到结果时。
+
+**状态更新逻辑**：
+- 页面初始化时，所有 Card 状态默认为未知（`unknown`）。
+- `updateSingleFund(symbol)` 成功获取数据（返回非 null 的 `ValuationData`）→ 对应基金状态置为正常（`ok`）；返回 null 或 catch 异常 → 置为错误（`error`）。
+- `refreshMarketIndicesAsync()` 成功获取指数数据：将返回结果中包含的 symbol 置为正常，配置中存在但结果中缺失的 symbol 置为错误；catch 全量异常时所有配置的 symbol 均置为错误。
+- 状态由网络数据刷新逻辑触发更新，不由 localStorage / 缓存读取触发。定时刷新（实时估值 3 分钟、市场指数 2 分钟）和手动刷新均会更新状态。
+- 状态为运行时内存状态，页面刷新后重置为 `unknown`（无需持久化到 localStorage）。
+
+**类型定义**（`types.ts`）：
+```typescript
+// 'ok' = 成功, 'error' = 失败, 'unknown' = 未知/初始/进行中
+export type CardStatus = 'ok' | 'error' | 'unknown';
+```
+
+**状态存储**（`App.tsx`）：
+- `fundStatuses: Record<string, CardStatus>` — 以 symbol 为 key，存储每只基金的状态。
+- `indexStatuses: Record<string, CardStatus>` — 以归一化后的 symbol 为 key，存储每个指数的状态（与基金分开存储，避免 symbol 命名冲突）。
+- 两者初始值均为 `{}`（未设置则通过 `?? 'unknown'` 取默认值）。
+
+### Card 内容显示
+
+遵循**尽最大努力原则**，Card 无论有无数据，都必须在界面上展示出来。
+
+- **始终渲染**：每个 Card 无论数据是否存在，都应在界面上展示。
+- **数据优先级**：localStorage → cacheService 内存缓存 → 通过数据文件导入的信息。
+- **无数据时占位显示**：价格、涨跌幅等数字信息位置显示 `"-"`（连字符），而非骨架屏动画或空白。
+- **名称兜底**：若既无缓存名称也无 ticker.name，则显示该基金/指数的代码（symbol）。代码必然存在，不得出现名称位置完全为空的情况。
+
+### Card 添加
+
+- 当用户通过 `AddTickerModal` 添加新基金或指数时，新 Card 必须**立即**渲染在界面上，不论数据获取是否已完成。
+- 新添加 Card 的初始状态为**未知**（`unknown`），直到：
+  - 数据获取成功后更新为正常（`ok`）；或
+  - 数据获取失败后更新为错误（`error`）。
+
+### 实现文件
+
+| 文件 | 改动 |
+|---|---|
+| `types.ts` | 新增 `CardStatus` 联合类型 |
+| `App.tsx` | 新增 `fundStatuses` / `indexStatuses` state；`updateSingleFund` 设置 ok/error；`refreshMarketIndicesAsync` 设置 ok/error；`renderIndexCard` 接受并渲染 status；向 `TickerCard` 传入 `status` prop |
+| `components/TickerCard.tsx` | 新增 `status?: CardStatus` prop；渲染左上角状态圆点；无数据时显示 `'-'` 而非骨架屏；名称兜底显示 symbol |
+
+### 验收标准（Cards Enhancement）
+
+- 每张基金 Card 与指数 Card 左上角均有状态圆点，hover 显示"正常"/"错误"/"未知"对应提示。
+- 页面初始化时所有 Card 状态圆点为灰色（未知）；首次成功获取数据后切换为绿色（正常）；网络失败后切换为红色（错误）。
+- 每个 Card 无论有无数据均渲染在界面上；无数据时价格和涨跌幅显示 `"-"`（非骨架屏）。
+- 新添加 Card 立即出现在界面上，初始状态为未知，数据返回后状态更新。
+- 无名称时显示代码（symbol），不出现名称位置空白或"正在获取名称…"文字。
+- 状态不持久化，页面刷新后重置为未知（代码审查确认无 localStorage 写入）。
+- 单元测试覆盖：`TickerCard` 三种 status 圆点的颜色与 aria-label；无数据时显示 `'-'`；名称兜底显示 symbol（`tests/components/TickerCard.test.tsx`）。
+
+---
+
 - TickerCard（卡片）
-  - 显示要素：基金/指数名称（或占位）、symbol、实时估值（4 位小数）、涨跌幅、上次更新时间、风险 badge、删除按钮
+  - 通用规则参见上方「卡片增强（Cards Enhancement）」章节：状态圆点、无数据占位符 `"-"`、名称兜底 symbol、Card 始终渲染。
+  - 显示要素：基金/指数名称（或代码兜底）、symbol、实时估值（4 位小数）、涨跌幅、上次更新时间、风险 badge、删除按钮、左上角状态圆点
   - 风险 badge：基于 `computeRatingFromHistory` 输出（rating, color, reasons），hover/focus 显示 tooltip（aria 支持）
   - 点击卡片打开 `FundDetailsModal`（非 selection 模式）；在 selection 模式下点击触发选择
 
@@ -538,6 +617,7 @@
   - `tests/utils/backupService.test.ts`：`buildBackupData` 数据结构完整性（含 optional 字段从缓存填充）；`downloadBackupFile` 文件名格式（手动含时间戳、自动含 `_auto_`）、Blob 创建；`applyBackupData` 完全覆盖、evict 旧缓存、setValuationIfAbsent fallback；兼容性场景（旧格式 string[] indices、缺少 config/globalIndices、缺少 price/initialPrice 等）；`readBackupConfig` / `writeBackupConfig` 读写与默认值容错
 - 组件/集成测试（Medium）
   - `tests/components/AddTickerModal.test.tsx`、`TickerCard.test.tsx`、`ConfirmDialog.test.tsx`、`TradeManager.test.tsx`：交互路径、表单校验、导入导出、分页
+  - `TickerCard.test.tsx`（卡片增强）：三种 status 圆点颜色与 aria-label（ok/error/unknown）；无数据时显示 `'-'` 占位符；名称兜底显示 symbol；状态 prop 默认值为 unknown
   - `tests/components/TransactionsModal.test.tsx`：无交易状态、默认日期、五列表头、基金名称来源、买入/卖出标签、统计行（条数/净额/买卖标签/零值）、日期切换、零值显示、关闭按钮
   - `tests/components/PositionsModal.test.tsx`：空状态（无持仓配置、净份额为 0）、汇总行（基金数/总市值）、表格行数与排序、统计行（条数/总价值/"100%"）、交易记录影响份额、SVG 扇区数量、关闭按钮（按钮 + 遮罩）、`onSelectFund` 回调（表格 + 图例点击）
   - `tests/components/BackupSettingsModal.test.tsx`：渲染初始时间值、倒计时文字显示、修改时间后倒计时更新、保存按钮调用 writeBackupConfig 并回调 onSave、取消/关闭按钮行为、Escape 键关闭、点击遮罩关闭、输入错误后清空错误提示
@@ -584,6 +664,7 @@ CI 与发布
 - [x] 新增测试：`tests/utils/backupService.test.ts`（覆盖 buildBackupData 数据结构、downloadBackupFile 文件名、applyBackupData 覆盖逻辑、兼容性场景、readBackupConfig/writeBackupConfig）
 - [x] 新增测试：`tests/components/BackupSettingsModal.test.tsx`（11 用例）
 - [x] 交易表单输入模式优化（v1.7）：买入时总额可输、份额只读（2位小数）；卖出时份额可输、总额只读；类型切换自动清零；编辑回填逻辑适配；新增测试5个用例（`tradeManagerIntegration.test.tsx`）
+- [x] 卡片增强（v1.8）：新增 `CardStatus` 类型（ok/error/unknown）；`App.tsx` 新增 `fundStatuses` / `indexStatuses` state；`updateSingleFund` 和 `refreshMarketIndicesAsync` 更新状态；`TickerCard` 渲染左上角状态圆点（绿/红/灰）+ aria-label；无数据时显示 `'-'` 替代骨架屏；名称兜底显示 symbol；`renderIndexCard` 同步支持状态圆点；新增测试 5 个用例（`TickerCard.test.tsx`）
 - [ ] 为 `TradeManager` 添加导入前确认弹窗（若需要，我可以立即实现并添加测试）
 - [ ] 在 tests/ 中补充 `hooks/useTrades.test.ts`、`TradeManager.test.tsx`、`utils/riskTooltip.test.ts`（优先级按上）
 - [ ] 在 CI workflow 中加入 `npm test` 步骤（如需我可以提交 workflow 修改建议）
@@ -597,6 +678,7 @@ CI 与发布
 - 2026-03-04 v1.5：新增数据备份与恢复功能（导出/导入）：完整 JSON 备份格式规范（含 portfolio、indices、globalIndices、trades、positions、config 所有字段）；手动导出（本地时间戳文件名）与自动导出（`_auto_` 文件名、定时触发）；主界面顶部备份提示 UI（预留高度避免布局偏移、前 5 秒提示 + 完成后 3 秒提示）；导入前确认弹窗；applyBackupData 完全覆盖逻辑 + 缓存 evict + fallback setValuationIfAbsent；BackupSettingsModal（时间配置、实时倒计时、修改即时更新）；兼容性规范（旧格式 string[] indices、缺失字段归一化）；新增测试文件 backupService.test.ts 和 BackupSettingsModal.test.tsx
 - 2026-03-04 v1.6：整体盈亏日期默认值优化（日期1默认为日期2前一天）；添加版本号管理机制（version.ts + 主界面标题栏显示）
 - 2026-03-04 v1.7：交易添加表单输入模式优化：买入时总额可输入、份额只读（2位小数）；卖出时份额可输入、总额只读；类型切换自动清零；编辑回填逻辑适配；新增测试 5 个用例（`tradeManagerIntegration.test.tsx`）
+- 2026-03-05 v1.8：卡片增强（Cards Enhancement）：新增 `CardStatus` 联合类型（ok/error/unknown）；新增 `fundStatuses` / `indexStatuses` 运行时 state（不持久化）；`updateSingleFund` 和 `refreshMarketIndicesAsync` 分别按成功/失败更新对应 symbol 的状态；`TickerCard` 与 `renderIndexCard` 渲染左上角状态圆点（绿色正常/红色错误/灰色未知）含 hover 提示与 aria-label；无数据时价格/涨跌幅显示 `'-'` 替代骨架屏动画；名称缺失时兜底显示 symbol；新增 TickerCard 测试 5 个用例（状态圆点 ×3、无数据占位符 ×1、名称兜底 ×1）
 
 ---
 

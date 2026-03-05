@@ -1,5 +1,5 @@
 import React, { useMemo, useEffect, useState } from 'react';
-import { Ticker, ValuationData } from '../types';
+import { Ticker, ValuationData, CardStatus } from '../types';
 import { fetchFundHistory as defaultFetchFundHistory } from '../services/fundService';
 import { computeRatingFromHistory } from '../utils/ratingHelper';
 import RatingTooltip from './RatingTooltip';
@@ -7,6 +7,7 @@ import RatingTooltip from './RatingTooltip';
 interface TickerCardProps {
   ticker: Ticker;
   data?: ValuationData;
+  status?: CardStatus;
   onRemove: () => void;
   onClick?: () => void;
   isSelectionMode?: boolean;
@@ -19,6 +20,7 @@ interface TickerCardProps {
 export const TickerCard: React.FC<TickerCardProps> = ({
   ticker,
   data,
+  status = 'unknown',
   onRemove,
   onClick,
   isSelectionMode = false,
@@ -98,9 +100,9 @@ export const TickerCard: React.FC<TickerCardProps> = ({
   const formattedRealtimeDate = data?.realtimeDate && data!.realtimeDate !== '---' ? data!.realtimeDate.split('-').slice(1).join('/') : '';
   const formattedNetWorthDate = data?.netWorthDate && data!.netWorthDate !== '---' ? data!.netWorthDate.split('-').slice(1).join('/') : '---';
 
-  const displayPrice = hasData && !isNaN(data!.currentPrice) ? data!.currentPrice.toFixed(4) : '---';
-  const displayPrevPrice = hasData && !isNaN(data!.previousPrice) ? data!.previousPrice.toFixed(4) : '---';
-  const displayChange = hasData && !isNaN(data!.changePercentage) ? `${isUp ? '+' : ''}${data!.changePercentage.toFixed(2)}%` : '---';
+  const displayPrice = hasData && !isNaN(data!.currentPrice) ? data!.currentPrice.toFixed(4) : '-';
+  const displayPrevPrice = hasData && !isNaN(data!.previousPrice) ? data!.previousPrice.toFixed(4) : '-';
+  const displayChange = hasData && !isNaN(data!.changePercentage) ? `${isUp ? '+' : ''}${data!.changePercentage.toFixed(2)}%` : '-';
 
   // compute a simple rating from MAs using shared logic
   const ratingComputed = useMemo(() => {
@@ -111,10 +113,24 @@ export const TickerCard: React.FC<TickerCardProps> = ({
     }
   }, [history, data]);
 
+  const statusDotClass = status === 'ok'
+    ? 'bg-green-500'
+    : status === 'error'
+      ? 'bg-red-500'
+      : 'bg-gray-400';
+  const statusDotTitle = status === 'ok' ? '正常' : status === 'error' ? '错误' : '未知';
+
   return (
     <div
       onClick={handleCardClick}
       className={`bg-white rounded-2xl p-5 shadow-sm border transition-all relative overflow-hidden animate-in fade-in slide-in-from-bottom-2 duration-300 ${isSelected ? 'border-blue-500 ring-4 ring-blue-500/10' : 'border-gray-100'} cursor-pointer hover:shadow-lg hover:border-gray-200 active:scale-[0.98]`}>
+
+      {/* Status dot — top-left corner */}
+      <div
+        className={`absolute top-3 left-3 w-2 h-2 rounded-full ${statusDotClass} z-10`}
+        title={statusDotTitle}
+        aria-label={`状态: ${statusDotTitle}`}
+      />
 
       {!isSelectionMode && (
         <div className="absolute top-0 right-0 flex items-center">
@@ -137,9 +153,9 @@ export const TickerCard: React.FC<TickerCardProps> = ({
       )}
 
       <div className="flex justify-between items-start mb-4">
-        <div className="flex-1 min-w-0 pr-8">
+        <div className="flex-1 min-w-0 pr-8 pl-3">
           <h3 className={`font-bold truncate text-base transition-colors ${isSelected ? 'text-blue-700' : 'text-gray-800'}`}>
-            {data?.name || ticker.name || <span className="text-gray-300 italic font-normal">正在获取名称...</span>}
+            {data?.name || ticker.name || ticker.symbol}
           </h3>
           <p className="text-xs text-gray-400 mt-1 font-mono tracking-wider">{ticker.symbol}</p>
         </div>
@@ -159,47 +175,40 @@ export const TickerCard: React.FC<TickerCardProps> = ({
 
       <div className="flex justify-between items-end">
         <div className="space-y-1">
-          {hasData ? (
-            <>
-              <div className="flex items-baseline space-x-2">
-                <span className={`text-3xl font-normal leading-none tracking-tight ${getPriceColor()}`}>
-                  {displayPrice}
-                </span>
-                <span className="text-[10px] text-gray-400 font-medium">{isNoValuation ? '净值' : '实时估值'}</span>
-              </div>
-              <div className="flex flex-col text-[11px] text-gray-400">
-                <div className="flex items-center space-x-1">
-                  <span>确认净值:</span>
-                  <span className="font-mono font-medium text-gray-600">{displayPrevPrice}</span>
-                  <span className="text-[9px] opacity-60">({formattedNetWorthDate})</span>
-                </div>
-              </div>
-            </>
-          ) : (
-            <div className="animate-pulse space-y-2">
-              <div className="h-8 w-24 bg-gray-100 rounded"></div>
-              <div className="h-4 w-32 bg-gray-50 rounded"></div>
+          <div className="flex items-baseline space-x-2">
+            <span className={`text-3xl font-normal leading-none tracking-tight ${getPriceColor()}`}>
+              {displayPrice}
+            </span>
+            {hasData && (
+              <span className="text-[10px] text-gray-400 font-medium">{isNoValuation ? '净值' : '实时估值'}</span>
+            )}
+          </div>
+          <div className="flex flex-col text-[11px] text-gray-400">
+            <div className="flex items-center space-x-1">
+              <span>确认净值:</span>
+              <span className="font-mono font-medium text-gray-600">{displayPrevPrice}</span>
+              {hasData && formattedNetWorthDate && (
+                <span className="text-[9px] opacity-60">({formattedNetWorthDate})</span>
+              )}
             </div>
-          )}
+          </div>
         </div>
 
         <div className="text-right">
-          {hasData ? (
-            <div className="flex flex-col items-end">
-              <div className={`inline-flex items-center px-3 py-1.5 rounded-xl text-base transition-all duration-300 ${getChangeStyles()}`}>
-                {!isNoValuation && change !== 0 && !isNaN(change) && (
-                  <i className={`fas fa-caret-${isUp ? 'up' : 'down'} mr-1.5`} />
-                )}
-                {displayChange}
-              </div>
+          <div className="flex flex-col items-end">
+            <div className={`inline-flex items-center px-3 py-1.5 rounded-xl text-base transition-all duration-300 ${getChangeStyles()}`}>
+              {hasData && !isNoValuation && change !== 0 && !isNaN(change) && (
+                <i className={`fas fa-caret-${isUp ? 'up' : 'down'} mr-1.5`} />
+              )}
+              {displayChange}
+            </div>
+            {hasData && (
               <div className="text-[9px] text-gray-400 mt-2 font-medium bg-gray-50 px-2 py-0.5 rounded-full flex items-center">
                 <i className="far fa-clock mr-1" />
                 {data!.lastUpdated}
               </div>
-            </div>
-          ) : (
-            <div className="h-10 w-24 bg-gray-100 rounded-xl animate-pulse" />
-          )}
+            )}
+          </div>
         </div>
 
       </div>

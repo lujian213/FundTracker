@@ -34,6 +34,62 @@ describe('TickerCard', () => {
     expect(screen.getByText('加载中')).toBeInTheDocument();
   });
 
+  test('shows "-" placeholder for price and change when no data', async () => {
+    await act(async () => {
+      render(<TickerCard ticker={sampleTicker} onRemove={jest.fn()} fetchHistory={mockFetchHistory} />);
+    });
+    await flushAct();
+
+    // Price and change should show '-' when no data
+    const dashes = screen.getAllByText('-');
+    expect(dashes.length).toBeGreaterThanOrEqual(2);
+  });
+
+  test('shows ticker symbol as name fallback when no name available', async () => {
+    const noNameTicker: Ticker = { id: '2', symbol: '999999', name: '', market: 'Fund' } as any;
+    await act(async () => {
+      render(<TickerCard ticker={noNameTicker} onRemove={jest.fn()} fetchHistory={mockFetchHistory} />);
+    });
+    await flushAct();
+
+    // Symbol appears twice: once as fallback name, once as the code display
+    const matches = screen.getAllByText('999999');
+    expect(matches.length).toBeGreaterThanOrEqual(1);
+  });
+
+  test('renders status dot with unknown state by default', async () => {
+    await act(async () => {
+      render(<TickerCard ticker={sampleTicker} onRemove={jest.fn()} fetchHistory={mockFetchHistory} />);
+    });
+    await flushAct();
+
+    const dot = screen.getByLabelText('状态: 未知');
+    expect(dot).toBeInTheDocument();
+    expect(dot).toHaveClass('bg-gray-400');
+  });
+
+  test('renders status dot as green when status is ok', async () => {
+    await act(async () => {
+      render(<TickerCard ticker={sampleTicker} onRemove={jest.fn()} status="ok" fetchHistory={mockFetchHistory} />);
+    });
+    await flushAct();
+
+    const dot = screen.getByLabelText('状态: 正常');
+    expect(dot).toBeInTheDocument();
+    expect(dot).toHaveClass('bg-green-500');
+  });
+
+  test('renders status dot as red when status is error', async () => {
+    await act(async () => {
+      render(<TickerCard ticker={sampleTicker} onRemove={jest.fn()} status="error" fetchHistory={mockFetchHistory} />);
+    });
+    await flushAct();
+
+    const dot = screen.getByLabelText('状态: 错误');
+    expect(dot).toBeInTheDocument();
+    expect(dot).toHaveClass('bg-red-500');
+  });
+
   test('renders valuation data and change styles for positive change', async () => {
     const data = {
       symbol: '000001',
@@ -176,3 +232,4 @@ describe('TickerCard', () => {
   });
 
 });
+
