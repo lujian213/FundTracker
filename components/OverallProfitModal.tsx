@@ -101,7 +101,7 @@ const OverallProfitModal: React.FC<Props> = ({ symbols, onClose, onSelectFund })
   const [tableRows, setTableRows] = useState<OverallFundRow[]>([]);
   const [tableError, setTableError] = useState<string | null>(null);
   // 差额列排序：none → desc → asc → none
-  const [diffSort, setDiffSort] = useState<'none' | 'asc' | 'desc'>('none');
+  const [diffSort, setDiffSort] = useState<'none' | 'asc' | 'desc'>('desc');
 
   // periodTotal reflects the full chart window (first to last point in the overall timeline), not the date1/date2 table range
   const periodTotal = useMemo(() => {

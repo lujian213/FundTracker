@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { fetchFundHistory as defaultFetchFundHistory } from '../services/fundService';
 import useTrades from '../hooks/useTrades';
@@ -166,6 +166,13 @@ const ProfitModal: React.FC<ProfitModalProps> = ({ symbol, fundName, currentPric
   const handlePointEnter = (i: number) => { setHoverIndex(i); };
   const handlePointLeave = () => { setHoverIndex(null); };
 
+  const tableScrollRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (tableScrollRef.current) {
+      tableScrollRef.current.scrollTop = tableScrollRef.current.scrollHeight;
+    }
+  }, [displayedTimeline]);
+
   const moneyCell = (v: number) => {
     if (v === 0) return <span className="text-black">-</span>;
     if (v > 0) return <span className="text-red-600">+{v.toFixed(2)}</span>;
@@ -238,7 +245,7 @@ const ProfitModal: React.FC<ProfitModalProps> = ({ symbol, fundName, currentPric
 
                   {/* Table */}
                   <div className="border border-gray-100 rounded-xl overflow-hidden">
-                    <div className="overflow-y-auto" style={{ maxHeight: '330px' }}>
+                    <div ref={tableScrollRef} className="overflow-y-auto" style={{ maxHeight: '330px' }}>
                       <table className="w-full text-sm table-fixed border-collapse">
                         <colgroup>
                           <col style={{ width: '34%' }} />
