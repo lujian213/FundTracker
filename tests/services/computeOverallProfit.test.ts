@@ -219,25 +219,24 @@ describe('computeOverallProfit', () => {
 
     // With a SINGLE sell of 7000 @ 1.66 fee=11.62 on 2026-03-03:
     //   shares drop from 13831.32 to 6831.32
-    //   daily ≈ 6831.32*1.66 - 13831.32*1.5956 + (1.66*7000 - 11.62) ... relative to prev
-    // The key invariant: daily must NOT be approximately equal to daily + fee (double-count)
-    // i.e. it must NOT be ~11.62 more negative than expected.
-    // A simpler check: after single-apply, remaining shares = 6831.32.
-    // We derive expected daily from first principles:
+    // Under the fee-deferral convention (matching the single-fund ProfitModal):
+    //   adjustedCum_03 = cum_03 + fee_03
+    //   daily_03 = adjustedCum_03 - adjustedCum_02  (no trade on 02, so adjustedCum_02 = cum_02)
+    //   = (sharesAfter*net0303 - initCost + sellAmt + fee) - (sharesBefore*net0302 - initCost)
+    //   = sharesAfter*net0303 + sellAmt + fee - sharesBefore*net0302
+    // i.e. the sell fee is NOT deducted from today's daily; it appears in the next day's daily.
     const sharesAfter = 13831.32 - 7000;   // 6831.32
-    const sharesBefore = 13831.32;          // no trades before 3/3 in this test
+    const sharesBefore = 13831.32;
     const net0302 = 1.5956;
     const net0303 = 1.66;
-    const sellAmt = 1.66 * 7000 - 11.62;   // single application
-    // cum(3/2) relative to baseline =  sharesBefore * net0302 - initCost (already accounted in baseline)
-    // daily = cum(3/3) - cum(3/2)
-    //       = [sharesAfter * net0303 - initCost + sellAmt] - [sharesBefore * net0302 - initCost]
-    //       = sharesAfter * net0303 + sellAmt - sharesBefore * net0302
-    const expectedDaily = sharesAfter * net0303 + sellAmt - sharesBefore * net0302;
+    const sellAmt = 1.66 * 7000 - 11.62;   // proceeds minus fee (cumulativeSellAmount)
+    const fee = 11.62;
+    // fee-deferral: fee is added back to adjustedCumulative on trade day,
+    // so daily on trade day = old formula + fee
+    const expectedDaily = sharesAfter * net0303 + sellAmt + fee - sharesBefore * net0302;
     expect(daily0303).toBeCloseTo(expectedDaily, 1);
 
-    // If the trade were double-counted, daily0303 would be ~11.62 lower (sell fee subtracted twice).
-    // Explicitly confirm the value is NOT shifted by one extra fee.
+    // Confirm the value is NOT the old (pre-deferral) formula which would be ~11.62 lower.
     expect(Math.abs(daily0303 - (expectedDaily - 11.62))).toBeGreaterThan(5);
   });
 }); // end describe('computeOverallProfit')
@@ -465,3 +464,150 @@ describe('computeOverallProfit — perFund startDate exposed for chart x-axis', 
   });
 });
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Fee-deferral consistency: overall profit must match single-fund profit
+// ─────────────────────────────────────────────────────────────────────────────
+describe('computeOverallProfit — fee-deferral matches single-fund computeProfitTimeline', () => {
+  let origFetchHistory: typeof _deps.fetchFundHistory;
+  let origFetchData: typeof _deps.fetchFundData;
+  const { getTradesForSymbol } = require('../../hooks/useTrades');
+
+  beforeEach(() => {
+    origFetchHistory = _deps.fetchFundHistory;
+    origFetchData    = _deps.fetchFundData;
+    localStorage.clear();
+    jest.resetAllMocks();
+  });
+
+  afterEach(() => {
+    _deps.fetchFundHistory = origFetchHistory;
+    _deps.fetchFundData    = origFetchData;
+  });
+
+  function mkTs(dateIso: string) {
+    return new Date(`${dateIso} 15:00`).getTime();
+  }
+
+  test('single fund: overall daily profit equals computeProfitTimeline dailyProfit (with sell fee)', async () => {
+    // One fund, one sell trade with fee. The overall timeline dailyProfit on trade day and next day
+    // must match what computeProfitTimeline produces (fee deferred to next day).
+    const SYM = '888001';
+    localStorage.setItem('fund_portfolio', JSON.stringify([{ symbol: SYM, name: 'Test Fund' }]));
+    localStorage.setItem(`fund_position_${SYM}`, JSON.stringify({
+      startDate: '2026-02-20',
+      initialPosition: 100,
+      initialPrice: 1.0,
+    }));
+
+    const history = [
+      { date: mkTs('2026-02-20'), value: 1.0, equityReturn: 0 },
+      { date: mkTs('2026-02-21'), value: 1.2, equityReturn: 0 },
+      { date: mkTs('2026-02-22'), value: 1.1, equityReturn: 0 },
+    ];
+    const trades = [{ id: 's1', date: '2026-02-21', type: 'sell', shares: 50, price: 1.2, fee: 6 }];
+
+    _deps.fetchFundHistory = jest.fn().mockResolvedValue(history);
+    _deps.fetchFundData = jest.fn().mockResolvedValue(null);
+    getTradesForSymbol.mockReturnValue(trades);
+
+    // Compute via computeProfitTimeline (single-fund reference)
+    const singleFundTl = computeProfitTimeline({
+      history,
+      trades: trades as any,
+      initialPosition: 100,
+      initialPrice: 1.0,
+    });
+    const sfByDate = Object.fromEntries(singleFundTl.map(p => [p.date, p]));
+
+    // Compute via computeOverallProfit (overall path)
+    const result = await (fundService as any).computeOverallProfit({ toDate: '2026-02-22' });
+
+    // overall timeline dates must include our trade dates
+    const overallByDate = Object.fromEntries(
+      result.timeline.map((p: any) => [p.date, p])
+    );
+
+    // perFundTimelines for this fund (baseline-adjusted, starting from startDate)
+    const perFundTl: { date: string; cumulativeProfit: number }[] =
+      (result.perFundTimelines || {})[SYM] || [];
+    const pfByDate = Object.fromEntries(perFundTl.map((p: any) => [p.date, p]));
+
+    // On startDate: perFund cumulative should be 0 (baseline zeroed)
+    expect(pfByDate['2026-02-20']?.cumulativeProfit).toBeCloseTo(0, 4);
+
+    // perFundTimeline builds cumulative by accumulating fee-deferral dailyProfit values,
+    // so pfCum is NOT the same as raw computeProfitTimeline cumulativeProfit.
+    // pfCum21 = 0 (startDate) + daily21(=20) = 20   [fee deferred: cum=14, fee=6, adj=20]
+    const pfCum21 = pfByDate['2026-02-21']?.cumulativeProfit;
+    expect(pfCum21).toBeCloseTo(20, 1);
+
+    // pfCum22 = 20 + daily22(=-11) = 9  — same as raw sfCum22 because no fee on day3
+    const sfCum22 = sfByDate['2026-02-22'].cumulativeProfit;
+    const pfCum22 = pfByDate['2026-02-22']?.cumulativeProfit;
+    expect(pfCum22).toBeCloseTo(9, 1);
+    expect(pfCum22).toBeCloseTo(sfCum22, 1); // both equal 9
+
+    // Overall timeline daily on 2026-02-21 must match single-fund daily (fee deferred)
+    // single-fund daily_21 = adjustedCum_21 - adjustedCum_20 = (cum+fee) - (0+0) = 14+6=20
+    expect(sfByDate['2026-02-21'].dailyProfit).toBeCloseTo(20, 1);
+
+    // Overall timeline daily on 2026-02-22 must match single-fund daily
+    // single-fund daily_22 = -11 (50*(1.1-1.2) - 6)
+    expect(sfByDate['2026-02-22'].dailyProfit).toBeCloseTo(-11, 1);
+  });
+
+  test('two funds: overall daily is sum of each fund fee-deferral daily', async () => {
+    // Fund A: sell trade with fee=6 on day2
+    // Fund B: no trades
+    // Overall day2 daily = fundA_daily_day2 + fundB_daily_day2
+    const SYM_A = '888002';
+    const SYM_B = '888003';
+    localStorage.setItem('fund_portfolio', JSON.stringify([
+      { symbol: SYM_A, name: 'Fund A' },
+      { symbol: SYM_B, name: 'Fund B' },
+    ]));
+    localStorage.setItem(`fund_position_${SYM_A}`, JSON.stringify({
+      startDate: '2026-02-20', initialPosition: 100, initialPrice: 1.0,
+    }));
+    localStorage.setItem(`fund_position_${SYM_B}`, JSON.stringify({
+      startDate: '2026-02-20', initialPosition: 200, initialPrice: 2.0,
+    }));
+
+    const histA = [
+      { date: mkTs('2026-02-20'), value: 1.0, equityReturn: 0 },
+      { date: mkTs('2026-02-21'), value: 1.2, equityReturn: 0 },
+      { date: mkTs('2026-02-22'), value: 1.1, equityReturn: 0 },
+    ];
+    const histB = [
+      { date: mkTs('2026-02-20'), value: 2.0, equityReturn: 0 },
+      { date: mkTs('2026-02-21'), value: 2.1, equityReturn: 0 },
+      { date: mkTs('2026-02-22'), value: 2.05, equityReturn: 0 },
+    ];
+    const tradesA = [{ id: 's1', date: '2026-02-21', type: 'sell', shares: 50, price: 1.2, fee: 6 }];
+
+    _deps.fetchFundHistory = jest.fn().mockImplementation(async (sym: string) => {
+      if (sym === SYM_A) return histA;
+      if (sym === SYM_B) return histB;
+      return [];
+    });
+    _deps.fetchFundData = jest.fn().mockResolvedValue(null);
+    getTradesForSymbol.mockImplementation((sym: string) => sym === SYM_A ? tradesA : []);
+
+    // Single-fund references
+    const tlA = computeProfitTimeline({ history: histA, trades: tradesA as any, initialPosition: 100, initialPrice: 1.0 });
+    const tlB = computeProfitTimeline({ history: histB, trades: [], initialPosition: 200, initialPrice: 2.0 });
+    const byDateA = Object.fromEntries(tlA.map(p => [p.date, p]));
+    const byDateB = Object.fromEntries(tlB.map(p => [p.date, p]));
+
+    const result = await (fundService as any).computeOverallProfit({ toDate: '2026-02-22' });
+    const overallByDate = Object.fromEntries(result.timeline.map((p: any) => [p.date, p]));
+
+    // On day2: overall daily = fundA daily + fundB daily (both using fee-deferral)
+    const expectedDay2 = byDateA['2026-02-21'].dailyProfit + byDateB['2026-02-21'].dailyProfit;
+    expect(overallByDate['2026-02-21']?.dailyProfit).toBeCloseTo(expectedDay2, 1);
+
+    // On day3: overall daily = fundA daily + fundB daily
+    const expectedDay3 = byDateA['2026-02-22'].dailyProfit + byDateB['2026-02-22'].dailyProfit;
+    expect(overallByDate['2026-02-22']?.dailyProfit).toBeCloseTo(expectedDay3, 1);
+  });
+});

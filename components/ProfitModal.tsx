@@ -13,7 +13,7 @@ interface ProfitModalProps {
   onClose: () => void;
   initialPosition?: number;
   initialPrice?: number | null;
-  initialStartDate?: string | null; // 持仓起始日期
+  initialStartDate?: string | null;
   fetchHistory?: (symbol: string) => Promise<HistoricalPoint[]>;
 }
 
@@ -29,21 +29,15 @@ const ProfitModal: React.FC<ProfitModalProps> = ({ symbol, fundName, currentPric
   const { trades } = useTrades(symbol);
   const fetchFn = fetchHistory ?? defaultFetchFundHistory;
 
-  // Resolve the effective initialPrice: use the prop if provided, otherwise look up the
-  // startDate net value from the full history. This handles the case where FundDetailsModal
-  // only loaded 90 days and couldn't find the price for an older startDate, or the backup
-  // was exported before history was cached (initialPrice stored as null).
   const resolvedInitialPrice = useMemo(() => {
     if (initialPrice !== null) return initialPrice;
     if (!initialStartDate || !history || history.length === 0) return null;
     const targetEnd = new Date(`${initialStartDate} 23:59:59.999`).getTime();
-    // exact local-date match first
     for (const h of history) {
       const hd = new Date(h.date as number);
       const hIso = `${hd.getFullYear()}-${String(hd.getMonth()+1).padStart(2,'0')}-${String(hd.getDate()).padStart(2,'0')}`;
       if (hIso === initialStartDate) return h.value;
     }
-    // latest point whose timestamp <= end of startDate
     const sorted = [...history].sort((a, b) => (a.date as number) - (b.date as number));
     let best: number | null = null;
     for (const h of sorted) {
@@ -61,10 +55,8 @@ const ProfitModal: React.FC<ProfitModalProps> = ({ symbol, fundName, currentPric
       try {
         let pts = await fetchFn(symbol);
         if (!mounted) return;
-        // ensure last day (realtimeDate) present: if realtimeDate provided, append or replace last
         if (realtimeDate && currentPrice !== undefined && currentPrice !== null) {
           const rtTs = new Date(realtimeDate + ' 15:00').getTime();
-          // if pts has last point on same local day, replace it; otherwise append if rtTs > last
           const sorted = (pts || []).slice().sort((a, b) => (a.date as number) - (b.date as number));
           const last = sorted[sorted.length - 1];
           const isSameDay = last && (new Date(last.date).toISOString().split('T')[0] === new Date(rtTs).toISOString().split('T')[0]);
@@ -79,7 +71,6 @@ const ProfitModal: React.FC<ProfitModalProps> = ({ symbol, fundName, currentPric
         } else {
           pts = (pts || []).slice().sort((a, b) => (a.date as number) - (b.date as number));
         }
-
         setHistory(pts);
         if (pts.length > 0) {
           const first = new Date(pts[0].date).toISOString().split('T')[0];
@@ -100,7 +91,6 @@ const ProfitModal: React.FC<ProfitModalProps> = ({ symbol, fundName, currentPric
     return () => { mounted = false; };
   }, [symbol, fetchFn, initialStartDate, currentPrice, realtimeDate]);
 
-  // compute full timeline when history or trades change
   const fullTimeline = useMemo(() => {
     if (!history || history.length === 0) return [];
     return computeProfitTimeline({ history, trades: trades || [], initialPosition: initialPosition || 0, initialPrice: resolvedInitialPrice ?? null });
@@ -109,48 +99,42 @@ const ProfitModal: React.FC<ProfitModalProps> = ({ symbol, fundName, currentPric
   const validateDates = (from?: string | null, to?: string | null) => {
     setValidationError(null);
     if (!from || !to) return true;
-    if (from > to) {
-      setValidationError('开始日期必须早于或等于结束日期。');
-      return false;
-    }
-    if (initialStartDate && from < initialStartDate) {
-      setValidationError('开始日期不能早于持仓起始日期。');
-      return false;
-    }
+    if (from > to) { setValidationError('开始日期必须早于或等于结束日期。'); return false; }
+    if (initialStartDate && from < initialStartDate) { setValidationError('开始日期不能早于持仓起始日期。'); return false; }
     return true;
   };
 
   useEffect(() => { validateDates(fromDate, toDate); }, [fromDate, toDate, initialStartDate]);
 
-  // selected timeline filtered by date range
   const selectedTimeline = useMemo(() => {
     if (!fullTimeline || fullTimeline.length === 0) return [];
     if (!fromDate || !toDate) return fullTimeline;
     return fullTimeline.filter(p => p.date >= fromDate && p.date <= toDate);
   }, [fullTimeline, fromDate, toDate]);
 
-  // displayedTimeline: dedupe by date (keep first entry per date) and override first day's dailyProfit to 0 when fromDate equals initialStartDate
   const displayedTimeline = useMemo(() => {
     if (!selectedTimeline || selectedTimeline.length === 0) return [];
     const seen = new Set<string>();
     const dedup: typeof selectedTimeline = [] as any;
     for (const s of selectedTimeline) {
-      if (seen.has(s.date)) continue; // keep first occurrence only
+      if (seen.has(s.date)) continue;
       seen.add(s.date);
       dedup.push({ ...s });
     }
     if (fromDate && initialStartDate && fromDate === initialStartDate) {
       if (dedup.length > 0 && dedup[0].date === fromDate) {
-        // The raw cumulativeProfit on startDate is the baseline — all subsequent days must be
-        // expressed relative to it so the numbers match computeOverallProfit's baseline-offset logic.
-        const baseline = dedup[0].cumulativeProfit || 0;
-        // Apply baseline offset to every row and recompute dailyProfit as consecutive diff.
+        // Keep the fee-deferral-corrected dailyProfit from computeProfitTimeline,
+        // but zero out day-0 and rebuild cumulativeProfit by accumulating the dailyProfits.
+        // Do NOT recompute dailyProfit from cumulativeProfit differences — that would
+        // undo the fee-deferral fix (cumulativeProfit does not include the fee offset).
+        let cumAcc = 0;
         for (let i = 0; i < dedup.length; i++) {
-          const adjusted = (dedup[i].cumulativeProfit || 0) - baseline;
+          const daily = i === 0 ? 0 : (dedup[i].dailyProfit || 0);
+          cumAcc = Number((cumAcc + daily).toFixed(4));
           dedup[i] = {
             ...dedup[i],
-            cumulativeProfit: Number(adjusted.toFixed(4)),
-            dailyProfit: i === 0 ? 0 : Number((adjusted - ((dedup[i - 1].cumulativeProfit || 0))).toFixed(4)),
+            cumulativeProfit: cumAcc,
+            dailyProfit: daily,
           };
         }
       }
@@ -158,10 +142,8 @@ const ProfitModal: React.FC<ProfitModalProps> = ({ symbol, fundName, currentPric
     return dedup;
   }, [selectedTimeline, fromDate, initialStartDate]);
 
-  // periodTotal should sum the displayed (deduped and adjusted) timeline so table/chart and total agree
   const periodTotal = useMemo(() => (displayedTimeline || []).reduce((s, p) => s + (p.dailyProfit || 0), 0), [displayedTimeline]);
 
-  // chart with axes ticks (use displayedTimeline and larger margins to avoid clipping)
   const chart = useMemo(() => {
     if (!displayedTimeline || displayedTimeline.length === 0) return { path: '', points: [], xTicks: [], yTicks: [], width: 760, height: 160, padLeft: 56, padRight: 24 };
     const w = 760; const h = 160;
@@ -173,9 +155,7 @@ const ProfitModal: React.FC<ProfitModalProps> = ({ symbol, fundName, currentPric
     const getY = (v: number) => h - padBottom - ((v - min) / range) * (h - padTop - padBottom);
     const pts = displayedTimeline.map((p, i) => ({ x: getX(i), y: getY(p.cumulativeProfit || 0), data: p }));
     const d = pts.map((pt, i) => `${i === 0 ? 'M' : 'L'} ${pt.x} ${pt.y}`).join(' ');
-    // x ticks: first/mid/last
     const xTicks = [0, Math.floor((pts.length - 1) / 2), pts.length - 1].map(i => ({ x: pts[i].x, label: pts[i].data.date }));
-    // y ticks: 5
     const yTicks = Array.from({ length: 5 }).map((_, i) => {
       const v = min + (i * range / 4);
       return { y: getY(v), label: (v >= 0 ? '+' : '') + v.toFixed(2) };
@@ -200,7 +180,9 @@ const ProfitModal: React.FC<ProfitModalProps> = ({ symbol, fundName, currentPric
       <div className="relative bg-white rounded-2xl w-full max-w-4xl shadow-2xl animate-in zoom-in-95 duration-200 flex flex-col" style={{ maxWidth: '64rem', maxHeight: '90vh' }} role="dialog" aria-modal="true">
         <div className="px-6 py-4 border-b border-gray-100 flex justify-between items-center flex-shrink-0">
           <h3 className="text-lg font-bold">{titleText} — 持仓盈亏</h3>
-          <button aria-label="关闭盈亏窗口" className="w-8 h-8 rounded-full bg-gray-50 flex items-center justify-center text-gray-400 hover:bg-gray-100" onClick={onClose}><i className="fas fa-times"></i></button>
+          <div className="flex items-center gap-2">
+            <button aria-label="关闭盈亏窗口" className="w-8 h-8 rounded-full bg-gray-50 flex items-center justify-center text-gray-400 hover:bg-gray-100" onClick={onClose}><i className="fas fa-times"></i></button>
+          </div>
         </div>
         <div className="p-6 overflow-y-auto flex-1 min-h-0">
           {loading ? (
@@ -254,7 +236,7 @@ const ProfitModal: React.FC<ProfitModalProps> = ({ symbol, fundName, currentPric
                     )}
                   </div>
 
-                  {/* Table: single table with sticky thead/tfoot, body scrollable up to 10 rows */}
+                  {/* Table */}
                   <div className="border border-gray-100 rounded-xl overflow-hidden">
                     <div className="overflow-y-auto" style={{ maxHeight: '330px' }}>
                       <table className="w-full text-sm table-fixed border-collapse">

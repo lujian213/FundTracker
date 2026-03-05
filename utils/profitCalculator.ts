@@ -9,6 +9,8 @@ export interface ProfitPoint {
   dailyProfit: number; // 当日盈利（金额） = cumulative - 前一日累计
 }
 
+
+
 // helper: convert timestamp (ms) to YYYY-MM-DD local
 function tsToISODate(ts: number): string {
   const d = new Date(ts);
@@ -63,34 +65,49 @@ export function computeProfitTimeline(params: {
     const dateKey = tsToISODate(p.date);
     if (dateKey < start) {
       // still need to accumulate trades that occur before start because they affect holdings
+      let preStartFee = 0;
       if (!tradesAppliedForDate.has(dateKey)) {
         tradesAppliedForDate.add(dateKey);
         const dayTrades = tradesByDate[dateKey] || [];
         for (const t of dayTrades) {
+          const fee = t.fee || 0;
+          preStartFee += fee;
           if (t.type === 'buy') {
             runningBuyShares += t.shares;
-            cumulativeBuyAmount += (t.price || 0) * (t.shares || 0) + (t.fee || 0);
+            cumulativeBuyAmount += (t.price || 0) * (t.shares || 0) + fee;
           } else {
             runningSellShares += t.shares;
-            cumulativeSellAmount += (t.price || 0) * (t.shares || 0) - (t.fee || 0);
+            cumulativeSellAmount += (t.price || 0) * (t.shares || 0) - fee;
           }
         }
       }
+      // update cumulativePrevious so that the first displayed day's dailyProfit reflects
+      // only the change on that day, not the full cumulative from history start.
+      // Apply fee-deferral: add back today's fees so the next day's daily correctly
+      // excludes the current day's fee impact.
+      const sharesBeforeStart = initialPosition + runningBuyShares - runningSellShares;
+      const netValueBeforeStart = p.value || 0;
+      const initCostBeforeStart = (initialPrice !== null && initialPrice !== undefined) ? (initialPosition * initialPrice) : 0;
+      const cumBeforeStart = (sharesBeforeStart * netValueBeforeStart) - initCostBeforeStart - cumulativeBuyAmount + cumulativeSellAmount;
+      cumulativePrevious = cumBeforeStart + preStartFee;
       continue;
     }
     if (dateKey > end) break;
 
     // process trades for this date only on first encounter of this dateKey
+    let todayFee = 0;
     if (!tradesAppliedForDate.has(dateKey)) {
       tradesAppliedForDate.add(dateKey);
       const dayTrades = tradesByDate[dateKey] || [];
       for (const t of dayTrades) {
+        const fee = t.fee || 0;
+        todayFee += fee;
         if (t.type === 'buy') {
           runningBuyShares += t.shares;
-          cumulativeBuyAmount += (t.price || 0) * (t.shares || 0) + (t.fee || 0);
+          cumulativeBuyAmount += (t.price || 0) * (t.shares || 0) + fee;
         } else {
           runningSellShares += t.shares;
-          cumulativeSellAmount += (t.price || 0) * (t.shares || 0) - (t.fee || 0);
+          cumulativeSellAmount += (t.price || 0) * (t.shares || 0) - fee;
         }
       }
     }
@@ -99,14 +116,23 @@ export function computeProfitTimeline(params: {
     const netValue = p.value || 0;
     const initCost = (initialPrice !== null && initialPrice !== undefined) ? (initialPosition * initialPrice) : 0;
     const cumulative = (shares * netValue) - initCost - cumulativeBuyAmount + cumulativeSellAmount;
-    const daily = Number((cumulative - cumulativePrevious).toFixed(4));
+    // daily profit = change in (cumulative + todayFee) from the prior day's same adjusted basis.
+    // Adding todayFee back into the "adjusted cumulative" used for the next day's baseline means
+    // each day's dailyProfit reflects only the NAV price-change effect on the current position,
+    // while the fee cost is recognised in the *following* day's dailyProfit — matching the
+    // standard reference convention used by Chinese fund platforms.
+    const adjustedCumulative = cumulative + todayFee;
+    const daily = Number((adjustedCumulative - cumulativePrevious).toFixed(4));
     const cumRounded = Number(cumulative.toFixed(4));
 
     timeline.push({ date: dateKey, netValue: Number(netValue.toFixed(4)), shares, cumulativeProfit: cumRounded, dailyProfit: daily });
 
-    cumulativePrevious = cumulative;
+    cumulativePrevious = adjustedCumulative;
   }
 
   return timeline;
 }
+
+
+
 

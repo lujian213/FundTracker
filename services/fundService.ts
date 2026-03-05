@@ -820,8 +820,10 @@ export async function computeOverallProfit(opts: { symbols?: string[]; fromDate?
     }
   }
 
-  // Build per-fund date->cumulative maps and collect all dates. Also track per-fund configured start dates.
+  // Build per-fund date->cumulative and date->daily maps, collect all dates.
+  // Also track per-fund configured start dates.
   const perFundMaps: Record<string, Record<string, number>> = {};
+  const perFundDailyMaps: Record<string, Record<string, number>> = {};
   const allDatesSet = new Set<string>();
   const fundStartDates: Record<string, string | null> = {};
   for (const pf of perFundRows) {
@@ -829,79 +831,83 @@ export async function computeOverallProfit(opts: { symbols?: string[]; fromDate?
   }
   for (const sym of Object.keys(includedFundTimelines)) {
     const t = includedFundTimelines[sym];
-    const map: Record<string, number> = {};
+    const cumMap: Record<string, number> = {};
+    const dailyMap: Record<string, number> = {};
     for (const p of t) {
-      map[p.date] = Number((p.cumulativeProfit || 0).toFixed(4));
+      cumMap[p.date] = Number((p.cumulativeProfit || 0).toFixed(4));
+      dailyMap[p.date] = Number((p.dailyProfit || 0).toFixed(4));
       allDatesSet.add(p.date);
     }
-    perFundMaps[sym] = map;
+    perFundMaps[sym] = cumMap;
+    perFundDailyMaps[sym] = dailyMap;
   }
 
   const dates = Array.from(allDatesSet).sort();
 
-  // build perFundTimelines: ordered arrays of {date, cumulativeProfit} for each fund
-  // Use forward-fill for dates missing in a fund's own timeline: carry the last known cumulative forward.
-  // For dates <= startDate the contribution is 0.
-  // For dates > startDate the contribution is rawCumulative - baseline, where baseline is the raw
-  // cumulativeProfit on startDate (forward-filled). This prevents a spurious jump on startDate+1
-  // that would otherwise equal the entire startDate cumulative value.
+  // build perFundTimelines: ordered arrays of {date, cumulativeProfit} for each fund.
+  // Reuse the fee-deferral-corrected dailyProfit from computeProfitTimeline (same logic
+  // as ProfitModal) rather than re-deriving daily from cumulativeProfit differences.
+  // For dates <= startDate the contribution is 0 (fund not yet started).
+  // For dates in the fund's timeline: use dailyProfit directly.
+  // For dates missing from the fund's timeline (gaps / forward-fill): daily = 0, cumulative carries forward.
   const perFundTimelines: Record<string, { date: string; cumulativeProfit: number }[]> = {};
   for (const sym of Object.keys(perFundMaps)) {
-    const map = perFundMaps[sym] || {};
+    const cumMap = perFundMaps[sym] || {};
+    const dailyMap = perFundDailyMaps[sym] || {};
     const start = fundStartDates[sym];
 
-    // First pass: compute raw forward-filled cumulative for every date (ignoring startDate zeroing)
-    const rawVals: number[] = [];
-    let lastVal: number | null = null;
-    for (const d of dates) {
-      let val: number;
-      if (map[d] !== undefined) {
-        val = map[d];
-        lastVal = val;
-      } else if (lastVal !== null) {
-        val = lastVal; // forward-fill
-      } else {
-        val = 0;
-      }
-      rawVals.push(val);
-    }
-
-    // Determine baseline: the raw cumulative on startDate (last date <= start), so that on
-    // startDate+1 the contribution is rawCumulative(startDate+1) - baseline rather than
-    // rawCumulative(startDate+1) - 0 (which was the source of the discrepancy).
+    // Determine baseline cumulativeProfit on startDate so we can zero it out.
+    // Walk the sorted dates up to start to find the last known raw cumulative.
     let baseline = 0;
     if (start) {
-      for (let i = 0; i < dates.length; i++) {
-        if (dates[i] <= start) baseline = rawVals[i];
-        else break;
+      let lastKnown: number | null = null;
+      for (const d of dates) {
+        if (d > start) break;
+        if (cumMap[d] !== undefined) lastKnown = cumMap[d];
       }
+      if (lastKnown !== null) baseline = lastKnown;
     }
 
-    // Second pass: build output array
+    // Build output using dailyProfit to accumulate cumulative, preserving fee-deferral correction.
     const arr: { date: string; cumulativeProfit: number }[] = [];
-    for (let i = 0; i < dates.length; i++) {
-      const d = dates[i];
-      let val: number;
+    let runningCum = 0;
+    let started = false;
+    for (const d of dates) {
       if (start && d <= start) {
-        val = 0; // fund not yet started on this date
+        // Before or on startDate: contribution is 0.
+        arr.push({ date: d, cumulativeProfit: 0 });
       } else {
-        val = rawVals[i] - baseline; // relative to startDate baseline
+        if (!started) {
+          // First date after startDate. Use fee-deferral-corrected dailyProfit when available.
+          // Fall back to raw cumulative minus baseline only for gap dates not in the fund timeline.
+          if (dailyMap[d] !== undefined) {
+            runningCum = Number((runningCum + dailyMap[d]).toFixed(4));
+          } else if (cumMap[d] !== undefined) {
+            runningCum = Number((cumMap[d] - baseline).toFixed(4));
+          } else {
+            runningCum = 0;
+          }
+          started = true;
+        } else if (dailyMap[d] !== undefined) {
+          // Date is in the fund's timeline: advance by the fee-deferral-corrected daily.
+          runningCum = Number((runningCum + dailyMap[d]).toFixed(4));
+        }
+        // else: gap date not in fund timeline → carry forward (runningCum unchanged, daily = 0)
+        arr.push({ date: d, cumulativeProfit: runningCum });
       }
-      arr.push({ date: d, cumulativeProfit: Number(val.toFixed(4)) });
     }
     perFundTimelines[sym] = arr;
   }
 
-  // compute timelineOut by summing forward-filled perFundTimelines so chart and table agree
+  // compute timelineOut by summing forward-filled perFundTimelines so chart and table agree.
+  // Derive dailyProfit as the change in cumulative sum (consistent with how ProfitModal does it).
   const timelineOut: { date: string; cumulativeProfit: number; dailyProfit: number }[] = [];
   let prev = 0;
   for (let i = 0; i < dates.length; i++) {
     const d = dates[i];
     let cumSum = 0;
     for (const sym of Object.keys(perFundTimelines)) {
-      const arr = perFundTimelines[sym];
-      // find entry for this date (same index corresponds across arr since built on same dates)
-      const entry = arr[i];
+      const entry = perFundTimelines[sym][i];
       if (entry && entry.cumulativeProfit !== undefined) cumSum += entry.cumulativeProfit;
     }
     const cum = Number(cumSum.toFixed(4));

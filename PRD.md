@@ -1,6 +1,6 @@
 # FundTracker — 产品需求文档 (PRD)
 
-版本：1.8
+版本：1.9
 最后更新：2026-03-05
 
 ---
@@ -665,6 +665,7 @@ CI 与发布
 - [x] 新增测试：`tests/components/BackupSettingsModal.test.tsx`（11 用例）
 - [x] 交易表单输入模式优化（v1.7）：买入时总额可输、份额只读（2位小数）；卖出时份额可输、总额只读；类型切换自动清零；编辑回填逻辑适配；新增测试5个用例（`tradeManagerIntegration.test.tsx`）
 - [x] 卡片增强（v1.8）：新增 `CardStatus` 类型（ok/error/unknown）；`App.tsx` 新增 `fundStatuses` / `indexStatuses` state；`updateSingleFund` 和 `refreshMarketIndicesAsync` 更新状态；`TickerCard` 渲染左上角状态圆点（绿/红/灰）+ aria-label；无数据时显示 `'-'` 替代骨架屏；名称兜底显示 symbol；`renderIndexCard` 同步支持状态圆点；新增测试 5 个用例（`TickerCard.test.tsx`）
+- [x] 盈亏计算修复与一致性对齐（v1.9）：引入手续费延迟规范（Fee-Deferral Convention）——交易当日手续费延迟到下一日体现在 dailyProfit 中，与中国基金平台标准一致；`ProfitModal` 基线调整改为由 dailyProfit 累加重建 cumulativeProfit；`computeOverallProfit` 的 `perFundTimelines` 对所有日期均使用 fee-deferral dailyProfit 累加，消除整体盈利与单基金盈利之间的数值差异；移除调试代码（`ProfitDebugRow`、`computeProfitTimelineDebug`、调试按钮）；新增 7 个测试用例
 - [ ] 为 `TradeManager` 添加导入前确认弹窗（若需要，我可以立即实现并添加测试）
 - [ ] 在 tests/ 中补充 `hooks/useTrades.test.ts`、`TradeManager.test.tsx`、`utils/riskTooltip.test.ts`（优先级按上）
 - [ ] 在 CI workflow 中加入 `npm test` 步骤（如需我可以提交 workflow 修改建议）
@@ -679,6 +680,7 @@ CI 与发布
 - 2026-03-04 v1.6：整体盈亏日期默认值优化（日期1默认为日期2前一天）；添加版本号管理机制（version.ts + 主界面标题栏显示）
 - 2026-03-04 v1.7：交易添加表单输入模式优化：买入时总额可输入、份额只读（2位小数）；卖出时份额可输入、总额只读；类型切换自动清零；编辑回填逻辑适配；新增测试 5 个用例（`tradeManagerIntegration.test.tsx`）
 - 2026-03-05 v1.8：卡片增强（Cards Enhancement）：新增 `CardStatus` 联合类型（ok/error/unknown）；新增 `fundStatuses` / `indexStatuses` 运行时 state（不持久化）；`updateSingleFund` 和 `refreshMarketIndicesAsync` 分别按成功/失败更新对应 symbol 的状态；`TickerCard` 与 `renderIndexCard` 渲染左上角状态圆点（绿色正常/红色错误/灰色未知）含 hover 提示与 aria-label；无数据时价格/涨跌幅显示 `'-'` 替代骨架屏动画；名称缺失时兜底显示 symbol；新增 TickerCard 测试 5 个用例（状态圆点 ×3、无数据占位符 ×1、名称兜底 ×1）
+- 2026-03-05 v1.9：盈亏计算修复与一致性对齐：引入手续费延迟规范（Fee-Deferral Convention）——交易当日手续费延迟到下一日体现在 dailyProfit 中，与中国基金平台标准一致；`ProfitModal` 基线调整改为由 dailyProfit 累加重建 cumulativeProfit，不再从 cumulativeProfit 差分重算；`computeOverallProfit` 的 `perFundTimelines` 对 startDate 之后所有日期（含第一日）均使用 computeProfitTimeline 的 fee-deferral dailyProfit 累加，消除整体盈利与单基金盈利之间的数值差异；移除调试代码（`ProfitDebugRow`、`computeProfitTimelineDebug`、调试按钮及 state）；新增 7 个测试用例（fee-deferral 卖出/买入/无交易/基线调整/periodTotal 共 5 个、整体与单基金一致性 2 个）
 
 ---
 
@@ -781,22 +783,32 @@ CI 与发布
   - x轴起始为基金持仓起始日期，终止为当天日期。
 - 盈利表格：
   - 图表下方，用户可选择两个日期（起始和结束），展示该期间的每日盈亏。
-  - 表格三列：日期、当日净值、当日盈利。
+  - 表格四列：日期、当日净值、当日盈利、累计盈利。
   - 一屏最多显示10条，带滚动条。
   - 表格下方显示该区间累计盈亏。
-  - 正数红色，负数绿色，0值用黑色“-”表示。
+  - 正数红色，负数绿色，0值用黑色"-"表示。
   - 用户选择不同日期范围时，盈亏数字动态更新。
-- 盈亏计算逻辑：
-  - x日累计盈利 = x日份额 * x日净值或估值（若无则取最近前一日）- 初始份额*初始价格 - 截止x日所有买入交易总和 + 截止x日所有卖出交易总和。
-  - x日份额 = 初始份额 + 截止x日（含x日）所有买入份额 - 截止x日（含x日）所有卖出份额。
-  - 每日盈利 = 当日累计盈利 - 前一日累计盈利。
+- 盈亏计算逻辑（实现于 `utils/profitCalculator.ts` — `computeProfitTimeline`）：
+  - **原始累计盈利**（rawCumulative）：`x日份额 × x日净值 − 初始份额×初始价格 − 截止x日所有买入总额 + 截止x日所有卖出总额`
+    - 买入总额 = Σ(price × shares + fee)
+    - 卖出总额 = Σ(price × shares − fee)
+  - x日份额 = 初始份额 + 截止x日（含x日）所有买入份额 − 截止x日（含x日）所有卖出份额。
+  - **手续费延迟规范（Fee-Deferral Convention）**：每日当日盈利采用"调整累计值"计算，使手续费损失体现在**下一个交易日**而非当日，与中国基金平台标准保持一致：
+    - `adjustedCumulative_D = rawCumulative_D + todayFee_D`（todayFee 为当日所有买卖手续费之和）
+    - `dailyProfit_D = adjustedCumulative_D − adjustedCumulative_{D-1}`
+    - `cumulativeProfit_D`（对外输出）= rawCumulative_D（不含延迟偏移）
+    - `cumulativePrevious`（下一日基准）= adjustedCumulative_D
+  - 无交易日：todayFee = 0，daily 即为纯净值变化产生的损益，与原始公式等价。
+- 基线调整（显示层，`ProfitModal` 的 `displayedTimeline`）：
+  - 当显示起始日期（fromDate）等于持仓起始日期（initialStartDate）时，第0日 dailyProfit 强制置0，后续各日 cumulativeProfit 由 dailyProfit 依次累加重建。
+  - **必须保留 `computeProfitTimeline` 已修正的 dailyProfit**，不得从 cumulativeProfit 差分重算（否则会绕过手续费延迟修正）。
 - 日期选择规则：
   - 开始日期必须早于结束日期（默认结束为当天）。
   - 开始日期不得早于持仓开始日期（默认即持仓开始日期）。
   - 若区间不合法，显示错误提示。
 
 ### 整体盈利计算
-- 主界面管理按钮旁增加“盈利”按钮，点击后弹出整体盈利窗口。
+- 主界面管理按钮旁增加"盈利"按钮，点击后弹出整体盈利窗口。
 - 整体累计盈利趋势图：
   - 横轴为日期，纵轴为累计整体盈利金额。
   - hover 显示每日日期、当日整体盈利金额和累计整体盈利金额。
@@ -809,7 +821,7 @@ CI 与发布
   - 一屏最多显示10条，带滚动条。
   - 表头和统计行固定，滚动时始终可见。
   - 表格下方显示统计信息：总计、区间累计值总和、区间末累计值总和、总额总和。
-  - 正数红色，负数绿色，0值用黑色“-”表示。
+  - 正数红色，负数绿色，0值用黑色"-"表示。
   - 用户选择不同日期范围时，表格数据动态更新。
 - 统计与过滤规则：
   - 只有具有持仓开始日期且早于日期2的基金才纳入整体盈亏计算和表格展示。
@@ -821,11 +833,11 @@ CI 与发布
   - 日期1不得早于图上x轴起始日期。
   - 日期2不得晚于x轴终止日期。
   - 若区间不合法，清空表格并显示错误信息。
-- 计算机制：
+- 计算机制（实现于 `services/fundService.ts` — `computeOverallProfit`）：
   - 整体累计盈利趋势图的数据集为所有基金（排除无起始日期的基金）在时间窗口内每日累计盈利的加总。
   - 表格数据为趋势图数据集的子集，通过日期1和日期2过滤。
-  - 单个基金在x日的累计盈利算法与单基金盈利窗口一致，保证一致性。
+  - **单个基金每日盈利直接复用 `computeProfitTimeline` 返回的 `dailyProfit`（已含手续费延迟规范），与单基金盈利窗口的数值完全一致。**
+  - `perFundTimelines` 构建规则：对 startDate 之后的每个日期，优先使用 `dailyProfit` 累加，不得从 `cumulativeProfit` 差分重算；startDate 当日及之前贡献为0；在 timeline 中不存在的 gap 日期 daily=0、cumulative 保持不变（前向填充）。
   - 若某基金在x日无净值或估值，则累计盈利按前推最近可用净值/估值计算。
-
 ---
 
