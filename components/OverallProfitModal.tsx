@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState, useCallback, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { computeOverallProfit } from '../services/fundService';
 import { OverallProfitSummary, OverallProfitPoint, OverallFundRow } from '../types';
@@ -18,6 +18,9 @@ const OverallProfitModal: React.FC<Props> = ({ symbols, onClose, onSelectFund })
   const [hoverIndex, setHoverIndex] = useState<number | null>(null);
   // 图表 x 轴起始日期（= defaultFrom，即持仓最早 startDate），与表格日期选择器分离
   const [chartFromDate, setChartFromDate] = useState<string | null>(null);
+
+  const chartWrapRef = useRef<HTMLDivElement | null>(null);
+  const chartSvgRef = useRef<SVGSVGElement | null>(null);
 
   useEffect(() => {
     let mounted = true;
@@ -97,6 +100,56 @@ const OverallProfitModal: React.FC<Props> = ({ symbols, onClose, onSelectFund })
     return <span className="text-green-600">{v.toFixed(2)}</span>;
   };
 
+  const getTooltipStyle = useCallback((x: number, y: number, width = 760, height = 160) => {
+    const tooltipWidth = 170;
+    const tooltipHeight = 64;
+    const margin = 8;
+    const gap = 12;
+
+    const wrapRect = chartWrapRef.current?.getBoundingClientRect();
+    const svgRect = chartSvgRef.current?.getBoundingClientRect();
+
+    const wrapWidth = wrapRect && wrapRect.width > 0 ? wrapRect.width : width;
+    const wrapHeight = wrapRect && wrapRect.height > 0 ? wrapRect.height : height;
+
+    const renderedWidth = svgRect && svgRect.width > 0 ? svgRect.width : width;
+    const renderedHeight = svgRect && svgRect.height > 0 ? svgRect.height : height;
+
+    // Offset from wrapper origin to SVG origin (wrapper has padding).
+    const svgOffsetLeft = wrapRect && svgRect ? (svgRect.left - wrapRect.left) : 0;
+    const svgOffsetTop = wrapRect && svgRect ? (svgRect.top - wrapRect.top) : 0;
+
+    // Map from SVG viewBox coordinates to rendered pixel coordinates.
+    const pointX = svgOffsetLeft + (x / width) * renderedWidth;
+    const pointY = svgOffsetTop + (y / height) * renderedHeight;
+
+    const left = Math.max(margin, Math.min(wrapWidth - tooltipWidth - margin, pointX - tooltipWidth / 2));
+
+    // Prefer above-point placement so marker stays clickable; fallback below near top edge.
+    const aboveTop = pointY - tooltipHeight - gap;
+    const belowTop = pointY + gap;
+    const top = aboveTop >= margin
+      ? aboveTop
+      : Math.min(wrapHeight - tooltipHeight - margin, Math.max(margin, belowTop));
+
+    return { left, top, width: tooltipWidth, pointerEvents: 'none' as const };
+  }, []);
+
+  const handlePointClick = useCallback((idx: number) => {
+    if (!chartTimeline || chartTimeline.length === 0) return;
+    const current = chartTimeline[idx];
+    if (!current) return;
+    const prevDate = idx > 0
+      ? chartTimeline[idx - 1].date
+      : (() => {
+          const d = new Date(current.date);
+          d.setDate(d.getDate() - 1);
+          return d.toISOString().split('T')[0];
+        })();
+    setFromDate(prevDate);
+    setToDate(current.date);
+  }, [chartTimeline]);
+
   // Table data built from precomputed perFundTimelines in summary
   const [tableRows, setTableRows] = useState<OverallFundRow[]>([]);
   const [tableError, setTableError] = useState<string | null>(null);
@@ -128,10 +181,7 @@ const OverallProfitModal: React.FC<Props> = ({ symbols, onClose, onSelectFund })
     const chartStart = summary.timeline && summary.timeline.length > 0 ? summary.timeline[0].date : null;
     const chartEnd = summary.timeline && summary.timeline.length > 0 ? summary.timeline[summary.timeline.length - 1].date : null;
     if (!chartStart || !chartEnd) return;
-    if (fromDate < chartStart) {
-      setTableError('规则错误：日期1 不能早于图表起始日期');
-      return;
-    }
+    // removed restriction: fromDate can be earlier than chartStart; values default to 0
     if (toDate > chartEnd) {
       setTableError('规则错误：日期2 不能晚于图表结束日期');
       return;
@@ -173,7 +223,7 @@ const OverallProfitModal: React.FC<Props> = ({ symbols, onClose, onSelectFund })
       return { ...p, profitFrom: valFrom, profitTo: valTo, profitDiff: Number((valTo - valFrom).toFixed(4)) };
     });
     // filter out funds whose startDate is not earlier than toDate (i.e., startDate >= toDate excluded)
-    setTableRows(rows.filter(r => !!r.startDate && r.startDate < toDate));
+    setTableRows(rows.filter(r => !!r.startDate && r.startDate <= toDate));
   }, [summary, fromDate, toDate]);
 
   // 按差额排序后的展示行
@@ -206,8 +256,8 @@ const OverallProfitModal: React.FC<Props> = ({ symbols, onClose, onSelectFund })
             </div>
           ) : (
             <div className="space-y-4">
-              <div className="bg-gray-50 rounded p-3 relative">
-                <svg className="w-full h-40" viewBox={`0 0 ${chart.width ?? 760} ${chart.height ?? 160}`} preserveAspectRatio="none" style={{ overflow: 'visible' }}>
+              <div ref={chartWrapRef} className="bg-gray-50 rounded p-3 relative">
+                <svg ref={chartSvgRef} className="w-full h-40" viewBox={`0 0 ${chart.width ?? 760} ${chart.height ?? 160}`} preserveAspectRatio="none" style={{ overflow: 'visible' }}>
                   <rect x={0} y={0} width={760} height={160} fill="#fff" />
                   {chart.yTicks && chart.yTicks.map((t: any, i: number) => (
                     <g key={'y'+i}>
@@ -220,14 +270,23 @@ const OverallProfitModal: React.FC<Props> = ({ symbols, onClose, onSelectFund })
                   ))}
                   <path d={chart.path} fill="none" stroke="#ef4444" strokeWidth={2} strokeLinecap="round" style={{ pointerEvents: 'none' }} />
                   {chart.points.map((pt: any, i: number) => (
-                    <g key={i} onMouseEnter={() => setHoverIndex(i)} onMouseLeave={() => setHoverIndex(null)} onFocus={() => setHoverIndex(i)} onBlur={() => setHoverIndex(null)}>
+                    <g key={i} onMouseEnter={() => setHoverIndex(i)} onMouseLeave={() => setHoverIndex(null)} onFocus={() => setHoverIndex(i)} onBlur={() => setHoverIndex(null)} onClick={() => handlePointClick(i)} data-testid={`overall-profit-point-${i}`}>
                       <circle cx={pt.x} cy={pt.y} r={18} fill="rgba(0,0,0,0)" style={{ pointerEvents: 'all' }} />
                       <circle cx={pt.x} cy={pt.y} r={5} fill={hoverIndex === i ? '#ef4444' : '#fff'} stroke="#ef4444" strokeWidth={2} />
                     </g>
                   ))}
                 </svg>
                 {hoverIndex !== null && chart.points[hoverIndex] && (
-                  <div className="absolute z-20 bg-white p-2 rounded shadow" style={{ left: Math.max(8, Math.min((chart.width ?? 760) - 120, chart.points[hoverIndex].x - 40)), top: Math.max(8, chart.points[hoverIndex].y - 50), pointerEvents: 'none' }}>
+                  <div
+                    data-testid="overall-profit-tooltip"
+                    className="absolute z-20 bg-white p-2 rounded shadow"
+                    style={getTooltipStyle(
+                      chart.points[hoverIndex].x,
+                      chart.points[hoverIndex].y,
+                      chart.width ?? 760,
+                      chart.height ?? 160,
+                    )}
+                  >
                     <div className="text-xs text-gray-500">{chart.points[hoverIndex].data.date}</div>
                     <div className="text-sm">当日: {chart.points[hoverIndex].data.dailyProfit === 0 ? '-' : (chart.points[hoverIndex].data.dailyProfit > 0 ? '+' : '') + chart.points[hoverIndex].data.dailyProfit.toFixed(2)}</div>
                     <div className="text-sm">累计: {chart.points[hoverIndex].data.cumulativeProfit === 0 ? '-' : (chart.points[hoverIndex].data.cumulativeProfit > 0 ? '+' : '') + chart.points[hoverIndex].data.cumulativeProfit.toFixed(2)}</div>

@@ -1,7 +1,7 @@
 # FundTracker — 产品需求文档 (PRD)
 
-版本：1.10
-最后更新：2026-03-05
+版本：1.11
+最后更新：2026-03-06
 
 ---
 
@@ -555,158 +555,6 @@ export type CardStatus = 'ok' | 'error' | 'unknown';
   - 状态三（备份完成）：导出完成后切换为"✅ 备份成功"，同底色，保持 3 秒后自动清除回状态一
   - 实现要点：`backupStatus: 'idle' | 'pending' | 'done'` state；`idle` 时 `<div>` 保留高度但不渲染文字；`pending`/`done` 时渲染对应文字与样式
 
-### 风险评级与均线（实现细节）
-- 使用 `utils/movingAverage.ts` 的 `computeSMA` / `computeMultipleSMAs` 计算 SMA5/10/20
-- 使用 `utils/riskTooltip.ts` 的 `computeRiskRating` 进行评级，输入为 price、maValues、index 与 prevIndex，输出包含 rating、color、action、reasons
-- TOLERANCE = 0.995（maConfig）用于判断 price 回踩是否破位
-- 无历史时 `computeRatingFromHistory` 会退化地使用 `previousPrice` 与 `currentPrice` 来尝试计算（已实现并被接受）
-
-错误处理、边界条件与安全
-- 服务层在异常情况下返回 null 或 []（不抛出），以便 UI 选择友好回退策略
-- jsonp 全局回调 `jsonpgz` 与注册表 `fundRegistry`：实现时应注意回调名安全与清理逻辑
-- localStorage 操作包裹 try/catch，写入失败时应用友好提示（浏览器存储满或私有模式）
-
-验收标准（可自动化测试/手工验收）
-- 服务函数：`fetchFundData` 在正常/异常/超时场景下行为符合契约（单元测试）
-- 历史数据：`fetchFundHistory` 返回数组并且组件正确截断（TickerCard/FundDetailsModal 90，TradeManager 365）
-- **性能缓存验收**：
-  - `cacheService` 模块加载时从 localStorage 的 `fund_market_data` 与 `fund_history_{symbol}` 预读数据到内存 Map（单元测试覆盖）
-  - `setValuation` / `setHistory` 写入内存后同步更新对应 localStorage key（单元测试覆盖）
-  - `getNews` 默认返回空数组；`setNews` / `getNews` 正确读写；`setNews` 不写 localStorage（单元测试覆盖）
-  - 页面刷新后（热缓存场景），`marketData` 初始 state 来自 `cacheService.getAllValuations()`，无白屏无 loading（手工验收）
-  - `FundDetailsModal` 打开时，历史净值缓存命中则秒开（无 loading 动画）；未命中时正常显示 loading（手工验收）
-  - `OverallProfitModal` 打开时，历史净值全部来自缓存，弹窗加载速度明显快于改造前（手工验收）
-  - `MarketNewsTicker` 渲染时立即展示上次缓存热点，不显示"正在接入..."（热缓存场景，手工验收）
-  - 手动刷新（刷新按钮）正确触发实时估值 + 历史净值 + 市场指数三类数据的并行更新（手工验收）
-  - 定时刷新间隔符合规范：实时估值 3 分钟、历史净值 20 分钟、市场指数 2 分钟（代码审查）
-- 交易管理：
-  - 添加/编辑/删除 功能在 UI 上生效并持久化到 `fund_trades`
-  - 导出 JSON/CSV 包含正确 total 值（数值精度检验：price 4 位，total 2 位）
-  - 导入会在用户确认后覆盖数据并触发 UI 刷新
-  - 分页逻辑正确（上一页/下一页、页数显示正确）
-- 数据备份与恢复验收：
-  - **手动导出**：点击"导出备份"生成文件，文件名形式为 `fund_backup_yyyy-MM-dd_HH-mm-ss.json`（本地时间戳）；文件内容包含 portfolio、indices、globalIndices、trades、positions、config 所有字段（含 optional 字段）
-  - **自动导出**：系统在配置时间触发，生成文件名形式为 `fund_backup_auto_yyyy-MM-dd.json`；无需用户操作，全自动
-  - **备份提示 UI**：自动导出前 5 秒主界面顶部出现"正在自动备份数据…"（浅绿色底色），完成后切换为"备份成功"并在 3 秒后消失；提示区域高度预先保留，不引起其他内容布局偏移
-  - **导入确认**：点击"导入备份"后必须弹出确认框，提示数据覆盖风险；取消则不执行导入
-  - **导入覆盖**：确认后完全覆盖 portfolio、trades、positions、indices 配置；`fund_history_*` 不受影响
-  - **兼容性**：旧版导出文件（indices 为字符串数组、缺少 config/globalIndices 等字段）可正常导入，关键数据（portfolio、trades、positions）不丢失（单元测试覆盖所有兼容场景）
-  - **Fallback 数据**：导入后 optional 字段（估值、价格）作为初始展示 fallback，页面能秒开；后台刷新完成后自动更新为最新数据
-  - **备份配置弹窗**：`BackupSettingsModal` 能正确读取/保存 autoExportTime；保存后倒计时文字更新；修改时间输入后倒计时随即更新（单元测试覆盖）
-  - **倒计时准确性**：`BackupSettingsModal` 中显示的"距下一次自动备份"倒计时正确反映当前本地时间与配置时间的差值
-- 交易明细窗口（TransactionsModal）：
-  - 无交易时：日期按钮 disabled，表格区域显示"无任何交易存在"
-  - 默认显示最近有交易记录的 local 日期（`getAllTradeDates()[0]`）
-  - 日历仅允许选择有交易记录的日期；有交易日期加粗+蓝色下划线标注
-  - 五列表头文字正确（基金名称 / 类型 / 份额 / 手续费 / 交易总额）
-  - 基金名称优先取 `marketData.name`，兜底 `portfolio` 的 `Ticker.name`
-  - 统计行：条数正确、手续费合计正确、净额（卖出/买入）正确；净额 = 0 显示黑色 `"-"`
-  - 切换日期后表格内容正确更新
-  - 0 值全部显示黑色 `"-"`；数值千分位两位小数
-- 持仓弹窗（PositionsModal）：
-  - 无持仓配置（fullCapacity = 0）或持仓净份额为 0 的基金不纳入计算
-  - 无满足条件的基金时，饼图区和图例区各显示"无持仓数据"，底部显示空状态提示，不渲染表格
-  - 汇总行：基金数量正确（n只基金），总市场价值千分位两位小数
-  - 市场价值优先使用 `currentPrice`，`currentPrice=0` 时回退到 `previousPrice`，仍为 0 时排除该基金
-  - 当前份额 = `initialPosition + Σbuy - Σsell`（含所有历史交易记录）
-  - 饼图：扇区数量 = 持仓基金数，各扇区颜色与图例一致；hover 联动（扇区高亮、中心显示占比和市场价值）；点击扇区跳转到对应 `FundDetailsModal`
-  - 图例：点击触发 `onSelectFund`；hover 联动饼图扇区高亮
-  - 表格：记录按市场价值降序；份额保留两位小数；统计行"总计：n条记录"、总市场价值、"100%"
-  - 表头对齐与内容对齐一致（名称列左对齐，数值列右对齐）；thead/tfoot sticky，tbody 独立滚动
-  - 点击表格基金名称列触发 `onSelectFund`，关闭持仓弹窗并打开 `FundDetailsModal`
-  - 调色板：32 色，超出 32 只基金时循环复用
-- 风险评级：在给定历史/当前价样例中输出预期 rating 与 reasons（单元测试覆盖）
-- 基金份额计算器：
-  - 点击计算器图标按钮弹出计算器弹窗
-  - 正常金额（如 `1000`）计算结果精确到 2 位小数（`1000 / currentPrice`）
-  - 千分位金额（如 `1,000`）去除逗号后正确解析，结果与不含逗号的等效金额一致
-  - 无效金额（非数字字符串）：输出框显示 `"-"`（红色）
-  - 负数金额：输出框显示 `"-"`
-  - `currentPrice <= 0` 且 `previousPrice <= 0` 时：输出框显示"无法计算"（红色）
-  - 关闭弹窗后重新打开，输入框已清空
-  - 单元测试覆盖上述 6 个场景（`tests/components/FundDetailsModal.test.tsx`）
-- UI 视觉：交易记录在常见桌面宽度下保持不超过两行显示（或使用多行截断展示两行）
-
-测试计划（开发者可直接运行）
-- 单元测试（High）
-  - `tests/services/fundService.test.ts`：fetchFundData 的正常/边界/超时/错误用例；fetchFundHistory 返回结构测试
-  - `tests/services/cacheService.test.ts`：预加载 localStorage → 内存 Map；读写接口正确性；写入时同步更新 localStorage key；news 不写 localStorage（11 用例）
-  - `tests/utils/movingAverage.test.ts` 与 `tests/utils/riskTooltip.test.ts`：均线算法与交叉检测
-  - `tests/hooks/useTrades.test.ts`：localStorage 读写、导入覆盖、导出格式、CustomEvent 与 storage 同步
-  - `tests/hooks/getAllTradeDates.test.ts`：`getAllTradeDates` 去重、降序、跨 symbol 合并；`readAll` 正常/损坏 JSON 容错
-  - `tests/utils/positionHelper.test.ts`：`computePositions` 的过滤逻辑（fullCapacity=0、净份额=0、无 marketData）、市场价值计算（currentPrice 优先/previousPrice 回退）、份额累加（含买卖交易）、排序（降序）、ratio 总和为 1、颜色分配与循环复用；`POSITION_COLORS` 数量（32）与格式（hsl 字符串）
-  - `tests/utils/backupService.test.ts`：`buildBackupData` 数据结构完整性（含 optional 字段从缓存填充）；`downloadBackupFile` 文件名格式（手动含时间戳、自动含 `_auto_`）、Blob 创建；`applyBackupData` 完全覆盖、evict 旧缓存、setValuationIfAbsent fallback；兼容性场景（旧格式 string[] indices、缺少 config/globalIndices、缺少 price/initialPrice 等）；`readBackupConfig` / `writeBackupConfig` 读写与默认值容错
-- 组件/集成测试（Medium）
-  - `tests/components/AddTickerModal.test.tsx`、`TickerCard.test.tsx`、`ConfirmDialog.test.tsx`、`TradeManager.test.tsx`：交互路径、表单校验、导入导出、分页
-  - `TickerCard.test.tsx`（卡片增强）：三种 status 圆点颜色与 aria-label（ok/error/unknown）；无数据时显示 `'-'` 占位符；名称兜底显示 symbol；状态 prop 默认值为 unknown
-  - `tests/components/TransactionsModal.test.tsx`：无交易状态、默认日期、五列表头、基金名称来源、买入/卖出标签、统计行（条数/净额/买卖标签/零值）、日期切换、零值显示、关闭按钮
-  - `tests/components/PositionsModal.test.tsx`：空状态（无持仓配置、净份额为 0）、汇总行（基金数/总市值）、表格行数与排序、统计行（条数/总价值/"100%"）、交易记录影响份额、SVG 扇区数量、关闭按钮（按钮 + 遮罩）、`onSelectFund` 回调（表格 + 图例点击）
-  - `tests/components/BackupSettingsModal.test.tsx`：渲染初始时间值、倒计时文字显示、修改时间后倒计时更新、保存按钮调用 writeBackupConfig 并回调 onSave、取消/关闭按钮行为、Escape 键关闭、点击遮罩关闭、输入错误后清空错误提示
-- 手工/视觉回归
-  - 检查 TradeManager 中记录展示在常见窗口尺寸下不超出两行
-
-CI 与发布
-- 在 GitHub Actions 中的工作流应包含：checkout、setup-node、`npm ci`、`npm test`（失败阻止后续步骤）、`npm run build`、deploy（仅当测试/构建成功）
-- 建议部署到 `gh-pages`（与 repository environment protection 兼容），或配置合适的 deploy 权限
-
-实现注意与开发指引
-- 尽量保持服务层（fundService）无副作用，返回 null/[] 代替抛错，便于测试
-- 组件对历史点数量应做防御性编程：在计算均线或索引时校验长度并妥善处理 null
-- 交易导入前提示：在 `TradeManager` 的导入按钮上弹出 ConfirmDialog 或自定义 modal 提示“导入将覆盖当前交易，建议先导出备份”，确认后执行 `setAll(parsed.trades)`
-- 交易记录双行显示：实现时使用 Tailwind 类组合 + 一段小 CSS（若需要多行截断则加入 `.line-clamp-2` 的样式规则）
-
-开发任务清单（可直接执行）
-- [x] 将 PRD 中实现细节与确认结果整合（本文件）
-- [x] 实现 `TransactionsModal`（基金交易明细弹窗）及主界面"交易"按钮入口
-- [x] 在 `hooks/useTrades.ts` 中导出 `readAll` 与 `getAllTradeDates`
-- [x] 安装 `react-day-picker@^8.x` 并在入口引入 CSS
-- [x] 新增测试：`tests/hooks/getAllTradeDates.test.ts`（7 用例）
-- [x] 新增测试：`tests/components/TransactionsModal.test.tsx`（16 用例）
-- [x] 实现 `utils/positionHelper.ts`（`computePositions`、`POSITION_COLORS`）
-- [x] 实现 `components/PositionsModal.tsx`（饼图 + 图例 + 表格，含空状态）
-- [x] 在 `App.tsx` 集成"持仓"按钮与 `PositionsModal` 渲染
-- [x] 在 `index.html` 补充 `.no-scrollbar` 全局 CSS 工具类
-- [x] 新增测试：`tests/utils/positionHelper.test.ts`（15 用例）
-- [x] 新增测试：`tests/components/PositionsModal.test.tsx`（13 用例）
-- [x] 实现内存数据缓存层 `services/cacheService.ts`（估值 / 历史净值 / 市场热点三类 Map，含 localStorage 预加载与持久化）
-- [x] 改造 `services/fundService.ts`：`fetchFundHistory` 走缓存优先；新增 `forceFetchFundHistory`；`computeOverallProfit` 读缓存估值代替每次 `fetchFundData` 网络请求
-- [x] 改造 `App.tsx`：初始化读 `getAllValuations()`；`updateSingleFund` 写 `cacheService`；新增 `runBatchHistoryUpdate`；独立 20 分钟历史净值定时器；手动刷新并行覆盖三类数据
-- [x] 改造 `FundDetailsModal.tsx`：打开时先查 `cacheService.getHistory()`，命中秒开
-- [x] 改造 `OverallProfitModal.tsx`：合并为单次 `computeOverallProfit` 调用；新增 `chartFromDate` state 修复图表 x 轴日期错误
-- [x] 改造 `MarketNewsTicker.tsx`：初始 state 读 `cacheService.getNews()`；刷新后写入缓存
-- [x] 新增测试：`tests/services/cacheService.test.ts`（11 用例，覆盖三类缓存的读写、预加载、持久化行为）
-- [x] 实现 `utils/backupService.ts`（`buildBackupData`、`downloadBackupFile`、`applyBackupData`、`readBackupConfig`、`writeBackupConfig`）
-- [x] 实现 `components/BackupSettingsModal.tsx`（autoExportTime 时间选择、倒计时显示、保存/取消/关闭）
-- [x] 改造 `App.tsx` 导出功能：调用 `buildBackupData` + `downloadBackupFile`（含所有字段、正确文件名格式），替换旧的简易导出逻辑
-- [x] 改造 `App.tsx` 导入功能：调用 `applyBackupData`，导入前弹出 `ConfirmDialog` 确认，确认后更新 state 并触发 UI 重渲染
-- [x] 改造 `App.tsx` 自动导出定时器：每分钟检查本地时间是否达到 `autoExportTime`，触发时调用 `downloadBackupFile(data, 'auto')`
-- [x] 实现主界面顶部备份提示区域（高度预先保留，避免布局偏移）：自动备份前 5 秒显示"正在自动备份数据…"，完成后显示"备份成功"3 秒
-- [x] 顶部菜单栏新增"备份设置"入口，点击打开 `BackupSettingsModal`
-- [x] 新增测试：`tests/utils/backupService.test.ts`（覆盖 buildBackupData 数据结构、downloadBackupFile 文件名、applyBackupData 覆盖逻辑、兼容性场景、readBackupConfig/writeBackupConfig）
-- [x] 新增测试：`tests/components/BackupSettingsModal.test.tsx`（11 用例）
-- [x] 交易表单输入模式优化（v1.7）：买入时总额可输、份额只读（2位小数）；卖出时份额可输、总额只读；类型切换自动清零；编辑回填逻辑适配；新增测试5个用例（`tradeManagerIntegration.test.tsx`）
-- [x] 卡片增强（v1.8）：新增 `CardStatus` 类型（ok/error/unknown）；`App.tsx` 新增 `fundStatuses` / `indexStatuses` state；`updateSingleFund` 和 `refreshMarketIndicesAsync` 更新状态；`TickerCard` 渲染左上角状态圆点（绿/红/灰）+ aria-label；无数据时显示 `'-'` 替代骨架屏；名称兜底显示 symbol；`renderIndexCard` 同步支持状态圆点；新增测试 5 个用例（`TickerCard.test.tsx`）
-- [x] 盈亏计算修复与一致性对齐（v1.9）：引入手续费延迟规范（Fee-Deferral Convention）——交易当日手续费延迟到下一日体现在 dailyProfit 中，与中国基金平台标准一致；`ProfitModal` 基线调整改为由 dailyProfit 累加重建 cumulativeProfit；`computeOverallProfit` 的 `perFundTimelines` 对所有日期均使用 fee-deferral dailyProfit 累加，消除整体盈利与单基金盈利之间的数值差异；移除调试代码（`ProfitDebugRow`、`computeProfitTimelineDebug`、调试按钮）；新增 7 个测试用例
-- [x] 基金份额计算器（v1.10）：`FundDetailsModal` 新增 `showCalculator` / `calcAmount` state 与 `calcShares` useMemo；"配置仓位"与"交易管理"按钮之间插入 `fas fa-calculator` 图标按钮；计算器弹窗含金额输入框（支持千分位解析）和份额输出区（优先 `currentPrice`，fallback `previousPrice`，异常情况友好提示）；新增测试 6 个用例（`FundDetailsModal.test.tsx`）
-- [ ] 为 `TradeManager` 添加导入前确认弹窗（若需要，我可以立即实现并添加测试）
-- [ ] 在 tests/ 中补充 `hooks/useTrades.test.ts`、`TradeManager.test.tsx`、`utils/riskTooltip.test.ts`（优先级按上）
-- [ ] 在 CI workflow 中加入 `npm test` 步骤（如需我可以提交 workflow 修改建议）
-
-变更记录
-- 2026-02-11 v1.0：初始 PRD
-- 2026-02-16 v1.1：整合实现对照、产品确认项（均线默认 5/10/20、导入覆盖、local day-end 回溯等）并生成可执行的开发任务清单
-- 2026-03-03 v1.2：新增基金交易明细功能（TransactionsModal）：主界面"交易"按钮、日期选择器（react-day-picker、仅允许有交易日期、日历标注）、五列交易明细表、统计行（条数/手续费合计/净额买卖标签/零值）、日期切换、零值显示、关闭按钮；导出 `readAll` 与 `getAllTradeDates`；新增测试 23 个用例
-- 2026-03-03 v1.3：新增基金持仓功能（PositionsModal）：主界面"持仓"按钮（位于"盈利"左侧）、`computePositions` 工具函数、32 色黄金角调色板（`POSITION_COLORS`）、纯 SVG 饼图（含 hover 联动）、持仓表格（单张表 sticky thead/tfoot）、空状态；持仓配置数据模型补充至 PRD；新增测试 28 个用例（positionHelper 15 + PositionsModal 13）
-- 2026-03-03 v1.4：新增内存数据缓存层（性能优化）：新建 `cacheService.ts`（三类内存 Map + localStorage 预加载/持久化）；改造 `fetchFundHistory` 走缓存优先、新增 `forceFetchFundHistory` 强制刷新；改造 `computeOverallProfit` 读缓存估值（消除每基金额外网络请求）；改造 `App.tsx`（初始化秒开、独立 20 分钟历史净值定时器、并发池大小 3）；改造 `FundDetailsModal`（打开秒开）、`OverallProfitModal`（单次计算 + x 轴日期修复）、`MarketNewsTicker`（读缓存即时展示）；新增测试 11 个用例（cacheService.test.ts）
-- 2026-03-04 v1.5：新增数据备份与恢复功能（导出/导入）：完整 JSON 备份格式规范（含 portfolio、indices、globalIndices、trades、positions、config 所有字段）；手动导出（本地时间戳文件名）与自动导出（`_auto_` 文件名、定时触发）；主界面顶部备份提示 UI（预留高度避免布局偏移、前 5 秒提示 + 完成后 3 秒提示）；导入前确认弹窗；applyBackupData 完全覆盖逻辑 + 缓存 evict + fallback setValuationIfAbsent；BackupSettingsModal（时间配置、实时倒计时、修改即时更新）；兼容性规范（旧格式 string[] indices、缺失字段归一化）；新增测试文件 backupService.test.ts 和 BackupSettingsModal.test.tsx
-- 2026-03-04 v1.6：整体盈亏日期默认值优化（日期1默认为日期2前一天）；添加版本号管理机制（version.ts + 主界面标题栏显示）
-- 2026-03-04 v1.7：交易添加表单输入模式优化：买入时总额可输入、份额只读（2位小数）；卖出时份额可输入、总额只读；类型切换自动清零；编辑回填逻辑适配；新增测试 5 个用例（`tradeManagerIntegration.test.tsx`）
-- 2026-03-05 v1.8：卡片增强（Cards Enhancement）：新增 `CardStatus` 联合类型（ok/error/unknown）；新增 `fundStatuses` / `indexStatuses` 运行时 state（不持久化）；`updateSingleFund` 和 `refreshMarketIndicesAsync` 分别按成功/失败更新对应 symbol 的状态；`TickerCard` 与 `renderIndexCard` 渲染左上角状态圆点（绿色正常/红色错误/灰色未知）含 hover 提示与 aria-label；无数据时价格/涨跌幅显示 `'-'` 替代骨架屏动画；名称缺失时兜底显示 symbol；新增 TickerCard 测试 5 个用例（状态圆点 ×3、无数据占位符 ×1、名称兜底 ×1）
-- 2026-03-05 v1.9：盈亏计算修复与一致性对齐：引入手续费延迟规范（Fee-Deferral Convention）——交易当日手续费延迟到下一日体现在 dailyProfit 中，与中国基金平台标准一致；`ProfitModal` 基线调整改为由 dailyProfit 累加重建 cumulativeProfit，不再从 cumulativeProfit 差分重算；`computeOverallProfit` 的 `perFundTimelines` 对 startDate 之后所有日期（含第一日）均使用 computeProfitTimeline 的 fee-deferral dailyProfit 累加，消除整体盈利与单基金盈利之间的数值差异；移除调试代码（`ProfitDebugRow`、`computeProfitTimelineDebug`、调试按钮及 state）；新增 7 个测试用例（fee-deferral 卖出/买入/无交易/基线调整/periodTotal 共 5 个、整体与单基金一致性 2 个）
-- 2026-03-05 v1.10：基金份额计算器——在基金详情页"配置仓位"与"交易管理"按钮之间新增计算器图标按钮；点击弹出基金份额计算器，支持金额到份额的自动换算（优先使用实时估值 currentPrice，fallback 到确认净值 previousPrice）；支持千分位输入（去除逗号后解析）；无有效估值时显示"无法计算"（红色）；无效金额或负数显示"-"；新增测试 6 个用例
-
----
-
 ### 风险评级算法细则
 
 目的：对每只基金给出可解释的风险评级（危险/谨慎/安全/机会），并在 UI tooltip 中列出判定理由（reasons），便于用户理解与决策。
@@ -853,14 +701,18 @@ CI 与发布
 - 日期选择规则：
   - 日期1必须早于日期2（默认为时间轴最后一天）。
   - 日期1的默认值为日期2默认值的前一天。
-  - 日期1不得早于图上x轴起始日期。
   - 日期2不得晚于x轴终止日期。
   - 若区间不合法，清空表格并显示错误信息。
+- 图表点击联动（整体盈亏趋势图 -> 表格日期过滤）：
+  - 在整体盈亏页面上，点击趋势图某个数据点时，重置下方日期选择并联动表格计算。
+  - 日期2重置为选中点对应日期；日期1重置为该点在 x 轴上的前一个点日期。
+  - 若选中点是 x 轴第一个点，则日期1重置为该点日期的前一自然日。
+  - 表格仅展示日期1到日期2（含边界）的基金盈亏数据，并重新计算盈利差额与累计整体盈利差额。
+
 - 计算机制（实现于 `services/fundService.ts` — `computeOverallProfit`）：
   - 整体累计盈利趋势图的数据集为所有基金（排除无起始日期的基金）在时间窗口内每日累计盈利的加总。
   - 表格数据为趋势图数据集的子集，通过日期1和日期2过滤。
   - **单个基金每日盈利直接复用 `computeProfitTimeline` 返回的 `dailyProfit`（已含手续费延迟规范），与单基金盈利窗口的数值完全一致。**
   - `perFundTimelines` 构建规则：对 startDate 之后的每个日期，优先使用 `dailyProfit` 累加，不得从 `cumulativeProfit` 差分重算；startDate 当日及之前贡献为0；在 timeline 中不存在的 gap 日期 daily=0、cumulative 保持不变（前向填充）。
   - 若某基金在x日无净值或估值，则累计盈利按前推最近可用净值/估值计算。
----
 
