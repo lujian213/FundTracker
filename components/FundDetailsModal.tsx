@@ -11,6 +11,7 @@ import RatingTooltip from './RatingTooltip';
 import TradeManager from './TradeManager';
 import useTrades from '../hooks/useTrades';
 import ProfitModal from './ProfitModal';
+import { resolvePreferredPrice, toLocalDateKey } from '../utils/priceResolver';
 
 interface FundDetailsModalProps {
   data: ValuationData;
@@ -418,11 +419,22 @@ export const FundDetailsModal: React.FC<FundDetailsModalProps> = ({ data, onClos
     return getPriceForISODate(s);
   }, [tmpStartDate, startDate, history]);
 
+  const todayLocal = useMemo(() => toLocalDateKey(new Date()), []);
+
+  // 基金份额计算器：本地今天估值优先；无当日可用值时回退到最近可用值（同日估值优先）
+  const calcPrice = useMemo(() => resolvePreferredPrice({
+    targetDate: todayLocal,
+    todayDate: todayLocal,
+    history,
+    currentPrice: data.currentPrice,
+    realtimeDate: data.realtimeDate,
+    previousPrice: data.previousPrice,
+    netWorthDate: data.netWorthDate,
+  }), [todayLocal, history, data.currentPrice, data.realtimeDate, data.previousPrice, data.netWorthDate]);
+
   // 基金份额计算器：金额 / 估值，优先 currentPrice，fallback 到 previousPrice
   const calcShares = useMemo(() => {
-    const price = data.currentPrice > 0 ? data.currentPrice
-                : data.previousPrice > 0 ? data.previousPrice
-                : null;
+    const price = calcPrice ? calcPrice.price : null;
     const raw = calcAmount.replace(/,/g, '').trim();
     if (!price) return { type: 'no-price' as const };
     if (raw === '') return { type: 'empty' as const };
@@ -430,7 +442,7 @@ export const FundDetailsModal: React.FC<FundDetailsModalProps> = ({ data, onClos
     if (Number.isNaN(num) || !isFinite(num)) return { type: 'invalid' as const };
     if (num < 0) return { type: 'negative' as const };
     return { type: 'ok' as const, value: (num / price).toFixed(2) };
-  }, [calcAmount, data.currentPrice, data.previousPrice]);
+  }, [calcAmount, calcPrice]);
 
   // holdings summary from trades
   const { trades: tradeList } = useTrades(data.symbol);
@@ -455,12 +467,22 @@ export const FundDetailsModal: React.FC<FundDetailsModalProps> = ({ data, onClos
       }
     }
     const totalShares = initialPosition + buyShares - sellShares;
-    const marketValue = totalShares * data.currentPrice;
+    const resolved = resolvePreferredPrice({
+      targetDate: todayLocal,
+      todayDate: todayLocal,
+      history,
+      currentPrice: data.currentPrice,
+      realtimeDate: data.realtimeDate,
+      previousPrice: data.previousPrice,
+      netWorthDate: data.netWorthDate,
+    });
+    const effectivePrice = resolved ? resolved.price : 0;
+    const marketValue = totalShares * effectivePrice;
     // initialPrice may be null -> treat as 0 for calculation (or if null, initialPosition*0)
     const initPrice = initialPrice !== null ? initialPrice : 0;
-    const profit = (totalShares * data.currentPrice) + sellAmount - buyAmount - (initialPosition * initPrice);
+    const profit = (totalShares * effectivePrice) + sellAmount - buyAmount - (initialPosition * initPrice);
     return { totalShares, buyShares, sellShares, buyAmount, sellAmount, marketValue, profit };
-  }, [tradeList, data.currentPrice, initialPosition, initialPrice, fullCapacity]);
+  }, [tradeList, todayLocal, history, data.currentPrice, data.realtimeDate, data.previousPrice, data.netWorthDate, initialPosition, initialPrice, fullCapacity]);
 
   const { totalShares, buyShares, sellShares, buyAmount, sellAmount, marketValue, profit } = holdings;
 
@@ -776,7 +798,7 @@ export const FundDetailsModal: React.FC<FundDetailsModalProps> = ({ data, onClos
                          </span>
                        </div>
                        <p className="text-xs text-gray-400">
-                         参考估值：{data.currentPrice > 0 ? data.currentPrice.toFixed(4) : data.previousPrice > 0 ? `${data.previousPrice.toFixed(4)}（确认净值）` : '暂无数据'}
+                         参考价格：{calcPrice ? `${calcPrice.price.toFixed(4)}（${calcPrice.source === 'valuation' ? '估值' : calcPrice.source === 'confirmed' ? '确认净值' : '历史净值'}）` : '暂无数据'}
                        </p>
                      </div>
                      <div className="mt-4 flex justify-end">
@@ -863,13 +885,13 @@ export const FundDetailsModal: React.FC<FundDetailsModalProps> = ({ data, onClos
                )}
                {/* Trade manager modal rendered into document.body to avoid z-index issues */}
                {showTrade && (typeof document !== 'undefined' && document.body ? createPortal(
-                 <TradeManager name={data.name} symbol={data.symbol} currentPrice={data.currentPrice} onClose={() => setShowTrade(false)} />,
+                 <TradeManager name={data.name} symbol={data.symbol} currentPrice={data.currentPrice} previousPrice={data.previousPrice} realtimeDate={data.realtimeDate} netWorthDate={data.netWorthDate} onClose={() => setShowTrade(false)} />,
                  document.body
-               ) : <TradeManager name={data.name} symbol={data.symbol} currentPrice={data.currentPrice} onClose={() => setShowTrade(false)} />)}
+               ) : <TradeManager name={data.name} symbol={data.symbol} currentPrice={data.currentPrice} previousPrice={data.previousPrice} realtimeDate={data.realtimeDate} netWorthDate={data.netWorthDate} onClose={() => setShowTrade(false)} />)}
                {showProfit && (typeof document !== 'undefined' && document.body ? createPortal(
-                 <ProfitModal symbol={data.symbol} fundName={data.name} currentPrice={data.currentPrice} realtimeDate={data.realtimeDate} initialPosition={initialPosition} initialPrice={initialPrice} initialStartDate={startDate} onClose={() => setShowProfit(false)} />,
+                 <ProfitModal symbol={data.symbol} fundName={data.name} currentPrice={data.currentPrice} previousPrice={data.previousPrice} realtimeDate={data.realtimeDate} netWorthDate={data.netWorthDate} initialPosition={initialPosition} initialPrice={initialPrice} initialStartDate={startDate} onClose={() => setShowProfit(false)} />,
                  document.body
-               ) : <ProfitModal symbol={data.symbol} fundName={data.name} currentPrice={data.currentPrice} realtimeDate={data.realtimeDate} initialPosition={initialPosition} initialPrice={initialPrice} initialStartDate={startDate} onClose={() => setShowProfit(false)} />)}
+               ) : <ProfitModal symbol={data.symbol} fundName={data.name} currentPrice={data.currentPrice} previousPrice={data.previousPrice} realtimeDate={data.realtimeDate} netWorthDate={data.netWorthDate} initialPosition={initialPosition} initialPrice={initialPrice} initialStartDate={startDate} onClose={() => setShowProfit(false)} />)}
             </div>
           )}
         </div>

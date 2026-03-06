@@ -3,13 +3,18 @@ import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { FundDetailsModal } from '../../components/FundDetailsModal';
 import { TradeManager } from '../../components/TradeManager';
 import { ValuationData } from '../../types';
+import { fetchFundHistory } from '../../services/fundService';
+
+jest.mock('../../services/fundService', () => ({ fetchFundHistory: jest.fn() }));
 
 // ─── shared mock history ────────────────────────────────────────────────────
-const mockFetchHistory = jest.fn().mockResolvedValue([
+const SHARED_HISTORY = [
   { date: Date.now() - 3 * 24 * 3600 * 1000, value: 1.0, equityReturn: 0 },
   { date: Date.now() - 2 * 24 * 3600 * 1000, value: 1.0, equityReturn: 0 },
   { date: Date.now() - 1 * 24 * 3600 * 1000, value: 1.2, equityReturn: 0 }
-]);
+];
+
+const mockFetchHistory = jest.fn().mockResolvedValue(SHARED_HISTORY);
 
 const data: ValuationData = {
   symbol: 'TEST001',
@@ -30,6 +35,7 @@ describe('FundDetailsModal -> TradeManager integration', () => {
     // ensure this fund has a configured fullCapacity so the trade button is enabled
     const key = `fund_position_TEST001`;
     try { localStorage.setItem(key, JSON.stringify({ fullCapacity: 100, initialPosition: 0, startDate: null, initialPrice: null })); } catch (e) {}
+    (fetchFundHistory as jest.Mock).mockResolvedValue(SHARED_HISTORY);
   });
 
   test('clicking trade button opens TradeManager', async () => {
@@ -46,8 +52,8 @@ describe('FundDetailsModal -> TradeManager integration', () => {
     fireEvent.click(btn);
 
     // TradeManager shows current price label
-    await waitFor(() => expect(screen.getByText(/当前净值：/)).toBeInTheDocument());
-    expect(screen.getByText(/当前净值：/).textContent).toContain('1.2345');
+    await waitFor(() => expect(screen.getByText(/当前估值：/)).toBeInTheDocument());
+    expect(screen.getByText(/当前估值：/).textContent).toContain('1.2345');
   });
 });
 
@@ -135,6 +141,40 @@ describe('TradeManager buy/sell input mode', () => {
     const sharesInput = spinbuttons[0]; // 份额
     fireEvent.change(sharesInput, { target: { value: '50' } });
 
+    expect(screen.getByDisplayValue('100.00')).toBeInTheDocument();
+  });
+});
+
+// ─── TradeManager price resolution ────────────────────────────────────────────
+describe('TradeManager price resolution', () => {
+  beforeEach(() => {
+    const today = new Date();
+    const y = new Date(today.getTime() - 24 * 3600 * 1000);
+    const fmt = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    const todayIso = fmt(today);
+    const yesterdayIso = fmt(y);
+    (fetchFundHistory as jest.Mock).mockResolvedValue([
+      { date: new Date(`${yesterdayIso} 15:00`).getTime(), value: 1.2, equityReturn: 0 },
+    ]);
+
+    render(
+      <TradeManager
+        symbol="TEST001"
+        currentPrice={1.5}
+        previousPrice={1.25}
+        realtimeDate={todayIso}
+        netWorthDate={yesterdayIso}
+        onClose={jest.fn()}
+      />
+    );
+  });
+
+  test('today price uses valuation before previous confirmed NAV', async () => {
+    await waitFor(() => expect(fetchFundHistory).toHaveBeenCalled());
+    expect(screen.getByDisplayValue('1.5000')).toBeInTheDocument();
+
+    const spinbuttons = screen.getAllByRole('spinbutton');
+    fireEvent.change(spinbuttons[1], { target: { value: '150' } });
     expect(screen.getByDisplayValue('100.00')).toBeInTheDocument();
   });
 });

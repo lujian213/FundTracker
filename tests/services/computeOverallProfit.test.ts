@@ -239,6 +239,38 @@ describe('computeOverallProfit', () => {
     // Confirm the value is NOT the old (pre-deferral) formula which would be ~11.62 lower.
     expect(Math.abs(daily0303 - (expectedDaily - 11.62))).toBeGreaterThan(5);
   });
+
+  test('today synthetic point prefers valuation over confirmed when same date', async () => {
+    const d = new Date();
+    const today = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+
+    localStorage.setItem('fund_portfolio', JSON.stringify([{ symbol: '111111', name: 'A' }]));
+    localStorage.setItem('fund_position_111111', JSON.stringify({ startDate: '2026-02-01', initialPosition: 10, initialPrice: 1 }));
+
+    _deps.fetchFundHistory = jest.fn().mockResolvedValue([
+      { date: new Date('2026-03-01 15:00').getTime(), value: 1.1, equityReturn: 0 },
+    ]);
+    _deps.fetchFundData = jest.fn().mockResolvedValue({
+      symbol: '111111',
+      name: 'A',
+      currentPrice: 2.2,
+      previousPrice: 1.8,
+      realtimeDate: today,
+      netWorthDate: today,
+      changePercentage: 0,
+      lastUpdated: '',
+      valuationDate: today,
+      sourceUrl: '',
+    });
+    getTradesForSymbol.mockReturnValue([]);
+
+    const result = await (fundService as any).computeOverallProfit({});
+    const rows = (result.perFundTimelines || {})['111111'] || [];
+    const last = rows[rows.length - 1];
+
+    expect(last.date).toBe(today);
+    expect(last.cumulativeProfit).toBeCloseTo(12, 4);
+  });
 }); // end describe('computeOverallProfit')
 
 // ─────────────────────────────────────────────────────────────────────────────

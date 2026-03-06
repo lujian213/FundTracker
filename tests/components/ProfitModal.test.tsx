@@ -55,6 +55,28 @@ describe('ProfitModal', () => {
     expect(rowDates).toContain('2026-02-21');
     expect(rowDates).toContain('2026-02-22');
   });
+
+  test('uses today confirmed NAV when valuation is missing', async () => {
+    const d = new Date();
+    const today = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+
+    render(
+      <ProfitModal
+        symbol="000001"
+        initialPosition={100}
+        initialPrice={9}
+        currentPrice={0}
+        previousPrice={3}
+        realtimeDate={'---'}
+        netWorthDate={today}
+        onClose={() => {}}
+      />
+    );
+
+    await waitFor(() => expect(fetchFundHistory).toHaveBeenCalled());
+    await waitFor(() => expect(screen.getAllByText(today).length).toBeGreaterThan(0));
+    expect(screen.getAllByText('3.0000').length).toBeGreaterThan(0);
+  });
 });
 
 // ─── Fee-deferral convention tests (computeProfitTimeline directly) ───────────

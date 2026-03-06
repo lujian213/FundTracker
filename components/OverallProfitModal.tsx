@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState, useCallback, useRef } from 'react'
 import { createPortal } from 'react-dom';
 import { computeOverallProfit } from '../services/fundService';
 import { OverallProfitSummary, OverallProfitPoint, OverallFundRow } from '../types';
+import { toLocalDateKey } from '../utils/priceResolver';
 
 interface Props {
   symbols?: string[];
@@ -40,7 +41,7 @@ const OverallProfitModal: React.FC<Props> = ({ symbols, onClose, onSelectFund })
         if (defaultTo) {
           const toDate = new Date(defaultTo);
           toDate.setDate(toDate.getDate() - 1);
-          defaultFrom = toDate.toISOString().split('T')[0];
+          defaultFrom = toLocalDateKey(toDate);
         }
 
         setFromDate(defaultFrom);
@@ -144,7 +145,7 @@ const OverallProfitModal: React.FC<Props> = ({ symbols, onClose, onSelectFund })
       : (() => {
           const d = new Date(current.date);
           d.setDate(d.getDate() - 1);
-          return d.toISOString().split('T')[0];
+          return toLocalDateKey(d);
         })();
     setFromDate(prevDate);
     setToDate(current.date);

@@ -1,5 +1,6 @@
 import { ValuationData, MarketIndex, HistoricalPoint, OverallProfitSummary, OverallFundRow } from "../types";
 import { computeProfitTimeline, ProfitPoint } from '../utils/profitCalculator';
+import { resolvePreferredPrice, toLocalDateKey } from '../utils/priceResolver';
 import { getTradesForSymbol } from '../hooks/useTrades';
 import * as cacheService from './cacheService';
 
@@ -656,6 +657,8 @@ export async function fetchMarketNews(): Promise<{ id: string, title: string, ti
 export async function computeOverallProfit(opts: { symbols?: string[]; fromDate?: string | null; toDate?: string | null }): Promise<OverallProfitSummary> {
    const { symbols, fromDate, toDate } = opts || {};
 
+  const todayLocal = toLocalDateKey(new Date());
+
  // if no symbols provided, try read portfolio from localStorage (same key used in App.tsx)
   let syms: string[] = [];
   let portfolioArr: any[] = [];
@@ -755,38 +758,31 @@ export async function computeOverallProfit(opts: { symbols?: string[]; fromDate?
 
       // Ensure history contains a point at the desired end date so overall aggregation can extend to that date.
       // Desired end date: user-specified toDate, otherwise today's date (local YYYY-MM-DD).
-      const desiredEndDate = toDate || new Date().toISOString().split('T')[0];
-      // Helper to check whether history already contains a point on desiredEndDate (<= end of day)
+      const desiredEndDate = toDate || todayLocal;
       const hasPointOnDate = (hist: HistoricalPoint[], isoDate: string) => {
-        const end = new Date(isoDate);
-        end.setHours(23, 59, 59, 999);
-        const endTs = end.getTime();
-        return hist.some(h => h.date <= endTs && (new Date(h.date)).toISOString().split('T')[0] === isoDate);
+        return hist.some(h => toLocalDateKey(h.date) === isoDate);
       };
 
       let historyToUse = history.slice();
       try {
-        // 补充当天实时数据点：优先从缓存读取，避免为每个基金发起额外网络请求
+        // 补充到目标日期的优选价格点：本地今天估值优先，其次确认净值，再回退最近可用值。
         try {
           const fd = cacheService.getValuation(sym.padStart(6, '0'))
                   ?? cacheService.getValuation(sym)
                   ?? await _deps.fetchFundData(sym);
-          if (fd) {
-            const candidates: { iso: string; value: number }[] = [];
-            if (fd.netWorthDate && fd.previousPrice !== undefined && fd.previousPrice !== null) candidates.push({ iso: fd.netWorthDate, value: fd.previousPrice });
-            if (fd.realtimeDate && fd.currentPrice !== undefined && fd.currentPrice !== null) candidates.push({ iso: fd.realtimeDate, value: fd.currentPrice });
-            // include desiredEndDate fallback last
-            // for each candidate, if it's within [earliestHistoryDate, desiredEndDate] and not already present, append synthetic point
-            for (const c of candidates) {
-              try {
-                if (c.iso && c.iso >= earliestHistoryDate && c.iso <= desiredEndDate && !hasPointOnDate(historyToUse, c.iso)) {
-                  const ts = new Date(`${c.iso} 15:00`).getTime();
-                  // append if ts greater than last history date
-                  const lastTs = historyToUse.length > 0 ? historyToUse[historyToUse.length - 1].date : 0;
-                  if (ts >= lastTs) historyToUse = [...historyToUse, { date: ts, value: c.value, equityReturn: 0 }];
-                }
-              } catch (inner) { }
-            }
+          const preferred = resolvePreferredPrice({
+            targetDate: desiredEndDate,
+            todayDate: todayLocal,
+            history: historyToUse,
+            currentPrice: fd?.currentPrice,
+            realtimeDate: fd?.realtimeDate,
+            previousPrice: fd?.previousPrice,
+            netWorthDate: fd?.netWorthDate,
+          });
+          if (preferred && preferred.date >= earliestHistoryDate && preferred.date <= desiredEndDate && !hasPointOnDate(historyToUse, preferred.date)) {
+            const ts = new Date(`${preferred.date} 15:00`).getTime();
+            const lastTs = historyToUse.length > 0 ? historyToUse[historyToUse.length - 1].date : 0;
+            if (ts >= lastTs) historyToUse = [...historyToUse, { date: ts, value: preferred.price, equityReturn: 0 }];
           }
         } catch (e) {
           // ignore fetch errors
@@ -795,8 +791,12 @@ export async function computeOverallProfit(opts: { symbols?: string[]; fromDate?
         // Finally, ensure desiredEndDate is represented (existing behavior)
         if (!hasPointOnDate(historyToUse, desiredEndDate)) {
           if (historyToUse && historyToUse.length > 0) {
-            const last = historyToUse[historyToUse.length - 1];
-            const chosenValue = last.value || 0;
+            const resolved = resolvePreferredPrice({
+              targetDate: desiredEndDate,
+              todayDate: todayLocal,
+              history: historyToUse,
+            });
+            const chosenValue = resolved ? resolved.price : (historyToUse[historyToUse.length - 1].value || 0);
             const d = new Date(`${desiredEndDate} 15:00`);
             const chosenTs = d.getTime();
             const lastTs = historyToUse.length > 0 ? historyToUse[historyToUse.length - 1].date : 0;

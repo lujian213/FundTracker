@@ -196,12 +196,22 @@ describe('基金份额计算器', () => {
   });
 
   test('无有效估值时显示"无法计算"并用红色字体', async () => {
-    const noPrice = { ...baseData, currentPrice: 0, previousPrice: 0 };
+    (fetchFundHistory as jest.Mock).mockResolvedValue([]);
+    const noPrice = { ...baseData, currentPrice: 0, previousPrice: 0, realtimeDate: '---', netWorthDate: '---' };
     await openCalculator(noPrice);
     fireEvent.change(screen.getByLabelText('计算器金额输入'), { target: { value: '1000' } });
     const output = screen.getByLabelText('计算器份额输出');
     expect(output.textContent).toBe('无法计算');
     expect(output.className).toMatch(/text-red/);
   });
-});
 
+  test('无估值且无确认净值时回退到最近历史净值计算', async () => {
+    const noPrice = { ...baseData, currentPrice: 0, previousPrice: 0, realtimeDate: '---', netWorthDate: '---' };
+    await openCalculator(noPrice);
+    fireEvent.change(screen.getByLabelText('计算器金额输入'), { target: { value: '1000' } });
+    const output = screen.getByLabelText('计算器份额输出');
+    // SAMPLE_HISTORY 最新值是 1.11，1000 / 1.11 = 900.90
+    expect(output.textContent).toBe('900.90');
+    expect(screen.getByText(/参考价格：1\.1100（历史净值）/)).toBeInTheDocument();
+  });
+});

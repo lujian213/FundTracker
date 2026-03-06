@@ -1,11 +1,20 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { HistoricalPoint } from '../types';
 import { fetchFundHistory } from '../services/fundService';
+import { resolvePreferredPrice, toLocalDateKey } from '../utils/priceResolver';
 import useTrades, { TradeRecord } from '../hooks/useTrades';
 
 type TradeType = 'buy' | 'sell';
 
-export const TradeManager: React.FC<{ name?: string; symbol: string; currentPrice: number; onClose: () => void; }> = ({ name, symbol, currentPrice, onClose }) => {
+export const TradeManager: React.FC<{
+  name?: string;
+  symbol: string;
+  currentPrice: number;
+  previousPrice?: number;
+  realtimeDate?: string | null;
+  netWorthDate?: string | null;
+  onClose: () => void;
+}> = ({ name, symbol, currentPrice, previousPrice, realtimeDate, netWorthDate, onClose }) => {
   const { trades, refresh, add, update, remove, setAll, exportJSON, exportCSV } = useTrades(symbol);
   const [page, setPage] = useState(0);
   const [history, setHistory] = useState<HistoricalPoint[]>([]);
@@ -35,7 +44,7 @@ export const TradeManager: React.FC<{ name?: string; symbol: string; currentPric
   }, [symbol]);
 
   // form state
-  const [date, setDate] = useState<string>(() => new Date().toISOString().split('T')[0]);
+  const [date, setDate] = useState<string>(() => toLocalDateKey(new Date()));
   const [type, setType] = useState<TradeType>('buy');
   const [shares, setShares] = useState<string>('0'); // editable for sell; computed (readonly) for buy
   const [total, setTotal] = useState<string>('0');   // editable for buy;  computed (readonly) for sell
@@ -46,30 +55,20 @@ export const TradeManager: React.FC<{ name?: string; symbol: string; currentPric
 
   const visibleTrades = useMemo(() => localTrades.slice(page * pageSize, (page + 1) * pageSize), [localTrades, page]);
 
-  // helper: get local date string YYYY-MM-DD from timestamp
-  const localDateKey = (ts: number) => {
-    const d = new Date(ts);
-    const y = d.getFullYear();
-    const m = String(d.getMonth() + 1).padStart(2, '0');
-    const day = String(d.getDate()).padStart(2, '0');
-    return `${y}-${m}-${day}`;
-  };
+  const todayLocal = useMemo(() => toLocalDateKey(new Date()), []);
 
   // get price for a given local date string: exact match by local date or nearest previous available (<= end of day)
   const getPriceForDate = (isoDate: string) => {
-    if (!history || history.length === 0) return currentPrice;
-    // exact match by local date
-    const exact = history.find(h => localDateKey(h.date) === isoDate);
-    if (exact) return exact.value;
-    // else compute end of day timestamp for isoDate (local)
-    const end = new Date(isoDate);
-    end.setHours(23, 59, 59, 999);
-    const endTs = end.getTime();
-    const prev = [...history].filter(h => h.date <= endTs).sort((a,b) => b.date - a.date)[0];
-    if (prev) return prev.value;
-    // fallback to earliest available
-    const first = history[0];
-    return first ? first.value : currentPrice;
+    const resolved = resolvePreferredPrice({
+      targetDate: isoDate,
+      todayDate: todayLocal,
+      history,
+      currentPrice,
+      realtimeDate,
+      previousPrice,
+      netWorthDate,
+    });
+    return resolved ? resolved.price : 0;
   };
 
   const addOrUpdateTrade = () => {
@@ -133,12 +132,12 @@ export const TradeManager: React.FC<{ name?: string; symbol: string; currentPric
 
   const cancelEdit = () => {
     setEditingId(null);
-    setDate(new Date().toISOString().split('T')[0]);
+    setDate(todayLocal);
     setShares('0'); setTotal('0'); setFee('0'); setError(null);
   };
 
   // computed display price for the chosen date (live)
-  const displayPrice = useMemo(() => getPriceForDate(date), [date, history]);
+  const displayPrice = useMemo(() => getPriceForDate(date), [date, history, currentPrice, previousPrice, realtimeDate, netWorthDate, todayLocal]);
 
   const onExportJSON = () => {
     const payload = exportJSON();
@@ -175,7 +174,7 @@ export const TradeManager: React.FC<{ name?: string; symbol: string; currentPric
         <div className="flex justify-between items-start mb-4">
           <div>
             <h3 className="text-lg font-bold">{name ? `${name}（${symbol}）` : `${symbol} 交易管理`}</h3>
-            <p className="text-xs text-gray-400">当前净值：{currentPrice.toFixed(4)}</p>
+            <p className="text-xs text-gray-400">当前估值：{currentPrice.toFixed(4)}</p>
           </div>
           <button onClick={onClose} className="w-9 h-9 rounded-full bg-gray-50 flex items-center justify-center"><i className="fas fa-times text-gray-400"></i></button>
         </div>

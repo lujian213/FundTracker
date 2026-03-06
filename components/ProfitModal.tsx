@@ -4,12 +4,15 @@ import { fetchFundHistory as defaultFetchFundHistory } from '../services/fundSer
 import useTrades from '../hooks/useTrades';
 import { computeProfitTimeline } from '../utils/profitCalculator';
 import { HistoricalPoint } from '../types';
+import { resolvePreferredPrice, toLocalDateKey } from '../utils/priceResolver';
 
 interface ProfitModalProps {
   symbol: string;
   fundName?: string;
   currentPrice?: number;
+  previousPrice?: number;
   realtimeDate?: string | null;
+  netWorthDate?: string | null;
   onClose: () => void;
   initialPosition?: number;
   initialPrice?: number | null;
@@ -17,7 +20,7 @@ interface ProfitModalProps {
   fetchHistory?: (symbol: string) => Promise<HistoricalPoint[]>;
 }
 
-const ProfitModal: React.FC<ProfitModalProps> = ({ symbol, fundName, currentPrice, realtimeDate, onClose, initialPosition = 0, initialPrice = null, initialStartDate = null, fetchHistory }) => {
+const ProfitModal: React.FC<ProfitModalProps> = ({ symbol, fundName, currentPrice, previousPrice, realtimeDate, netWorthDate, onClose, initialPosition = 0, initialPrice = null, initialStartDate = null, fetchHistory }) => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [history, setHistory] = useState<HistoricalPoint[]>([]);
@@ -47,6 +50,8 @@ const ProfitModal: React.FC<ProfitModalProps> = ({ symbol, fundName, currentPric
     return best ?? (sorted.length > 0 ? sorted[0].value : null);
   }, [initialPrice, initialStartDate, history]);
 
+  const todayLocal = useMemo(() => toLocalDateKey(new Date()), []);
+
   useEffect(() => {
     let mounted = true;
     const load = async () => {
@@ -55,30 +60,34 @@ const ProfitModal: React.FC<ProfitModalProps> = ({ symbol, fundName, currentPric
       try {
         let pts = await fetchFn(symbol);
         if (!mounted) return;
-        if (realtimeDate && currentPrice !== undefined && currentPrice !== null) {
-          const rtTs = new Date(realtimeDate + ' 15:00').getTime();
-          const sorted = (pts || []).slice().sort((a, b) => (a.date as number) - (b.date as number));
-          const last = sorted[sorted.length - 1];
-          const isSameDay = last && (new Date(last.date).toISOString().split('T')[0] === new Date(rtTs).toISOString().split('T')[0]);
-          if (isSameDay) {
-            sorted[sorted.length - 1] = { date: rtTs, value: currentPrice, equityReturn: 0 } as any;
-            pts = sorted;
-          } else if (!last || rtTs > last.date) {
-            pts = [...sorted, { date: rtTs, value: currentPrice, equityReturn: 0 } as any];
-          } else {
-            pts = sorted;
+        const sorted = (pts || []).slice().sort((a, b) => (a.date as number) - (b.date as number));
+        const preferred = resolvePreferredPrice({
+          targetDate: todayLocal,
+          todayDate: todayLocal,
+          history: sorted,
+          currentPrice,
+          realtimeDate,
+          previousPrice,
+          netWorthDate,
+        });
+        if (preferred) {
+          const preferredTs = new Date(`${preferred.date} 15:00`).getTime();
+          const byDate = new Map<string, HistoricalPoint>();
+          for (const p of sorted) {
+            byDate.set(toLocalDateKey(p.date), p);
           }
+          byDate.set(preferred.date, { date: preferredTs, value: preferred.price, equityReturn: 0 });
+          pts = Array.from(byDate.values()).sort((a, b) => (a.date as number) - (b.date as number));
         } else {
-          pts = (pts || []).slice().sort((a, b) => (a.date as number) - (b.date as number));
+          pts = sorted;
         }
         setHistory(pts);
         if (pts.length > 0) {
-          const first = new Date(pts[0].date).toISOString().split('T')[0];
-          const last = new Date(pts[pts.length - 1].date).toISOString().split('T')[0];
+          const first = toLocalDateKey(pts[0].date);
+          const last = toLocalDateKey(pts[pts.length - 1].date);
           const defaultFrom = initialStartDate && initialStartDate > first ? initialStartDate : first;
           setFromDate(defaultFrom);
-          const today = new Date().toISOString().split('T')[0];
-          const defaultTo = last && last < today ? last : today;
+          const defaultTo = last && last < todayLocal ? last : todayLocal;
           setToDate(defaultTo);
         }
       } catch (e: any) {
@@ -89,7 +98,7 @@ const ProfitModal: React.FC<ProfitModalProps> = ({ symbol, fundName, currentPric
     };
     load();
     return () => { mounted = false; };
-  }, [symbol, fetchFn, initialStartDate, currentPrice, realtimeDate]);
+  }, [symbol, fetchFn, initialStartDate, currentPrice, previousPrice, realtimeDate, netWorthDate, todayLocal]);
 
   const fullTimeline = useMemo(() => {
     if (!history || history.length === 0) return [];
