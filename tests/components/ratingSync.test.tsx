@@ -32,9 +32,10 @@ describe('rating sync between TickerCard and FundDetailsModal', () => {
 
   test('Tooltip content is identical for TickerCard and FundDetailsModal when given same data', async () => {
     // Render TickerCard first
-    const { unmount } = render(<TickerCard ticker={sampleTicker} data={data} onRemove={() => {}} fetchHistory={(fetchFundHistory as jest.Mock)} />);
+    const { unmount } = render(<TickerCard ticker={sampleTicker} data={data} fetchHistory={(fetchFundHistory as jest.Mock)} />);
     // Wait for badge
     const badgeCard = await screen.findByLabelText(/风险评级/);
+    expect(badgeCard).toHaveClass('whitespace-nowrap');
     fireEvent.mouseEnter(badgeCard);
     const tooltipCard = await screen.findByRole('tooltip');
     const textCard = tooltipCard.textContent;

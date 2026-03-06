@@ -3,12 +3,12 @@ import { Ticker, ValuationData, CardStatus } from '../types';
 import { fetchFundHistory as defaultFetchFundHistory } from '../services/fundService';
 import { computeRatingFromHistory } from '../utils/ratingHelper';
 import RatingTooltip from './RatingTooltip';
+import ManageSelectButton from './ManageSelectButton';
 
 interface TickerCardProps {
   ticker: Ticker;
   data?: ValuationData;
   status?: CardStatus;
-  onRemove: () => void;
   onClick?: () => void;
   isSelectionMode?: boolean;
   isSelected?: boolean;
@@ -21,7 +21,6 @@ export const TickerCard: React.FC<TickerCardProps> = ({
   ticker,
   data,
   status = 'unknown',
-  onRemove,
   onClick,
   isSelectionMode = false,
   isSelected = false,
@@ -123,7 +122,7 @@ export const TickerCard: React.FC<TickerCardProps> = ({
   return (
     <div
       onClick={handleCardClick}
-      className={`bg-white rounded-2xl p-5 shadow-sm border transition-all relative overflow-hidden animate-in fade-in slide-in-from-bottom-2 duration-300 ${isSelected ? 'border-blue-500 ring-4 ring-blue-500/10' : 'border-gray-100'} cursor-pointer hover:shadow-lg hover:border-gray-200 active:scale-[0.98]`}>
+      className={`bg-white rounded-2xl p-5 shadow-sm border transition-all relative overflow-visible animate-in fade-in slide-in-from-bottom-2 duration-300 ${isSelected ? 'border-blue-500 ring-4 ring-blue-500/10' : 'border-gray-100'} cursor-pointer hover:shadow-lg hover:border-gray-200 active:scale-[0.98]`}>
 
       {/* Status dot — top-left corner */}
       <div
@@ -147,29 +146,30 @@ export const TickerCard: React.FC<TickerCardProps> = ({
       )}
 
       {isSelectionMode && (
-        <div className={`absolute top-4 right-4 w-7 h-7 rounded-full border-2 flex items-center justify-center transition-all ${isSelected ? 'bg-blue-600 border-blue-600 text-white shadow-lg shadow-blue-200' : 'bg-white border-gray-200 text-transparent'}`}>
-          <i className="fas fa-check text-[12px]"></i>
-        </div>
+        <ManageSelectButton
+          isSelected={isSelected}
+          label={`切换删除选择 ${data?.name || ticker.name || ticker.symbol}`}
+          onClick={(e) => {
+            e.stopPropagation();
+            onSelect?.();
+          }}
+        />
       )}
 
       <div className="flex justify-between items-start mb-4">
-        <div className="flex-1 min-w-0 pr-8 pl-3">
-          <h3 className={`font-bold truncate text-base transition-colors ${isSelected ? 'text-blue-700' : 'text-gray-800'}`}>
+        <div className="flex-1 min-w-0 pl-3">
+          <h3 title={data?.name || ticker.name || ticker.symbol} className={`font-bold truncate text-base transition-colors ${isSelected ? 'text-blue-700' : 'text-gray-800'}`}>
             {data?.name || ticker.name || ticker.symbol}
           </h3>
           <p className="text-xs text-gray-400 mt-1 font-mono tracking-wider">{ticker.symbol}</p>
         </div>
 
         {!isSelectionMode && (
-          <>
+          <div data-testid="rating-badge-slot" className="w-[72px] min-h-[24px] mr-0 mt-0 flex items-start justify-start shrink-0 whitespace-nowrap pt-0.5">
             {ratingComputed && (
               <RatingTooltip ratingInfo={ratingComputed} open={ratingTooltipOpen} onOpen={() => setRatingTooltipOpen(true)} onClose={() => setRatingTooltipOpen(false)} />
             )}
-
-            <button onClick={(e) => { e.stopPropagation(); onRemove(); }} aria-label={`删除 ${ticker.symbol}`} className="w-10 h-10 -mr-2 -mt-2 flex items-center justify-center text-gray-300 hover:text-red-500 hover:bg-red-50 rounded-full transition-all group">
-              <i className="fas fa-trash-can text-sm group-active:scale-90"></i>
-            </button>
-          </>
+          </div>
         )}
       </div>
 

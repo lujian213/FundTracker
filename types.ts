@@ -6,6 +6,9 @@ export enum MarketType {
 // Card data-fetch status: 'ok' = success, 'error' = failure, 'unknown' = not yet fetched / in-progress
 export type CardStatus = 'ok' | 'error' | 'unknown';
 
+export type ManageItemType = 'fund' | 'index' | 'global_index';
+export type ManageSelectionKey = `${ManageItemType}:${string}`;
+
 export interface Ticker {
   id: string;
   symbol: string;
@@ -121,4 +124,3 @@ export interface BackupData {
   trades: Record<string, BackupTrade[]>;
   config: BackupConfig;
 }
-
