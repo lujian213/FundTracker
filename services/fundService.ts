@@ -74,6 +74,78 @@ class RequestQueue {
 
 const globalQueue = new RequestQueue();
 
+function normalizeHistoryTimestamp(input: unknown): number | null {
+  const n = Number(input);
+  if (!Number.isFinite(n) || n <= 0) return null;
+  // EastMoney historical x may occasionally be seconds; normalize to milliseconds.
+  return n < 1e11 ? Math.trunc(n * 1000) : Math.trunc(n);
+}
+
+function normalizeHistoryPoints(points: Array<Partial<HistoricalPoint>> | undefined | null): HistoricalPoint[] {
+  if (!Array.isArray(points) || points.length === 0) return [];
+
+  const normalized = points
+    .map((p) => {
+      const ts = normalizeHistoryTimestamp((p as any)?.date ?? (p as any)?.x);
+      if (ts === null) return null;
+      const value = Number((p as any)?.value ?? (p as any)?.y);
+      if (!Number.isFinite(value)) return null;
+      const equityReturn = Number((p as any)?.equityReturn ?? 0);
+      return {
+        date: ts,
+        value,
+        equityReturn: Number.isFinite(equityReturn) ? equityReturn : 0,
+      } as HistoricalPoint;
+    })
+    .filter((p): p is HistoricalPoint => p !== null)
+    .sort((a, b) => a.date - b.date);
+
+  // Keep the latest value when duplicate timestamps exist.
+  const deduped: HistoricalPoint[] = [];
+  for (const point of normalized) {
+    const last = deduped[deduped.length - 1];
+    if (last && last.date === point.date) deduped[deduped.length - 1] = point;
+    else deduped.push(point);
+  }
+  return deduped;
+}
+
+function syncHistoryCache(code: string, points: HistoricalPoint[]): HistoricalPoint[] {
+  historyCache[code] = points;
+  cacheService.setHistory(code, points);
+  return points;
+}
+
+function normalizeAndSyncHistory(code: string, points: Array<Partial<HistoricalPoint>> | undefined | null): HistoricalPoint[] {
+  const normalized = normalizeHistoryPoints(points);
+  return syncHistoryCache(code, normalized);
+}
+
+function toRawHistoryPoints(trendData: any[]): Array<Partial<HistoricalPoint>> {
+  return trendData.map((item: any) => ({
+    date: item?.x,
+    value: parseFloat(item?.y) || 0,
+    equityReturn: parseFloat(item?.equityReturn) || 0,
+  }));
+}
+
+function loadHistoryFromPingzhongData(code: string, url: string): Promise<HistoricalPoint[]> {
+  return new Promise((resolve, reject) => {
+    const script = document.createElement('script');
+    script.src = url;
+    script.onload = () => {
+      const trendData = (window as any).Data_netWorthTrend;
+      if (Array.isArray(trendData)) {
+        resolve(normalizeAndSyncHistory(code, toRawHistoryPoints(trendData)));
+        return;
+      }
+      resolve(syncHistoryCache(code, []));
+    };
+    script.onerror = () => reject();
+    document.head.appendChild(script);
+  });
+}
+
 function jsonp<T>(url: string, callbackParam: string = 'cb', fundCode?: string): Promise<T> {
   return new Promise((resolve, reject) => {
     const isFundGz = callbackParam === 'jsonpgz';
@@ -394,35 +466,17 @@ export async function fetchFundHistory(symbol: string): Promise<HistoricalPoint[
   // 1. Check cacheService (in-memory + pre-loaded from localStorage)
   const cached = cacheService.getHistory(code);
   if (cached) {
-    historyCache[code] = cached; // keep module-level cache in sync
-    return cached;
+    return normalizeAndSyncHistory(code, cached);
   }
 
   // 2. Fallback to module-level in-memory cache (populated in the same session before cacheService existed)
-  if (historyCache[code]) return historyCache[code];
+  if (historyCache[code]) return normalizeAndSyncHistory(code, historyCache[code]);
 
   // 3. Fetch from network
   const ts = formatYMDHMS(new Date());
   const url = `https://fund.eastmoney.com/pingzhongdata/${code}.js?v=${ts}`;
   try {
-    const script = document.createElement('script');
-    script.src = url;
-    await new Promise<void>((resolve, reject) => {
-      script.onload = () => {
-        const trendData = (window as any).Data_netWorthTrend;
-        if (Array.isArray(trendData)) {
-          const points: HistoricalPoint[] = trendData.map((item: any) => ({
-            date: item.x, value: parseFloat(item.y) || 0, equityReturn: parseFloat(item.equityReturn) || 0
-          }));
-          historyCache[code] = points;
-          cacheService.setHistory(code, points); // persist to cacheService + localStorage
-        }
-        resolve();
-      };
-      script.onerror = () => reject();
-      document.head.appendChild(script);
-    });
-    return historyCache[code] || [];
+    return await loadHistoryFromPingzhongData(code, url);
   } catch (e) { return []; }
 }
 
@@ -436,24 +490,7 @@ export async function forceFetchFundHistory(symbol: string): Promise<HistoricalP
   const ts = formatYMDHMS(new Date());
   const url = `https://fund.eastmoney.com/pingzhongdata/${code}.js?v=${ts}`;
   try {
-    const script = document.createElement('script');
-    script.src = url;
-    await new Promise<void>((resolve, reject) => {
-      script.onload = () => {
-        const trendData = (window as any).Data_netWorthTrend;
-        if (Array.isArray(trendData)) {
-          const points: HistoricalPoint[] = trendData.map((item: any) => ({
-            date: item.x, value: parseFloat(item.y) || 0, equityReturn: parseFloat(item.equityReturn) || 0
-          }));
-          historyCache[code] = points;
-          cacheService.setHistory(code, points);
-        }
-        resolve();
-      };
-      script.onerror = () => reject();
-      document.head.appendChild(script);
-    });
-    return historyCache[code] || [];
+    return await loadHistoryFromPingzhongData(code, url);
   } catch (e) { return []; }
 }
 

@@ -201,8 +201,33 @@ describe('fundService', () => {
     const p2 = fetchFundHistory(symbol);
     const r2 = await p2;
     const afterCount = document.head.querySelectorAll('script').length;
-    expect(r2).toBe(r1);
+    expect(r2).toEqual(r1);
     expect(afterCount).toBe(beforeCount);
+  });
+
+  test('fetchFundHistory normalizes second timestamps, sorts ascending, and deduplicates same timestamp', async () => {
+    document.head.innerHTML = '';
+    const symbol = '300003';
+
+    const promise = fetchFundHistory(symbol);
+    await Promise.resolve();
+    const script = document.head.querySelector('script');
+    expect(script).toBeTruthy();
+
+    // Unordered data with second-level timestamps and one duplicate timestamp.
+    (window as any).Data_netWorthTrend = [
+      { x: 1700000200, y: '1.20', equityReturn: '0.10' },
+      { x: 1700000000, y: '1.00', equityReturn: '0.00' },
+      { x: 1700000100, y: '1.10', equityReturn: '0.10' },
+      { x: 1700000100, y: '1.15', equityReturn: '0.15' }
+    ];
+    // @ts-ignore
+    if ((script as any).onload) (script as any).onload();
+
+    const result = await promise;
+    expect(result).toHaveLength(3);
+    expect(result.map(p => p.date)).toEqual([1700000000000, 1700000100000, 1700000200000]);
+    expect(result[1].value).toBeCloseTo(1.15);
   });
 
   test('fetchFundData falls back to EastMoney pingzhongdata and extracts name for 019005', async () => {

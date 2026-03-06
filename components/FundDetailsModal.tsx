@@ -163,29 +163,30 @@ export const FundDetailsModal: React.FC<FundDetailsModalProps> = ({ data, onClos
     }
   }, [history, startDate, initialPrice, storageKey, fullCapacity, initialPosition]);
 
-  // Merge realtime point carefully: only append realtime valuation when it's strictly after last history timestamp
-  // and avoid duplicating if last history point is the same day as realtime.
-  const chartData = useMemo(() => {
+    // Merge realtime point carefully: only append/replace when realtimeDate is explicit and valid, preventing synthetic today points from distorting MA values.
+    const chartData = useMemo(() => {
     if (history.length === 0) return [];
 
     const lastHist = history[history.length - 1];
-    const dateStr = data.realtimeDate && data.realtimeDate !== '---' ? data.realtimeDate : new Date().toISOString().split('T')[0];
-    const valuationTs = new Date(dateStr + ' 15:00').getTime();
+    const hasRealtimeDate = !!(data.realtimeDate && data.realtimeDate !== '---');
+    if (!hasRealtimeDate) return history;
 
-    // If lastHist.date is on same local day as valuationTs, replace it with realtime point to avoid duplicate days
+    const valuationTs = new Date(`${data.realtimeDate} 15:00`).getTime();
+    if (!Number.isFinite(valuationTs)) return history;
+
+    // If lastHist.date is on same local day as valuationTs, replace it with realtime point to avoid duplicate days.
     const lastDayKey = localDateKey(lastHist.date);
     const valDayKey = localDateKey(valuationTs);
     if (lastDayKey === valDayKey) {
-      // replace last entry with realtime
       return [...history.slice(0, history.length - 1), { date: valuationTs, value: data.currentPrice, equityReturn: data.changePercentage }];
     }
 
-    // otherwise if valuation ts is after lastHist, append
-    if (!isNaN(valuationTs) && valuationTs > lastHist.date) {
+    // Only append when realtime point is strictly newer than the latest confirmed history point.
+    if (valuationTs > lastHist.date) {
       return [...history, { date: valuationTs, value: data.currentPrice, equityReturn: data.changePercentage }];
     }
     return history;
-  }, [history, data.currentPrice, data.changePercentage, data.realtimeDate]);
+    }, [history, data.currentPrice, data.changePercentage, data.realtimeDate]);
 
   const { path, area, points, viewBox, yLabels, xLabels, maPaths, maValues } = useMemo(() => {
     if (chartData.length < 2) return { path: '', area: '', points: [], viewBox: '0 0 100 100', yLabels: [], xLabels: [], maPaths: {} as Record<number, string>, maValues: {} as Record<number, (number | null)[]> };

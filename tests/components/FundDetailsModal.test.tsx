@@ -108,6 +108,34 @@ describe('FundDetailsModal SMA behavior', () => {
     const tooltip = await screen.findByRole('tooltip');
     expect(tooltip.textContent).toMatch(/黄金交叉/);
   });
+
+  test('does not append synthetic realtime point when realtimeDate is ---', async () => {
+    const history = Array.from({ length: 8 }).map((_, i) => ({
+      date: new Date(`2025-01-${String(i + 1).padStart(2, '0')}T15:00:00`).getTime(),
+      value: 1 + i * 0.01,
+      equityReturn: 0.01,
+    }));
+    (fetchFundHistory as jest.Mock).mockResolvedValue(history);
+
+    const noRealtimeDate = {
+      ...data,
+      realtimeDate: '---',
+      currentPrice: 9.99,
+      lastUpdated: '---',
+    };
+
+    render(<FundDetailsModal data={noRealtimeDate} onClose={() => {}} />);
+    await waitFor(() => expect(fetchFundHistory).toHaveBeenCalled());
+
+    const hoverRects = document.querySelectorAll('svg rect');
+    fireEvent.mouseEnter(hoverRects[hoverRects.length - 1]);
+
+    // Hovered value should remain the latest confirmed history value.
+    expect(screen.getByText(history[history.length - 1].value.toFixed(4))).toBeInTheDocument();
+
+    // Header always shows currentPrice; ensure chart hover did not add a second 9.9900 point.
+    expect(screen.getAllByText('9.9900')).toHaveLength(1);
+  });
 });
 
 describe('基金份额计算器', () => {
