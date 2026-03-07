@@ -31,6 +31,13 @@ const mockSummary = {
   totalDiff: 8,
 };
 
+function formatDate(date: Date) {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, '0');
+  const d = String(date.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
+}
+
 describe('OverallProfitModal chart click sync', () => {
   beforeEach(() => {
     (computeOverallProfit as jest.Mock).mockResolvedValue(mockSummary);
@@ -61,6 +68,7 @@ describe('OverallProfitModal chart click sync', () => {
     await waitFor(() => expect(screen.getByText('Fund A (000001)')).toBeInTheDocument());
     const diffCell = document.querySelector('tbody tr td:nth-child(4)') as HTMLElement;
     expect(diffCell.textContent?.replace(/\s+/g, '')).toBe('+10.00');
+    expect(screen.getByTestId('overall-period-total').textContent?.replace(/\s+/g, '')).toContain('期间累计:+10.00');
   });
 
   test('clicking the first point sets date1 to previous calendar day and keeps table valid', async () => {
@@ -82,6 +90,55 @@ describe('OverallProfitModal chart click sync', () => {
     expect(rows.length).toBe(1);
     // All values zero show as '-'
     expect(screen.getAllByText('-').length).toBeGreaterThan(0);
+    expect(screen.getByTestId('overall-period-total').textContent?.replace(/\s+/g, '')).toContain('期间累计:-');
+  });
+
+  test('preset buttons update pickers and clip date2 to the available chart end date', async () => {
+    const now = new Date();
+    const chartEnd = new Date(now);
+    chartEnd.setDate(chartEnd.getDate() - 14);
+    const chartMid = new Date(chartEnd);
+    chartMid.setDate(chartMid.getDate() - 1);
+    const chartStart = new Date(chartEnd);
+    chartStart.setDate(chartStart.getDate() - 2);
+    const endDate = formatDate(chartEnd);
+    const midDate = formatDate(chartMid);
+    const startDate = formatDate(chartStart);
+    const expectedFrom = `${now.getFullYear() - 1}-12-31`;
+
+    (computeOverallProfit as jest.Mock).mockResolvedValueOnce({
+      timeline: [
+        { date: startDate, cumulativeProfit: 0, dailyProfit: 0 },
+        { date: midDate, cumulativeProfit: 10, dailyProfit: 10 },
+        { date: endDate, cumulativeProfit: 8, dailyProfit: -2 },
+      ],
+      perFund: [
+        { symbol: '000001', name: 'Fund A', startDate: startDate, profitFrom: 0, profitTo: 0, profitDiff: 0 },
+      ],
+      perFundTimelines: {
+        '000001': [
+          { date: startDate, cumulativeProfit: 0 },
+          { date: midDate, cumulativeProfit: 10 },
+          { date: endDate, cumulativeProfit: 8 },
+        ],
+      },
+      totalDiff: 8,
+    });
+
+    render(<OverallProfitModal onClose={() => {}} />);
+    await waitFor(() => expect(screen.getByRole('button', { name: '快捷日期：本年' })).toBeInTheDocument());
+
+    fireEvent.click(screen.getByRole('button', { name: '快捷日期：本年' }));
+
+    await waitFor(() => {
+      const [fromInput, toInput] = getDateInputs();
+      expect(fromInput.value).toBe(expectedFrom);
+      expect(toInput.value).toBe(endDate);
+    });
+
+    const diffCell = document.querySelector('tbody tr td:nth-child(4)') as HTMLElement;
+    expect(diffCell.textContent?.replace(/\s+/g, '')).toBe('+8.00');
+    expect(screen.getByTestId('overall-period-total').textContent?.replace(/\s+/g, '')).toContain('期间累计:+8.00');
   });
 
   test('hover tooltip stays close to point and avoids covering it', async () => {

@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom';
 import { computeOverallProfit } from '../services/fundService';
 import { OverallProfitSummary, OverallProfitPoint, OverallFundRow } from '../types';
 import { toLocalDateKey } from '../utils/priceResolver';
+import { OVERALL_PROFIT_DATE_PRESETS, getOverallProfitPresetRange, OverallProfitDatePresetKey } from '../utils/overallProfitDatePresets';
 
 interface Props {
   symbols?: string[];
@@ -151,21 +152,29 @@ const OverallProfitModal: React.FC<Props> = ({ symbols, onClose, onSelectFund })
     setToDate(current.date);
   }, [chartTimeline]);
 
-  // Table data built from precomputed perFundTimelines in summary
   const [tableRows, setTableRows] = useState<OverallFundRow[]>([]);
   const [tableError, setTableError] = useState<string | null>(null);
   // 差额列排序：none → desc → asc → none
   const [diffSort, setDiffSort] = useState<'none' | 'asc' | 'desc'>('desc');
 
-  // periodTotal reflects the full chart window (first to last point in the overall timeline), not the date1/date2 table range
-  const periodTotal = useMemo(() => {
-    if (!summary || !summary.timeline || summary.timeline.length === 0) return 0;
-    const first = summary.timeline[0].cumulativeProfit || 0;
-    const last = summary.timeline[summary.timeline.length - 1].cumulativeProfit || 0;
-    return Number((last - first).toFixed(2));
+  const chartEndDate = useMemo(() => {
+    if (!summary || !summary.timeline || summary.timeline.length === 0) return null;
+    return summary.timeline[summary.timeline.length - 1].date;
   }, [summary]);
 
-  // Build table rows from perFundTimelines when summary or date pickers change
+  const applyPreset = useCallback((preset: OverallProfitDatePresetKey) => {
+    const range = getOverallProfitPresetRange(preset, { maxToDate: chartEndDate });
+    setFromDate(range.fromDate || null);
+    setToDate(range.toDate || null);
+  }, [chartEndDate]);
+
+  const periodTotal = useMemo(() => {
+    if (tableError || !fromDate || !toDate) return 0;
+    const total = tableRows.reduce((sum, row) => sum + (row.profitDiff || 0), 0);
+    return Number(total.toFixed(2));
+  }, [tableRows, tableError, fromDate, toDate]);
+
+  // Build table rows from precomputed perFundTimelines when summary or date pickers change
   useEffect(() => {
     setTableError(null);
     setTableRows([]);
@@ -296,15 +305,28 @@ const OverallProfitModal: React.FC<Props> = ({ symbols, onClose, onSelectFund })
               </div>
 
               {/* Table: header (fixed), scrollable body, totals (fixed) */}
-              <div className="text-xs mt-2">期间累计: {tableError ? <span className="text-red-600">{tableError}</span> : (periodTotal === 0 ? <span className="text-black">-</span> : (periodTotal > 0 ? <span className="text-red-600">+{periodTotal.toFixed(2)}</span> : <span className="text-green-600">{periodTotal.toFixed(2)}</span>))}</div>
+              <div data-testid="overall-period-total" className="text-xs mt-2">期间累计: {tableError ? <span className="text-red-600">{tableError}</span> : (periodTotal === 0 ? <span className="text-black">-</span> : (periodTotal > 0 ? <span className="text-red-600">+{periodTotal.toFixed(2)}</span> : <span className="text-green-600">{periodTotal.toFixed(2)}</span>))}</div>
 
               {/* 日期选择器：位于表格上方 */}
-              <div className="mt-3 flex items-center space-x-4" style={{ position: 'relative', zIndex: 1400, background: '#ffffff', padding: '6px', borderRadius: '6px' }}>
+              <div className="mt-3 flex flex-wrap items-center gap-3" style={{ position: 'relative', zIndex: 1400, background: '#ffffff', padding: '6px', borderRadius: '6px' }}>
                 <div className="flex items-center space-x-2 text-xs text-gray-600">
                   <label>日期1</label>
                   <input type="date" value={fromDate ?? ''} onChange={e => setFromDate(e.target.value)} className="px-2 py-1 border rounded" />
                   <label>日期2</label>
                   <input type="date" value={toDate ?? ''} onChange={e => setToDate(e.target.value)} className="px-2 py-1 border rounded" />
+                </div>
+                <div className="flex flex-wrap items-center gap-2 text-xs">
+                  {OVERALL_PROFIT_DATE_PRESETS.map((preset) => (
+                    <button
+                      key={preset.key}
+                      type="button"
+                      className="px-3 py-1 rounded-full border border-gray-200 bg-gray-50 text-gray-700 hover:bg-gray-100 transition-colors"
+                      aria-label={`快捷日期：${preset.label}`}
+                      onClick={() => applyPreset(preset.key)}
+                    >
+                      {preset.label}
+                    </button>
+                  ))}
                 </div>
                 {tableError && <div className="text-xs text-red-600">{tableError}</div>}
               </div>
