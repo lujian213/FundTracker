@@ -21,8 +21,7 @@ export function computeMultipleSMAs(values: number[], windows: number[]): Record
 }
 
 export const MA_COLORS: Record<number, string> = {
-  5: '#2563eb', // blue
-  10: '#059669', // green
-  20: '#f59e0b' // amber
+  5: '#eab308', // yellow
+  10: '#2563eb', // blue
+  20: '#ec4899' // pink
 };
-

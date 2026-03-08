@@ -268,7 +268,8 @@ describe('TickerCard', () => {
     expect(tooltip).toBeTruthy();
     expect(tooltip).toHaveClass('whitespace-normal');
     expect(tooltip).toHaveClass('break-words');
-    expect(tooltip.textContent).toBeTruthy();
+    expect(tooltip.textContent).toContain('风险分析');
+    expect(tooltip.textContent).toMatch(/机会信号|风险信号|说明/);
   });
 
   test('shows golden cross in rating tooltip when calculated from history', async () => {
@@ -285,7 +286,7 @@ describe('TickerCard', () => {
     const badge = await screen.findByLabelText(/风险评级/);
     fireEvent.mouseEnter(badge);
     const tooltip = await screen.findByRole('tooltip');
-    expect(tooltip.textContent).toMatch(/黄金交叉/);
+    expect(tooltip.textContent).toMatch(/金叉/);
   });
 
 });

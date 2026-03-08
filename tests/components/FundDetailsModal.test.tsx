@@ -52,24 +52,24 @@ describe('FundDetailsModal SMA behavior', () => {
     // wait for fetch and render
     await waitFor(() => expect(fetchFundHistory).toHaveBeenCalled());
 
-    // SMA5 path should be present (stroke color #2563eb)
+    // SMA5 path should be present (stroke color #eab308)
     const svg = document.querySelector('svg');
     expect(svg).toBeTruthy();
 
-    // There should be a path with stroke '#2563eb' when SMA5 visible
+    // There should be a path with stroke '#eab308' when SMA5 visible
     const paths = svg!.querySelectorAll('path');
     let foundSMA = false;
-    paths.forEach(p => { if (p.getAttribute('stroke') === '#2563eb') foundSMA = true; });
+    paths.forEach(p => { if (p.getAttribute('stroke') === '#eab308') foundSMA = true; });
     expect(foundSMA).toBe(true);
 
     // click 5 toggle to hide
-    const btn5 = screen.getByRole('button', { name: /5/ });
+    const btn5 = screen.getByRole('button', { name: '切换显示 MA5' });
     fireEvent.click(btn5);
 
     // now SMA5 path should not be present
     const pathsAfter = svg!.querySelectorAll('path');
     let foundAfter = false;
-    pathsAfter.forEach(p => { if (p.getAttribute('stroke') === '#2563eb') foundAfter = true; });
+    pathsAfter.forEach(p => { if (p.getAttribute('stroke') === '#eab308') foundAfter = true; });
     expect(foundAfter).toBe(false);
   });
 
@@ -82,8 +82,8 @@ describe('FundDetailsModal SMA behavior', () => {
 
     const tooltip = await screen.findByRole('tooltip');
     expect(tooltip).toBeTruthy();
-    // tooltip should include at least one reason string
-    expect(tooltip.textContent).toBeTruthy();
+    expect(tooltip.textContent).toContain('风险分析');
+    expect(tooltip.textContent).toMatch(/机会信号|风险信号|说明/);
   });
 
   test('rating tooltip shows golden cross when present in history', async () => {
@@ -106,7 +106,7 @@ describe('FundDetailsModal SMA behavior', () => {
     const badge = screen.getByLabelText(/风险评级/);
     fireEvent.mouseEnter(badge);
     const tooltip = await screen.findByRole('tooltip');
-    expect(tooltip.textContent).toMatch(/黄金交叉/);
+    expect(tooltip.textContent).toMatch(/金叉/);
   });
 
   test('does not append synthetic realtime point when realtimeDate is ---', async () => {
@@ -135,6 +135,23 @@ describe('FundDetailsModal SMA behavior', () => {
 
     // Header always shows currentPrice; ensure chart hover did not add a second 9.9900 point.
     expect(screen.getAllByText('9.9900')).toHaveLength(1);
+  });
+
+  test('renders colored MA toggle controls that match the chart colors', async () => {
+    render(<FundDetailsModal data={data} onClose={() => {}} />);
+    await waitFor(() => expect(fetchFundHistory).toHaveBeenCalled());
+
+    const btn5 = screen.getByRole('button', { name: '切换显示 MA5' });
+    const btn10 = screen.getByRole('button', { name: '切换显示 MA10' });
+    const btn20 = screen.getByRole('button', { name: '切换显示 MA20' });
+
+    expect(btn5).toHaveStyle({ borderColor: '#eab308', color: '#eab308' });
+    expect(btn10).toHaveStyle({ borderColor: '#2563eb', color: '#2563eb' });
+    expect(btn20).toHaveStyle({ borderColor: '#ec4899', color: '#ec4899' });
+
+    expect(screen.getByTestId('ma-toggle-dot-5')).toHaveStyle({ backgroundColor: '#eab308' });
+    expect(screen.getByTestId('ma-toggle-dot-10')).toHaveStyle({ backgroundColor: '#2563eb' });
+    expect(screen.getByTestId('ma-toggle-dot-20')).toHaveStyle({ backgroundColor: '#ec4899' });
   });
 });
 

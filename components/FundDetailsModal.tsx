@@ -4,8 +4,7 @@ import { ValuationData, HistoricalPoint } from '../types';
 import { fetchFundHistory as defaultFetchFundHistory } from '../services/fundService';
 import * as cacheService from '../services/cacheService';
 import { computeMultipleSMAs, MA_COLORS } from '../utils/movingAverage';
-import { TOLERANCE, DEFAULT_VISIBLE_MAS, MA_WINDOWS } from '../utils/maConfig';
-import { computeRiskRating } from '../utils/riskTooltip';
+import { DEFAULT_VISIBLE_MAS, MA_WINDOWS } from '../utils/maConfig';
 import { computeRatingFromHistory } from '../utils/ratingHelper';
 import RatingTooltip from './RatingTooltip';
 import TradeManager from './TradeManager';
@@ -259,13 +258,21 @@ export const FundDetailsModal: React.FC<FundDetailsModalProps> = ({ data, onClos
     return { path: pathData, area: areaData, points: svgPoints, viewBox: `0 0 ${width} ${height}`, yLabels, xLabels, maPaths, maValues };
   }, [chartData]);
 
-  // Rating logic based on MAs and price (use shared computeRiskRating to ensure consistency)
+  // Risk analysis based on history + today's valuation through the shared isolated model
   const ratingInfo = useMemo(() => {
     try {
-      // computeRatingFromHistory will merge history + today's valuation same as chartData logic
       return computeRatingFromHistory(chartData, data);
     } catch (e) {
-      return { rating: '谨慎' as const, color: '#f59e0b', action: '观望', reasons: ['数据不足或均线关系不明确，建议观望'] };
+      return {
+        rating: '观望' as const,
+        color: '#f59e0b',
+        action: '等待确认',
+        summary: '当前可用信号不足，先观察后续均线与价格关系是否进一步明朗。',
+        opportunitySignals: [],
+        riskSignals: [],
+        notes: ['历史数据不足，暂时只能进行有限的均线风险分析，建议继续观察。'],
+        reasons: ['历史数据不足，暂时只能进行有限的均线风险分析，建议继续观察。']
+      };
     }
 
   }, [chartData, data]);
@@ -276,7 +283,6 @@ export const FundDetailsModal: React.FC<FundDetailsModalProps> = ({ data, onClos
 
   // helpers for config modal
   const openConfig = () => {
-    console.log('openConfig invoked for', data.symbol);
     setTmpFull(fullCapacity.toString());
     setTmpInitial(initialPosition.toString());
     setTmpStartDate(startDate ?? (data.realtimeDate && data.realtimeDate !== '---' ? data.realtimeDate : ''));
@@ -718,9 +724,26 @@ export const FundDetailsModal: React.FC<FundDetailsModalProps> = ({ data, onClos
 
                  <div className="mt-3 flex items-center space-x-2">
                    <label className="text-xs text-gray-500 font-medium">均线：</label>
-                  {[5,10,20].map(n => (
-                    <button key={n} type="button" onClick={() => setVisibleMAs(v => ({ ...v, [n]: !v[n] }))} className={`text-xs px-2 py-1 rounded ${visibleMAs[n] ? 'bg-gray-100' : 'bg-white'} border`}>{n}</button>
-                  ))}
+                  {[5,10,20].map(n => {
+                    const color = MA_COLORS[n] || '#2563eb';
+                    return (
+                      <button
+                        key={n}
+                        type="button"
+                        aria-label={`切换显示 MA${n}`}
+                        onClick={() => setVisibleMAs(v => ({ ...v, [n]: !v[n] }))}
+                        className="text-xs px-2.5 py-1 rounded border inline-flex items-center gap-1.5 transition-colors"
+                        style={{
+                          borderColor: color,
+                          color,
+                          backgroundColor: visibleMAs[n] ? `${color}1a` : '#ffffff'
+                        }}
+                      >
+                        <span data-testid={`ma-toggle-dot-${n}`} className="inline-block w-2 h-2 rounded-full" style={{ backgroundColor: color }} />
+                        <span className="font-medium">MA{n}</span>
+                      </button>
+                    );
+                  })}
                 </div>
 
               </div>

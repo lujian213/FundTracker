@@ -1,7 +1,7 @@
 # FundTracker — 产品需求文档 (PRD)
 
-版本：1.13
-最后更新：2026-03-07
+版本：1.14
+最后更新：2026-03-08
 
 ---
 
@@ -14,7 +14,7 @@
   - 自选基金/指数的添加/删除/排序/批量删除管理
   - 实时估值展示与历史净值曲线（含 SMA 指标）
   - 交易记录模块（本地存储、分页、导入/导出、价格回溯策略）
-  - 风险评级与 tooltip（基于均线）
+  - 风险分析与 tooltip（基于均线）
   - 本地化时间规则（交易记录价格回溯使用用户本地日终）
   - **内存数据缓存层（性能优化）**：将数据获取与界面展示分离，实现所有界面操作秒开
   - **数据备份与恢复（导出/导入）**：全量 JSON 备份、手动导出、定时自动导出、导入覆盖、兼容性保障
@@ -401,7 +401,7 @@ export type CardStatus = 'ok' | 'error' | 'unknown';
 
 ### Card 内容显示
 
-遵循**尽最大努力原则**，Card 无论有无数据，都必须在界面上展示出来。
+遵循**尽最大努力原则**，Card 无论有无数据，都必须在界面上展示。
 
 - **始终渲染**：每个 Card 无论数据是否存在，都应在界面上展示。
 - **数据优先级**：localStorage → cacheService 内存缓存 → 通过数据文件导入的信息。
@@ -421,7 +421,7 @@ export type CardStatus = 'ok' | 'error' | 'unknown';
 |---|---|
 | `types.ts` | 新增 `CardStatus` 联合类型 |
 | `App.tsx` | 新增 `fundStatuses` / `indexStatuses` state；`updateSingleFund` 设置 ok/error；`refreshMarketIndicesAsync` 设置 ok/error；`renderIndexCard` 接受并渲染 status；向 `TickerCard` 传入 `status` prop |
-| `components/TickerCard.tsx` | 新增 `status?: CardStatus` prop；渲染左上角状态圆点；无数据时显示 `'-'` 而非骨架屏；名称兜底显示 symbol |
+| `components/TickerCard.tsx` | 新增 `status?: CardStatus` prop；渲染左上角状态圆点；无数据时显示 `'-'` 而非骨架屏；名称兜底显示 symbol（`tests/components/TickerCard.test.tsx`）。|
 
 ### 验收标准（Cards Enhancement）
 
@@ -437,22 +437,22 @@ export type CardStatus = 'ok' | 'error' | 'unknown';
 
 - TickerCard（卡片）
   - 通用规则参见上方「卡片增强（Cards Enhancement）」章节：状态圆点、无数据占位符 `"-"`、名称兜底 symbol、Card 始终渲染。
-  - 显示要素：基金/指数名称（或代码兜底）、symbol、实时估值（4 位小数）、涨跌幅、上次更新时间、风险 badge、左上角状态圆点
+  - 显示要素：基金/指数名称（或代码兜底）、symbol、实时估值（4 位小数）、涨跌幅、上次更新时间、风险分析 badge、左上角状态圆点
   - 主界面统一管理模式：
-    - 点击主界面“管理”按钮后进入管理模式，适用于自选基金、大盘指数、全球指数三类 Card
+    - 点击主界面“管理”按钮后进入统一管理模式，适用于自选基金、大盘指数、全球指数三类 Card
     - 管理模式标题文案为“批量删除”
-    - 当已选项目数大于 0 时，在“批量删除”与“确认”按钮之间显示“n个项目待删除”；当已选项目数为 0 时不显示该提示文字
-    - 三类 Card 右上角统一显示删除多选按钮，位置与指数 Card 既有删除按钮一致，表现为 radio button；默认未选中，选中后显示红色叉叉
+    - 三类 Card 右上角统一显示删除多选按钮，默认未选中，选中后显示红色叉叉
     - 主界面上的自选基金 Card 不再提供单个删除按钮；删除仅允许在管理模式中完成
     - 管理模式操作区包含“确认”“取消”两个按钮：点击“确认”后删除所有已选中的基金/指数并退出管理模式；点击“取消”后直接退出管理模式且不删除任何项目
+    - 当已选项目数大于 0 时，在“批量删除”与“确认”按钮之间显示“n个项目待删除”；当已选项目数为 0 时不显示该提示文字
     - 若未配置任何基金或指数，则“管理”按钮置灰并禁用
-  - 风险 badge：基于 `computeRatingFromHistory` 输出（rating, color, reasons），hover/focus 显示 tooltip（aria 支持）
+  - 风险 badge：基于 `computeRatingFromHistory` 输出的统一风险分析结果（`rating`、`color`、`summary`、`opportunitySignals`、`riskSignals`、`notes`），hover/focus 显示 tooltip（aria 支持）
   - 点击卡片打开 `FundDetailsModal`（非 selection 模式）；在 selection 模式下点击触发选择
 
 - FundDetailsModal
   - 加载并展示最近 90 个历史点（若可用），svg 曲线 + area + 可切换的 SMA（5/10/20）
   - 默认可见：5/10/20（如上确认）
-  - Hover 在图上时显示每条可见均线的数值
+  - 均线配色固定：MA5 使用黄色，MA10 使用蓝色，MA20 使用粉色；卡片、详情页与 hover 数值展示保持一致
   - **基金份额计算器**（`fas fa-calculator` 按钮，位于"配置仓位"与"交易管理"按钮之间）：
     - 点击图标打开计算器弹窗（与配置仓位弹窗风格一致：`fixed inset-0 z-[120]`，`max-w-sm`）
     - 输入框标签"买入/卖出金额（元）"；输出区标签"可买份额（份）"
@@ -563,40 +563,64 @@ export type CardStatus = 'ok' | 'error' | 'unknown';
   - 状态三（备份完成）：导出完成后切换为"✅ 备份成功"，同底色，保持 3 秒后自动清除回状态一
   - 实现要点：`backupStatus: 'idle' | 'pending' | 'done'` state；`idle` 时 `<div>` 保留高度但不渲染文字；`pending`/`done` 时渲染对应文字与样式
 
-### 风险评级算法细则
+### 基金风险分析模型（替代旧版风险评级算法）
 
-目的：对每只基金给出可解释的风险评级（危险/谨慎/安全/机会），并在 UI tooltip 中列出判定理由（reasons），便于用户理解与决策。
+目的：对每只基金输出可解释的“风险分析”结果，而不是旧版单一四档评级规则。使用端只依赖统一接口，具体模型集中在独立风险模块中，后续如需替换模型，只修改风险模块本身。
 
-输入（必须提供给算法的最小数据）
-- price: number （当前用于评级的价格，通常为 data.currentPrice）
-- maValues: Record<number, (number | null)[]> — 预计算的均线数组，key 为窗口（如 5/10/20），value 为与历史 price 数组等长的均线值数组（不足位置为 null）
-- index: number — 当前用于评级的索引（对应 maValues 中的最后一个索引，一般为 values.length - 1）
-- prevIndex?: number — 可选，前一日索引（若存在用于交叉检测）
+统一接口
+- 主入口：`computeRatingFromHistory(history, data?)`
+- 模型文件：独立风险分析模块负责“历史净值 + 当天估值 -> 风险分析结果”的全部规则与降级逻辑
+- UI（`TickerCard`、`FundDetailsModal`、`RatingTooltip`）不得直接实现均线判定，只消费统一结果
 
-输出
-- RatingResult / RiskResult：{ rating: '危险' | '谨慎' | '安全' | '机会', color: string, action?: string, reasons: string[] }
+输入约束
+- `history`: 历史净值序列（按时间升序）
+- `data`: 当前估值对象（可选）
+- 计算时必须优先把**当天估值**并入净值序列：
+  - 若当天估值与最后历史点为同一交易日，则用当天估值替换最后一个点
+  - 若当天估值晚于最后历史点，则将当天估值追加到序列末尾
+  - 若无有效当天估值，则仅使用历史净值
+- 所有 MA 计算基于并入当天估值后的序列执行，保证卡片与详情页结论一致
 
-关键判定规则（实现应严格遵循）
-1. 金叉/死叉检测（交叉必须依赖前一日数据）：
-   - 黄金交叉（golden cross）：当 prev_sma5 <= prev_sma10 且 sma5 > sma10 且同时 sma20 可用且 sma5 > sma10 > sma20（多头排列）时认定；在 reasons 中加入 “最近发生 5 日均线向上突破 10 日均线（黄金交叉）”。
-   - 死亡交叉（death cross）对称定义：prev_sma5 >= prev_sma10 且 sma5 < sma10 且 sma5 < sma10 < sma20（空头排列）。加入对应 reasons。
-2. 20 日均线保护位（首要风险判定）：
-   - 若 sma20 可用且 price < sma20 => rating = '危险'，color = 红，action = '撤离'，并在 reasons 中加入跌破 20 日均线的说明（包含数值）。
-3. 短期多头判定：
-   - 若 sma5 > sma10（且数据可用）：将视为短期上升趋势；进一步判断是否存在黄金交叉且 price >= sma5 * TOLERANCE（机会）或 price < sma5 * TOLERANCE（安全/稳健），按 PRD 已定义逻辑给出 reasons 与 action。
-4. 短期弱势或下穿：
-   - 若 sma5 <= sma10：判为谨慎（并根据是否跌破 10 日线给出额外 reasons）。
+输出结构
+- `RiskResult`：
+  - `rating`: `'机会' | '偏多' | '观望' | '风险'`
+  - `color`: badge 颜色
+  - `action`: 行动建议
+  - `summary`: 摘要结论
+  - `opportunitySignals: string[]`
+  - `riskSignals: string[]`
+  - `notes: string[]`
+  - `reasons: string[]`（兼容旧使用端，可由上述数组拼接得出）
 
-边界与降级逻辑
-- 若某些均线数据不可用（例如历史点不足），computeRiskRating 应尽量使用已有数据并在 reasons 中标注“数据不足”类理由；不得抛异常。
-- 若 prevIndex 不可用，则不认定金叉/死叉（必须有上一日数据支持交叉判定）。
-- TOLERANCE（来自 `maConfig`）用于判断 price 对 sma5 的“回踩未破”条件：price >= sma5 * TOLERANCE 视为未破。
+判定范围（以 `features/feature-risk.md` 为准）
+- MA5：
+  - 机会信号：连续 2 日站上 MA5、回踩 MA5 不破、MA5 上穿 MA10（金叉）
+  - 风险信号：跌破 MA5、MA5 走平/拐头向下、相对 MA5 乖离过大
+- MA10：
+  - 机会信号：回踩 MA10 获支撑、拒绝死叉、短期生命线有效
+  - 风险信号：MA5 下穿 MA10（死叉）、连续 2 日位于 MA10 下方、单日大跌击穿 MA10
+- MA20：
+  - 机会信号：价格位于 MA20 上方且 MA20 向上、首次回踩 MA20 企稳、银山谷雏形
+  - 风险信号：跌破 MA20、MA20 走平或向下、空头排列 / 死亡谷共振
+- 综合信号：
+  - 共振买点：MA5 上穿 MA10 + 价格站上 MA20 + MA20 向上
+  - 共振卖点：MA5 下穿 MA10 + 价格跌破 MA20 + MA20 走弱
 
-示例：在 tooltip 中应显示至少 1-3 条 reasons，按优先级（交叉>跌破20日>短期排列等）排序。
+展示规则
+- 卡片与详情页顶部保留单一风险分析 badge，颜色与 `rating` 对应
+- tooltip 采用分组展示：`机会信号`、`风险信号`、`说明`
+- tooltip 至少显示摘要结论和 1 个有效信号；若信号不足，显示数据不足/继续观察说明
 
-验收标准（Risk）
-- `utils/riskTooltip.computeRiskRating` 对给定的 maValues 与 price 在单元测试中输出可预测、可解释的 reasons；覆盖金叉、死叉、跌破 20 日、数据不足四类场景。
+边界与降级
+- 历史点不足 5/10/20 天时，不得抛异常；需在 `notes` 中标注哪些均线暂不可用
+- 当前仓库暂无成交量、RSI 与震荡市识别数据源；本次仅实现价格与 MA5/MA10/MA20 的自动分析，并在说明中明确该限制
+- 当价格与均线关系尚未形成明确共振时，返回 `观望`
 
+验收标准（Risk Analysis）
+- `computeRatingFromHistory` 与底层风险模块对同一组 `history + data` 输出完全一致，卡片与详情页 tooltip 文本一致
+- 当天估值参与计算后，卡片与详情页的风险分析必须同步反映当日最新估值变化
+- 单元测试覆盖：金叉、多头支撑、死叉、跌破 MA20、数据不足、同日估值替换历史点、次日估值追加历史点
+- 组件测试覆盖：tooltip 分组展示（机会信号/风险信号/说明）、MA5 黄色 / MA10 蓝色 / MA20 粉色的详情图渲染与切换
 
 ### 整体收益（盈亏）计算规范（必须保留）
 
@@ -730,5 +754,5 @@ export type CardStatus = 'ok' | 'error' | 'unknown';
   - 整体累计盈利趋势图的数据集为所有基金（排除无起始日期的基金）在时间窗口内每日累计盈利的加总。
   - 表格数据为趋势图数据集的子集，通过日期1和日期2过滤。
   - **单个基金每日盈利直接复用 `computeProfitTimeline` 返回的 `dailyProfit`（已含手续费延迟规范），与单基金盈利窗口的数值完全一致。**
-  - `perFundTimelines` 构建规则：对 startDate 之后的每个日期，优先使用 `dailyProfit` 累加，不得从 `cumulativeProfit` 差分重算；startDate 当日及之前贡献为0；在 timeline 中不存在的 gap 日期 daily=0、cumulative 保持不变（前向填充）。
+  - `perFundTimelines` 构建规则：对 startDate 之后的每个日期，优先使用 `dailyProfit` 累加，不得从 cumulativeProfit 差分重算；startDate 当日及之前贡献为0；在 timeline 中不存在的 gap 日期 daily=0、cumulative 保持不变（前向填充）。
   - 若某基金在x日无净值或估值，则累计盈利按前推最近可用净值/估值计算。
