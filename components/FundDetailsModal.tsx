@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { ValuationData, HistoricalPoint, IntradayPoint } from '../types';
 import { fetchFundHistory as defaultFetchFundHistory } from '../services/fundService';
@@ -8,9 +8,10 @@ import { DEFAULT_VISIBLE_MAS, MA_WINDOWS } from '../utils/maConfig';
 import { computeRatingFromHistory } from '../utils/ratingHelper';
 import RatingTooltip from './RatingTooltip';
 import TradeManager from './TradeManager';
-import useTrades from '../hooks/useTrades';
+import useTrades, { TradeRecord } from '../hooks/useTrades';
 import ProfitModal from './ProfitModal';
 import { resolvePreferredPrice, toLocalDateKey } from '../utils/priceResolver';
+import { localDateKey, AggregatedMarker, aggregateTradesByDate } from '../utils/tradeAggregation';
 import IntradayChart from './IntradayChart';
 import HistoryChart from './HistoryChart';
 
@@ -70,14 +71,6 @@ export const FundDetailsModal: React.FC<FundDetailsModalProps> = ({ data, onClos
   // reduced to 180 per request; top/bottom padding will be removed to eliminate extra whitespace
   const chartHeight = 180;
 
-  // helper to convert timestamp to local YYYY-MM-DD key (used by startDate lookups)
-  const localDateKey = (ts: number) => {
-    const d = new Date(ts);
-    const y = d.getFullYear();
-    const m = String(d.getMonth() + 1).padStart(2, '0');
-    const day = String(d.getDate()).padStart(2, '0');
-    return `${y}-${m}-${day}`;
-  };
 
   // helper: get price for isoDate from history: exact match or nearest previous available (<= end of day)
   const getPriceForISODate = (isoDate: string): number | null => {
@@ -476,13 +469,14 @@ export const FundDetailsModal: React.FC<FundDetailsModalProps> = ({ data, onClos
 
     // Aggregate trades into markers using a pure util (improves testability)
     const markers = useMemo(() => {
-      // lazy require to avoid circular deps during tests
       try {
-        // eslint-disable-next-line @typescript-eslint/no-var-requires
-        const { aggregateTradesByDate } = require('../utils/tradeAggregation');
         return aggregateTradesByDate(tradeList, chartData, points);
-      } catch (e) { return []; }
+      } catch (e) {
+        console.error(`[FundDetailsModal] Error aggregating trades:`, e);
+        return [];
+      }
     }, [tradeList, chartData, points]);
+
 
     // Compute holdings and profit using initialPosition and trades per requirements, but only when fullCapacity configured (>0)
     // If fullCapacity is 0 (not configured), we treat these values as not-applicable (null) so they don't appear in other aggregations.
@@ -769,29 +763,6 @@ export const FundDetailsModal: React.FC<FundDetailsModalProps> = ({ data, onClos
                 在天天基金查看详细页 <i className="fas fa-external-link-alt ml-1"></i>
               </a>
 
-              {/* Debug panel (dev only) */}
-              {isDev && (
-                  <div className="mt-6 p-4 bg-gray-50 rounded-2xl border">
-                    <p className="text-xs font-bold text-gray-500 uppercase tracking-widest mb-2">调试信息</p>
-                    <div className="grid grid-cols-2 gap-4">
-                      <div className="text-sm text-gray-700">
-                        <span className="font-medium">起始日期:</span> {startDate}
-                      </div>
-                      <div className="text-sm text-gray-700">
-                        <span className="font-medium">初始价格:</span> {initialPrice !== null ? initialPrice.toFixed(4) : 'N/A'}
-                      </div>
-                      <div className="text-sm text-gray-700">
-                        <span className="font-medium">市值:</span> {marketValue !== null && !isNaN(marketValue) ? formatCurrency(marketValue, 2) : '—'}
-                      </div>
-                      <div className="text-sm text-gray-700">
-                        <span className="font-medium">盈亏:</span> <span className={`${typeof profit === 'number' ? (profit < 0 ? 'text-green-600' : profit > 0 ? 'text-red-600' : 'text-gray-700') : ''}`}>{profit !== null && !isNaN(profit) ? formatCurrency(profit, 2) : '—'}</span>
-                      </div>
-                      <div className="text-sm text-gray-700 col-span-2">
-                        <span className="font-medium">交易记录:</span> {tradeList.length} 条
-                      </div>
-                    </div>
-                  </div>
-                )}
                {/* 基金份额计算器弹窗 */}
                {showCalculator && (
                  <div className="fixed inset-0 z-[120] flex items-center justify-center">

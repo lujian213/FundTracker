@@ -18,7 +18,7 @@ interface HistoryChartProps {
   setHoveredPoint: (p: HistoricalPoint | null) => void;
   height?: number;
   stroke?: string;
-  markers?: { x: number; y: number; date: number; type?: 'buy' | 'sell' | string }[];
+  markers?: { x: number; y: number; date: number; type?: 'buy' | 'sell' | string; shares?: number; amount?: number }[];
 }
 
 const HistoryChart: React.FC<HistoryChartProps> = ({

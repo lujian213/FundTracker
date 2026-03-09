@@ -332,7 +332,8 @@ async function fetchFundDataFromEastMoney(code: string): Promise<ValuationData |
 
     // If trend still not found, give up
     if (!trend || !Array.isArray(trend) || trend.length === 0) {
-      console.log('DEBUG fetchFundDataFromEastMoney no trend found, afterKeys:', Object.keys(window as any).slice(-20));
+      // Debug info removed: previously logged added globals when no trend found.
+      // e.g. Object.keys(window).slice(-20)
       // clean up script node
       if (script.parentNode) script.parentNode.removeChild(script);
       return null;
@@ -898,9 +899,9 @@ export async function computeOverallProfit(opts: { symbols?: string[]; fromDate?
     let baseline = 0;
     if (start) {
       let lastKnown: number | null = null;
-      for (const d of dates) {
-        if (d > start) break;
-        if (cumMap[d] !== undefined) lastKnown = cumMap[d];
+      for (const dateKey of dates) {
+        if (dateKey > start) break;
+        if (cumMap[dateKey] !== undefined) lastKnown = cumMap[dateKey];
       }
       if (lastKnown !== null) baseline = lastKnown;
     }
