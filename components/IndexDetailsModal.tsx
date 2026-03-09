@@ -1,7 +1,11 @@
-
 import React, { useState, useEffect, useMemo } from 'react';
 import { MarketIndex, HistoricalPoint } from '../types';
 import { fetchIndexHistory } from '../services/fundService';
+import * as cacheService from '../services/cacheService';
+import IntradayChart from './IntradayChart';
+import HistoryChart from './HistoryChart';
+import { computeMultipleSMAs, MA_COLORS } from '../utils/movingAverage';
+import { DEFAULT_VISIBLE_MAS, MA_WINDOWS } from '../utils/maConfig';
 
 interface IndexDetailsModalProps {
   data: MarketIndex;
@@ -12,6 +16,12 @@ export const IndexDetailsModal: React.FC<IndexDetailsModalProps> = ({ data, onCl
   const [history, setHistory] = useState<HistoricalPoint[]>([]);
   const [loading, setLoading] = useState(true);
   const [hoveredPoint, setHoveredPoint] = useState<HistoricalPoint | null>(null);
+  const [activeTab, setActiveTab] = useState<'intraday' | 'history'>('intraday');
+  const [intradayPoints, setIntradayPoints] = useState<any[]>([]);
+  const [visibleMAs, setVisibleMAs] = useState<Record<number, boolean>>(() => Object.fromEntries(DEFAULT_VISIBLE_MAS.map(n => [n, true])));
+  const [hoveredIntradayPoint, setHoveredIntradayPoint] = useState<any | null>(null);
+  // shared chart height to match FundDetailsModal
+  const chartHeight = 180;
 
   useEffect(() => {
     const load = async () => {
@@ -23,17 +33,26 @@ export const IndexDetailsModal: React.FC<IndexDetailsModalProps> = ({ data, onCl
     load();
   }, [data.symbol]);
 
-  const { path, area, points, viewBox, yLabels, xLabels } = useMemo(() => {
-    if (history.length < 2) return { path: '', area: '', points: [], viewBox: '0 0 100 100', yLabels: [], xLabels: [] };
+  useEffect(() => {
+    try {
+      const code = data.symbol;
+      const pts = cacheService.getIntradayPoints(code);
+      setIntradayPoints(pts);
+    } catch (e) { setIntradayPoints([]); }
+  }, [data.symbol, data.lastUpdated]);
+
+  const { path, area, points, viewBox, yLabels, xLabels, maPaths, maValues } = useMemo(() => {
+    const hist = history || [];
+    if (hist.length < 2) return { path: '', area: '', points: [], viewBox: '0 0 100 100', yLabels: [], xLabels: [] };
 
     const width = 1000;
-    const height = 450;
-    const paddingLeft = 60;
+    const height = chartHeight;
+    const paddingLeft = 80; // extra left space to ensure y-axis labels fit
     const paddingRight = 30;
-    const paddingTop = 40;
-    const paddingBottom = 60;
+    const paddingTop = 0;
+    const paddingBottom = 0;
 
-    const values = history.map(p => p.value);
+    const values = hist.map(p => p.value);
     const rawMin = Math.min(...values);
     const rawMax = Math.max(...values);
     const margin = (rawMax - rawMin) * 0.1 || 0.01;
@@ -41,10 +60,10 @@ export const IndexDetailsModal: React.FC<IndexDetailsModalProps> = ({ data, onCl
     const max = rawMax + margin;
     const range = max - min;
 
-    const getX = (idx: number) => paddingLeft + (idx * (width - paddingLeft - paddingRight) / (history.length - 1));
+    const getX = (idx: number) => paddingLeft + (idx * (width - paddingLeft - paddingRight) / (hist.length - 1));
     const getY = (val: number) => height - paddingBottom - ((val - min) / range * (height - paddingTop - paddingBottom));
 
-    const svgPoints = history.map((p, i) => ({
+    const svgPoints = hist.map((p, i) => ({
       x: getX(i),
       y: getY(p.value),
       data: p
@@ -63,13 +82,31 @@ export const IndexDetailsModal: React.FC<IndexDetailsModalProps> = ({ data, onCl
       return { text: val.toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 }), y: getY(val) };
     });
 
-    const xLabelIndices = [0, Math.floor(history.length / 2), history.length - 1];
+    const xLabelIndices = [0, Math.floor(hist.length / 2), hist.length - 1];
     const xLabels = xLabelIndices.map(idx => {
-      const d = new Date(history[idx].date);
+      const d = new Date(hist[idx].date);
       return { text: `${d.getMonth() + 1}/${d.getDate()}`, x: getX(idx) };
     });
 
-    return { path: pathData, area: areaData, points: svgPoints, viewBox: `0 0 ${width} ${height}`, yLabels, xLabels };
+    // compute SMAs
+    const maValues = computeMultipleSMAs(values, MA_WINDOWS);
+    const maPaths: Record<number, string> = {};
+    for (const w of MA_WINDOWS) {
+      const sma = maValues[w];
+      const smaPts = sma.map((v, i) => v !== null ? { x: getX(i), y: getY(v as number) } : null);
+      const firstIdx = smaPts.findIndex(p => p !== null);
+      if (firstIdx !== -1) {
+        let d = `M ${(smaPts[firstIdx] as any).x} ${(smaPts[firstIdx] as any).y} `;
+        for (let j = firstIdx + 1; j < smaPts.length; j++) {
+          const p = smaPts[j]; if (p) d += `L ${p.x} ${p.y} `;
+        }
+        maPaths[w] = d;
+      } else {
+        maPaths[w] = '';
+      }
+    }
+
+    return { path: pathData, area: areaData, points: svgPoints, viewBox: `0 0 ${width} ${height}`, yLabels, xLabels, maPaths, maValues };
   }, [history]);
 
   return (
@@ -98,7 +135,7 @@ export const IndexDetailsModal: React.FC<IndexDetailsModalProps> = ({ data, onCl
           </button>
         </div>
 
-        <div className="flex-1 overflow-y-auto p-6">
+        <div className="flex-1 overflow-hidden p-6">
           {loading ? (
             <div className="h-64 flex flex-col items-center justify-center space-y-3">
               <i className="fas fa-circle-notch animate-spin text-blue-500 text-3xl"></i>
@@ -107,47 +144,119 @@ export const IndexDetailsModal: React.FC<IndexDetailsModalProps> = ({ data, onCl
           ) : (
             <div className="space-y-6">
               <div className="relative bg-gray-50 rounded-2xl p-4">
-                <div className="absolute top-4 left-4 z-10 h-12">
-                   <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1">历史趋势 (近90日)</p>
-                   {hoveredPoint && (
-                     <div className="animate-in fade-in slide-in-from-left-2 duration-150">
-                        <p className="text-lg font-normal text-gray-800">{hoveredPoint.value.toLocaleString()}</p>
-                        <p className="text-[10px] text-gray-500 font-bold flex items-center">
-                           {new Date(hoveredPoint.date).toLocaleDateString()}
-                           <span className={`ml-2 font-medium ${hoveredPoint.equityReturn >= 0 ? 'text-red-500' : 'text-green-500'}`}>
-                             {hoveredPoint.equityReturn > 0 ? '+' : ''}{hoveredPoint.equityReturn.toFixed(2)}%
-                           </span>
-                        </p>
-                     </div>
-                   )}
+                <div className="mb-3 flex items-center space-x-2">
+                  <button onClick={() => setActiveTab('intraday')} className={`px-3 py-1 rounded text-sm ${activeTab === 'intraday' ? 'bg-white border' : 'bg-transparent text-gray-500'}`}>日内趋势图</button>
+                  <button onClick={() => setActiveTab('history')} className={`px-3 py-1 rounded text-sm ${activeTab === 'history' ? 'bg-white border' : 'bg-transparent text-gray-500'}`}>历史趋势图</button>
                 </div>
+                {activeTab === 'intraday' ? (
+                  <>
+                    <div className="mt-3 flex items-center space-x-2" aria-hidden>
+                      <div className="text-xs text-transparent font-medium">占位：均线</div>
+                    </div>
+                    <IntradayChart points={intradayPoints} width={1000} height={chartHeight} stroke="#2563eb" onHover={p => setHoveredIntradayPoint(p)} />
+                    <div className="mt-2 h-14 bg-white flex items-center justify-start px-4 border-t">
+                      {(() => {
+                        const hp = hoveredIntradayPoint as any;
+                        const fmtTime = (ts: number) => { try { return new Date(ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }); } catch { return new Date(ts).toLocaleString(); } };
+                        let timeLabel = '—';
+                        let valueLabel = '—';
+                        let changeText = '—';
+                        let changeClass = 'text-gray-700';
+                        if (hp) {
+                          timeLabel = hp.timestamp ? fmtTime(hp.timestamp) : '—';
+                          valueLabel = typeof hp.value === 'number' ? hp.value.toFixed(4) : '—';
+                          const pct = hp.equityReturn;
+                          if (typeof pct === 'number') {
+                            const prev = pct === -100 ? 0 : hp.value / (1 + pct / 100);
+                            const abs = hp.value - prev;
+                            changeText = `${abs.toFixed(4)} (${pct >= 0 ? '+' : ''}${pct.toFixed(2)}%)`;
+                            changeClass = pct >= 0 ? 'text-red-600' : 'text-green-600';
+                          }
+                        } else if (intradayPoints && intradayPoints.length > 0) {
+                          const last = intradayPoints[intradayPoints.length - 1];
+                          timeLabel = last.timestamp ? fmtTime(last.timestamp) : '—';
+                          valueLabel = typeof last.value === 'number' ? last.value.toFixed(4) : '—';
+                        }
+                        return (<><div className="w-36 mr-6"><div className="text-[10px] text-gray-400">时间</div><div className="text-sm font-medium text-gray-800">{timeLabel}</div></div><div className="w-44 mr-6"><div className="text-[10px] text-gray-400">净值</div><div className="text-sm font-medium text-gray-800">{valueLabel}</div></div><div className="w-48 mr-6"><div className="text-[10px] text-gray-400">较上一日</div><div className={`text-sm font-medium ${changeClass}`}>{changeText}</div></div></>);
+                      })()}
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <div className="mt-0">
+                      <HistoryChart
+                         viewBox={viewBox}
+                         path={path}
+                         area={area}
+                         points={points}
+                         yLabels={yLabels}
+                         xLabels={xLabels}
+                         maPaths={maPaths}
+                         maValues={maValues}
+                         visibleMAs={visibleMAs}
+                         hoveredPoint={hoveredPoint}
+                         setHoveredPoint={setHoveredPoint}
+                         stroke="#2563eb"
+                         height={chartHeight}
+                       />
+                    </div>
+                  </>
+                )}
 
-                <svg viewBox={viewBox} className="w-full h-auto drop-shadow-sm overflow-visible" onMouseLeave={() => setHoveredPoint(null)}>
-                  <defs>
-                    <linearGradient id="gradient-idx" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="0%" stopColor="#2563eb" stopOpacity="0.2" />
-                      <stop offset="100%" stopColor="#2563eb" stopOpacity="0" />
-                    </linearGradient>
-                  </defs>
-                  {yLabels.map((label, i) => (
-                    <g key={i}>
-                      <line x1="60" y1={label.y} x2="970" y2={label.y} stroke="#e2e8f0" strokeWidth="1" strokeDasharray="4 4" />
-                      <text x="50" y={label.y} textAnchor="end" alignmentBaseline="middle" className="text-[22px] fill-gray-400 font-mono">{label.text}</text>
-                    </g>
-                  ))}
-                  {xLabels.map((label, i) => (
-                    <text key={i} x={label.x} y="420" textAnchor="middle" className="text-[22px] fill-gray-400 font-medium">{label.text}</text>
-                  ))}
-                  <path d={area} fill="url(#gradient-idx)" className="transition-all duration-700" />
-                  <path d={path} fill="none" stroke="#2563eb" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" className="transition-all duration-700" />
-                  <circle cx={points[points.length - 1]?.x} cy={points[points.length - 1]?.y} r="6" fill="#2563eb" className="animate-pulse" />
-                  {points.map((p, i) => (
-                    <rect key={i} x={p.x - 5} y={0} width="10" height="400" fill="transparent" onMouseEnter={() => setHoveredPoint(p.data)} className="cursor-crosshair" />
-                  ))}
-                  {hoveredPoint && (
-                     <line x1={points.find(p => p.data === hoveredPoint)?.x} y1="40" x2={points.find(p => p.data === hoveredPoint)?.x} y2="380" stroke="#2563eb" strokeWidth="1" strokeDasharray="4 2" className="pointer-events-none" />
-                  )}
-                </svg>
+                {/* MA toggles and reserved area for history tab */}
+                {activeTab === 'history' && (
+                  <div className="mt-3 flex items-center space-x-2">
+                    <label className="text-xs text-gray-500 font-medium">均线：</label>
+                    {[5,10,20].map(n => {
+                      const color = MA_COLORS[n] || '#2563eb';
+                      return (
+                        <button key={n} type="button" aria-label={`切换显示 MA${n}`} onClick={() => setVisibleMAs(v => ({ ...v, [n]: !v[n] }))}
+                          className="text-xs px-2.5 py-1 rounded border inline-flex items-center gap-1.5 transition-colors" style={{ borderColor: color, color, backgroundColor: visibleMAs[n] ? `${color}1a` : '#ffffff' }}>
+                          <span className="inline-block w-2 h-2 rounded-full" style={{ backgroundColor: color }} />
+                          <span className="font-medium">MA{n}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+
+                {activeTab === 'history' && (
+                  <div className="mt-2 h-14 bg-white flex items-center justify-start px-4 border-t">
+                    {(() => {
+                      const hp = hoveredPoint as any;
+                      let dateLabel = '—';
+                      let valueLabel = '—';
+                      let changeText = '—';
+                      let changeClass = 'text-gray-700';
+                      if (hp && points && points.length > 0) {
+                        const idx = points.findIndex((p: any) => p.data === hp);
+                        const v = (idx >= 0) ? points[idx].data.value : (points[points.length - 1].data.value);
+                        const d = (idx >= 0) ? new Date(points[idx].data.date) : new Date(points[points.length - 1].data.date);
+                        dateLabel = d.toISOString().split('T')[0];
+                        valueLabel = v.toFixed(4);
+                        const prev = (idx > 0) ? points[idx - 1].data.value : null;
+                        if (prev !== null && prev !== undefined) {
+                          const abs = v - prev;
+                          const pct = prev !== 0 ? (abs / prev * 100) : 0;
+                          changeText = `${abs.toFixed(4)} (${pct >= 0 ? '+' : ''}${pct.toFixed(2)}%)`;
+                          changeClass = pct >= 0 ? 'text-red-600' : 'text-green-600';
+                        }
+                      } else if (points && points.length > 0) {
+                        const last = points[points.length - 1];
+                        dateLabel = new Date(last.data.date).toISOString().split('T')[0];
+                        valueLabel = last.data.value.toFixed(4);
+                        changeText = '—';
+                      }
+                      return (
+                        <>
+                          <div className="w-36 mr-6"><div className="text-[10px] text-gray-400">时间</div><div className="text-sm font-medium text-gray-800">{dateLabel}</div></div>
+                          <div className="w-44 mr-6"><div className="text-[10px] text-gray-400">净值</div><div className="text-sm font-medium text-gray-800">{valueLabel}</div></div>
+                          <div className="w-48 mr-6"><div className="text-[10px] text-gray-400">涨跌</div><div className={`text-sm font-medium ${changeClass}`}>{changeText}</div></div>
+                        </>
+                      );
+                    })()}
+                  </div>
+                )}
               </div>
 
               <div className="grid grid-cols-1 gap-4">

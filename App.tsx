@@ -204,6 +204,8 @@ const App: React.FC = () => {
       const data = await fetchFundData(symbol);
       if (data) {
         cacheService.setValuation(symbol, data);
+        // Append intraday point based on this valuation (lastUpdated preferred inside append)
+        try { cacheService.appendIntradayPoint(symbol, data); } catch (e) { /* swallow */ }
         setMarketData(prev => ({ ...prev, [symbol]: data }));
         setPortfolio(prev => prev.map(item =>
           item.symbol === symbol && !item.name ? { ...item, name: data.name } : item
@@ -263,6 +265,14 @@ const App: React.FC = () => {
           });
           return next;
         });
+        // Append intraday points for each fetched index
+        try {
+          data.forEach(d => {
+            try {
+              cacheService.appendIntradayPoint(d.symbol, { value: d.current, lastUpdated: d.lastUpdated, equityReturn: d.changePercent });
+            } catch (e) { /* ignore per-index errors */ }
+          });
+        } catch (e) { /* ignore */ }
       } catch {
         setMarketIndices(prev => mergeIndicesForDisplay(indicesConfig, [], prev));
         setIndexStatuses(prev => {
@@ -290,6 +300,14 @@ const App: React.FC = () => {
           });
           return next;
         });
+        // Append intraday points for each fetched global index
+        try {
+          data.forEach(d => {
+            try {
+              cacheService.appendIntradayPoint(d.symbol, { value: d.current, lastUpdated: d.lastUpdated, equityReturn: d.changePercent });
+            } catch (e) { /* ignore per-index errors */ }
+          });
+        } catch (e) { /* ignore */ }
       } catch {
         setGlobalIndices(prev => mergeIndicesForDisplay(globalIndicesConfig, [], prev));
         setIndexStatuses(prev => {

@@ -29,19 +29,20 @@ export const TradeManager: React.FC<{
   const pageCount = Math.max(1, Math.ceil(localTrades.length / pageSize));
 
   useEffect(() => { refresh(); }, [symbol, refresh]);
-  useEffect(() => {
+    useEffect(() => {
     let mounted = true;
     const load = async () => {
       try {
         const points = await fetchFundHistory(symbol);
-        if (mounted) setHistory(points.slice(-365));
+        // Defer setState to next tick to avoid render-phase updates causing act() warnings in tests
+        if (mounted) setTimeout(() => { if (mounted) setHistory(points.slice(-365)); }, 0);
       } catch (e) {
-        if (mounted) setHistory([]);
+        if (mounted) setTimeout(() => { if (mounted) setHistory([]); }, 0);
       }
     };
     load();
     return () => { mounted = false; };
-  }, [symbol]);
+    }, [symbol]);
 
   // form state
   const [date, setDate] = useState<string>(() => toLocalDateKey(new Date()));

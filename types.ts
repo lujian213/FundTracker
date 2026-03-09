@@ -27,6 +27,8 @@ export interface ValuationData {
   netWorthDate: string;      // 最后确认净值的日期 (jzrq) -> "2024-05-21"
   valuationDate: string;     // 兼容性字段
   sourceUrl: string;
+  // optional: some callers may include an explicit equityReturn field (percent)
+  equityReturn?: number;
 }
 
 export interface MarketIndex {
@@ -123,4 +125,11 @@ export interface BackupData {
   positions: Record<string, BackupPosition>;
   trades: Record<string, BackupTrade[]>;
   config: BackupConfig;
+}
+
+// ─── Intraday point type (for per-minute day-limited caching used by intraday chart)
+export interface IntradayPoint {
+  timestamp: number; // floored to minute (ms)
+  value: number;
+  equityReturn: number; // percent
 }

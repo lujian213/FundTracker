@@ -49,8 +49,9 @@ describe('FundDetailsModal SMA behavior', () => {
   test('renders SMA5 by default and toggles work', async () => {
     render(<FundDetailsModal data={data} onClose={() => {}} />);
 
-    // wait for fetch and render
-    await waitFor(() => expect(fetchFundHistory).toHaveBeenCalled());
+    // wait for chart UI to render and switch to history tab (default is now intraday)
+    await screen.findByText('历史趋势图');
+    fireEvent.click(screen.getByText('历史趋势图'));
 
     // SMA5 path should be present (stroke color #eab308)
     const svg = document.querySelector('svg');
@@ -75,7 +76,8 @@ describe('FundDetailsModal SMA behavior', () => {
 
   test('rating tooltip shows reasons', async () => {
     render(<FundDetailsModal data={data} onClose={() => {}} />);
-    await waitFor(() => expect(fetchFundHistory).toHaveBeenCalled());
+    await screen.findByText('历史趋势图');
+    fireEvent.click(screen.getByText('历史趋势图'));
 
     const badge = screen.getByLabelText(/风险评级/);
     fireEvent.mouseEnter(badge);
@@ -101,7 +103,8 @@ describe('FundDetailsModal SMA behavior', () => {
     const dataWithSameDate = { ...data, realtimeDate: lastDateISO, currentPrice: CROSS_HISTORY[CROSS_HISTORY.length - 1].value };
 
     render(<FundDetailsModal data={dataWithSameDate} onClose={() => {}} />);
-    await waitFor(() => expect(fetchFundHistory).toHaveBeenCalled());
+    await screen.findByText('历史趋势图');
+    fireEvent.click(screen.getByText('历史趋势图'));
 
     const badge = screen.getByLabelText(/风险评级/);
     fireEvent.mouseEnter(badge);
@@ -125,21 +128,21 @@ describe('FundDetailsModal SMA behavior', () => {
     };
 
     render(<FundDetailsModal data={noRealtimeDate} onClose={() => {}} />);
-    await waitFor(() => expect(fetchFundHistory).toHaveBeenCalled());
+    await screen.findByText('历史趋势图');
+    fireEvent.click(screen.getByText('历史趋势图'));
 
-    const hoverRects = document.querySelectorAll('svg rect');
-    fireEvent.mouseEnter(hoverRects[hoverRects.length - 1]);
+    // The chart shows the latest confirmed history value by default; assert it equals the last history value
+    const shown = await screen.findByTestId('history-current-value');
+    expect(shown.textContent).toBe(history[history.length - 1].value.toFixed(4));
 
-    // Hovered value should remain the latest confirmed history value.
-    expect(screen.getByText(history[history.length - 1].value.toFixed(4))).toBeInTheDocument();
-
-    // Header always shows currentPrice; ensure chart hover did not add a second 9.9900 point.
+    // Header always shows currentPrice; ensure chart did not append a synthetic 9.9900 history point.
     expect(screen.getAllByText('9.9900')).toHaveLength(1);
   });
 
   test('renders colored MA toggle controls that match the chart colors', async () => {
     render(<FundDetailsModal data={data} onClose={() => {}} />);
-    await waitFor(() => expect(fetchFundHistory).toHaveBeenCalled());
+    await screen.findByText('历史趋势图');
+    fireEvent.click(screen.getByText('历史趋势图'));
 
     const btn5 = screen.getByRole('button', { name: '切换显示 MA5' });
     const btn10 = screen.getByRole('button', { name: '切换显示 MA10' });
@@ -177,7 +180,7 @@ describe('基金份额计算器', () => {
 
   const openCalculator = async (data = baseData) => {
     render(<FundDetailsModal data={data} onClose={() => {}} />);
-    await waitFor(() => expect(fetchFundHistory).toHaveBeenCalled());
+    await screen.findByText('历史趋势图');
     fireEvent.click(screen.getByRole('button', { name: '基金份额计算器' }));
   };
 

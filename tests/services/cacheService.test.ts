@@ -11,6 +11,7 @@
 // Use jest.resetModules() + require() to force re-initialisation.
 
 import { ValuationData, HistoricalPoint } from '../../types';
+import { compressConsecutiveSameValues } from '../../utils/intradayCompression';
 
 const SAMPLE_VALUATION: ValuationData = {
   symbol: '000001',
@@ -282,5 +283,64 @@ describe('cacheService', () => {
       expect(() => cs.evictValuations(new Set(['000001']))).not.toThrow();
     });
   });
+
+  // ── intraday compression ─────────────────────────────────────────────────────
+
+  describe('intraday compression', () => {
+    test('setIntradayPoints compresses consecutive identical values keeping earliest timestamp', () => {
+      const cs = loadCacheService();
+      // prepare points: three points, first two have same value, third different
+      const base = Date.now();
+      const pts = [
+        { timestamp: base, value: 1.23, equityReturn: 0 },
+        { timestamp: base + 60000, value: 1.23, equityReturn: 0 },
+        { timestamp: base + 120000, value: 1.24, equityReturn: 0 },
+      ];
+      cs.setIntradayPoints('000001', pts);
+      const got = cs.getIntradayPoints('000001');
+      // compression should keep earliest for the run of identical values => timestamps[0] and [2]
+      expect(got.length).toBe(2);
+      expect(got[0].timestamp).toBe(Math.floor(base / 60000) * 60000);
+      expect(got[0].value).toBeCloseTo(1.23);
+      expect(got[1].value).toBeCloseTo(1.24);
+    });
+
+    test('appendIntradayPoint does not append when value equals last kept value', () => {
+      const cs = loadCacheService();
+      const now = Date.now();
+      // append first point
+      cs.appendIntradayPoint('000002', { value: 2.0, lastUpdated: now, equityReturn: 0 });
+      const after1 = cs.getIntradayPoints('000002');
+      expect(after1.length).toBeGreaterThanOrEqual(1);
+      const firstTs = after1[after1.length - 1].timestamp;
+      // append another with same value later
+      cs.appendIntradayPoint('000002', { value: 2.0, lastUpdated: now + 5 * 60000, equityReturn: 0 });
+      const after2 = cs.getIntradayPoints('000002');
+      // should not increase length due to compression (keeps earliest)
+      expect(after2.length).toBe(after1.length);
+      // the kept timestamp for that run should still be the earliest (firstTs)
+      const lastKept = after2[after2.length - 1];
+      expect(lastKept.value).toBeCloseTo(2.0);
+      expect(lastKept.timestamp).toBe(firstTs);
+    });
+  });
 });
 
+// Unit tests for intraday compression utility
+describe('intradayCompression util', () => {
+  test('compressConsecutiveSameValues keeps earliest of identical runs', () => {
+    const base = 1600000000000;
+    const pts = [
+      { timestamp: base, value: 1.0, equityReturn: 0 },
+      { timestamp: base + 60000, value: 1.0, equityReturn: 0 },
+      { timestamp: base + 120000, value: 1.1, equityReturn: 0 },
+      { timestamp: base + 180000, value: 1.1, equityReturn: 0 },
+      { timestamp: base + 240000, value: 1.2, equityReturn: 0 },
+    ];
+    const out = compressConsecutiveSameValues(pts as any);
+    expect(out.length).toBe(3);
+    expect(out[0].timestamp).toBe(base);
+    expect(out[1].timestamp).toBe(base + 120000);
+    expect(out[2].timestamp).toBe(base + 240000);
+  });
+});
