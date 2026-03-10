@@ -377,20 +377,18 @@ async function fetchFundDataFromEastMoney(code: string): Promise<ValuationData |
     let lastUpdated = '---';
     let netWorthDate = toLocalDateKey(new Date());
     if (d) {
-      // Use host local time for display (project requires local time everywhere).
-      const localDateObj = new Date(d.getTime());
-      const year = localDateObj.getFullYear();
-      const month = String(localDateObj.getMonth() + 1).padStart(2, '0');
-      const day = String(localDateObj.getDate()).padStart(2, '0');
-
-      // detect date-only timestamps: either UTC midnight, local midnight, or ISO date-only
+      // Deterministically compute the China (UTC+8) calendar date for the timestamp.
+      // Use arithmetic to avoid host Date timezone quirks: compute day index at UTC+8.
       const ts = d.getTime();
-      const isMidnightUTC = (d.getUTCHours && d.getUTCHours() === 0 && d.getUTCMinutes && d.getUTCMinutes() === 0 && d.getUTCSeconds && d.getUTCSeconds() === 0) || (ts % (24 * 3600 * 1000) === 0);
-      const isMidnightLocal = localDateObj.getHours() === 0 && localDateObj.getMinutes() === 0 && localDateObj.getSeconds() === 0;
-      const isIsoMidnight = typeof d.toISOString === 'function' && d.toISOString().endsWith('T00:00:00.000Z');
-
-      // For historical confirmed net worth points, display as local date with 15:00:00
-      // (End-of-day confirmed valuation). This keeps UI consistent and makes tests deterministic.
+      const MS_PER_DAY = 24 * 3600 * 1000;
+      const CHINA_OFFSET = 8 * 3600 * 1000;
+      const dayIndex = Math.floor((ts + CHINA_OFFSET) / MS_PER_DAY);
+      const chinaMidnightTs = dayIndex * MS_PER_DAY;
+      const chinaDate = new Date(chinaMidnightTs);
+      const year = chinaDate.getUTCFullYear();
+      const month = String(chinaDate.getUTCMonth() + 1).padStart(2, '0');
+      const day = String(chinaDate.getUTCDate()).padStart(2, '0');
+      // Display confirmed historical net worth as end-of-day 15:00:00 (local)
       lastUpdated = `${year}-${month}-${day} 15:00:00`;
       netWorthDate = `${year}-${month}-${day}`;
     }

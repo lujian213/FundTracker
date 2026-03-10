@@ -23,7 +23,28 @@ function isIsoDate(value: string | null | undefined): value is string {
 }
 
 export function toLocalDateKey(input: number | Date | string): string {
-  const d = typeof input === 'number' || input instanceof Date ? new Date(input) : new Date(`${input} 00:00:00`);
+  // If input is an ISO date string (YYYY-MM-DD), treat as that local date
+  if (typeof input === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(input)) return input;
+
+  // If input is a number, it's usually a timestamp from history (ms)
+  // Normalize deterministically to the China (UTC+8) calendar date so tests
+  // and history logic don't depend on the runner's timezone.
+  if (typeof input === 'number') {
+    const ts = input;
+    if (!Number.isFinite(ts) || ts <= 0) return '';
+    const MS_PER_DAY = 24 * 3600 * 1000;
+    const CHINA_OFFSET = 8 * 3600 * 1000;
+    const dayIndex = Math.floor((ts + CHINA_OFFSET) / MS_PER_DAY);
+    const chinaMidnightTs = dayIndex * MS_PER_DAY;
+    const cd = new Date(chinaMidnightTs);
+    const y = cd.getUTCFullYear();
+    const m = String(cd.getUTCMonth() + 1).padStart(2, '0');
+    const day = String(cd.getUTCDate()).padStart(2, '0');
+    return `${y}-${m}-${day}`;
+  }
+
+  // For Date objects or other strings, preserve previous local-time formatting (used for UI display)
+  const d = input instanceof Date ? input : new Date(`${input} 00:00:00`);
   if (!Number.isFinite(d.getTime())) return '';
   const y = d.getFullYear();
   const m = String(d.getMonth() + 1).padStart(2, '0');
