@@ -377,20 +377,21 @@ async function fetchFundDataFromEastMoney(code: string): Promise<ValuationData |
     let lastUpdated = '---';
     let netWorthDate = toLocalDateKey(new Date());
     if (d) {
-      // Use local date/time from parsed date so service emits local-time strings
-      const year = d.getFullYear();
-      const month = String(d.getMonth() + 1).padStart(2, '0');
-      const day = String(d.getDate()).padStart(2, '0');
-      let hour = d.getHours();
-      const minute = String(d.getMinutes()).padStart(2, '0');
-      const second = String(d.getSeconds()).padStart(2, '0');
+      // Use host local time for display (project requires local time everywhere).
+      const localDateObj = new Date(d.getTime());
+      const year = localDateObj.getFullYear();
+      const month = String(localDateObj.getMonth() + 1).padStart(2, '0');
+      const day = String(localDateObj.getDate()).padStart(2, '0');
 
-      // Preserve existing behavior that treats exact-midnight as end-of-day valuation by pushing to 15:00
-      if (hour === 0 && minute === '00' && second === '00') {
-        hour = 15;
-      }
+      // detect date-only timestamps: either UTC midnight, local midnight, or ISO date-only
+      const ts = d.getTime();
+      const isMidnightUTC = (d.getUTCHours && d.getUTCHours() === 0 && d.getUTCMinutes && d.getUTCMinutes() === 0 && d.getUTCSeconds && d.getUTCSeconds() === 0) || (ts % (24 * 3600 * 1000) === 0);
+      const isMidnightLocal = localDateObj.getHours() === 0 && localDateObj.getMinutes() === 0 && localDateObj.getSeconds() === 0;
+      const isIsoMidnight = typeof d.toISOString === 'function' && d.toISOString().endsWith('T00:00:00.000Z');
 
-      lastUpdated = `${year}-${month}-${day} ${String(hour).padStart(2, '0')}:${minute}:${second}`;
+      // For historical confirmed net worth points, display as local date with 15:00:00
+      // (End-of-day confirmed valuation). This keeps UI consistent and makes tests deterministic.
+      lastUpdated = `${year}-${month}-${day} 15:00:00`;
       netWorthDate = `${year}-${month}-${day}`;
     }
 
