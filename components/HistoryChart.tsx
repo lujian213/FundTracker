@@ -43,8 +43,25 @@ const HistoryChart: React.FC<HistoryChartProps> = ({
   const hoveredIndex = hoveredPoint ? points.findIndex(p => p.data === hoveredPoint) : -1;
 
   // helper: format a timestamp into local YYYY-MM-DD
-  const formatLocalDate = (ts: number) => {
+  const formatLocalDate = (ts: number | string) => {
     try {
+      if (typeof ts === 'string') {
+        // parse YYYY-MM-DD into local date
+        const parts = ts.split('-').map(s => Number(s));
+        if (parts.length === 3) {
+          const d = new Date(parts[0], parts[1] - 1, parts[2]);
+          const y = d.getFullYear();
+          const m = String(d.getMonth() + 1).padStart(2, '0');
+          const day = String(d.getDate()).padStart(2, '0');
+          return `${y}-${m}-${day}`;
+        }
+        // fallback
+        const d = new Date(ts);
+        const y = d.getFullYear();
+        const m = String(d.getMonth() + 1).padStart(2, '0');
+        const day = String(d.getDate()).padStart(2, '0');
+        return `${y}-${m}-${day}`;
+      }
       const d = new Date(ts);
       const y = d.getFullYear();
       const m = String(d.getMonth() + 1).padStart(2, '0');
@@ -56,7 +73,7 @@ const HistoryChart: React.FC<HistoryChartProps> = ({
   };
 
   // chart paddings must match modal chartData paddingTop/paddingBottom and paddingLeft/paddingRight
-  const PADDING_LEFT = 80; // ensure enough room on left for y labels
+  const PADDING_LEFT = 110; // increased to reserve space for up to ~12 chars (including thousand separators and symbols)
   const PADDING_RIGHT = 30;
   const PADDING_TOP = 20; // increase top padding so the top hover label stays inside viewBox
   const PADDING_BOTTOM = 0;
@@ -84,12 +101,13 @@ const HistoryChart: React.FC<HistoryChartProps> = ({
               {yLabels.map((label, i) => (
                 <g key={`y-${i}`}>
                   <line x1={chartX} y1={label.y} x2={chartX + chartW} y2={label.y} stroke="#e2e8f0" strokeWidth="1" strokeDasharray="4 4" />
-                  <text x={chartX - 10} y={label.y} textAnchor="end" alignmentBaseline="middle" className="text-[18px] fill-gray-400 font-mono">{label.text}</text>
+                  {/* smaller font and reserve left space; label.text already does not include unit like '元' */}
+                  <text x={chartX - 12} y={label.y} textAnchor="end" alignmentBaseline="middle" className="text-[14px] fill-gray-400 font-mono">{label.text}</text>
                 </g>
               ))}
 
               {xLabels.map((label, i) => (
-                <text key={`x-${i}`} x={label.x} y={chartY + chartH + 16} textAnchor="middle" className="text-[16px] fill-gray-400 font-medium">{label.text}</text>
+                <text key={`x-${i}`} x={label.x} y={chartY + chartH + 16} textAnchor="middle" className="text-[14px] fill-gray-400 font-medium">{label.text}</text>
               ))}
             </>
           );
@@ -171,7 +189,7 @@ const HistoryChart: React.FC<HistoryChartProps> = ({
           const chartBottom = vbH - PADDING_BOTTOM;
           // compute label text and estimate its half width (approx) so we can clamp x precisely
           const labelText = formatLocalDate((hoveredPoint as any).date);
-          const EST_CHAR_WIDTH = 8; // conservative per-char px width at font-size ~12
+          const EST_CHAR_WIDTH = 7; // conservative per-char px width at font-size ~14
           const halfWidth = Math.ceil((labelText.length * EST_CHAR_WIDTH) / 2) + 6; // +6px padding (more conservative)
           const labelX = Math.max(halfWidth, Math.min(vbW - halfWidth, px));
            return (

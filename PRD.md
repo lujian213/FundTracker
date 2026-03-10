@@ -1,5 +1,62 @@
 # FundTracker — 产品需求文档 (PRD)
 
+版本：1.17
+最后更新：2026-03-10
+
+---
+
+简述
+- FundTracker 是一款前端单页（SPA）应用，面向普通投资者，用于添加/管理自选基金/指数，展示实时估值、涨跌、历史净值趋势及交易记录管理（本地持久化），目标是快速构建可交付的前端版本（vibe coding 可直接实现）。
+
+---
+
+## 基金持有总金额趋势图（Position Trend） — 新增功能说明（v1.17）
+
+概述
+- 新增“基金持有总金额趋势图”，用于展示 portfolio 中所有已配置持仓基金随时间变化的持有总金额（按日粒度）。用户可从持仓页面的“市场总价值”右侧放大镜按钮打开趋势弹窗查看。
+
+界面入口
+- 在 `PositionsModal`（基金持仓弹窗）中，市场总价值数值后增加一个放大镜图标按钮（辅助可识别 data-testid），点击打开趋势图模态窗口（Trend Modal）。
+
+数据来源与计算规则
+- 基金 A 在 x 日的持有金额 = 基金 A 在 x 日的持仓数量 × 基金 A 在 x 日的估值/净值（估值优先，若当日无估值/净值则沿用最近的前一个可用估值/净值）。
+- 基金 A 在 x 日的持仓数量 = 初始仓位（`fund_position_{symbol}.initialPosition`） + 截止到 x 日的所有买入份额和 − 截止到 x 日的所有卖出份额（交易汇总基于 `fund_trades` 存储，按日期累加）。
+- 所有持仓基金在 x 日的持有总金额 = 所有被视为“有持仓配置”的基金在 x 日持有金额之和；“有持仓配置”指 `fund_position_{symbol}.fullCapacity > 0`（即该基金已配置持仓），不以当前份额是否为 0 作为排除条件。
+- 时间范围：x 轴从所有持仓基金的最早持仓时间开始（按 `fund_position_{symbol}.startDate` 的最早值；若无配置 startDate 则回退到交易或历史数据的最早日期），到当天为止（local date，YYYY-MM-DD）。
+
+数据处理细节
+- 估值优先：计算时优先使用 `cacheService.getValuation(symbol)` 中的 `currentPrice` / `previousPrice`；若未命中，再使用历史净值时间序列（`cacheService.getHistory(symbol)`）的对应日期值，若仍未命中则向前回退至最近的已知价格。
+- 交易累计：交易读取使用统一的 `fund_trades` 键（通过 `hooks/useTrades.getTradesForSymbol`），按日期升序累加以得到每日持仓份额序列。
+- 最后一个点一致性：趋势图最后一个点应使用与 `PositionsModal` 汇总相同的实时估值来源（由调用方在打开趋势 modal 时将当前 `marketData` 作为 override 传入趋势计算逻辑），以保证图表的最后一点与界面上显示的“市场总价值”一致。
+
+数据展示与交互
+- 折线图：图中显示 portfolio 所有持仓基金的总市值随日期变化的曲线（折线 + area 填充可选）。
+- x 轴：日期格式统一为 `yyyy-MM-dd`（本地时间），刻度从最早持仓日期到当日；刻度字体比主文小一号。
+- y 轴：仅显示数值（不带“元”单元），刻度四分位显示，精确到个位数并四舍五入，字体比主文小一号；图表左侧留出足够空间（至少能显示 12 个字符）用于显示千分位后的数字，不发生截断或重叠。
+- 相邻相同值压缩：若相邻日期的持有总金额完全相同，则在图上只显示为一个点（保留该连续段的首个日期点），以减少点的密度并提高可读性。
+- Hover 交互：鼠标 hover 在某一日期时显示竖直虚线，并在图下方的预留信息区域以 hovertip/信息栏形式显示该日期（yyyy-MM-dd）与对应的持有总金额（千分位，精确到小数点后 2 位）。下方信息区列宽固定，字体缩小一号，避免 hover 时图表抖动。
+- 交易 marker：趋势图只展示持仓总额，不需要单独的交易 marker（交易 marker 属于基金详情/历史趋势图的职责）。
+
+性能与缓存
+- 数据计算放在 hook 层（`hooks/usePositionTrend`）或服务层完成，图表组件仅负责渲染，遵循“数据与展示分离”。
+- 如果序列点数量超过阈值（例如 500），应采用 LTTB 等下采样算法以保证渲染性能；下采样应在渲染层之前完成，且保留首尾点。
+- 数据量上限假设：单次计算的数据点不会超过 3000 条（基于你的说明），因此内存与计算成本处于可控范围。
+
+测试要求
+- 单元测试：补充 `tests/utils/positionTrend.*.test.ts`，覆盖：
+  - 基本聚合（初始仓位 + 交易累计 + 估值对齐）生成正确的每日总市值序列；
+  - 相邻相同值压缩行为（连续相同 value 的段只保留首点或按约定保留首尾）;
+  - 当传入 `valuationsOverride`（来自 `PositionsModal.marketData`）时，趋势序列的最后点使用 override 值。
+- 集成测试：在 `tests/components/PositionsModal.test.tsx` 中加入：点击放大镜会打开趋势 modal，modal 内折线图渲染并且最后一点与 PositionsModal 的 `totalMarketValue` 在数值上相等（允许小范围四舍五入差异）。
+
+注意事项
+- 遵循项目中已定义的本地日期规范（所有日期显示/比较均使用本地 YYYY-MM-DD 字符串，避免时区偏差）。
+- 图表组件 `HistoryChart` 的接口保持通用，其他模块（如日内趋势图）继续复用以保证一致性。若未来需要更复杂的压缩策略（例如保留平坦线段的首尾两个端点以保留形状），可将压缩策略参数化。
+
+---
+
+# FundTracker — 产品需求文档 (PRD)
+
 版本：1.16
 最后更新：2026-03-10
 
@@ -789,7 +846,7 @@ export type CardStatus = 'ok' | 'error' | 'unknown';
   - **原始累计盈利**（rawCumulative）：`x日份额 × x日净值 − 初始份额×初始价格 − 截止x日所有买入总额 + 截止x日所有卖出总额`
     - 买入总额 = Σ(price × shares + fee)
     - 卖出总额 = Σ(price × shares − fee)
-  - x日份额 = 初始份额 + 截止x日（含x日）所有买入份额 − 截止x日（含x日）所有卖出份额。
+  - x日份额 = 初始份额 + 截止到 x 日的所有买入份额和 − 截止到 x 日的所有卖出份额。
   - **手续费延迟规范（Fee-Deferral Convention）**：每日当日盈利采用"调整累计值"计算，使手续费损失体现在**下一个交易日**而非当日，与中国基金平台标准保持一致：
     - `adjustedCumulative_D = rawCumulative_D + todayFee_D`（todayFee 为当日所有买卖手续费之和）
     - `dailyProfit_D = adjustedCumulative_D − adjustedCumulative_{D-1}`

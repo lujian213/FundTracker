@@ -2,6 +2,8 @@ import React, { useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Ticker, ValuationData } from '../types';
 import { computePositions, PositionEntry } from '../utils/positionHelper';
+import PositionTrendChart from './PositionTrendChart';
+import usePositionTrend from '../hooks/usePositionTrend';
 
 interface Props {
   portfolio: Ticker[];
@@ -46,11 +48,41 @@ const PIE_R = 100;
 
 const PositionsModal: React.FC<Props> = ({ portfolio, marketData, onClose, onSelectFund }) => {
   const [hoveredSymbol, setHoveredSymbol] = useState<string | null>(null);
+  const [showTrend, setShowTrend] = useState(false);
 
   const { entries, totalMarketValue } = useMemo(
     () => computePositions(portfolio, marketData),
     [portfolio, marketData]
   );
+
+  // Trend modal component: mounted only when opened so hook runs lazily
+  function TrendModal({ onClose: onCloseTrend }: { onClose: () => void }) {
+    const { data, loading, fullResolutionAvailable, loadFullResolution } = usePositionTrend({ valuationsOverride: marketData });
+
+    return createPortal(
+      <div className="fixed inset-0 z-[140] flex items-center justify-center p-4" style={{ zIndex: 99999 }}>
+        <div className="absolute inset-0 bg-black/40" onClick={onCloseTrend} />
+        <div className="relative bg-white rounded-2xl w-full max-w-3xl shadow-2xl animate-in zoom-in-95 duration-200 p-4" role="dialog" aria-modal="true">
+          <div className="flex items-center justify-between mb-3">
+            <h3 className="text-lg font-bold">持仓总金额趋势</h3>
+            <div className="flex items-center gap-2">
+              {fullResolutionAvailable && (
+                <button className="text-xs px-2 py-1 rounded border" onClick={() => loadFullResolution()}>查看完整</button>
+              )}
+              <button aria-label="关闭趋势图" onClick={onCloseTrend} className="w-8 h-8 rounded-full bg-gray-50 flex items-center justify-center text-gray-400 hover:bg-gray-100">
+                <i className="fas fa-times" />
+              </button>
+            </div>
+          </div>
+
+          <div style={{ minHeight: 360 }}>
+            <PositionTrendChart data={data} loading={loading} />
+          </div>
+        </div>
+      </div>,
+      document.body
+    );
+  }
 
   // Build pie slices
   const slices = useMemo<SliceInfo[]>(() => {
@@ -100,7 +132,21 @@ const PositionsModal: React.FC<Props> = ({ portfolio, marketData, onClose, onSel
           <div className="text-sm text-gray-600 font-medium flex-shrink-0">
             <span className="font-bold text-gray-800">{entries.length}只基金</span>
             <span className="mx-2 text-gray-400">·</span>
-            市场总价值：<span className="font-bold text-gray-800">{fmtMoney(totalMarketValue)}元</span>
+            市场总价值：
+            <span className="font-bold text-gray-800">{fmtMoney(totalMarketValue)}元</span>
+            {/* magnifier button to open trend modal */}
+            <button
+              type="button"
+              onClick={(e) => { e.stopPropagation(); // DEBUG
+                // (magnifier clicked)
+                setShowTrend(true);
+              }}
+               aria-label="查看持仓总金额趋势"
+               title="查看持仓总金额趋势"
+               className="ml-2 inline-flex items-center justify-center w-7 h-7 rounded-full bg-gray-50 text-gray-500 hover:bg-gray-100"
+             >
+               <i className="fas fa-search" />
+             </button>
           </div>
 
           {/* Pie chart + legend — fixed height, legend scrolls */}
@@ -249,6 +295,7 @@ const PositionsModal: React.FC<Props> = ({ portfolio, marketData, onClose, onSel
             </div>
           )}
         </div>
+        {showTrend && <TrendModal onClose={() => setShowTrend(false)} />}
       </div>
     </div>
   );
@@ -257,13 +304,4 @@ const PositionsModal: React.FC<Props> = ({ portfolio, marketData, onClose, onSel
 };
 
 export default PositionsModal;
-
-
-
-
-
-
-
-
-
 
