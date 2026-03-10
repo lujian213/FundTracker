@@ -58,7 +58,7 @@ const HistoryChart: React.FC<HistoryChartProps> = ({
   // chart paddings must match modal chartData paddingTop/paddingBottom and paddingLeft/paddingRight
   const PADDING_LEFT = 80; // ensure enough room on left for y labels
   const PADDING_RIGHT = 30;
-  const PADDING_TOP = 0;
+  const PADDING_TOP = 20; // increase top padding so the top hover label stays inside viewBox
   const PADDING_BOTTOM = 0;
 
   return (
@@ -149,7 +149,7 @@ const HistoryChart: React.FC<HistoryChartProps> = ({
                 const arr = maValues[n] || [];
                 const v = hoveredIndex >= 0 && hoveredIndex < arr.length ? arr[hoveredIndex] : null;
                 return (
-                  <text key={`ma-val-${n}`} x={baseX + idx * gap} y={18} textAnchor="start" className="text-[12px] font-medium" fill={MA_COLORS[n] || '#2563eb'}>
+                  <text key={`ma-val-${n}`} x={baseX + idx * gap} y={8} textAnchor="start" className="text-[12px] font-medium" fill={MA_COLORS[n] || '#2563eb'}>
                     {`MA${n}: ${v !== null && v !== undefined ? (v as number).toFixed(4) : '—'}`}
                   </text>
                 );
@@ -169,12 +169,17 @@ const HistoryChart: React.FC<HistoryChartProps> = ({
           const vbH = vbParts[3] || height;
           const chartTop = PADDING_TOP;
           const chartBottom = vbH - PADDING_BOTTOM;
-          return (
-            <>
-              <line x1={px} y1={chartTop} x2={px} y2={chartBottom} stroke={stroke} strokeWidth="1" strokeDasharray="4 2" className="pointer-events-none" />
-              <text x={px} y={chartTop - 4} textAnchor="middle" className="text-[12px] font-medium fill-gray-600 pointer-events-none">{formatLocalDate((hoveredPoint as any).date)}</text>
-            </>
-          );
+          // compute label text and estimate its half width (approx) so we can clamp x precisely
+          const labelText = formatLocalDate((hoveredPoint as any).date);
+          const EST_CHAR_WIDTH = 8; // conservative per-char px width at font-size ~12
+          const halfWidth = Math.ceil((labelText.length * EST_CHAR_WIDTH) / 2) + 6; // +6px padding (more conservative)
+          const labelX = Math.max(halfWidth, Math.min(vbW - halfWidth, px));
+           return (
+             <>
+               <line x1={px} y1={chartTop} x2={px} y2={chartBottom} stroke={stroke} strokeWidth="1" strokeDasharray="4 2" className="pointer-events-none" />
+              <text x={labelX} y={Math.max(18, chartTop - 4)} textAnchor="middle" className="text-[12px] font-medium fill-gray-600 pointer-events-none">{labelText}</text>
+             </>
+           );
         })()}
       </svg>
     </>

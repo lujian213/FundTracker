@@ -124,8 +124,24 @@ const IntradayChart: React.FC<IntradayChartProps> = ({ points, width = 1000, hei
         ))}
         {/* vertical hover line */}
         {hoverIdx !== null && svgPts[hoverIdx] && (
-          <g>
-            <line x1={svgPts[hoverIdx].x} y1={paddingTop} x2={svgPts[hoverIdx].x} y2={paddingTop + innerH} stroke={stroke} strokeWidth={1} strokeDasharray="4 2" />
+          <g className="pointer-events-none">
+            {(() => {
+              const pt = svgPts[hoverIdx];
+              const chartTop = paddingTop;
+              const chartBottom = paddingTop + innerH;
+              // compute label time and clamp x to avoid clipping at edges
+              const labelText = formatTime(pt.data.timestamp);
+              const EST_CHAR_WIDTH = 8; // conservative per-char width
+              const halfWidth = Math.ceil((labelText.length * EST_CHAR_WIDTH) / 2) + 6;
+              const labelX = Math.max(halfWidth, Math.min(width - halfWidth, pt.x));
+              const labelY = Math.max(18, chartTop - 4);
+              return (
+                <>
+                  <line x1={pt.x} y1={chartTop} x2={pt.x} y2={chartBottom} stroke={stroke} strokeWidth={1} strokeDasharray="4 2" />
+                  <text x={labelX} y={labelY} textAnchor="middle" className="text-[12px] font-medium fill-gray-600">{labelText}</text>
+                </>
+              );
+            })()}
           </g>
         )}
       </svg>

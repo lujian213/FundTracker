@@ -208,7 +208,7 @@ export const FundDetailsModal: React.FC<FundDetailsModalProps> = ({ data, onClos
     const paddingLeft = 60;
     const paddingRight = 30;
     // remove top/bottom padding to eliminate extra whitespace
-    const paddingTop = 0;
+    const paddingTop = 0; // align with HistoryChart PADDING_TOP to avoid label clipping
     const paddingBottom = 0;
 
     const values = chartData.map(p => p.value);
