@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { Ticker, ValuationData, MarketType, MarketIndex, BackupData, CardStatus, ManageItemType, ManageSelectionKey } from './types';
-import { fetchFundData, fetchMarketIndices, forceFetchFundHistory } from './services/fundService';
+import { fetchFundData, fetchMarketIndices, forceFetchFundHistory, maybeTriggerHistoryRefresh } from './services/fundService';
+import { toLocalDateKey } from './utils/priceResolver';
 import * as cacheService from './services/cacheService';
 import { TickerCard } from './components/TickerCard';
 import { AddTickerModal } from './components/AddTickerModal';
@@ -146,6 +147,7 @@ const App: React.FC = () => {
   const [showBackupSettings, setShowBackupSettings] = useState<boolean>(false);
   const [autoExportTime, setAutoExportTime] = useState<string>(() => readBackupConfig().autoExportTime);
   const [autoBackupStatus, setAutoBackupStatus] = useState<'pending' | 'done' | null>(null);
+  const [deepToast, setDeepToast] = useState<{ message: string, visible: boolean } | undefined>(undefined);
 
   const manageableItemCount = portfolio.length + indicesConfig.length + globalIndicesConfig.length;
 
@@ -211,6 +213,15 @@ const App: React.FC = () => {
           item.symbol === symbol && !item.name ? { ...item, name: data.name } : item
         ));
         setFundStatuses(prev => ({ ...prev, [symbol]: 'ok' }));
+
+        // 自动历史补全：当估值返回的 netWorthDate 比本地缓存的历史最后日期更新时，触发对该 symbol 的强制历史刷新
+        try {
+          // increment backgroundTasks optimistically and call helper; helper does fire-and-forget fetch
+          setBackgroundTasks(prev => prev + 1);
+          maybeTriggerHistoryRefresh(symbol, data.netWorthDate).finally(() => {
+            setBackgroundTasks(prev => Math.max(0, prev - 1));
+          });
+        } catch (e) { setBackgroundTasks(prev => Math.max(0, prev - 1)); }
       } else {
         setFundStatuses(prev => ({ ...prev, [symbol]: 'error' }));
       }
@@ -342,6 +353,24 @@ const App: React.FC = () => {
       ]);
     } finally { setIsRefreshing(false); }
   }, [portfolio, isRefreshing, runBatchUpdate, refreshMarketIndicesAsync, runBatchHistoryUpdate]);
+
+  const deepRefreshAll = useCallback(() => {
+    if (portfolio.length === 0) return;
+    // 在后台强制刷新所有基金的历史净值（不改变 isRefreshing，不阻塞界面）
+    setBackgroundTasks(prev => prev + portfolio.length);
+    // immediate feedback
+    setDeepToast({ message: '深度刷新已启动（后台进行）', visible: true });
+    // fire-and-forget
+    runBatchHistoryUpdate(portfolio).then(() => {
+      setBackgroundTasks(prev => Math.max(0, prev - portfolio.length));
+      setDeepToast({ message: '深度刷新完成', visible: true });
+      setTimeout(() => setDeepToast(undefined), 3000);
+    }).catch(() => {
+      setBackgroundTasks(prev => Math.max(0, prev - portfolio.length));
+      setDeepToast({ message: '深度刷新失败', visible: true });
+      setTimeout(() => setDeepToast(undefined), 3000);
+    });
+  }, [portfolio, runBatchHistoryUpdate]);
 
   useEffect(() => {
     if (portfolio.length > 0) {
@@ -546,11 +575,23 @@ const App: React.FC = () => {
               </p>
             </div>
           </div>
-          <div className="flex items-center space-x-1 relative">
+          <div className="flex items-center space-x-2 relative">
             {!isSelectionMode && (
               <button disabled={isRefreshing} onClick={refreshAll} className={`p-2 w-10 h-10 rounded-full hover:bg-gray-100 transition-all flex items-center justify-center ${isRefreshing ? 'text-red-500' : 'text-gray-400'}`}>
                 <i className={`fas fa-sync-alt ${isRefreshing ? 'animate-spin' : ''}`}></i>
               </button>
+            )}
+            {/* 深度刷新按钮：靠近刷新按钮的图标（纯图标以节省空间），data-testid 保留方便测试 */}
+            <button data-testid="deep-refresh-button" onClick={deepRefreshAll} title="深度刷新历史（后台）" aria-label="深度刷新历史" className="p-2 w-10 h-10 rounded-full hover:bg-gray-100 text-gray-700 transition-all">
+              <i className="fas fa-database"></i>
+            </button>
+            {/* 小型 toast 通知：在深度刷新开始/完成时短暂显示 */}
+            {/** toast 位于 header 右上，短暂显示 */}
+            {/** deepToast: { message: string, visible: boolean } */}
+            {typeof deepToast !== 'undefined' && deepToast.visible && (
+              <div className="absolute right-12 top-2 z-40">
+                <div className="bg-black text-white text-xs px-3 py-1 rounded-md shadow-md">{deepToast.message}</div>
+              </div>
             )}
             <button onClick={() => setIsMenuOpen(!isMenuOpen)} className="p-2 w-10 h-10 rounded-full hover:bg-gray-100 text-gray-400"><i className="fas fa-ellipsis-v"></i></button>
             {isMenuOpen && (

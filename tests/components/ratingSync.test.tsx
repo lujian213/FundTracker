@@ -6,6 +6,7 @@ import { Ticker, ValuationData } from '../../types';
 
 jest.mock('../../services/fundService', () => ({ fetchFundHistory: jest.fn() }));
 import { fetchFundHistory } from '../../services/fundService';
+import { toLocalDateKey } from '../../utils/priceResolver';
 
 const sampleTicker: Ticker = { id: '1', symbol: '000001', name: 'Sample Fund', market: 'Fund' } as any;
 
@@ -18,7 +19,7 @@ const data: ValuationData = {
   previousPrice: 1.4,
   changePercentage: 1.0,
   lastUpdated: '2026-02-12 15:00',
-  realtimeDate: new Date(HISTORY[HISTORY.length - 1].date).toISOString().split('T')[0],
+  realtimeDate: toLocalDateKey(new Date(HISTORY[HISTORY.length - 1].date)),
   netWorthDate: '2026-02-11',
   valuationDate: '2026-02-12',
   sourceUrl: ''

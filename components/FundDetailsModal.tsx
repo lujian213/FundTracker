@@ -710,7 +710,7 @@ export const FundDetailsModal: React.FC<FundDetailsModalProps> = ({ data, onClos
                           const idx = chartData.findIndex((p: any) => p.date === hp.date);
                           const v = (idx >= 0) ? chartData[idx].value : (chartData[chartData.length - 1].value);
                           const d = (idx >= 0) ? new Date(chartData[idx].date) : new Date(chartData[chartData.length - 1].date);
-                          dateLabel = d.toISOString().split('T')[0];
+                          dateLabel = toLocalDateKey(d);
                           valueLabel = v.toFixed(4);
                           // compute previous net value for comparison
                           const prev = (idx > 0) ? chartData[idx - 1].value : null;
@@ -722,7 +722,7 @@ export const FundDetailsModal: React.FC<FundDetailsModalProps> = ({ data, onClos
                           }
                         } else if (chartData && chartData.length > 0) {
                           const last = chartData[chartData.length - 1];
-                          dateLabel = new Date(last.date).toISOString().split('T')[0];
+                          dateLabel = toLocalDateKey(new Date(last.date));
                           valueLabel = last.value.toFixed(4);
                           changeText = '—';
                         }

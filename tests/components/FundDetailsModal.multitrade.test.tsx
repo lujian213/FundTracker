@@ -1,8 +1,9 @@
 import React from 'react';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { act } from 'react-dom/test-utils';
+import { act } from 'react';
 import '@testing-library/jest-dom';
+import { toLocalDateKey } from '../../utils/priceResolver';
 
 // no top-level module reset here — tests will reset modules in before/after hooks
 
@@ -16,14 +17,14 @@ const sampleHistory = [
 // Prepare trades: two trades on same date for symbol 000001
 const tradesPayload = {
   '000001': [
-    { id: 't1', date: new Date().toISOString().split('T')[0], type: 'buy', shares: 10, price: 1.2, fee: 0 },
-    { id: 't2', date: new Date().toISOString().split('T')[0], type: 'sell', shares: 5, price: 1.25, fee: 0 },
+    { id: 't1', date: toLocalDateKey(new Date()), type: 'buy', shares: 10, price: 1.2, fee: 0 },
+    { id: 't2', date: toLocalDateKey(new Date()), type: 'sell', shares: 5, price: 1.25, fee: 0 },
   ]
 };
 
 // Prepare valuation data for modal
 const valuation = {
-  symbol: '000001', name: '测试基金', currentPrice: 1.23, previousPrice: 1.2, changePercentage: 0, lastUpdated: new Date().toISOString(), realtimeDate: new Date().toISOString().split('T')[0], netWorthDate: new Date().toISOString().split('T')[0], valuationDate: new Date().toISOString(), sourceUrl: 'https://example.com'
+  symbol: '000001', name: '测试基金', currentPrice: 1.23, previousPrice: 1.2, changePercentage: 0, lastUpdated: new Date().toISOString(), realtimeDate: toLocalDateKey(new Date()), netWorthDate: toLocalDateKey(new Date()), valuationDate: new Date().toISOString(), sourceUrl: 'https://example.com'
 };
 
 describe('FundDetailsModal multi-trade aggregation', () => {

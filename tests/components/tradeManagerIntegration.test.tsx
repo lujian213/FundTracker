@@ -4,6 +4,7 @@ import { FundDetailsModal } from '../../components/FundDetailsModal';
 import { TradeManager } from '../../components/TradeManager';
 import { ValuationData } from '../../types';
 import { fetchFundHistory } from '../../services/fundService';
+import { toLocalDateKey } from '../../utils/priceResolver';
 
 jest.mock('../../services/fundService', () => ({ fetchFundHistory: jest.fn() }));
 
@@ -23,9 +24,9 @@ const data: ValuationData = {
   previousPrice: 1.1000,
   changePercentage: 1.2,
   lastUpdated: '2026-02-15 15:00:00',
-  realtimeDate: new Date().toISOString().split('T')[0],
-  netWorthDate: new Date().toISOString().split('T')[0],
-  valuationDate: new Date().toISOString().split('T')[0],
+  realtimeDate: toLocalDateKey(new Date()),
+  netWorthDate: toLocalDateKey(new Date()),
+  valuationDate: toLocalDateKey(new Date()),
   sourceUrl: ''
 } as any;
 

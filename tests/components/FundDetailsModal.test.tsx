@@ -2,6 +2,7 @@ import React from 'react';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { FundDetailsModal } from '../../components/FundDetailsModal';
 import { ValuationData } from '../../types';
+import { toLocalDateKey } from '../../utils/priceResolver';
 
 // Mock fetchFundHistory
 jest.mock('../../services/fundService', () => ({
@@ -99,7 +100,7 @@ describe('FundDetailsModal SMA behavior', () => {
     (fetchFundHistory as jest.Mock).mockResolvedValue(CROSS_HISTORY);
 
     // set data realtimeDate to last history date so chartData will not append realtime point
-    const lastDateISO = new Date(CROSS_HISTORY[CROSS_HISTORY.length - 1].date).toISOString().split('T')[0];
+    const lastDateISO = toLocalDateKey(new Date(CROSS_HISTORY[CROSS_HISTORY.length - 1].date));
     const dataWithSameDate = { ...data, realtimeDate: lastDateISO, currentPrice: CROSS_HISTORY[CROSS_HISTORY.length - 1].value };
 
     render(<FundDetailsModal data={dataWithSameDate} onClose={() => {}} />);

@@ -1,6 +1,6 @@
 import { ValuationData, MarketIndex, HistoricalPoint, OverallProfitSummary, OverallFundRow } from "../types";
 import { computeProfitTimeline, ProfitPoint } from '../utils/profitCalculator';
-import { resolvePreferredPrice, toLocalDateKey } from '../utils/priceResolver';
+import { toLocalDateKey, resolvePreferredPrice } from '../utils/priceResolver';
 import { getTradesForSymbol } from '../hooks/useTrades';
 import * as cacheService from './cacheService';
 
@@ -17,6 +17,7 @@ import * as cacheService from './cacheService';
 export const _deps = {
   fetchFundHistory: (symbol: string) => fetchFundHistory(symbol),
   fetchFundData:    (symbol: string) => fetchFundData(symbol),
+  forceFetchFundHistory: (symbol: string) => forceFetchFundHistory(symbol),
 };
 
 // Module-level in-memory history cache (kept for backward-compat; cacheService is now the
@@ -373,21 +374,18 @@ async function fetchFundDataFromEastMoney(code: string): Promise<ValuationData |
     // ensure d is parsed from last.x
     const d = last.x ? parseDate(last.x) : null;
 
-    // Deterministically compute Shanghai local date/time by shifting UTC ms by +8h and using UTC getters.
     let lastUpdated = '---';
-    let netWorthDate = new Date().toISOString().split('T')[0];
+    let netWorthDate = toLocalDateKey(new Date());
     if (d) {
-      // shift to Shanghai by adding 8 hours (in ms)
-      const shMs = d.getTime() + 8 * 3600 * 1000;
-      const sh = new Date(shMs);
-      const year = sh.getUTCFullYear();
-      const month = String(sh.getUTCMonth() + 1).padStart(2, '0');
-      const day = String(sh.getUTCDate()).padStart(2, '0');
-      let hour = sh.getUTCHours();
-      const minute = String(sh.getUTCMinutes()).padStart(2, '0');
-      const second = String(sh.getUTCSeconds()).padStart(2, '0');
+      // Use local date/time from parsed date so service emits local-time strings
+      const year = d.getFullYear();
+      const month = String(d.getMonth() + 1).padStart(2, '0');
+      const day = String(d.getDate()).padStart(2, '0');
+      let hour = d.getHours();
+      const minute = String(d.getMinutes()).padStart(2, '0');
+      const second = String(d.getSeconds()).padStart(2, '0');
 
-      // If the timestamp represents midnight in Shanghai, treat it as 15:00 (Shanghai)
+      // Preserve existing behavior that treats exact-midnight as end-of-day valuation by pushing to 15:00
       if (hour === 0 && minute === '00' && second === '00') {
         hour = 15;
       }
@@ -759,7 +757,7 @@ export async function computeOverallProfit(opts: { symbols?: string[]; fromDate?
 
       // Ensure history contains a point at the desired end date so overall aggregation can extend to that date.
       // Desired end date: user-specified toDate, otherwise today's date (local YYYY-MM-DD).
-      const desiredEndDate = toDate || todayLocal;
+      const desiredEndDate = toDate ?? todayLocal;
       const hasPointOnDate = (hist: HistoricalPoint[], isoDate: string) => {
         return hist.some(h => toLocalDateKey(h.date) === isoDate);
       };
@@ -957,4 +955,35 @@ export async function computeOverallProfit(opts: { symbols?: string[]; fromDate?
   const totalDiff = timelineOut.length > 0 ? Number((timelineOut[timelineOut.length - 1].cumulativeProfit - (timelineOut[0].cumulativeProfit || 0)).toFixed(4)) : 0;
 
   return { timeline: timelineOut, perFund: perFundRows, perFundTimelines, totalDiff };
+}
+
+/**
+ * 获取历史净值变动提醒
+ * 检查最新净值日期与历史数据的关系，决定是否触发历史数据刷新
+ * @param symbol 基金代码
+ * @param netWorthDate 最新净值日期（字符串格式）
+ */
+export async function maybeTriggerHistoryRefresh(symbol: string, netWorthDate?: string): Promise<void> {
+  try {
+    const netDate = (netWorthDate || '').trim();
+    if (!netDate || netDate === '---') return;
+    const code = symbol.padStart ? symbol.padStart(6, '0') : symbol;
+    const cachedHist = cacheService.getHistory(code);
+    let shouldTrigger = false;
+    if (!cachedHist || cachedHist.length === 0) shouldTrigger = true;
+    else {
+      const lastCached = cachedHist[cachedHist.length - 1];
+      if (!lastCached) shouldTrigger = true;
+      else {
+        const lastDateKey = toLocalDateKey(lastCached.date);
+        if (netDate > lastDateKey) shouldTrigger = true;
+      }
+    }
+    if (shouldTrigger) {
+      // Fire-and-forget via dependency seam so tests can mock the network call
+      try { _deps.forceFetchFundHistory(symbol).catch(() => {}); } catch (e) { /* swallow */ }
+    }
+  } catch (e) {
+    // swallow errors to avoid breaking callers
+  }
 }

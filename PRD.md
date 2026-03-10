@@ -1,12 +1,38 @@
 # FundTracker — 产品需求文档 (PRD)
 
-版本：1.15
-最后更新：2026-03-09
+版本：1.16
+最后更新：2026-03-10
 
 ---
 
 简述
 - FundTracker 是一款前端单页（SPA）应用，面向普通投资者，用于添加/管理自选基金/指数，展示实时估值、涨跌、历史净值趋势及交易记录管理（本地持久化），目标是快速构建可交付的前端版本（vibe coding 可直接实现）。
+
+---
+
+## 深度刷新（Deep Refresh） — 新增功能说明（v1.16）
+
+概述
+- 在主界面右上角刷新按钮的右侧新增“深度刷新”按钮（图标按钮，数据测试 id: `deep-refresh-button`）。点击后会在后台强制刷新所有 portfolio 中基金的历史净值（调用 `forceFetchFundHistory(symbol)`），该过程为非阻塞（不改变页面级的 `isRefreshing`），并在顶部显示短暂 toast 以提示用户“已启动 / 完成 / 失败”。
+
+设计与行为细节
+- 位置与可见性：按钮位于原有刷新按钮右侧，桌面端始终显示为图标按钮以节省空间；可通过 data-testid 查询（便于自动化测试）。
+- 后台执行：点击后使用并发池（与 `runBatchHistoryUpdate` 保持一致的并发策略）在后台顺序/并发发起 `forceFetchFundHistory` 调用，不阻塞 UI 线程；界面通过 `backgroundTasks` 计数显示同步链路活跃状态。
+- 用户反馈：按钮触发后立刻显示短暂 toast（`深度刷新已启动（后台进行）`），完成/失败时更新为对应提示并短暂展示（约 3 秒）。
+- 错误处理：对单个 symbol 的刷新失败不会中断其它 symbol 的刷新；所有错误被局部捕获并在后台记录，必要时可在后续版本中在日志/调试界面展示详细失败原因。
+
+自动历史补全触发（估值驱动）
+- 为减少历史数据滞后带来的误差，新增一条“估值驱动的自动历史补全”规则：当 `fetchFundData(symbol)` 返回的 `netWorthDate`（字符串，格式 YYYY-MM-DD）比本地缓存 `cacheService.getHistory(symbol)` 中最后一条历史的本地日期更晚时，自动在后台触发对该 symbol 的强制历史刷新（调用 `forceFetchFundHistory(symbol)`）。
+- 判定逻辑：
+  - 若估值返回 `netWorthDate` 为空或 `'---'`，不触发补全。
+  - 若本地历史缺失或最后历史日期早于 `netWorthDate`，触发补全。
+  - 补全为 fire-and-forget 异步操作，不会阻塞 `fetchFundData` 的返回或界面渲染；同时通过 `backgroundTasks` 计数反映后台活跃任务数量。
+- 目的与注意事项：该机制用于确保当第三方估值源在新净值日期发布后，客户端能尽快补全缺失的历史点，避免估值与历史数据不一致导致的图表或盈利计算偏差。为避免过度请求，历史补全仅在估值日期领先时触发一次（后续常规的定时历史刷新仍然会按既定计划执行）。
+
+测试要求
+- 新增或更新单元/集成测试以覆盖：
+  - 点击 `deep-refresh-button` 后触发 `runBatchHistoryUpdate` 的行为（mock `forceFetchFundHistory` 并断言按并发策略被调用）。
+  - 当 `fetchFundData` 返回 `netWorthDate` 晚于本地历史最后日期时，`maybeTriggerHistoryRefresh` / 自动触发逻辑会调用 `_deps.forceFetchFundHistory`（通过 seam 注入 mock 并断言调用）。
 
 ---
 
