@@ -77,10 +77,38 @@ class RequestQueue {
 const globalQueue = new RequestQueue();
 
 function normalizeHistoryTimestamp(input: unknown): number | null {
-  const n = Number(input);
-  if (!Number.isFinite(n) || n <= 0) return null;
-  // EastMoney historical x may occasionally be seconds; normalize to milliseconds.
-  return n < 1e11 ? Math.trunc(n * 1000) : Math.trunc(n);
+  // Accept numbers (ms or s), numeric strings, and common date string formats (YYYY-MM-DD or YYYYMMDD)
+  try {
+    if (input == null) return null;
+    // number-like (including numeric string)
+    const asNum = Number(input);
+    if (Number.isFinite(asNum) && asNum > 0) {
+      return asNum < 1e11 ? Math.trunc(asNum * 1000) : Math.trunc(asNum);
+    }
+    // string date like '2026-02-20' or '20260220'
+    if (typeof input === 'string') {
+      const s = input.trim();
+      // YYYY-MM-DD
+      if (/^\d{4}-\d{2}-\d{2}$/.test(s)) {
+        const ts = Date.parse(s);
+        if (!Number.isNaN(ts)) return ts;
+      }
+      // YYYYMMDD
+      if (/^\d{8}$/.test(s)) {
+        const y = Number(s.slice(0, 4));
+        const m = Number(s.slice(4, 6)) - 1;
+        const d = Number(s.slice(6, 8));
+        const dt = new Date(y, m, d);
+        if (!Number.isNaN(dt.getTime())) return dt.getTime();
+      }
+      // Fallback: try Date.parse (handles many formats)
+      const parsed = Date.parse(s);
+      if (!Number.isNaN(parsed) && parsed > 0) return parsed;
+    }
+  } catch (e) {
+    // fallthrough
+  }
+  return null;
 }
 
 function normalizeHistoryPoints(points: Array<Partial<HistoricalPoint>> | undefined | null): HistoricalPoint[] {
@@ -495,28 +523,32 @@ export async function forceFetchFundHistory(symbol: string): Promise<HistoricalP
 
 // Index history: fetch Kline data for indices via push2his and convert to HistoricalPoint[]
 export async function fetchIndexHistory(symbol: string): Promise<HistoricalPoint[]> {
-  let secid = symbol;
-  if (secid === 'NDX') secid = '100.NDX';
-  if (secid === 'SPX') secid = '100.SPX';
-  if (secid === 'HSI') secid = '100.HSI';
-  // fields2: date(f51), close price(f53), change percent(f59)
-  const url = `https://push2his.eastmoney.com/api/qt/stock/kline/get?secid=${secid}&fields1=f1,f2,f3,f4,f5,f6&fields2=f51,f53,f59&klt=101&fqt=1&end=20500101&lmt=90`;
-  try {
-    const response: any = await jsonp(url, 'cb');
-    if (response?.data?.klines) {
-      return response.data.klines.map((line: string) => {
+   let secid = symbol;
+   if (secid === 'NDX') secid = '100.NDX';
+   if (secid === 'SPX') secid = '100.SPX';
+   if (secid === 'HSI') secid = '100.HSI';
+   // fields2: date(f51), close price(f53), change percent(f59)
+   // request last 365 points instead of 90 (expanded window)
+   const url = `https://push2his.eastmoney.com/api/qt/stock/kline/get?secid=${secid}&fields1=f1,f2,f3,f4,f5,f6&fields2=f51,f53,f59&klt=101&fqt=1&end=20500101&lmt=365`;
+   try {
+     const response: any = await jsonp(url, 'cb');
+     if (response?.data?.klines) {
+      // Map raw klines into partial points and normalize (ensure timestamps in ms, sort, dedupe)
+      const raw: Array<Partial<HistoricalPoint>> = response.data.klines.map((line: string) => {
         const parts = line.split(',');
-        // parts[0]: date string like '2026-02-20' or '20260220', parts[1]: close price, parts[2]: change percentage
-        return {
-          date: new Date(parts[0]).getTime(),
+        // parts[0] may be a date string like '2026-02-20' or a numeric timestamp (s|ms)
+        // normalizeHistoryPoints will parse it; cast via unknown to satisfy TS here.
+        return ({
+          date: parts[0],
           value: parseFloat(parts[1]) || 0,
           equityReturn: parseFloat(parts[2]) || 0
-        };
+        } as unknown) as Partial<HistoricalPoint>;
       });
-    }
-  } catch (e) {}
-  return [];
-}
+      return normalizeHistoryPoints(raw as Array<Partial<HistoricalPoint>>);
+     }
+   } catch (e) {}
+   return [];
+ }
 
 // 新增：根据历史净值计算每日净值变化（每份的日盈亏）并返回可供前端展示的数据
 export interface DailyProfitPoint {
@@ -986,3 +1018,4 @@ export async function maybeTriggerHistoryRefresh(symbol: string, netWorthDate?: 
     // swallow errors to avoid breaking callers
   }
 }
+

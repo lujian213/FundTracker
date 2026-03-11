@@ -38,6 +38,7 @@ export const TickerCard: React.FC<TickerCardProps> = ({
     const load = async () => {
       try {
         const h = await fetchFn(ticker.symbol);
+        // Card-level short history window remains 90 points (UI display choice)
         if (mounted && Array.isArray(h)) setHistory(h.slice(-90));
       } catch (e) {
         // ignore

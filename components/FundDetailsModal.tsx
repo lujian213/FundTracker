@@ -129,7 +129,8 @@ export const FundDetailsModal: React.FC<FundDetailsModalProps> = ({ data, onClos
       const cached = cacheService.getHistory(code);
       if (cached && cached.length > 0) {
         if (mounted) {
-          setHistory(cached.slice(-90));
+          // keep up to 365 entries from cache (longer window)
+          setHistory(cached.slice(-365));
           setLoading(false);
         }
         return;
@@ -138,7 +139,8 @@ export const FundDetailsModal: React.FC<FundDetailsModalProps> = ({ data, onClos
       setLoading(true);
       try {
         const points = await fetchFn(data.symbol);
-        if (mounted) setHistory(points.slice(-90));
+        // keep the network-returned points in full (no truncation)
+        if (mounted) setHistory(points);
       } catch (e) {
         // ignore
       } finally {
@@ -177,7 +179,7 @@ export const FundDetailsModal: React.FC<FundDetailsModalProps> = ({ data, onClos
 
     // Merge realtime point carefully: only append/replace when realtimeDate is explicit and valid, preventing synthetic today points from distorting MA values.
     const chartData = useMemo(() => {
-    if (history.length === 0) return [];
+    if (!history || history.length === 0) return [];
 
     const lastHist = history[history.length - 1];
     const hasRealtimeDate = !!(data.realtimeDate && data.realtimeDate !== '---');
@@ -201,7 +203,10 @@ export const FundDetailsModal: React.FC<FundDetailsModalProps> = ({ data, onClos
     }, [history, data.currentPrice, data.changePercentage, data.realtimeDate]);
 
   const { path, area, points, viewBox, yLabels, xLabels, maPaths, maValues } = useMemo(() => {
-    if (chartData.length < 2) return { path: '', area: '', points: [], viewBox: '0 0 100 100', yLabels: [], xLabels: [], maPaths: {} as Record<number, string>, maValues: {} as Record<number, (number | null)[]> };
+    // Use a display window of the most recent 90 points for the chart drawing and MA lines
+    const displayWindow = 90;
+    const displayData = chartData.length > displayWindow ? chartData.slice(-displayWindow) : chartData;
+    if (displayData.length < 2) return { path: '', area: '', points: [], viewBox: '0 0 100 100', yLabels: [], xLabels: [], maPaths: {} as Record<number, string>, maValues: {} as Record<number, (number | null)[]> };
 
     const width = 1000;
     const height = chartHeight; // use shared chart height
@@ -211,7 +216,7 @@ export const FundDetailsModal: React.FC<FundDetailsModalProps> = ({ data, onClos
     const paddingTop = 0; // align with HistoryChart PADDING_TOP to avoid label clipping
     const paddingBottom = 0;
 
-    const values = chartData.map(p => p.value);
+    const values = displayData.map(p => p.value);
     const rawMin = Math.min(...values);
     const rawMax = Math.max(...values);
     // use a modest margin to avoid overly flat charts
@@ -220,10 +225,10 @@ export const FundDetailsModal: React.FC<FundDetailsModalProps> = ({ data, onClos
     const max = rawMax + margin;
     const range = max - min;
 
-    const getX = (idx: number) => paddingLeft + (idx * (width - paddingLeft - paddingRight) / (chartData.length - 1));
+    const getX = (idx: number) => paddingLeft + (idx * (width - paddingLeft - paddingRight) / (displayData.length - 1));
     const getY = (val: number) => height - paddingBottom - ((val - min) / range * (height - paddingTop - paddingBottom));
 
-    const svgPoints = chartData.map((p, i) => ({
+    const svgPoints = displayData.map((p, i) => ({
       x: getX(i),
       y: getY(p.value),
       data: p
@@ -242,13 +247,13 @@ export const FundDetailsModal: React.FC<FundDetailsModalProps> = ({ data, onClos
       return { text: val.toFixed(4), y: getY(val) };
     });
 
-    const xLabelIndices = [0, Math.floor(chartData.length / 2), chartData.length - 1];
+    const xLabelIndices = [0, Math.floor(displayData.length / 2), displayData.length - 1];
     const xLabels = xLabelIndices.map(idx => {
-      const d = new Date(chartData[idx].date);
+      const d = new Date(displayData[idx].date);
       return { x: getX(idx), text: `${d.getMonth() + 1}/${d.getDate()}` };
     });
 
-    // Calculate multiple SMAs (5,10,20)
+    // Calculate multiple SMAs (5,10,20) on the display window values
     const maValues = computeMultipleSMAs(values, MA_WINDOWS);
     const maPaths: Record<number, string> = {};
 

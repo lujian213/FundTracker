@@ -43,7 +43,9 @@ export const IndexDetailsModal: React.FC<IndexDetailsModalProps> = ({ data, onCl
   }, [data.symbol, data.lastUpdated]);
 
   const { path, area, points, viewBox, yLabels, xLabels, maPaths, maValues } = useMemo(() => {
-    const hist = history || [];
+    // For chart display we intentionally show the most recent 90 points on the x-axis
+    // while the underlying cache/network still keeps up to 365 days.
+    const hist = (history || []).slice(-90);
     if (hist.length < 2) return { path: '', area: '', points: [], viewBox: '0 0 100 100', yLabels: [], xLabels: [] };
 
     const width = 1000;
