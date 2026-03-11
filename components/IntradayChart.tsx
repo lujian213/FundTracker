@@ -83,7 +83,8 @@ const IntradayChart: React.FC<IntradayChartProps> = ({ points, width = 1000, hei
   const areaD = svgPts.length > 0 ? pathD + ` L ${svgPts[svgPts.length - 1].x} ${paddingTop + innerH} L ${svgPts[0].x} ${paddingTop + innerH} Z` : '';
 
   const yLabelsCount = 4;
-  // Build y labels evenly spaced between data.min and data.max
+  // Build y labels evenly spaced between data.min and data.max, but ensure one tick is exactly 0 when 0 is within the data range
+  // Also prefer step and tick values rounded to 1 decimal place (0.1) where possible to avoid ugly fractions like 0.73
   const yLabels = (() => {
     const labels: { value: number; text: string; y: number }[] = [];
     const span = data.max - data.min;
@@ -91,17 +92,77 @@ const IntradayChart: React.FC<IntradayChartProps> = ({ points, width = 1000, hei
       // fallback: repeat same value
       for (let i = 0; i < yLabelsCount; i++) {
         const val = data.min;
-        labels.push({ value: val, text: `${val.toFixed(2)}%`, y: getY(val) });
+        labels.push({ value: val, text: `${val.toFixed(1)}%`, y: getY(val) });
       }
       return labels;
     }
-    for (let i = 0; i < yLabelsCount; i++) {
-      const val = data.min + (i * span / (yLabelsCount - 1));
-      labels.push({ value: val, text: '', y: getY(val) });
+
+    const n = yLabelsCount;
+    const originalStep = span / (n - 1);
+
+    // Helper to round up to nearest 0.1
+    const ceilToTenth = (v: number) => Math.ceil((v - 1e-12) * 10) / 10;
+
+    if (data.min <= 0 && data.max >= 0) {
+      // Data spans negative and positive: ensure one tick is exactly 0 and that there are ticks on both sides
+      // Restrict k so that there is at least one tick below 0 and one above 0: k in [1, n-2]
+      const minK = 1;
+      const maxK = Math.max(1, n - 2);
+      let bestK = minK;
+      let bestStep = Number.POSITIVE_INFINITY;
+      for (let k = minK; k <= maxK; k++) {
+        // need1: ensure base <= data.min -> 0 - k*step <= data.min => step >= (0 - data.min)/k
+        const need1 = (0 - data.min) / k;
+        // need2: ensure last >= data.max -> 0 + (n-1-k)*step >= data.max => step >= data.max/(n-1-k)
+        const denomRight = (n - 1 - k);
+        const need2 = denomRight > 0 ? (data.max / denomRight) : Number.POSITIVE_INFINITY;
+        const stepK = Math.max(need1, need2);
+        if (Number.isFinite(stepK) && stepK < bestStep) {
+          bestStep = stepK;
+          bestK = k;
+        }
+      }
+      // Round chosen step up to nearest 0.1 and ensure it's at least originalStep (also rounded)
+      let step = Math.max(ceilToTenth(bestStep), ceilToTenth(originalStep));
+      let base = 0 - bestK * step;
+      // If rounding caused range to shrink and not cover data, increase step incrementally by 0.1 until it covers
+      let guard = 0;
+      while ((base > data.min || (base + (n - 1) * step) < data.max) && guard < 20) {
+        step = Math.round((step + 0.1) * 10) / 10;
+        base = 0 - bestK * step;
+        guard++;
+      }
+      for (let i = 0; i < n; i++) {
+        const val = base + i * step;
+        labels.push({ value: val, text: '', y: getY(val) });
+      }
+    } else {
+      // 0 not inside range: evenly spaced between min and max (original behavior), but prefer nice tenth steps
+      // compute ideal step and round to nearest 0.1
+      const rawStep = span / (n - 1);
+      const step = ceilToTenth(rawStep);
+      const base = data.min;
+      for (let i = 0; i < n; i++) {
+        const val = base + i * step;
+        labels.push({ value: val, text: '', y: getY(val) });
+      }
+      // If rounding caused top to be below data.max, adjust by increasing step minimally
+      if (labels[n - 1].value < data.max) {
+        let s = step;
+        let guard = 0;
+        while (base + (n - 1) * s < data.max && guard < 20) {
+          s = Math.round((s + 0.1) * 10) / 10;
+          guard++;
+        }
+        labels.length = 0;
+        for (let i = 0; i < n; i++) labels.push({ value: base + i * s, text: '', y: getY(base + i * s) });
+      }
     }
+
     for (const l of labels) {
-      if (Object.is(l.value, 0)) l.text = `0.00%`;
-      else l.text = `${l.value > 0 ? '+' : ''}${l.value.toFixed(2)}%`;
+      // format labels to 1 decimal place to avoid showing ugly fractions
+      if (Object.is(l.value, 0)) l.text = `0.0%`;
+      else l.text = `${l.value > 0 ? '+' : ''}${l.value.toFixed(1)}%`;
     }
     return labels;
   })();
@@ -139,8 +200,8 @@ const IntradayChart: React.FC<IntradayChartProps> = ({ points, width = 1000, hei
           const isZeroLabel = Object.is(label.value, 0);
           // line color: default light grid; if label is exactly 0, use darker grey dashed per request
           const lineColor = isZeroLabel ? '#9ca3af' : '#e2e8f0';
-          // text color: zero -> gray, positive -> stroke(red), negative -> green
-          const textColor = isZeroLabel ? '#6b7280' : (label.value > 0 ? (stroke || '#ef4444') : '#16a34a');
+          // text color: zero -> gray, positive -> red (fixed), negative -> green (fixed)
+          const textColor = isZeroLabel ? '#6b7280' : (label.value > 0 ? '#ef4444' : '#16a34a');
           const dash = '4 4';
           return (
             <g key={`yl-${i}`}>
