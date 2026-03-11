@@ -31,9 +31,18 @@ const IntradayChart: React.FC<IntradayChartProps> = ({ points, width = 1000, hei
       }
       compressed.push(p);
     }
-    const values = pts.map(p => p.value);
-    const min = Math.min(...values);
-    const max = Math.max(...values);
+    // For intraday trend chart we plot equityReturn (%) on the y-axis
+    const pctValues = pts.map(p => Number.isFinite(p.equityReturn) ? p.equityReturn : 0);
+    let min = Math.min(...pctValues);
+    let max = Math.max(...pctValues);
+    // Ensure the axis always includes 0 (required by spec)
+    if (min > 0) min = 0;
+    if (max < 0) max = 0;
+    // if min and max are equal (flat line), expand a little to avoid zero range
+    if (min === max) {
+      min = min - 1;
+      max = max + 1;
+    }
     return { pts: compressed, min, max };
   }, [points]);
 
@@ -65,15 +74,37 @@ const IntradayChart: React.FC<IntradayChartProps> = ({ points, width = 1000, hei
     return paddingTop + (1 - (v - data.min) / range) * innerH;
   };
 
-  const svgPts = data.pts.map((p, i) => ({ x: getX(i), y: getY(p.value), data: p }));
+  // svg points should use equityReturn (percent) as y coordinate
+  const svgPts = data.pts.map((p, i) => {
+    const yVal = Number.isFinite(p.equityReturn) ? p.equityReturn : 0;
+    return { x: getX(i), y: getY(yVal), data: p };
+  });
   const pathD = `M ${svgPts.map(p => `${p.x} ${p.y}`).join(' L ')}`;
   const areaD = svgPts.length > 0 ? pathD + ` L ${svgPts[svgPts.length - 1].x} ${paddingTop + innerH} L ${svgPts[0].x} ${paddingTop + innerH} Z` : '';
 
   const yLabelsCount = 4;
-  const yLabels = Array.from({ length: yLabelsCount }).map((_, i) => {
-    const val = data.min + (i * (data.max - data.min) / (yLabelsCount - 1));
-    return { text: val.toFixed(4), y: getY(val) };
-  });
+  // Build y labels evenly spaced between data.min and data.max
+  const yLabels = (() => {
+    const labels: { value: number; text: string; y: number }[] = [];
+    const span = data.max - data.min;
+    if (span <= 0) {
+      // fallback: repeat same value
+      for (let i = 0; i < yLabelsCount; i++) {
+        const val = data.min;
+        labels.push({ value: val, text: `${val.toFixed(2)}%`, y: getY(val) });
+      }
+      return labels;
+    }
+    for (let i = 0; i < yLabelsCount; i++) {
+      const val = data.min + (i * span / (yLabelsCount - 1));
+      labels.push({ value: val, text: '', y: getY(val) });
+    }
+    for (const l of labels) {
+      if (Object.is(l.value, 0)) l.text = `0.00%`;
+      else l.text = `${l.value > 0 ? '+' : ''}${l.value.toFixed(2)}%`;
+    }
+    return labels;
+  })();
 
   const xLabelIndices = [0, Math.floor(data.pts.length / 2), data.pts.length - 1];
   const xLabels = xLabelIndices.map(idx => {
@@ -103,13 +134,36 @@ const IntradayChart: React.FC<IntradayChartProps> = ({ points, width = 1000, hei
           </linearGradient>
         </defs>
         <rect x="0" y="0" width={width} height={height} fill="transparent" />
-        {/* y axis labels */}
-        {yLabels.map((label, i) => (
-          <g key={`yl-${i}`}>
-            <line x1={paddingLeft} y1={label.y} x2={width - paddingRight} y2={label.y} stroke="#e2e8f0" strokeWidth="1" strokeDasharray="4 4" />
-            <text x={paddingLeft - 10} y={label.y} textAnchor="end" alignmentBaseline="middle" className="text-[12px] fill-gray-400 font-mono">{label.text}</text>
-          </g>
-        ))}
+        {/* y axis labels (evenly spaced) */}
+        {yLabels.map((label, i) => {
+          const isZeroLabel = Object.is(label.value, 0);
+          // line color: default light grid; if label is exactly 0, use darker grey dashed per request
+          const lineColor = isZeroLabel ? '#9ca3af' : '#e2e8f0';
+          // text color: zero -> gray, positive -> stroke(red), negative -> green
+          const textColor = isZeroLabel ? '#6b7280' : (label.value > 0 ? (stroke || '#ef4444') : '#16a34a');
+          const dash = '4 4';
+          return (
+            <g key={`yl-${i}`}>
+              <line x1={paddingLeft} y1={label.y} x2={width - paddingRight} y2={label.y} stroke={lineColor} strokeWidth={1} strokeDasharray={dash} />
+              <text x={paddingLeft - 10} y={label.y} textAnchor="end" alignmentBaseline="middle" className="text-[12px] font-mono" fill={textColor}>{label.text}</text>
+            </g>
+          );
+        })}
+        {/* if 0 is inside the range, draw a special dashed grey 0-line and label (keeps labels evenly spaced) */}
+        {data.min <= 0 && data.max >= 0 && (() => {
+          const y0 = getY(0);
+          // don't duplicate if one of the evenly spaced labels is exactly 0 (it will already be visible)
+          const exactZeroExists = yLabels.some(l => Object.is(l.value, 0));
+          if (exactZeroExists) return null;
+          return (
+            <g key="zero-line">
+              <line x1={paddingLeft} y1={y0} x2={width - paddingRight} y2={y0} stroke="#9ca3af" strokeWidth={1} strokeDasharray="4 4" />
+              <text x={paddingLeft - 10} y={y0} textAnchor="end" alignmentBaseline="middle" className="text-[12px] font-mono" fill="#6b7280">0.00%</text>
+            </g>
+          );
+        })()}
+        {/* unit indicator for y-axis at top */}
+        <text x={paddingLeft - 10} y={paddingTop - 8} textAnchor="end" alignmentBaseline="middle" className="text-[11px] fill-gray-400 font-mono">%</text>
         <path d={areaD} fill={fill || 'url(#intraday-grad)'} />
         <path d={pathD} fill="none" stroke={stroke} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" />
         {svgPts.map((p, i) => (
@@ -138,7 +192,37 @@ const IntradayChart: React.FC<IntradayChartProps> = ({ points, width = 1000, hei
               return (
                 <>
                   <line x1={pt.x} y1={chartTop} x2={pt.x} y2={chartBottom} stroke={stroke} strokeWidth={1} strokeDasharray="4 2" />
-                  <text x={labelX} y={labelY} textAnchor="middle" className="text-[12px] font-medium fill-gray-600">{labelText}</text>
+                  {/* Tooltip: multi-line box with time (small) and value line (percent + raw NAV) */}
+                  {(() => {
+                    const pct = Number.isFinite(pt.data.equityReturn) ? pt.data.equityReturn : 0;
+                    const pctText = `${pct >= 0 ? '+' : ''}${pct.toFixed(2)}%`;
+                    const valueText = typeof pt.data.value === 'number' ? pt.data.value.toFixed(4) : '—';
+                    // color: positive -> red, negative -> green, zero -> gray
+                    const posColor = stroke || '#ef4444';
+                    const negColor = '#16a34a'; // green-600 approximate
+                    const zeroColor = '#6b7280'; // gray-500
+                    const valueColor = pct > 0 ? posColor : (pct < 0 ? negColor : zeroColor);
+                    // estimate tooltip width and clamp to avoid clipping
+                    const EST_CHAR_WIDTH = 7;
+                    const estWidth = Math.min(220, Math.max(80, Math.ceil((labelText.length + Math.max(pctText.length, valueText.length)) * EST_CHAR_WIDTH / 2) + 16));
+                    const tooltipW = estWidth;
+                    const tooltipH = 36;
+                    const tipX = Math.max(8 + tooltipW / 2, Math.min(width - 8 - tooltipW / 2, pt.x));
+                    const rectX = tipX - tooltipW / 2;
+                    // place tooltip above chartTop if space, else below
+                    const aboveY = chartTop - tooltipH - 6;
+                    const belowY = chartTop + 6;
+                    const rectY = aboveY >= 4 ? aboveY : belowY;
+                    const timeY = rectY + 12;
+                    const valY = rectY + 26;
+                    return (
+                      <g>
+                        <rect x={rectX} y={rectY} width={tooltipW} height={tooltipH} rx={6} ry={6} fill="#ffffff" stroke="#e5e7eb" strokeWidth={1} />
+                        <text x={tipX} y={timeY} textAnchor="middle" className="text-[11px] fill-gray-500" fill="#6b7280">{labelText}</text>
+                        <text x={tipX} y={valY} textAnchor="middle" fontWeight={600} className="text-[12px]" fill={valueColor}>{pctText} {valueText}</text>
+                      </g>
+                    );
+                  })()}
                 </>
               );
             })()}
