@@ -10,6 +10,7 @@ import RatingTooltip from './RatingTooltip';
 import TradeManager from './TradeManager';
 import useTrades, { TradeRecord } from '../hooks/useTrades';
 import ProfitModal from './ProfitModal';
+import VirtualTradeModal from './VirtualTradeModal';
 import { resolvePreferredPrice, toLocalDateKey } from '../utils/priceResolver';
 import { localDateKey, AggregatedMarker, aggregateTradesByDate } from '../utils/tradeAggregation';
 import IntradayChart from './IntradayChart';
@@ -44,6 +45,7 @@ export const FundDetailsModal: React.FC<FundDetailsModalProps> = ({ data, onClos
   const [tmpStartDate, setTmpStartDate] = useState<string>('');
   const [showTrade, setShowTrade] = useState(false);
   const [showProfit, setShowProfit] = useState(false);
+  const [showVirtual, setShowVirtual] = useState(false);
   // 计算器弹窗控制与输入
   const [showCalculator, setShowCalculator] = useState(false);
   const [calcAmount, setCalcAmount] = useState<string>('');
@@ -581,6 +583,10 @@ export const FundDetailsModal: React.FC<FundDetailsModalProps> = ({ data, onClos
              <button aria-label="基金份额计算器" title="基金份额计算器" onClick={() => setShowCalculator(true)} className="w-10 h-10 rounded-full bg-gray-50 flex items-center justify-center text-gray-500 hover:bg-gray-100 transition-colors">
                <i className="fas fa-calculator"></i>
              </button>
+             {/* 虚拟交易按钮 */}
+             <button aria-label="虚拟交易" title="虚拟交易" onClick={() => setShowVirtual(true)} className="w-10 h-10 rounded-full bg-gray-50 flex items-center justify-center text-gray-500 hover:bg-gray-100 transition-colors">
+               <i className="fas fa-flask"></i>
+             </button>
              <button aria-label="交易管理" aria-haspopup="dialog" title="交易管理" onClick={() => { if (fullCapacity && fullCapacity > 0) setShowTrade(true); }}
                className={`w-10 h-10 rounded-full flex items-center justify-center transition-colors ${fullCapacity && fullCapacity > 0 ? 'bg-gray-50 text-gray-500 hover:bg-gray-100' : 'bg-gray-100 text-gray-300 cursor-not-allowed'}`}
                disabled={!(fullCapacity && fullCapacity > 0)}>
@@ -893,6 +899,10 @@ export const FundDetailsModal: React.FC<FundDetailsModalProps> = ({ data, onClos
                  <TradeManager name={data.name} symbol={data.symbol} currentPrice={data.currentPrice} previousPrice={data.previousPrice} realtimeDate={data.realtimeDate} netWorthDate={data.netWorthDate} onClose={() => setShowTrade(false)} />,
                  document.body
                ) : <TradeManager name={data.name} symbol={data.symbol} currentPrice={data.currentPrice} previousPrice={data.previousPrice} realtimeDate={data.realtimeDate} netWorthDate={data.netWorthDate} onClose={() => setShowTrade(false)} />)}
+               {showVirtual && (typeof document !== 'undefined' && document.body ? createPortal(
+                 <VirtualTradeModal symbol={data.symbol} fundName={data.name} history={history} valuation={data} onClose={() => setShowVirtual(false)} />,
+                 document.body
+               ) : <VirtualTradeModal symbol={data.symbol} fundName={data.name} history={history} valuation={data} onClose={() => setShowVirtual(false)} />)}
                {showProfit && (typeof document !== 'undefined' && document.body ? createPortal(
                  <ProfitModal symbol={data.symbol} fundName={data.name} currentPrice={data.currentPrice} previousPrice={data.previousPrice} realtimeDate={data.realtimeDate} netWorthDate={data.netWorthDate} initialPosition={initialPosition} initialPrice={initialPrice} initialStartDate={startDate} onClose={() => setShowProfit(false)} />,
                  document.body

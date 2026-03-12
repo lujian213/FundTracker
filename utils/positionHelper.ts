@@ -1,5 +1,6 @@
-import { Ticker, ValuationData } from '../types';
+import { Ticker, ValuationData, HistoricalPoint } from '../types';
 import { getTradesForSymbol } from '../hooks/useTrades';
+import { fetchFundHistory } from '../services/fundService';
 
 export interface PositionEntry {
   symbol: string;
@@ -124,4 +125,118 @@ export function computePositions(
   return { entries, totalMarketValue };
 }
 
+/**
+ * Get default units (shares) for a given symbol on a local ISO date (YYYY-MM-DD).
+ * Rules:
+ *  - If there is an explicitly configured initialPosition for the fund (localStorage 'fund_position_{sym}') and
+ *    it is associated with a startDate that equals isoDate, return that initialPosition.
+ *  - Otherwise, try to compute the latest known shares up to that date by aggregating trades whose date <= target date
+ *    combined with stored initialPosition (if any).
+ *  - If no shares found or shares === 0, fallback to using fallbackCash / navOnDate (if nav available).
+ * Returns null if unable to compute (e.g., no nav and no config/trades).
+ */
+export async function getUnitsForDate(symbol: string, isoDate: string, fallbackCash?: number): Promise<number | null> {
+  try {
+    // gather stored initialPosition and configured startDate if present
+    let storedInitialPosition = 0;
+    let storedStartDate: string | null = null;
+    try {
+      const raw = localStorage.getItem(`fund_position_${symbol}`);
+      if (raw) {
+        const cfg = JSON.parse(raw);
+        if (cfg) {
+          if (typeof cfg.initialPosition === 'number') storedInitialPosition = Number(cfg.initialPosition) || 0;
+          if (typeof cfg.startDate === 'string') storedStartDate = cfg.startDate;
+        }
+      }
+    } catch (e) { /* ignore */ }
 
+    // if stored startDate matches isoDate and an initialPosition exists, prefer it
+    if (storedStartDate === isoDate && storedInitialPosition > 0) {
+      return Math.round(storedInitialPosition * 100) / 100;
+    }
+
+    // otherwise aggregate trades up to the end of isoDate
+    const trades = getTradesForSymbol(symbol) || [];
+    // trades in this project keep date as a number (timestamp) or a local date string in some places; normalize
+    const targetEnd = new Date(`${isoDate} 23:59:59.999`).getTime();
+    let buyShares = 0;
+    let sellShares = 0;
+    for (const t of trades) {
+      // trade.date may be timestamp or YYYY-MM-DD string
+      let tTs: number | null = null;
+      if (typeof (t as any).date === 'number') tTs = (t as any).date as number;
+      else if (typeof (t as any).date === 'string') {
+        const dt = new Date((t as any).date);
+        if (!isNaN(dt.getTime())) tTs = dt.getTime();
+      }
+      if (tTs === null) continue;
+      if (tTs <= targetEnd) {
+        if ((t as any).type === 'buy') buyShares += (t as any).shares || 0;
+        else sellShares += (t as any).shares || 0;
+      }
+    }
+
+    // Only include storedInitialPosition if it applies on or before isoDate.
+    // If storedStartDate exists and is after isoDate, then the initialPosition shouldn't apply yet.
+    let baseInitial = 0;
+    if (storedInitialPosition > 0) {
+      if (!storedStartDate) baseInitial = storedInitialPosition;
+      else {
+        // compare storedStartDate (YYYY-MM-DD) to isoDate
+        try {
+          if (storedStartDate <= isoDate) baseInitial = storedInitialPosition;
+        } catch (e) {
+          // fallback: do not include
+          baseInitial = 0;
+        }
+      }
+    }
+
+    const shares = baseInitial + buyShares - sellShares;
+    if (shares > 0) return Math.round(shares * 100) / 100;
+
+    // if shares not available or zero, fallback to fallbackCash / navOnDate
+    if (!fallbackCash || fallbackCash <= 0) return null;
+
+    // fetch history and find nav on isoDate (prefer exact local date match, otherwise latest <= end of date)
+    const history = await fetchFundHistory(symbol);
+    if (!history || history.length === 0) return null;
+    // history items have numeric timestamp 'date' and 'value'
+    const sorted = [...history].sort((a, b) => (a.date as number) - (b.date as number));
+    const targetEndTs = targetEnd;
+
+    // exact date match helper
+    const matchExact = (h: HistoricalPoint) => {
+      const d = new Date(h.date as number);
+      const iso = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+      return iso === isoDate;
+    };
+
+    for (const h of sorted) {
+      if (matchExact(h)) {
+        const nav = Number(h.value || 0);
+        if (nav > 0) return Math.round((fallbackCash / nav) * 100) / 100;
+      }
+    }
+
+    // fallback to latest point <= end of date
+    let latest: HistoricalPoint | null = null;
+    for (const h of sorted) {
+      if ((h.date as number) <= targetEndTs) latest = h;
+      else break;
+    }
+    if (latest && Number(latest.value) > 0) {
+      return Math.round((fallbackCash / Number(latest.value)) * 100) / 100;
+    }
+
+    // otherwise fallback to earliest available
+    if (sorted.length > 0 && Number(sorted[0].value) > 0) {
+      return Math.round((fallbackCash / Number(sorted[0].value)) * 100) / 100;
+    }
+
+    return null;
+  } catch (e) {
+    return null;
+  }
+}

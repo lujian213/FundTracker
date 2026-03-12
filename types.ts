@@ -133,3 +133,67 @@ export interface IntradayPoint {
   value: number;
   equityReturn: number; // percent
 }
+
+// --- Virtual trade types ---
+export type VirtualTradeAction = 'buy' | 'sell' | 'hold';
+
+// structured reason for strategy decisions (for hovertip)
+export type StrategyReasonType = 'golden' | 'death' | 'insufficient' | 'info' | 'other';
+
+export interface StrategyReason {
+  type: StrategyReasonType;
+  date?: string; // YYYY-MM-DD when the signal occurred
+  text: string; // human readable explanation
+  // optional numeric MA info to help validation/UI formatting
+  ma?: {
+    shortYesterday?: number;
+    shortPrev?: number;
+    longYesterday?: number;
+    longPrev?: number;
+  };
+}
+
+export interface VirtualTradeRow {
+  date: string; // YYYY-MM-DD (trade date)
+  action: VirtualTradeAction;
+  nav: number; // 当日基金净值（4dp）
+  shares: number; // 交易数量（2dp）
+  amount: number; // 交易金额（2dp）
+  cashAfter: number; // 交易后现金（2dp）
+  sharesAfter: number; // 交易后份额（2dp）
+  totalAfter: number; // 交易后总资产（2dp）
+  profitSincePrev: number; // 与前一日总资产差（2dp）
+  profitSinceStart: number; // 与初始总资产差（2dp）
+  reason?: StrategyReason; // optional structured explanation for this day's action/hold
+}
+
+export interface VirtualTradeSummary {
+  initialTotal: number;
+  finalTotal: number;
+  totalProfit: number; // finalTotal - initialTotal
+}
+
+export interface VirtualTradeResult {
+  timeline: VirtualTradeRow[];
+  summary: VirtualTradeSummary;
+  todayTip: { action: VirtualTradeAction; shares: number; reason?: StrategyReason } | null;
+}
+
+export interface VirtualStrategyContext {
+  // history up to previous day (ascending by date)
+  history: HistoricalPoint[];
+  cash: number;
+  shares: number;
+  // numeric base unit recommended by PRD
+  baseUnit: number;
+  // startNav (net value on start date)
+  startNav: number;
+}
+
+export interface VirtualStrategy {
+  name: string;
+  description: string;
+  // decide action for next trade day based on history-up-to-prev-day and current state
+  // return object may include optional `reason` explaining the decision (used for hover tooltips)
+  decide: (ctx: VirtualStrategyContext) => { action: VirtualTradeAction; shares: number; reason?: StrategyReason };
+}
