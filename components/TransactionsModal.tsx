@@ -128,7 +128,7 @@ const TransactionsModal: React.FC<Props> = ({ portfolio, marketData, onClose, on
           </button>
         </div>
 
-        <div className="p-6 overflow-y-auto flex-1 min-h-0">
+        <div className="p-6 overflow-y-auto flex-1 min-h-0" style={{ minHeight: '450px' }}>
           {/* Date picker button */}
           <div className="mb-4 relative">
             <button
@@ -227,7 +227,7 @@ const TransactionsModal: React.FC<Props> = ({ portfolio, marketData, onClose, on
                               )}
                             </td>
                             <td className="px-3 py-2 text-left">
-                              <span className={`text-xs font-medium ${r.type === 'buy' ? 'text-red-500' : 'text-green-600'}`}>
+                              <span className={`text-xs font-medium ${r.type === 'buy' ? 'text-green-600' : 'text-red-500'}`}>
                                 {r.type === 'buy' ? '买入' : '卖出'}
                               </span>
                             </td>

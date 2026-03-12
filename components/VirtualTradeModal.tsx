@@ -528,7 +528,6 @@ export const VirtualTradeModal: React.FC<Props> = ({ symbol, fundName, history: 
         {results[activeTab] && (
           <div>
             <div className="mb-2 flex items-center justify-between">
-              <div className="text-sm">策略总盈亏：<span className={`font-medium ${results[activeTab]!.summary.totalProfit > 0 ? 'text-red-600' : results[activeTab]!.summary.totalProfit < 0 ? 'text-green-600' : ''}`}>{fmtNumber(results[activeTab]!.summary.totalProfit, 2)}</span></div>
               <div className="text-sm">策略总盈亏：<span className={`font-medium ${results[activeTab]!.summary.totalProfit > 0 ? 'text-red-600' : results[activeTab]!.summary.totalProfit < 0 ? 'text-green-600' : ''}`}>{fmtNumber(results[activeTab]!.summary.totalProfit, 2)}</span>
                 {/* 新增：盈利率显示（紧跟数字，+/-百分比） */}
                 <span className="ml-2 text-xs text-gray-500">{(initialTotalForRate && initialTotalForRate > 0) ? <span className={`${results[activeTab]!.summary.totalProfit > 0 ? 'text-red-600' : results[activeTab]!.summary.totalProfit < 0 ? 'text-green-600' : ''}`}>{formatRate(results[activeTab]!.summary.totalProfit / initialTotalForRate)}</span> : <span className="text-gray-400">—</span>}</span>
