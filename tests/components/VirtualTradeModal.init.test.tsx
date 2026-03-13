@@ -67,7 +67,7 @@ describe('VirtualTradeModal initialization from localStorage', () => {
 
     await waitFor(() => {
       expect(dateInput).toHaveValue('2026-02-13');
-      expect(cashInput).toHaveValue('100,000.00');
+      expect(cashInput).toHaveValue('238,448.97');
       expect(sharesInput).toHaveValue('131,568.67');
     });
 
@@ -83,7 +83,7 @@ describe('VirtualTradeModal initialization from localStorage', () => {
 
     await waitFor(() => {
       expect(dateInput).toHaveValue('2026-02-13');
-      expect(cashInput).toHaveValue('100,000.00');
+      expect(cashInput).toHaveValue('238,448.97');
       expect(sharesInput).toHaveValue('131,568.67');
     });
 

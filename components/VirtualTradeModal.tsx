@@ -71,7 +71,9 @@ export const VirtualTradeModal: React.FC<Props> = ({ symbol, fundName, history: 
   const startDateInputId = `vt-startdate-${symbol}`;
 
   const [unitsOverridden, setUnitsOverridden] = useState<boolean>(false);
+  const [cashOverridden, setCashOverridden] = useState<boolean>(false);
   const [loadingDefaultUnits, setLoadingDefaultUnits] = useState<boolean>(false);
+  const [loadingDefaultCash, setLoadingDefaultCash] = useState<boolean>(false);
   const [startDateError, setStartDateError] = useState<string | null>(null);
 
   const [activeTab, setActiveTab] = useState<number>(0);
@@ -92,6 +94,7 @@ export const VirtualTradeModal: React.FC<Props> = ({ symbol, fundName, history: 
   useEffect(() => {
     setStartDate(getDefaultStartDate(initialHistory ?? null));
     setUnitsOverridden(false);
+    setCashOverridden(false);
   }, [symbol]);
 
   // If history is provided after mount, ensure startDate is within history bounds
@@ -306,10 +309,62 @@ export const VirtualTradeModal: React.FC<Props> = ({ symbol, fundName, history: 
     return () => { mounted = false; };
   }, [startDate, symbol, unitsOverridden]);
 
+  // Auto-fill default cash when startDate changes and user hasn't overridden
+  useEffect(() => {
+    let mounted = true;
+    const computeDefaultCash = async () => {
+      if (cashOverridden) return;
+      setLoadingDefaultCash(true);
+      try {
+        // Read fullCapacity from localStorage
+        let fullCapacity = 0;
+        try {
+          const rawKey = `fund_position_${symbol}`;
+          const padKey = `fund_position_${String(symbol).padStart(6, '0')}`;
+          const raw = localStorage.getItem(rawKey) || localStorage.getItem(padKey);
+          if (raw) {
+            const cfg = JSON.parse(raw);
+            fullCapacity = Number(cfg.fullCapacity) || 0;
+          }
+        } catch (e) {
+          // ignore
+        }
+
+        let defaultCash = defaultVirtualCash; // fallback
+
+        if (fullCapacity > 0) {
+          // Get current shares on startDate
+          const currentShares = await getUnitsForDate(symbol, startDate, 0); // fallbackCash = 0 to avoid fallback
+          const shares = currentShares || 0;
+          // Get NAV on startDate
+          const nav = startNav;
+          if (nav !== null && nav > 0) {
+            const cash = (fullCapacity - shares) * nav;
+            defaultCash = Math.max(cash, 0);
+          }
+        }
+        if (!mounted) return;
+        setCashInput(formatMoneyWithSeparators(defaultCash, 2));
+      } catch (e) {
+        // ignore
+      } finally {
+        if (mounted) setLoadingDefaultCash(false);
+      }
+    };
+    if (startDate) computeDefaultCash();
+    return () => { mounted = false; };
+  }, [startDate, symbol, cashOverridden, startNav]);
+
   // mark unitsOverridden when user manually edits shares input
   const handleSharesChange = (v: string) => {
     setSharesInput(v);
     setUnitsOverridden(true);
+  };
+
+  // mark cashOverridden when user manually edits cash input
+  const handleCashChange = (v: string) => {
+    setCashInput(v);
+    setCashOverridden(true);
   };
 
   const canRun = parsedCash !== null && parsedShares !== null && !!startDate && history && history.length > 0 && startDate <= toLocalDateKey(new Date(history[history.length - 1].date)) && !startDateError;
@@ -387,7 +442,7 @@ export const VirtualTradeModal: React.FC<Props> = ({ symbol, fundName, history: 
   };
 
   const resetUnitsToDefault = () => {
-    setCashInput(defaultCashText);
+    setCashOverridden(false);
     setUnitsOverridden(false);
     setStartDate(getDefaultStartDate(history ?? initialHistory ?? null));
   };
@@ -450,7 +505,7 @@ export const VirtualTradeModal: React.FC<Props> = ({ symbol, fundName, history: 
   const body = (
     <div className="fixed inset-0 z-[120] flex items-center justify-center">
       <div className="absolute inset-0 bg-black/40" onClick={onClose} />
-      <div className="relative bg-white rounded-lg shadow-lg w-full max-w-4xl p-6 z-30 max-h-[90vh] overflow-auto">
+      <div className="relative bg-white rounded-lg shadow-lg w-full max-w-6xl p-6 z-30 max-h-[90vh] overflow-auto">
         <div className="flex justify-between items-start mb-4">
           <h3 className="text-lg font-bold">虚拟交易 - {fundName || symbol}</h3>
           <div className="flex items-center gap-2">
@@ -462,7 +517,7 @@ export const VirtualTradeModal: React.FC<Props> = ({ symbol, fundName, history: 
         <div className="grid grid-cols-[minmax(0,0.85fr)_minmax(0,0.85fr)_minmax(0,1.3fr)] gap-4 mb-4 items-end">
           <div className="min-w-0">
             <label htmlFor={cashInputId} className="text-xs text-gray-500">现有现金</label>
-            <input id={cashInputId} className="w-full px-2 py-1 border rounded text-right" value={cashInput} onChange={e => setCashInput(e.target.value)} />
+            <input id={cashInputId} className="w-full px-2 py-1 border rounded text-right" value={cashInput} onChange={e => handleCashChange(e.target.value)} />
           </div>
           <div className="min-w-0">
             <label htmlFor={sharesInputId} className="text-xs text-gray-500">现有份额</label>
@@ -539,42 +594,42 @@ export const VirtualTradeModal: React.FC<Props> = ({ symbol, fundName, history: 
             </div>
 
             <div style={{ height: 360, overflow: 'auto' }} ref={tableRef} onScroll={handleScroll}>
-              <table className="w-full text-xs border-collapse leading-tight">
+              <table className="w-full text-xs border-collapse leading-tight table-fixed">
                 <thead className="sticky top-0 bg-gray-50 z-20">
                   <tr className="border-b">
-                    <th className="px-3 py-2">日期</th>
-                    <th className="px-3 py-2">方向</th>
-                    <th className="px-3 py-2">净值</th>
-                    <th className="px-3 py-2">份额</th>
-                    <th className="px-3 py-2">金额</th>
-                    <th className="px-3 py-2">交易后现金</th>
-                    <th className="px-3 py-2">交易后份额</th>
-                    <th className="px-3 py-2">交易后总资产</th>
-                    <th className="px-3 py-2"><div className="flex justify-end">较前一日盈亏</div></th>
-                    <th className="px-3 py-2"><div className="flex justify-end">交易后盈亏</div></th>
+                    <th className="px-3 py-2 whitespace-nowrap w-[100px]">日期</th>
+                    <th className="px-3 py-2 whitespace-nowrap w-[60px]">方向</th>
+                    <th className="px-3 py-2 whitespace-nowrap">净值</th>
+                    <th className="px-3 py-2 whitespace-nowrap">份额</th>
+                    <th className="px-3 py-2 whitespace-nowrap">金额</th>
+                    <th className="px-3 py-2 whitespace-nowrap">交易后现金</th>
+                    <th className="px-3 py-2 whitespace-nowrap">交易后份额</th>
+                    <th className="px-3 py-2 whitespace-nowrap">交易后总资产</th>
+                    <th className="px-3 py-2 whitespace-nowrap"><div className="flex justify-end">较前一日盈亏</div></th>
+                    <th className="px-3 py-2 whitespace-nowrap"><div className="flex justify-end">交易后盈亏</div></th>
                   </tr>
                 </thead>
                 <tbody>
                   {results[activeTab]!.timeline.map((r: any) => (
                     <tr key={r.date} className={`border-t hover:bg-gray-50 ${r.action === 'buy' ? 'border-l-4 border-green-400 shadow-sm' : r.action === 'sell' ? 'border-l-4 border-red-400 shadow-sm' : ''}`}>
-                      <td className="px-3 py-2">{r.date}</td>
-                      <td className="px-3 py-2">
+                      <td className="px-3 py-2 whitespace-nowrap w-[100px]">{r.date}</td>
+                      <td className="px-3 py-2 whitespace-nowrap w-[60px]">
                         <SimpleTooltip content={r.reason ?? '无说明'}>
                           <span className={r.action === 'buy' ? 'text-green-600' : r.action === 'sell' ? 'text-red-600' : 'text-gray-600'}>
                             {r.action === 'hold' ? '不操作' : (r.action === 'buy' ? '买入' : '卖出')}
                           </span>
                         </SimpleTooltip>
                       </td>
-                      <td className="px-3 py-2">{fmtNav(r.nav)}</td>
-                      <td className="px-3 py-2 text-right">{fmtNumber(r.shares, 2)}</td>
-                      <td className="px-3 py-2 text-right">{fmtNumber(r.amount, 2)}</td>
-                      <td className="px-3 py-2 text-right">{fmtNumber(r.cashAfter, 2)}</td>
-                      <td className="px-3 py-2 text-right">{fmtNumber(r.sharesAfter, 2)}</td>
-                      <td className="px-3 py-2 text-right">{fmtNumber(r.totalAfter, 2)}</td>
-                      <td className={`px-3 py-2 ${r.profitSincePrev > 0 ? 'text-red-600' : r.profitSincePrev < 0 ? 'text-green-600' : ''}`}>
+                      <td className="px-3 py-2 whitespace-nowrap">{fmtNav(r.nav)}</td>
+                      <td className="px-3 py-2 text-right whitespace-nowrap">{fmtNumber(r.shares, 2)}</td>
+                      <td className="px-3 py-2 text-right whitespace-nowrap">{fmtNumber(r.amount, 2)}</td>
+                      <td className="px-3 py-2 text-right whitespace-nowrap">{fmtNumber(r.cashAfter, 2)}</td>
+                      <td className="px-3 py-2 text-right whitespace-nowrap">{fmtNumber(r.sharesAfter, 2)}</td>
+                      <td className="px-3 py-2 text-right whitespace-nowrap">{fmtNumber(r.totalAfter, 2)}</td>
+                      <td className={`px-3 py-2 whitespace-nowrap ${r.profitSincePrev > 0 ? 'text-red-600' : r.profitSincePrev < 0 ? 'text-green-600' : ''}`}>
                         <div className="w-full flex justify-end whitespace-nowrap">{fmtNumber(r.profitSincePrev, 2)}</div>
                       </td>
-                      <td className={`px-3 py-2 ${r.profitSinceStart > 0 ? 'text-red-600' : r.profitSinceStart < 0 ? 'text-green-600' : ''}`}>
+                      <td className={`px-3 py-2 whitespace-nowrap ${r.profitSinceStart > 0 ? 'text-red-600' : r.profitSinceStart < 0 ? 'text-green-600' : ''}`}>
                         <div className="w-full flex justify-end whitespace-nowrap">{fmtNumber(r.profitSinceStart, 2)}</div>
                       </td>
                     </tr>
