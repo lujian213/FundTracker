@@ -12,7 +12,7 @@ import useTrades, { TradeRecord } from '../hooks/useTrades';
 import ProfitModal from './ProfitModal';
 import VirtualTradeModal from './VirtualTradeModal';
 import { resolvePreferredPrice, toLocalDateKey } from '../utils/priceResolver';
-import { localDateKey, AggregatedMarker, aggregateTradesByDate } from '../utils/tradeAggregation';
+import { localDateKey, AggregatedMarker, aggregateTradesByDate, generatePositionStartMarker } from '../utils/tradeAggregation';
 import IntradayChart from './IntradayChart';
 import HistoryChart from './HistoryChart';
 
@@ -122,6 +122,7 @@ export const FundDetailsModal: React.FC<FundDetailsModalProps> = ({ data, onClos
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
 
   useEffect(() => {
     let mounted = true;
@@ -477,12 +478,14 @@ export const FundDetailsModal: React.FC<FundDetailsModalProps> = ({ data, onClos
     // Aggregate trades into markers using a pure util (improves testability)
     const markers = useMemo(() => {
       try {
-        return aggregateTradesByDate(tradeList, chartData, points);
+        const tradeMarkers = aggregateTradesByDate(tradeList, chartData, points);
+        const positionStartMarkers = generatePositionStartMarker(data.symbol, chartData, points);
+        return [...tradeMarkers, ...positionStartMarkers];
       } catch (e) {
         console.error(`[FundDetailsModal] Error aggregating trades:`, e);
         return [];
       }
-    }, [tradeList, chartData, points]);
+    }, [tradeList, chartData, points, data.symbol]);
 
 
     // Compute holdings and profit using initialPosition and trades per requirements, but only when fullCapacity configured (>0)

@@ -405,17 +405,12 @@ async function fetchFundDataFromEastMoney(code: string): Promise<ValuationData |
     let lastUpdated = '---';
     let netWorthDate = toLocalDateKey(new Date());
     if (d) {
-      // Deterministically compute the China (UTC+8) calendar date for the timestamp.
-      // Use arithmetic to avoid host Date timezone quirks: compute day index at UTC+8.
-      const ts = d.getTime();
-      const MS_PER_DAY = 24 * 3600 * 1000;
-      const CHINA_OFFSET = 8 * 3600 * 1000;
-      const dayIndex = Math.floor((ts + CHINA_OFFSET) / MS_PER_DAY);
-      const chinaMidnightTs = dayIndex * MS_PER_DAY;
-      const chinaDate = new Date(chinaMidnightTs);
-      const year = chinaDate.getUTCFullYear();
-      const month = String(chinaDate.getUTCMonth() + 1).padStart(2, '0');
-      const day = String(chinaDate.getUTCDate()).padStart(2, '0');
+      // Compute the browser's local calendar date for the timestamp to comply with project requirements
+      // that all time operations should use browser local time.
+      const date = new Date(d.getTime());
+      const year = date.getFullYear();
+      const month = String(date.getMonth() + 1).padStart(2, '0');
+      const day = String(date.getDate()).padStart(2, '0');
       // Display confirmed historical net worth as end-of-day 15:00:00 (local)
       lastUpdated = `${year}-${month}-${day} 15:00:00`;
       netWorthDate = `${year}-${month}-${day}`;

@@ -27,19 +27,16 @@ export function toLocalDateKey(input: number | Date | string): string {
   if (typeof input === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(input)) return input;
 
   // If input is a number, it's usually a timestamp from history (ms)
-  // Normalize deterministically to the China (UTC+8) calendar date so tests
-  // and history logic don't depend on the runner's timezone.
+  // Normalize to the browser's local calendar date to comply with project requirements
+  // that all time operations should use browser local time.
   if (typeof input === 'number') {
     const ts = input;
     if (!Number.isFinite(ts) || ts <= 0) return '';
-    const MS_PER_DAY = 24 * 3600 * 1000;
-    const CHINA_OFFSET = 8 * 3600 * 1000;
-    const dayIndex = Math.floor((ts + CHINA_OFFSET) / MS_PER_DAY);
-    const chinaMidnightTs = dayIndex * MS_PER_DAY;
-    const cd = new Date(chinaMidnightTs);
-    const y = cd.getUTCFullYear();
-    const m = String(cd.getUTCMonth() + 1).padStart(2, '0');
-    const day = String(cd.getUTCDate()).padStart(2, '0');
+    const date = new Date(ts);
+    // Format as YYYY-MM-DD using the browser's local timezone
+    const y = date.getFullYear();
+    const m = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
     return `${y}-${m}-${day}`;
   }
 

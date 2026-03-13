@@ -1,6 +1,7 @@
 import { HistoricalPoint, ValuationData } from '../types';
 import { MA_WINDOWS, TOLERANCE } from './maConfig';
 import { computeMultipleSMAs } from './movingAverage';
+import { toLocalDateKey } from './priceResolver';
 
 export type RiskBadge = '机会' | '偏多' | '观望' | '风险';
 
@@ -64,11 +65,7 @@ function isFlatOrDown(curr: number | null, prev: number | null) {
 }
 
 function localDateKey(ts: number) {
-  const d = new Date(ts);
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, '0');
-  const day = String(d.getDate()).padStart(2, '0');
-  return `${y}-${m}-${day}`;
+  return toLocalDateKey(ts);
 }
 
 function resolveValuationDateKey(data?: ValuationData) {

@@ -1,6 +1,7 @@
 import React from 'react';
 import { HistoricalPoint } from '../types';
 import { MA_COLORS } from '../utils/movingAverage';
+import { toLocalDateKey } from '../utils/priceResolver';
 
 interface HistoryChartProps {
   viewBox: string;
@@ -44,32 +45,7 @@ const HistoryChart: React.FC<HistoryChartProps> = ({
 
   // helper: format a timestamp into local YYYY-MM-DD
   const formatLocalDate = (ts: number | string) => {
-    try {
-      if (typeof ts === 'string') {
-        // parse YYYY-MM-DD into local date
-        const parts = ts.split('-').map(s => Number(s));
-        if (parts.length === 3) {
-          const d = new Date(parts[0], parts[1] - 1, parts[2]);
-          const y = d.getFullYear();
-          const m = String(d.getMonth() + 1).padStart(2, '0');
-          const day = String(d.getDate()).padStart(2, '0');
-          return `${y}-${m}-${day}`;
-        }
-        // fallback
-        const d = new Date(ts);
-        const y = d.getFullYear();
-        const m = String(d.getMonth() + 1).padStart(2, '0');
-        const day = String(d.getDate()).padStart(2, '0');
-        return `${y}-${m}-${day}`;
-      }
-      const d = new Date(ts);
-      const y = d.getFullYear();
-      const m = String(d.getMonth() + 1).padStart(2, '0');
-      const day = String(d.getDate()).padStart(2, '0');
-      return `${y}-${m}-${day}`;
-    } catch {
-      return '';
-    }
+    return toLocalDateKey(ts);
   };
 
   // chart paddings must match modal chartData paddingTop/paddingBottom and paddingLeft/paddingRight
@@ -131,7 +107,7 @@ const HistoryChart: React.FC<HistoryChartProps> = ({
         {/* markers (e.g. trades) - render above overlays */}
         {(Array.isArray(markers) ? markers : []).map((m: any, idx: number) => (
           <g key={`marker-${idx}`} onMouseEnter={() => { const hp = points.find(pt => pt.data.date === m.date); setHoveredPoint(hp ? hp.data : null); if (onMarkerHover) onMarkerHover(m); }} onMouseLeave={() => { setHoveredPoint(null); if (onMarkerHover) onMarkerHover(null); }} className="pointer-events-auto">
-            <circle data-testid={`marker-circle-${idx}`} cx={m.x} cy={m.y} r={5} fill={m.type === 'sell' ? '#2563eb' : '#ef4444'} stroke="#fff" strokeWidth={1} />
+            <circle data-testid={`marker-circle-${idx}`} cx={m.x} cy={m.y} r={5} fill={m.type === 'position_start' ? '#22c55e' : (m.type === 'sell' ? '#2563eb' : '#ef4444')} stroke="#fff" strokeWidth={1} />
           </g>
         ))}
 
@@ -143,12 +119,30 @@ const HistoryChart: React.FC<HistoryChartProps> = ({
           if (!hpPoint) return null;
           const m = (markers as any[]).find((mm: any) => mm.date === (hpPoint.data as any).date);
           if (!m) return null;
+
+          // Calculate date label position to avoid overlap
+          const vbParts = (viewBox || '0 0 1000 280').split(' ').map(Number);
+          const vbH = vbParts[3] || height;
+          const chartTop = PADDING_TOP;
+          const dateLabelY = Math.max(18, chartTop - 4); // Date label Y position (same as in line 182)
+
+          // Position tooltip below the marker, or below the date label if it would overlap
+          const baseTooltipY = m.y - 36;
+          const minTooltipY = dateLabelY + 20; // 20px below the date label to avoid overlap
+          const tooltipY = Math.max(minTooltipY, baseTooltipY);
           const tooltipX = Math.max(40, Math.min(Number(viewBox.split(' ')[2]) - 120, m.x));
-          const tooltipY = Math.max(18, m.y - 36);
-          const lines = [(m.type === 'sell' ? '卖出' : '买入'), `${m.shares !== undefined ? m.shares : '—'} 份`, `${m.amount !== undefined ? m.amount.toFixed(2) + ' 元' : '—'}`];
+
+          // Different lines depending on marker type
+          let lines: string[];
+          if (m.type === 'position_start') {
+            lines = ['持仓开始', `${m.shares} 份`];
+          } else {
+            lines = [(m.type === 'sell' ? '卖出' : '买入'), `${m.shares !== undefined ? m.shares : '—'} 份`, `${m.amount !== undefined ? m.amount.toFixed(2) + ' 元' : '—'}`];
+          }
+
           return (
             <g className="pointer-events-none">
-              <rect x={tooltipX - 60} y={tooltipY - 20} rx={6} ry={6} width={120} height={48} fill="#111827" fillOpacity={0.9} />
+              <rect x={tooltipX - 60} y={tooltipY - 20} rx={6} ry={6} width={120} height={m.type === 'position_start' ? 34 : 48} fill="#111827" fillOpacity={0.9} />
               {lines.map((ln, i) => (
                 <text key={i} x={tooltipX} y={tooltipY - 6 + i * 14} textAnchor="middle" className="text-[11px] font-medium" fill="#fff">{ln}</text>
               ))}
