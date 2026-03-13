@@ -3,8 +3,9 @@ import { createPortal } from 'react-dom';
 import { fetchFundHistory as defaultFetchFundHistory } from '../services/fundService';
 import useTrades from '../hooks/useTrades';
 import { computeProfitTimeline } from '../utils/profitCalculator';
-import { HistoricalPoint } from '../types';
+import { HistoricalPoint, ProfitPoint } from '../types';
 import { resolvePreferredPrice, toLocalDateKey } from '../utils/priceResolver';
+import { adjustProfitTimelineForDisplay } from '../utils/profitAdjustment';
 
 interface ProfitModalProps {
   symbol: string;
@@ -124,31 +125,17 @@ const ProfitModal: React.FC<ProfitModalProps> = ({ symbol, fundName, currentPric
   const displayedTimeline = useMemo(() => {
     if (!selectedTimeline || selectedTimeline.length === 0) return [];
     const seen = new Set<string>();
-    const dedup: typeof selectedTimeline = [] as any;
+    const dedup: ProfitPoint[] = [];
     for (const s of selectedTimeline) {
       if (seen.has(s.date)) continue;
       seen.add(s.date);
       dedup.push({ ...s });
     }
-    if (fromDate && initialStartDate && fromDate === initialStartDate) {
-      if (dedup.length > 0 && dedup[0].date === fromDate) {
-        // Keep the fee-deferral-corrected dailyProfit from computeProfitTimeline,
-        // but zero out day-0 and rebuild cumulativeProfit by accumulating the dailyProfits.
-        // Do NOT recompute dailyProfit from cumulativeProfit differences — that would
-        // undo the fee-deferral fix (cumulativeProfit does not include the fee offset).
-        let cumAcc = 0;
-        for (let i = 0; i < dedup.length; i++) {
-          const daily = i === 0 ? 0 : (dedup[i].dailyProfit || 0);
-          cumAcc = Number((cumAcc + daily).toFixed(4));
-          dedup[i] = {
-            ...dedup[i],
-            cumulativeProfit: cumAcc,
-            dailyProfit: daily,
-          };
-        }
-      }
-    }
-    return dedup;
+
+    // 使用公共函数调整盈亏时间线
+    // 无论用户选择的开始日期是什么，都应将该日期的当日盈亏设为0
+    // 作为从该日起计算收益的参考基准
+    return adjustProfitTimelineForDisplay(dedup, fromDate);
   }, [selectedTimeline, fromDate, initialStartDate]);
 
   const periodTotal = useMemo(() => (displayedTimeline || []).reduce((s, p) => s + (p.dailyProfit || 0), 0), [displayedTimeline]);
@@ -190,6 +177,7 @@ const ProfitModal: React.FC<ProfitModalProps> = ({ symbol, fundName, currentPric
 
   const titleText = fundName ? `${fundName} (${symbol})` : symbol;
 
+
   const content = (
     <div className="fixed inset-0 z-[130] flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/40" onClick={onClose} />
@@ -211,10 +199,26 @@ const ProfitModal: React.FC<ProfitModalProps> = ({ symbol, fundName, currentPric
             <div className="space-y-4">
               <div className="flex items-center justify-between">
                 <div className="flex items-center space-x-2 text-xs text-gray-600">
-                  <label>开始</label>
-                  <input type="date" value={fromDate ?? ''} onChange={e => { setFromDate(e.target.value); }} className="px-2 py-1 border rounded" />
-                  <label>结束</label>
-                  <input type="date" value={toDate ?? ''} onChange={e => { setToDate(e.target.value); }} className="px-2 py-1 border rounded" />
+                  <label htmlFor="from-date">开始</label>
+                  <input id="from-date" type="date" value={fromDate ?? ''} onChange={e => { setFromDate(e.target.value); }} className="px-2 py-1 border rounded" />
+                  <label htmlFor="to-date">结束</label>
+                  <input id="to-date" type="date" value={toDate ?? ''} onChange={e => { setToDate(e.target.value); }} className="px-2 py-1 border rounded" />
+                  <button
+                    onClick={() => {
+                      if (history.length > 0) {
+                        const first = toLocalDateKey(history[0].date);
+                        const last = toLocalDateKey(history[history.length - 1].date);
+                        const defaultFrom = initialStartDate && initialStartDate > first ? initialStartDate : first;
+                        setFromDate(defaultFrom);
+                        const defaultTo = last && last < todayLocal ? last : todayLocal;
+                        setToDate(defaultTo);
+                      }
+                    }}
+                    className="px-3 py-1 rounded bg-gray-100 text-xs hover:bg-gray-200"
+                    title="重置开始和结束时间为默认值"
+                  >
+                    重置
+                  </button>
                 </div>
                 <div className="text-xs text-gray-500">&nbsp;</div>
               </div>

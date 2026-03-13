@@ -1,5 +1,5 @@
-import { ValuationData, MarketIndex, HistoricalPoint, OverallProfitSummary, OverallFundRow } from "../types";
-import { computeProfitTimeline, ProfitPoint } from '../utils/profitCalculator';
+import { ValuationData, MarketIndex, HistoricalPoint, OverallProfitSummary, OverallFundRow, ProfitPoint } from "../types";
+import { computeProfitTimeline } from '../utils/profitCalculator';
 import { toLocalDateKey, resolvePreferredPrice } from '../utils/priceResolver';
 import { getTradesForSymbol } from '../hooks/useTrades';
 import * as cacheService from './cacheService';

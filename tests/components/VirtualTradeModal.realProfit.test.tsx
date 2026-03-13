@@ -84,7 +84,7 @@ describe('VirtualTradeModal real profit display', () => {
     fireEvent.change(screen.getByLabelText('开始日期'), { target: { value: '2026-02-15' } });
 
     await waitFor(() => {
-      expect(screen.getByText(/实盘盈亏：/)).toHaveTextContent('实盘盈亏：-5.00');
+      expect(screen.getByText(/实盘盈亏：/)).toHaveTextContent('实盘盈亏：-10.00');
       expect(screen.getByText(`计算区间：2026-02-15 — ${todayIso}`)).toBeInTheDocument();
     });
   });

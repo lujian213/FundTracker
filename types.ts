@@ -46,6 +46,15 @@ export interface HistoricalPoint {
   equityReturn: number; // 当日涨跌
 }
 
+// Profit calculator result type
+export interface ProfitPoint {
+  date: string; // YYYY-MM-DD
+  netValue: number; // 当日净值（每份）
+  shares: number; // 当日持仓份额
+  cumulativeProfit: number; // 累计盈利（金额）
+  dailyProfit: number; // 当日盈利（金额） = cumulative - 前一日累计
+}
+
 export interface FundHistory {
   netWorthTrend: HistoricalPoint[];
   accumulatedTrend: any[];

@@ -1,15 +1,5 @@
-import { HistoricalPoint } from '../types';
+import { HistoricalPoint, ProfitPoint } from '../types';
 import { TradeRecord } from '../hooks/useTrades';
-
-export interface ProfitPoint {
-  date: string; // YYYY-MM-DD
-  netValue: number; // 当日净值（每份）
-  shares: number; // 当日持仓份额
-  cumulativeProfit: number; // 累计盈利（金额）
-  dailyProfit: number; // 当日盈利（金额） = cumulative - 前一日累计
-}
-
-
 
 // helper: convert timestamp (ms) to YYYY-MM-DD local
 function tsToISODate(ts: number): string {
@@ -132,7 +122,3 @@ export function computeProfitTimeline(params: {
 
   return timeline;
 }
-
-
-
-

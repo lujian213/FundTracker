@@ -14,6 +14,7 @@ import { getUnitsForDate } from '../utils/positionHelper';
 import { defaultVirtualCash } from '../services/strategyConfig';
 import { computeProfitTimeline } from '../utils/profitCalculator';
 import useTrades from '../hooks/useTrades';
+import { adjustProfitTimelineForDisplay } from '../utils/profitAdjustment';
 
 interface Props {
   symbol: string;
@@ -222,19 +223,11 @@ export const VirtualTradeModal: React.FC<Props> = ({ symbol, fundName, history: 
       acc.push({ ...point });
       return acc;
     }, []);
-    if (startDate === storedPosition.startDate && dedup.length > 0 && dedup[0].date === startDate) {
-      let cumAcc = 0;
-      for (let i = 0; i < dedup.length; i++) {
-        const daily = i === 0 ? 0 : (dedup[i].dailyProfit || 0);
-        cumAcc = Number((cumAcc + daily).toFixed(4));
-        dedup[i] = {
-          ...dedup[i],
-          cumulativeProfit: cumAcc,
-          dailyProfit: daily,
-        };
-      }
-    }
-    return dedup;
+
+    // 使用公共函数调整盈亏时间线
+    // 无论用户选择的开始日期是什么，都应将该日期的当日盈亏设为0
+    // 作为从该日起计算收益的参考基准
+    return adjustProfitTimelineForDisplay(dedup, startDate);
   }, [startDate, storedPosition, fullRealProfitTimeline, todayLocal]);
 
   const realProfit = useMemo(() => {
