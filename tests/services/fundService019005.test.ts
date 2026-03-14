@@ -42,9 +42,10 @@ describe('fetchFundData 019005 specific scenario', () => {
     expect(fallbackScript).toBeTruthy();
 
     // Provide the two history points as specified
+    // Use timestamps representing later in the day to ensure consistent local date across timezones
     (window as any).Data_netWorthTrend = [
-      { x: 1770912000000, y: '2.1904', equityReturn: '-4.98' },
-      { x: 1771862400000, y: '2.4405', equityReturn: '11.42' }
+      { x: 1770955200000, y: '2.1904', equityReturn: '-4.98' },  // Feb 23, 2026 12:00 UTC
+      { x: 1771905600000, y: '2.4405', equityReturn: '11.42' }   // Feb 24, 2026 12:00 UTC (to ensure consistent local date across all timezones)
     ];
 
     // Trigger fallback script onload
