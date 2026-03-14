@@ -3,16 +3,7 @@ import { createPortal } from 'react-dom';
 import { Ticker, VirtualTradeResult, HistoricalPoint, ValuationData } from '../types';
 import { fetchFundHistory } from '../services/fundService';
 import { runVirtualTrade } from '../services/virtualTradeEngine';
-import {
-  trendFollowingStrategy
-} from '../services/virtualTradeStrategies/trendFollowing';
-import {
-  meanReversionStrategy
-} from '../services/virtualTradeStrategies/meanReversion';
-import {
-  constantMixStrategy
-} from '../services/virtualTradeStrategies/constantMix';
-import { defaultVirtualCash } from '../services/strategyConfig';
+import { defaultVirtualCash, strategyConfig } from '../services/strategyConfig';
 import ThumbsUpIcon from './ThumbsUpIcon';
 import { computeMultipleSMAs } from '../utils/movingAverage';
 import { toLocalDateKey } from '../utils/priceResolver';
@@ -23,6 +14,7 @@ import { adjustProfitTimelineForDisplay } from '../utils/profitAdjustment';
 import { formatMoneyWithSeparators } from '../utils/format';
 import { resolvePreferredPrice } from '../utils/priceResolver';
 import { calculateRealProfit, getStoredPosition, getTradesForFund } from '../utils/realProfitCalculator';
+import { loadAllStrategies } from '../services/strategyRegistry';
 
 
 interface InvestmentNoticeModalProps {
@@ -32,19 +24,14 @@ interface InvestmentNoticeModalProps {
   marketData?: Record<string, ValuationData>; // Add optional market data to pass to virtual trade engine
 }
 
-// Define strategy type for navigation
-type StrategyType = 'trendFollowing' | 'meanReversion' | 'constantMix';
+type StrategyType = string; // Dynamic strategy type instead of hardcoded ones
 
 interface InvestmentRecommendation {
   fund: Ticker;
-  trendFollowing: VirtualTradeResult['todayTip'];
-  meanReversion: VirtualTradeResult['todayTip'];
-  constantMix: VirtualTradeResult['todayTip'];
-  trendFollowingProfit: number;
-  meanReversionProfit: number;
-  constantMixProfit: number;
   realProfit: number | null; // New field for real trading P&L
   realProfitLoading: boolean; // Flag for loading state
+  bestStrategy?: string | null; // This will be computed in the useMemo
+  [key: string]: any; // Allow dynamic strategy properties (strategyName and strategyNameProfit)
 }
 
 const InvestmentNoticeModal: React.FC<InvestmentNoticeModalProps> = ({
@@ -62,6 +49,13 @@ const InvestmentNoticeModal: React.FC<InvestmentNoticeModalProps> = ({
     // Use setTimeout to move the heavy computation off the initial render
     const fetchAndProcessData = async () => {
       try {
+        // Load strategies once when component mounts
+        const allStrategies = await loadAllStrategies();
+        const strategyMap: Record<string, any> = {};
+        allStrategies.forEach(s => {
+          strategyMap[s.key] = s.strategy;
+        });
+
         // First, get all fund histories and prepare for processing with VirtualTradeModal-consistent parameters
         const fundDataPromises = portfolio.map(async (fund) => {
           try {
@@ -261,36 +255,26 @@ const InvestmentNoticeModal: React.FC<InvestmentNoticeModalProps> = ({
             const currentPrice = sortedHistory[sortedHistory.length - 1]?.value;
 
             // Run all strategies with parameters matching VirtualTradeModal's default behavior
+            // Use the dynamically loaded strategies instead of hardcoded ones
+            const strategyResults: Record<string, VirtualTradeResult> = {};
 
-            const trendResult = runVirtualTrade(trendFollowingStrategy, sortedHistory, {
-              startDate: finalStartDate,  // Use VirtualTradeModal's default date logic
-              initialCash: finalInitialCash,  // Use VirtualTradeModal's cash calculation logic
-              initialShares: finalInitialShares,  // Use VirtualTradeModal's shares calculation logic
-              currentPrice: valuation?.currentPrice ?? currentPrice,
-              realtimeDate: valuation?.realtimeDate ?? toLocalDateKey(new Date()),
-              previousPrice: valuation?.previousPrice ?? null, // Use valuation.previousPrice like VirtualTradeModal
-              netWorthDate: valuation?.netWorthDate,
-            });
-
-            const meanRevResult = runVirtualTrade(meanReversionStrategy, sortedHistory, {
-              startDate: finalStartDate,  // Use VirtualTradeModal's default date logic
-              initialCash: finalInitialCash,  // Use VirtualTradeModal's cash calculation logic
-              initialShares: finalInitialShares,  // Use VirtualTradeModal's shares calculation logic
-              currentPrice: valuation?.currentPrice ?? currentPrice,
-              realtimeDate: valuation?.realtimeDate ?? toLocalDateKey(new Date()),
-              previousPrice: valuation?.previousPrice ?? null, // Use valuation.previousPrice like VirtualTradeModal
-              netWorthDate: valuation?.netWorthDate,
-            });
-
-            const constMixResult = runVirtualTrade(constantMixStrategy, sortedHistory, {
-              startDate: finalStartDate,  // Use VirtualTradeModal's default date logic
-              initialCash: finalInitialCash,  // Use VirtualTradeModal's cash calculation logic
-              initialShares: finalInitialShares,  // Use VirtualTradeModal's shares calculation logic
-              currentPrice: valuation?.currentPrice ?? currentPrice,
-              realtimeDate: valuation?.realtimeDate ?? toLocalDateKey(new Date()),
-              previousPrice: valuation?.previousPrice ?? null, // Use valuation.previousPrice like VirtualTradeModal
-              netWorthDate: valuation?.netWorthDate,
-            });
+            for (const [key, strategy] of Object.entries(strategyMap)) {
+              try {
+                strategyResults[key] = runVirtualTrade(strategy, sortedHistory, {
+                  startDate: finalStartDate,  // Use VirtualTradeModal's default date logic
+                  initialCash: finalInitialCash,  // Use VirtualTradeModal's cash calculation logic
+                  initialShares: finalInitialShares,  // Use VirtualTradeModal's shares calculation logic
+                  currentPrice: valuation?.currentPrice ?? currentPrice,
+                  realtimeDate: valuation?.realtimeDate ?? toLocalDateKey(new Date()),
+                  previousPrice: valuation?.previousPrice ?? null, // Use valuation.previousPrice like VirtualTradeModal
+                  netWorthDate: valuation?.netWorthDate,
+                });
+              } catch (error) {
+                console.error(`Error running strategy ${key} for fund ${fund.symbol}:`, error);
+                // Provide a default result if strategy fails
+                strategyResults[key] = { timeline: [], summary: { initialTotal: 0, finalTotal: 0, totalProfit: 0 }, todayTip: null };
+              }
+            }
 
             // Get market data for this fund if marketData is provided
             const fundMarketData = marketData ? marketData[fund.symbol] : null;
@@ -307,18 +291,20 @@ const InvestmentNoticeModal: React.FC<InvestmentNoticeModalProps> = ({
               fundMarketData
             );
 
-            // Create recommendation record using the parameters consistent with VirtualTradeModal
+            // Create recommendation record using the dynamically obtained results
+            // Ensure it follows the expected interface for compatibility with UI
             const recommendation: InvestmentRecommendation = {
               fund,
-              trendFollowing: trendResult.todayTip,
-              meanReversion: meanRevResult.todayTip,
-              constantMix: constMixResult.todayTip,
-              trendFollowingProfit: trendResult.summary.totalProfit,
-              meanReversionProfit: meanRevResult.summary.totalProfit,
-              constantMixProfit: constMixResult.summary.totalProfit,
               realProfit, // Add the calculated real profit
               realProfitLoading: false, // Initially not loading since it's calculated synchronously
             };
+
+            // Add strategy results dynamically
+            for (const [key, result] of Object.entries(strategyResults)) {
+              // Store strategy recommendation and profit dynamically
+              (recommendation as any)[key] = result.todayTip;
+              (recommendation as any)[`${key}Profit`] = result.summary.totalProfit;
+            }
 
             results.push(recommendation);
 
@@ -336,11 +322,18 @@ const InvestmentNoticeModal: React.FC<InvestmentNoticeModalProps> = ({
         if (!cancelled) {
           // Filter out funds where all strategies recommend hold
           const filteredResults = results.filter(rec => {
-            return !(
-              (rec.trendFollowing?.action === 'hold' || rec.trendFollowing === null) &&
-              (rec.meanReversion?.action === 'hold' || rec.meanReversion === null) &&
-              (rec.constantMix?.action === 'hold' || rec.constantMix === null)
-            );
+            // Get all strategy keys from the recommendation (those ending in 'Profit')
+            const strategyKeys = Object.keys(rec).filter(key =>
+              key.endsWith('Profit') && key !== 'realProfit' // Exclude realProfit
+            ).map(key => key.replace('Profit', '')); // Get the base strategy names
+
+            // Check if all strategies recommend hold (or are null)
+            const allHold = strategyKeys.every(strategyKey => {
+              const action = rec[strategyKey]?.action;
+              return action === 'hold' || rec[strategyKey] === null;
+            });
+
+            return !allHold; // Keep funds where not all strategies recommend hold
           });
 
           setRecommendations(filteredResults);
@@ -363,15 +356,37 @@ const InvestmentNoticeModal: React.FC<InvestmentNoticeModalProps> = ({
     };
   }, [portfolio]);
 
+  // Get available strategy names from configuration to use for table rendering
+  const availableStrategyKeys = useMemo(() => {
+    if (recommendations.length > 0) {
+      // Extract strategy keys from the first recommendation by checking for properties that end with 'Profit' but aren't 'realProfit'
+      const firstRec = recommendations[0];
+      return Object.keys(firstRec).filter(key =>
+        key.endsWith('Profit') && key !== 'realProfit' && key !== 'realProfitLoading'
+      ).map(key => key.replace('Profit', ''));
+    }
+    // Fallback: get from config
+    return []; // No default strategies since they should be dynamically determined
+  }, [recommendations]);
+
   // Calculate best strategy for each fund
   const recommendationsWithBest = useMemo(() => {
     const result = recommendations.map(rec => {
       // Only consider strategies that have a buy/sell recommendation (not hold)
-      const validProfits = [
-        { name: 'trendFollowing', profit: rec.trendFollowingProfit, action: rec.trendFollowing?.action },
-        { name: 'meanReversion', profit: rec.meanReversionProfit, action: rec.meanReversion?.action },
-        { name: 'constantMix', profit: rec.constantMixProfit, action: rec.constantMix?.action },
-      ].filter(item => item.action !== 'hold'); // Only consider non-hold strategies
+      // Find all strategy profit fields (those ending in 'Profit')
+      const strategyProfitFields = Object.keys(rec).filter(key =>
+        key.endsWith('Profit') && key !== 'realProfit' // Exclude realProfit
+      );
+
+      // Build valid profits array dynamically
+      const validProfits = strategyProfitFields.map(key => {
+        const strategyName = key.replace('Profit', ''); // Get base name
+        return {
+          name: strategyName,
+          profit: rec[key],
+          action: rec[strategyName]?.action
+        };
+      }).filter(item => item.action !== 'hold'); // Only consider non-hold strategies
 
       // If no valid strategies (all holds), then no best strategy
       if (validProfits.length === 0) {
@@ -494,17 +509,24 @@ const InvestmentNoticeModal: React.FC<InvestmentNoticeModalProps> = ({
                   <table className="w-full text-sm table-fixed border-collapse">
                     <colgroup>
                       <col style={{ width: '15%' }} />
-                      <col style={{ width: '20%' }} />
-                      <col style={{ width: '20%' }} />
+                      {availableStrategyKeys.map(() => (
+                        <col key={`col-${Math.random()}`} style={{ width: `${65 / availableStrategyKeys.length}%` }} />
+                      ))}
                       <col style={{ width: '15%' }} />
-                      <col style={{ width: '20%' }} />
                     </colgroup>
                     <thead className="sticky top-0 z-10 bg-gray-50">
                       <tr className="border-b border-gray-200">
                         <th className="px-3 py-2 text-left text-xs font-semibold text-gray-500">基金名称</th>
-                        <th className="px-3 py-2 text-left text-xs font-semibold text-gray-500">趋势追踪</th>
-                        <th className="px-3 py-2 text-left text-xs font-semibold text-gray-500">均值回归</th>
-                        <th className="px-3 py-2 text-left text-xs font-semibold text-gray-500">恒定混合</th>
+                        {availableStrategyKeys.map((strategyKey) => {
+                          // Get the strategy meta to display the Chinese name
+                          const strategyMeta = strategyConfig[strategyKey];
+                          const displayName = strategyMeta?.name || strategyKey;
+                          return (
+                            <th key={`header-${strategyKey}`} className="px-3 py-2 text-left text-xs font-semibold text-gray-500">
+                              {displayName}
+                            </th>
+                          );
+                        })}
                         <th className="px-3 py-2 text-left text-xs font-semibold text-gray-500">实盘盈亏</th>
                       </tr>
                     </thead>
@@ -518,33 +540,22 @@ const InvestmentNoticeModal: React.FC<InvestmentNoticeModalProps> = ({
                           >
                             {rec.fund.name || rec.fund.symbol}
                           </td>
-                          <td className="px-3 py-2 text-left text-xs">
-                            {renderCellWithThumbsUp(
-                              rec.trendFollowing,
-                              rec.fund.symbol,
-                              rec.fund.name || rec.fund.symbol,
-                              'trendFollowing',
-                              rec.bestStrategy === 'trendFollowing'
-                            )}
-                          </td>
-                          <td className="px-3 py-2 text-left text-xs">
-                            {renderCellWithThumbsUp(
-                              rec.meanReversion,
-                              rec.fund.symbol,
-                              rec.fund.name || rec.fund.symbol,
-                              'meanReversion',
-                              rec.bestStrategy === 'meanReversion'
-                            )}
-                          </td>
-                          <td className="px-3 py-2 text-left text-xs">
-                            {renderCellWithThumbsUp(
-                              rec.constantMix,
-                              rec.fund.symbol,
-                              rec.fund.name || rec.fund.symbol,
-                              'constantMix',
-                              rec.bestStrategy === 'constantMix'
-                            )}
-                          </td>
+                          {availableStrategyKeys.map((strategyKey) => {
+                            const strategyTip = (rec as any)[strategyKey]; // Use type assertion to handle dynamic property access
+                            const isBestStrategy = rec.bestStrategy === strategyKey;
+
+                            return (
+                              <td key={`cell-${rec.fund.symbol}-${strategyKey}`} className="px-3 py-2 text-left text-xs">
+                                {renderCellWithThumbsUp(
+                                  strategyTip,
+                                  rec.fund.symbol,
+                                  rec.fund.name || rec.fund.symbol,
+                                  strategyKey,
+                                  isBestStrategy
+                                )}
+                              </td>
+                            );
+                          })}
                           <td className="px-3 py-2 text-left text-xs">
                             {renderRealProfitCell(rec.realProfit)}
                           </td>
@@ -553,7 +564,7 @@ const InvestmentNoticeModal: React.FC<InvestmentNoticeModalProps> = ({
                     </tbody>
                     <tfoot className="sticky bottom-0 z-10 bg-gray-50">
                       <tr className="border-t border-gray-200">
-                        <td colSpan={5} className="px-3 py-2 text-left text-xs font-bold text-gray-700">
+                        <td colSpan={2 + availableStrategyKeys.length} className="px-3 py-2 text-left text-xs font-bold text-gray-700">
                           总计：{recommendationsWithBest.length}条记录
                         </td>
                       </tr>

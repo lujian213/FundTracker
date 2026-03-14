@@ -2,9 +2,6 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { HistoricalPoint, ValuationData, VirtualTradeResult } from '../types';
 import { runVirtualTrade } from '../services/virtualTradeEngine';
-import { trendFollowingStrategy } from '../services/virtualTradeStrategies/trendFollowing';
-import { meanReversionStrategy } from '../services/virtualTradeStrategies/meanReversion';
-import { constantMixStrategy } from '../services/virtualTradeStrategies/constantMix';
 import { fetchFundHistory as defaultFetchFundHistory } from '../services/fundService';
 import { resolvePreferredPrice, toLocalDateKey } from '../utils/priceResolver';
 import SimpleTooltip from './SimpleTooltip';
@@ -17,6 +14,9 @@ import useTrades from '../hooks/useTrades';
 import { adjustProfitTimelineForDisplay } from '../utils/profitAdjustment';
 import { calculateRealProfit, calculateRealProfitSync, getStoredPosition, getTradesForFund } from '../utils/realProfitCalculator';
 
+// Import all strategies dynamically through a centralized function
+import { loadAllStrategies, getStaticStrategyList } from '../services/strategyRegistry';
+
 interface Props {
   symbol: string;
   fundName?: string;
@@ -26,11 +26,31 @@ interface Props {
   fetchHistory?: (symbol: string) => Promise<HistoricalPoint[]>;
 }
 
-const strategies = [trendFollowingStrategy, meanReversionStrategy, constantMixStrategy];
-
 export const VirtualTradeModal: React.FC<Props> = ({ symbol, fundName, history: initialHistory, valuation, onClose, fetchHistory }) => {
   const [history, setHistory] = useState<HistoricalPoint[] | null>(initialHistory ?? null);
   const fetchFn = fetchHistory ?? defaultFetchFundHistory;
+
+  // State for dynamically loaded strategies and loading status
+  const [loadedStrategies, setLoadedStrategies] = useState<any[]>([]);
+  const [strategiesMetadata, setStrategiesMetadata] = useState<any[]>([]);
+  const [strategiesLoading, setStrategiesLoading] = useState(true);
+
+  // Load strategies on component mount
+  useEffect(() => {
+    const loadStrategies = async () => {
+      try {
+        const allStrategies = await loadAllStrategies();
+        setLoadedStrategies(allStrategies.map(s => s.strategy));
+        setStrategiesMetadata(allStrategies.map(s => s.meta));
+        setStrategiesLoading(false);
+      } catch (error) {
+        console.error('Failed to load strategies:', error);
+        setStrategiesLoading(false);
+      }
+    };
+
+    loadStrategies();
+  }, []);
 
   const defaultCashText = formatMoneyWithSeparators(defaultVirtualCash, 2);
   const getFallbackStartDate = () => {
@@ -81,7 +101,15 @@ export const VirtualTradeModal: React.FC<Props> = ({ symbol, fundName, history: 
   const [activeTab, setActiveTab] = useState<number>(0);
   const [running, setRunning] = useState(false);
   // results array aligned with strategies order; each entry is VirtualTradeResult or null if not run yet
-  const [results, setResults] = useState<(VirtualTradeResult | null)[]>(() => strategies.map(() => null));
+  const [results, setResults] = useState<(VirtualTradeResult | null)[]>([]);
+
+  // Initialize results array when strategies are loaded
+  useEffect(() => {
+    if (!strategiesLoading && loadedStrategies.length > 0) {
+      setResults(Array(loadedStrategies.length).fill(null));
+    }
+  }, [strategiesLoading, loadedStrategies]);
+
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -366,8 +394,8 @@ export const VirtualTradeModal: React.FC<Props> = ({ symbol, fundName, history: 
 
   // table scroll ref and per-tab scroll/visited tracking
   const tableRef = useRef<HTMLDivElement | null>(null);
-  const tabScrollPositions = useRef<number[]>(Array(strategies.length).fill(0));
-  const tabVisitedInCurrentRun = useRef<boolean[]>(Array(strategies.length).fill(false));
+  const tabScrollPositions = useRef<number[]>(Array(loadedStrategies.length).fill(0));
+  const tabVisitedInCurrentRun = useRef<boolean[]>(Array(loadedStrategies.length).fill(false));
 
   // helper to compute best index from a given results array (pure function)
   const computeBestIndexFromResults = (resArr: (VirtualTradeResult | null)[]): number | null => {
@@ -407,21 +435,21 @@ export const VirtualTradeModal: React.FC<Props> = ({ symbol, fundName, history: 
     try {
       // run all strategies and collect results
       const newResults: (VirtualTradeResult | null)[] = [];
-      for (let i = 0; i < strategies.length; i++) {
+      for (let i = 0; i < loadedStrategies.length; i++) {
         try {
-          const strat = strategies[i];
+          const strat = loadedStrategies[i];
           const res = runVirtualTrade(strat, history || [], { startDate, initialCash: parsedCash || 0, initialShares: parsedShares || 0, currentPrice: valuation?.currentPrice ?? null, realtimeDate: valuation?.realtimeDate ?? null, previousPrice: valuation?.previousPrice ?? null, netWorthDate: valuation?.netWorthDate ?? null });
           newResults.push(res);
         } catch (e: any) {
           // if one strategy fails, record null and continue
           newResults.push(null);
-          // console.error('strategy run failed', strategies[i].name, e);
+          // console.error('strategy run failed', loadedStrategies[i].name, e);
         }
       }
 
       // reset per-tab visited/positions for this new run so first-open behavior works
-      tabVisitedInCurrentRun.current = Array(strategies.length).fill(false);
-      tabScrollPositions.current = Array(strategies.length).fill(0);
+      tabVisitedInCurrentRun.current = Array(loadedStrategies.length).fill(false);
+      tabScrollPositions.current = Array(loadedStrategies.length).fill(0);
 
       setResults(newResults);
 
@@ -443,18 +471,18 @@ export const VirtualTradeModal: React.FC<Props> = ({ symbol, fundName, history: 
   };
 
   const exportJSON = () => {
-    if (!results[activeTab]) return;
+    if (!results[activeTab] || strategiesMetadata.length === 0) return;
     const blob = new Blob([JSON.stringify(results[activeTab], null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `virtual-trade-${symbol}-${strategies[activeTab].name}-${startDate}.json`;
+    a.download = `virtual-trade-${symbol}-${strategiesMetadata[activeTab]?.name || 'unknown'}-${startDate}.json`;
     a.click();
     URL.revokeObjectURL(url);
   };
 
   const exportCSV = () => {
-    if (!results[activeTab]) return;
+    if (!results[activeTab] || strategiesMetadata.length === 0) return;
     const header = ['date','action','nav','shares','amount','cashAfter','sharesAfter','totalAfter','profitSincePrev','profitSinceStart'];
     const lines = [header.join(',')];
     for (const r of results[activeTab]!.timeline) {
@@ -465,7 +493,7 @@ export const VirtualTradeModal: React.FC<Props> = ({ symbol, fundName, history: 
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `virtual-trade-${symbol}-${strategies[activeTab].name}-${startDate}.csv`;
+    a.download = `virtual-trade-${symbol}-${strategiesMetadata[activeTab]?.name || 'unknown'}-${startDate}.csv`;
     a.click();
     URL.revokeObjectURL(url);
   };
@@ -523,7 +551,7 @@ export const VirtualTradeModal: React.FC<Props> = ({ symbol, fundName, history: 
             <div className="flex items-center gap-2 flex-nowrap">
               <input id={startDateInputId} type="date" className="flex-1 min-w-0 px-2 py-1 border rounded text-right" value={startDate} onChange={e => setStartDate(e.target.value)} />
               <button type="button" className="px-3 py-1 bg-gray-100 text-gray-700 rounded whitespace-nowrap shrink-0" onClick={resetUnitsToDefault} disabled={running || loadingDefaultUnits} aria-label="重置虚拟交易默认值">重置</button>
-              <button type="button" className="px-3 py-1 bg-emerald-500 text-white rounded whitespace-nowrap shrink-0" disabled={(process.env.NODE_ENV === 'test') ? running : (!canRun || running)} onClick={onStart}>{running ? '运行中...' : '开始'}</button>
+              <button type="button" className="px-3 py-1 bg-emerald-500 text-white rounded whitespace-nowrap shrink-0" disabled={(process.env.NODE_ENV === 'test') ? running : (!canRun || running || strategiesLoading)} onClick={onStart}>{strategiesLoading ? '加载中...' : running ? '运行中...' : '开始'}</button>
             </div>
           </div>
         </div>
@@ -551,7 +579,7 @@ export const VirtualTradeModal: React.FC<Props> = ({ symbol, fundName, history: 
 
         <div className="mb-3">
           <div className="flex items-center space-x-2">
-            {strategies.map((s, i) => (
+            {!strategiesLoading && strategiesMetadata.map((s, i) => (
               <SimpleTooltip key={s.name} content={s.description}>
                 <button
                   onClick={() => setActiveTab(i)}
@@ -567,6 +595,9 @@ export const VirtualTradeModal: React.FC<Props> = ({ symbol, fundName, history: 
                 </button>
               </SimpleTooltip>
             ))}
+            {strategiesLoading && (
+              <div className="text-sm text-gray-500">加载策略中...</div>
+            )}
           </div>
         </div>
 

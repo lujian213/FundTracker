@@ -15,6 +15,7 @@ import PositionsModal from './components/PositionsModal';
 import InvestmentNoticeModal from './components/InvestmentNoticeModal';
 import VirtualTradeModal from './components/VirtualTradeModal';
 import BackupSettingsModal from './components/BackupSettingsModal';
+import { getAvailableStrategyKeys } from './services/strategyRegistry';
 import {
   buildBackupData, downloadBackupFile, applyBackupData,
   readBackupConfig,
@@ -726,7 +727,7 @@ const App: React.FC = () => {
           const tab = params.get('tab');
 
           // If it's a virtual trade tab request, open VirtualTradeModal
-          if (tab && ['trendFollowing', 'meanReversion', 'constantMix'].includes(tab)) {
+          if (tab && getAvailableStrategyKeys().includes(tab)) {
             setVirtualTradeModalFund(fundSymbol);
           } else {
             setViewingSymbol(fundSymbol);

@@ -83,9 +83,9 @@ describe('InvestmentNoticeModal', () => {
 
     // Should display the table headers
     expect(screen.getByText('基金名称')).toBeInTheDocument();
-    expect(screen.getByText('趋势追踪')).toBeInTheDocument();
-    expect(screen.getByText('均值回归')).toBeInTheDocument();
-    expect(screen.getByText('恒定混合')).toBeInTheDocument();
+    expect(screen.getByText('趋势追踪策略')).toBeInTheDocument();
+    expect(screen.getByText('均值回归策略')).toBeInTheDocument();
+    expect(screen.getByText('恒定混合策略')).toBeInTheDocument();
   });
 
   it('displays loading state initially', () => {

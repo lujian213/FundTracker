@@ -7,6 +7,16 @@ jest.mock('../../services/virtualTradeEngine', () => ({
   runVirtualTrade: jest.fn(),
 }));
 
+// Mock strategy registry to return static data in tests
+jest.mock('../../services/strategyRegistry', () => ({
+  loadAllStrategies: jest.fn().mockResolvedValue([
+    { key: 'trendFollowing', strategy: { name: 'Trend Following' }, meta: { name: '趋势跟踪', description: 'Follows trends' } },
+    { key: 'meanReversion', strategy: { name: 'Mean Reversion' }, meta: { name: '均值回归', description: 'Reverts to mean' } },
+    { key: 'constantMix', strategy: { name: 'Constant Mix' }, meta: { name: '固定混合', description: 'Constant mix allocation' } },
+  ]),
+  getStaticStrategyList: jest.fn(),
+}));
+
 import { runVirtualTrade } from '../../services/virtualTradeEngine';
 import VirtualTradeModal from '../../components/VirtualTradeModal';
 import { HistoricalPoint, VirtualTradeResult, VirtualTradeAction } from '../../types';
@@ -35,8 +45,8 @@ describe('VirtualTradeModal thumbs and auto-switch behavior', () => {
 
     render(<VirtualTradeModal symbol="X" fundName="F" history={hist} onClose={() => {}} />);
 
-    // click start
-    const startBtn = screen.getByRole('button', { name: /开始/ });
+    // Wait for strategies to load (button text should change from "加载中..." to "开始")
+    const startBtn = await screen.findByRole('button', { name: /开始/ });
     fireEvent.click(startBtn);
 
     // expect thumb svg to appear in the first strategy tab and active tab switched
@@ -56,7 +66,8 @@ describe('VirtualTradeModal thumbs and auto-switch behavior', () => {
       .mockReturnValueOnce(makeResult(50));
 
     render(<VirtualTradeModal symbol="X" fundName="F" history={hist} onClose={() => {}} />);
-    fireEvent.click(screen.getByRole('button', { name: /开始/ }));
+    const startBtn = await screen.findByRole('button', { name: /开始/ });
+    fireEvent.click(startBtn);
 
     const svgs2 = await screen.findAllByTitle('当前收益最高');
     const svg2 = svgs2.find(el => el.tagName?.toLowerCase() === 'svg') || svgs2[0];
@@ -74,7 +85,8 @@ describe('VirtualTradeModal thumbs and auto-switch behavior', () => {
       .mockReturnValueOnce(makeResult(0, false));
 
     render(<VirtualTradeModal symbol="X" fundName="F" history={hist} onClose={() => {}} />);
-    fireEvent.click(screen.getByRole('button', { name: /开始/ }));
+    const startBtn = await screen.findByRole('button', { name: /开始/ });
+    fireEvent.click(startBtn);
 
     await waitFor(() => {
       // no svg with that title
