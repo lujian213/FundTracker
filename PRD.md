@@ -516,7 +516,8 @@
     }
   },
   "config": {
-    "autoExportTime": "HH:mm (string — 每日自动导出时间，默认 '16:00')"
+    "autoExportTime": "HH:mm (string — 每日自动导出时间，默认 '16:00')",
+    "autoBackupEnabled": "boolean (可选 — 是否启用自动备份，默认 false)"
   }
 }
 ```
@@ -534,7 +535,7 @@
 
 #### 自动导出
 
-- 触发方式：系统在每日本地时间达到配置的 `autoExportTime`（默认 `16:00`）时自动触发；由 `App.tsx` 中的定时器（每分钟检查一次）驱动。
+- 触发方式：系统在每日本地时间达到配置的 `autoExportTime`（默认 `16:00`）时自动触发；由 `App.tsx` 中的定时器驱动，**但只有在 `autoBackupEnabled` 为 true 时才执行**。
 - 文件名格式：`fund_backup_auto_<yyyy-MM-dd>.json`（本地当天日期），例如 `fund_backup_auto_2026-02-27.json`。
 - 实现：调用同样的 `buildBackupData()` + `downloadBackupFile(data, 'auto')`，**无需用户干预，全自动进行**。
 - **UI 提示（主界面顶部固定区域）**：
@@ -549,7 +550,7 @@
 - 导入动作（`applyBackupData`）执行以下步骤：
   1. 解析 JSON 文件，进行数据归一化（处理旧格式兼容问题，见兼容性章节）。
   2. **完全清除**原有数据：`fund_portfolio`、`fund_trades`、所有 `fund_position_*` key。
-  3. 写入新 portfolio（`localStorage['fund_portfolio']`）、新 trades（`localStorage['fund_trades']`）、新 positions（`localStorage['fund_position_*']`）、新 indices 配置（`localStorage['fund_indices']`、`localStorage['fund_global_indices']`）、新 `autoExportTime`（`localStorage['fund_backup_config']`）。
+  3. 写入新 portfolio（`localStorage['fund_portfolio']`）、新 trades（`localStorage['fund_trades']`）、新 positions（`localStorage['fund_position_*']`）、新 indices 配置（`localStorage['fund_indices']`、`localStorage['fund_global_indices']`）、新 `autoExportTime`（`localStorage['fund_backup_config']`）以及 `autoBackupEnabled` 状态。
   4. **evict 旧 symbol 的估值缓存**（调用 `cacheService.evictValuations`），并将导入数据中的 optional 估值作为 fallback 写入缓存（仅当缓存中该 symbol 尚无数据时，调用 `cacheService.setValuationIfAbsent`），确保页面能即时展示已有数据。
   5. **不清除** `fund_history_*` 缓存 key（历史净值保留，用于加速下次展示）。
   6. 返回新的 `portfolio`、`indicesConfig`、`globalIndicesConfig`，供 `App.tsx` 更新 state 并触发 UI 重新渲染。
@@ -558,13 +559,14 @@
 
 - 入口：顶部菜单栏点击 **"备份设置"** 打开弹窗。
 - 功能：
-  - 时间选择器（`<input type="time">`），初始值为当前已保存的 `autoExportTime`（默认 `16:00`）。
-  - 下方实时显示"距下一次自动备份还有 X 小时 Y 分钟"（倒计时，基于当前本地时间和配置时间计算）。
-  - **修改时间后，倒计时文字随即更新**，反映新时间下的剩余时长。
-  - 保存（`保存` 按钮）：调用 `writeBackupConfig({ autoExportTime: newTime })`，持久化到 `localStorage['fund_backup_config']`，并通知 `App.tsx` 更新定时器。
+  - 自动备份开关：显示"启用自动备份"的开关控件，初始状态由 `autoBackupEnabled` 配置决定（默认为 `false`）。
+  - 时间选择器（`<input type="time">`），仅当自动备份开关开启时可编辑，初始值为当前已保存的 `autoExportTime`（默认 `16:00`）；当开关关闭时，时间输入框被禁用（灰色显示，不可编辑）。
+  - 下方实时显示自动备份状态："距下一次自动备份还有 X 小时 Y 分钟"（当开关开启时）或"已关闭"（当开关关闭时）。
+  - **修改开关或时间后，状态文字随即更新**，反映当前设置下的状态。
+  - 保存（`保存` 按钮）：调用 `writeBackupConfig({ autoExportTime: newTime, autoBackupEnabled: newEnabled })`，持久化到 `localStorage['fund_backup_config']`，并通知 `App.tsx` 更新定时器。
   - 取消/关闭：不保存，关闭弹窗。
-- 配置持久化 key：`fund_backup_config`；JSON 格式：`{ "autoExportTime": "HH:mm" }`。
-- `readBackupConfig()` 在读取失败或格式不合法时返回默认值 `{ autoExportTime: '16:00' }`。
+- 配置持久化 key：`fund_backup_config`；JSON 格式：`{ "autoExportTime": "HH:mm", "autoBackupEnabled": boolean }`。
+- `readBackupConfig()` 在读取失败或格式不合法时返回默认值 `{ autoExportTime: '16:00', autoBackupEnabled: false }`。
 
 ### 兼容性（旧格式导入）
 
@@ -575,21 +577,22 @@
 | `indices` / `globalIndices` 为纯字符串数组（非对象数组）| 将每个字符串视为 `symbol`，其余字段置空，正常导入 |
 | `indices` 数组中混合字符串和对象 | 逐项判断：字符串直接取为 `symbol`，对象正常解构 |
 | `portfolio` 中无 optional 字段（name、currentPrice 等）| 仅用 `id`、`symbol`、`market` 核心字段，optional 字段置空 |
-| 缺少 `config` 字段 | 取 `localStorage['fund_backup_config']` 中已存储的值；若也无则用默认值 `16:00` |
+| 缺少 `config` 字段 | 取 `localStorage['fund_backup_config']` 中已存储的值；若也无则用默认值 `{ autoExportTime: '16:00', autoBackupEnabled: false }` |
 | `positions` 中缺少 `initialPrice` | 归一化为 `null` |
 | `trades` 中缺少 `price` | 归一化为 `0` |
 | 缺少 `trades` 或 `positions` 字段 | 视为空对象 `{}` |
 | 缺少 `globalIndices` 字段 | 视为空数组 `[]` |
+| 缺少 `autoBackupEnabled` 字段（从旧版导入）| 默认设置为 `false`（自动备份关闭） |
 
 ### 工具函数（`utils/backupService.ts`）
 
 | 函数 | 说明 |
 |---|---|
-| `buildBackupData(portfolio, indicesState, globalIndicesState)` | 构建完整备份数据对象（从 localStorage 读取 trades/positions，从 cacheService 读取估值填充 optional 字段） |
+| `buildBackupData(portfolio, indicesState, globalIndicesState)` | 构建完整备份数据对象（从 localStorage 读取 trades/positions，从 cacheService 读取估值填充 optional 字段），包含 `autoBackupEnabled` 状态 |
 | `downloadBackupFile(data, mode: 'manual' \| 'auto')` | 生成 Blob，触发浏览器下载；`manual` 模式文件名含本地时间戳，`auto` 模式含 `_auto_` 和日期 |
-| `applyBackupData(raw)` | 解析、归一化、写入 localStorage，更新缓存，返回新 state |
-| `readBackupConfig()` | 读取并验证 `fund_backup_config`，失败时返回默认值 |
-| `writeBackupConfig(cfg)` | 将配置序列化后写入 `fund_backup_config` |
+| `applyBackupData(raw)` | 解析、归一化、写入 localStorage，更新缓存，返回新 state，处理 `autoBackupEnabled` 状态 |
+| `readBackupConfig()` | 读取并验证 `fund_backup_config`，失败时返回默认值，处理 `autoBackupEnabled` 状态的向后兼容 |
+| `writeBackupConfig(cfg)` | 将配置（包括 `autoBackupEnabled` 状态）序列化后写入 `fund_backup_config` |
 
 ### 数据最终一致性
 

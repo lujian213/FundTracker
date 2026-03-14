@@ -18,20 +18,23 @@ const BACKUP_CONFIG_KEY = 'fund_backup_config';
 const DEFAULT_AUTO_EXPORT_TIME = '16:00';
 
 // ─── Config helpers ───────────────────────────────────────────────────────────
-export function readBackupConfig(): { autoExportTime: string } {
+export function readBackupConfig(): { autoExportTime: string; autoBackupEnabled?: boolean } {
   try {
     const raw = localStorage.getItem(BACKUP_CONFIG_KEY);
     if (raw) {
       const cfg = JSON.parse(raw);
       if (typeof cfg.autoExportTime === 'string' && /^\d{2}:\d{2}$/.test(cfg.autoExportTime)) {
-        return { autoExportTime: cfg.autoExportTime };
+        return {
+          autoExportTime: cfg.autoExportTime,
+          autoBackupEnabled: cfg.autoBackupEnabled !== undefined ? cfg.autoBackupEnabled : false
+        };
       }
     }
   } catch { /* ignore */ }
-  return { autoExportTime: DEFAULT_AUTO_EXPORT_TIME };
+  return { autoExportTime: DEFAULT_AUTO_EXPORT_TIME, autoBackupEnabled: false };
 }
 
-export function writeBackupConfig(cfg: { autoExportTime: string }): void {
+export function writeBackupConfig(cfg: { autoExportTime: string; autoBackupEnabled?: boolean }): void {
   try {
     localStorage.setItem(BACKUP_CONFIG_KEY, JSON.stringify(cfg));
   } catch { /* ignore */ }
@@ -281,7 +284,11 @@ export function applyBackupData(imported: BackupData): AppliedData {
 
   // ── 9. Write config ────────────────────────────────────────────────────────
   if (imported.config?.autoExportTime) {
-    writeBackupConfig({ autoExportTime: imported.config.autoExportTime });
+    const configToSave = {
+      autoExportTime: imported.config.autoExportTime,
+      autoBackupEnabled: imported.config.autoBackupEnabled !== undefined ? imported.config.autoBackupEnabled : false
+    };
+    writeBackupConfig(configToSave);
   }
 
   return {

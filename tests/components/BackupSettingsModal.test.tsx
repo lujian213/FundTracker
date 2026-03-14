@@ -37,7 +37,7 @@ describe('BackupSettingsModal', () => {
 
   test('renders modal with initial autoExportTime in input', () => {
     render(
-      <BackupSettingsModal autoExportTime="16:00" onSave={jest.fn()} onClose={jest.fn()} />,
+      <BackupSettingsModal autoExportTime="16:00" autoBackupEnabled={true} onSave={jest.fn()} onClose={jest.fn()} />,
     );
     expect(screen.getByText('备份设置')).toBeInTheDocument();
     const input = screen.getByDisplayValue('16:00') as HTMLInputElement;
@@ -47,7 +47,7 @@ describe('BackupSettingsModal', () => {
 
   test('displays countdown text', () => {
     render(
-      <BackupSettingsModal autoExportTime="16:00" onSave={jest.fn()} onClose={jest.fn()} />,
+      <BackupSettingsModal autoExportTime="16:00" autoBackupEnabled={true} onSave={jest.fn()} onClose={jest.fn()} />,
     );
     expect(screen.getByText('距下次自动备份还有')).toBeInTheDocument();
     // Countdown should be in HH:mm:ss format
@@ -60,7 +60,7 @@ describe('BackupSettingsModal', () => {
   test('取消 button calls onClose', () => {
     const onClose = jest.fn();
     render(
-      <BackupSettingsModal autoExportTime="16:00" onSave={jest.fn()} onClose={onClose} />,
+      <BackupSettingsModal autoExportTime="16:00" autoBackupEnabled={true} onSave={jest.fn()} onClose={onClose} />,
     );
     fireEvent.click(screen.getByText('取消'));
     expect(onClose).toHaveBeenCalledTimes(1);
@@ -69,7 +69,7 @@ describe('BackupSettingsModal', () => {
   test('X icon button calls onClose', () => {
     const onClose = jest.fn();
     render(
-      <BackupSettingsModal autoExportTime="16:00" onSave={jest.fn()} onClose={onClose} />,
+      <BackupSettingsModal autoExportTime="16:00" autoBackupEnabled={true} onSave={jest.fn()} onClose={onClose} />,
     );
     fireEvent.click(screen.getByLabelText('关闭'));
     expect(onClose).toHaveBeenCalledTimes(1);
@@ -78,7 +78,7 @@ describe('BackupSettingsModal', () => {
   test('Escape key calls onClose', () => {
     const onClose = jest.fn();
     render(
-      <BackupSettingsModal autoExportTime="16:00" onSave={jest.fn()} onClose={onClose} />,
+      <BackupSettingsModal autoExportTime="16:00" autoBackupEnabled={true} onSave={jest.fn()} onClose={onClose} />,
     );
     const dialog = screen.getByRole('dialog');
     fireEvent.keyDown(dialog, { key: 'Escape' });
@@ -88,7 +88,7 @@ describe('BackupSettingsModal', () => {
   test('clicking backdrop calls onClose', () => {
     const onClose = jest.fn();
     render(
-      <BackupSettingsModal autoExportTime="16:00" onSave={jest.fn()} onClose={onClose} />,
+      <BackupSettingsModal autoExportTime="16:00" autoBackupEnabled={true} onSave={jest.fn()} onClose={onClose} />,
     );
     // createPortal renders into document.body, so we query from there
     const backdrop = document.body.querySelector('.absolute.inset-0');
@@ -102,31 +102,31 @@ describe('BackupSettingsModal', () => {
   test('保存 button calls writeBackupConfig and onSave with current tmpTime', () => {
     const onSave = jest.fn();
     render(
-      <BackupSettingsModal autoExportTime="16:00" onSave={onSave} onClose={jest.fn()} />,
+      <BackupSettingsModal autoExportTime="16:00" autoBackupEnabled={true} onSave={onSave} onClose={jest.fn()} />,
     );
 
     const input = screen.getByDisplayValue('16:00') as HTMLInputElement;
     fireEvent.change(input, { target: { value: '09:30' } });
     fireEvent.click(screen.getByText('保存'));
 
-    expect(mockWrite).toHaveBeenCalledWith({ autoExportTime: '09:30' });
-    expect(onSave).toHaveBeenCalledWith('09:30');
+    expect(mockWrite).toHaveBeenCalledWith({ autoExportTime: '09:30', autoBackupEnabled: true });
+    expect(onSave).toHaveBeenCalledWith('09:30', true);
   });
 
   test('保存 with unchanged value calls onSave with original time', () => {
     const onSave = jest.fn();
     render(
-      <BackupSettingsModal autoExportTime="16:00" onSave={onSave} onClose={jest.fn()} />,
+      <BackupSettingsModal autoExportTime="16:00" autoBackupEnabled={true} onSave={onSave} onClose={jest.fn()} />,
     );
     fireEvent.click(screen.getByText('保存'));
-    expect(onSave).toHaveBeenCalledWith('16:00');
+    expect(onSave).toHaveBeenCalledWith('16:00', true);
   });
 
   // ── Countdown update on input change ─────────────────────────────────────────
 
   test('countdown refreshes when time input changes', async () => {
     render(
-      <BackupSettingsModal autoExportTime="16:00" onSave={jest.fn()} onClose={jest.fn()} />,
+      <BackupSettingsModal autoExportTime="16:00" autoBackupEnabled={true} onSave={jest.fn()} onClose={jest.fn()} />,
     );
 
     const before = screen.getByText(/^\d{2}:\d{2}:\d{2}$/).textContent;
@@ -147,7 +147,7 @@ describe('BackupSettingsModal', () => {
 
   test('shows no error initially', () => {
     render(
-      <BackupSettingsModal autoExportTime="16:00" onSave={jest.fn()} onClose={jest.fn()} />,
+      <BackupSettingsModal autoExportTime="16:00" autoBackupEnabled={true} onSave={jest.fn()} onClose={jest.fn()} />,
     );
     expect(screen.queryByRole('alert')).toBeNull();
   });
@@ -155,7 +155,7 @@ describe('BackupSettingsModal', () => {
   test('clearing error when input changes after a failed save attempt', () => {
     const onSave = jest.fn();
     render(
-      <BackupSettingsModal autoExportTime="16:00" onSave={onSave} onClose={jest.fn()} />,
+      <BackupSettingsModal autoExportTime="16:00" autoBackupEnabled={true} onSave={onSave} onClose={jest.fn()} />,
     );
 
     // Force save with current valid value first, change to bad value

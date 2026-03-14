@@ -151,6 +151,7 @@ const App: React.FC = () => {
   const [pendingImportData, setPendingImportData] = useState<BackupData | null>(null);
   const [showBackupSettings, setShowBackupSettings] = useState<boolean>(false);
   const [autoExportTime, setAutoExportTime] = useState<string>(() => readBackupConfig().autoExportTime);
+  const [autoBackupEnabled, setAutoBackupEnabled] = useState<boolean>(() => readBackupConfig().autoBackupEnabled ?? false);
   const [autoBackupStatus, setAutoBackupStatus] = useState<'pending' | 'done' | null>(null);
   const [deepToast, setDeepToast] = useState<{ message: string, visible: boolean } | undefined>(undefined);
 
@@ -409,17 +410,15 @@ const App: React.FC = () => {
     let preBannerTimer: ReturnType<typeof setTimeout> | null = null;
     let exportTimer: ReturnType<typeof setTimeout> | null = null;
 
-    function msUntil(timeStr: string): number {
-      const [hh, mm] = timeStr.split(':').map(Number);
+    function schedule() {
+      if (!autoBackupEnabled) return; // Only schedule if auto backup is enabled
+
+      const [hh, mm] = autoExportTime.split(':').map(Number);
       const now = new Date();
       const target = new Date(now);
       target.setHours(hh, mm, 0, 0);
       if (target <= now) target.setDate(target.getDate() + 1);
-      return target.getTime() - now.getTime();
-    }
-
-    function schedule() {
-      const msToExport = msUntil(autoExportTime);
+      const msToExport = target.getTime() - now.getTime();
       const msToPreBanner = Math.max(0, msToExport - 5000);
 
       preBannerTimer = setTimeout(() => {
@@ -441,7 +440,9 @@ const App: React.FC = () => {
       if (document.visibilityState === 'visible') {
         if (preBannerTimer) clearTimeout(preBannerTimer);
         if (exportTimer) clearTimeout(exportTimer);
-        schedule();
+        if (autoBackupEnabled) { // Only reschedule if auto backup is enabled
+          schedule();
+        }
       }
     };
     document.addEventListener('visibilitychange', onVisible);
@@ -452,7 +453,7 @@ const App: React.FC = () => {
       document.removeEventListener('visibilitychange', onVisible);
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [autoExportTime]);
+  }, [autoExportTime, autoBackupEnabled]);
 
   const sortedPortfolio = useMemo(() => {
     return [...portfolio].sort((a, b) => {
@@ -505,6 +506,9 @@ const App: React.FC = () => {
     setGlobalIndicesConfig(applied.globalIndicesConfig);
     if (pendingImportData.config?.autoExportTime) {
       setAutoExportTime(pendingImportData.config.autoExportTime);
+    }
+    if (pendingImportData.config?.autoBackupEnabled !== undefined) {
+      setAutoBackupEnabled(pendingImportData.config.autoBackupEnabled);
     }
     setPendingImportData(null);
     runBatchUpdate(applied.portfolio);
@@ -759,7 +763,12 @@ const App: React.FC = () => {
       {showBackupSettings && (
         <BackupSettingsModal
           autoExportTime={autoExportTime}
-          onSave={(time) => { setAutoExportTime(time); setShowBackupSettings(false); }}
+          autoBackupEnabled={autoBackupEnabled}
+          onSave={(time, enabled) => {
+            setAutoExportTime(time);
+            setAutoBackupEnabled(enabled);
+            setShowBackupSettings(false);
+          }}
           onClose={() => setShowBackupSettings(false)}
         />
       )}

@@ -1,10 +1,11 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { writeBackupConfig } from '../utils/backupService';
+import { readBackupConfig, writeBackupConfig } from '../utils/backupService';
 
 interface Props {
   autoExportTime: string;          // current "HH:mm" value from App state
-  onSave: (time: string) => void;  // notify App to update its state + reset timer
+  autoBackupEnabled: boolean;      // current auto backup enabled state
+  onSave: (time: string, enabled: boolean) => void;  // notify App to update its state + reset timer
   onClose: () => void;
 }
 
@@ -26,33 +27,36 @@ function formatCountdown(seconds: number): string {
   return `${pad(h)}:${pad(m)}:${pad(s)}`;
 }
 
-const BackupSettingsModal: React.FC<Props> = ({ autoExportTime, onSave, onClose }) => {
+const BackupSettingsModal: React.FC<Props> = ({ autoExportTime, autoBackupEnabled, onSave, onClose }) => {
   const [tmpTime, setTmpTime] = useState(autoExportTime);
+  const [tmpEnabled, setTmpEnabled] = useState(autoBackupEnabled);
   const [error, setError] = useState('');
   // Countdown is based on tmpTime (the currently edited value) so it updates as the user changes the input
-  const [countdown, setCountdown] = useState(() => secondsUntilNext(autoExportTime));
+  const [countdown, setCountdown] = useState(() => tmpEnabled ? secondsUntilNext(autoExportTime) : 0);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  // Recompute countdown whenever tmpTime changes, and tick every second
+  // Recompute countdown whenever tmpTime or tmpEnabled changes, and tick every second
   useEffect(() => {
     if (intervalRef.current) clearInterval(intervalRef.current);
-    // Only run countdown if tmpTime looks valid
-    if (/^\d{2}:\d{2}$/.test(tmpTime)) {
+    // Only run countdown if tmpEnabled is true and tmpTime looks valid
+    if (tmpEnabled && /^\d{2}:\d{2}$/.test(tmpTime)) {
       setCountdown(secondsUntilNext(tmpTime));
       intervalRef.current = setInterval(() => {
         setCountdown(secondsUntilNext(tmpTime));
       }, 1000);
+    } else {
+      setCountdown(0);
     }
     return () => { if (intervalRef.current) clearInterval(intervalRef.current); };
-  }, [tmpTime]);
+  }, [tmpTime, tmpEnabled]);
 
   const handleSave = () => {
-    if (!/^\d{2}:\d{2}$/.test(tmpTime)) {
+    if (tmpEnabled && !/^\d{2}:\d{2}$/.test(tmpTime)) {
       setError('请输入有效的时间（HH:mm）');
       return;
     }
-    writeBackupConfig({ autoExportTime: tmpTime });
-    onSave(tmpTime);
+    writeBackupConfig({ autoExportTime: tmpTime, autoBackupEnabled: tmpEnabled });
+    onSave(tmpTime, tmpEnabled);
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -92,16 +96,36 @@ const BackupSettingsModal: React.FC<Props> = ({ autoExportTime, onSave, onClose 
 
         {/* Body */}
         <div className="px-6 py-5 space-y-5">
-          {/* Time picker */}
+          {/* Auto Backup Toggle */}
+          <div className="flex items-center justify-between">
+            <span className="text-sm font-medium text-gray-700">启用自动备份</span>
+            <label className="relative inline-flex items-center cursor-pointer">
+              <input
+                type="checkbox"
+                checked={tmpEnabled}
+                onChange={e => setTmpEnabled(e.target.checked)}
+                className="sr-only peer"
+              />
+              <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600 rounded-full"></div>
+            </label>
+          </div>
+
+          {/* Time picker - conditionally disabled based on toggle */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
+            <label htmlFor="auto-export-time" className="block text-sm font-medium text-gray-700 mb-2">
               每日自动导出时间
             </label>
             <input
+              id="auto-export-time"
               type="time"
               value={tmpTime}
               onChange={e => { setTmpTime(e.target.value); setError(''); }}
-              className="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
+              disabled={!tmpEnabled}
+              className={`w-full border rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 ${
+                tmpEnabled
+                  ? 'border-gray-200 focus:ring-blue-400'
+                  : 'border-gray-200 bg-gray-100 text-gray-400 cursor-not-allowed'
+              }`}
             />
             {error && (
               <p className="mt-1.5 text-xs text-red-500" role="alert">{error}</p>
@@ -112,10 +136,17 @@ const BackupSettingsModal: React.FC<Props> = ({ autoExportTime, onSave, onClose 
           <div className="bg-green-50 rounded-2xl px-4 py-3 flex items-center space-x-3">
             <i className="fas fa-clock text-green-500 text-sm" />
             <div>
-              <p className="text-xs text-green-700 font-medium">距下次自动备份还有</p>
-              <p className="text-lg font-mono font-bold text-green-700 leading-tight">
-                {formatCountdown(countdown)}
-              </p>
+              <p className="text-xs text-green-700 font-medium">自动备份状态</p>
+              {tmpEnabled ? (
+                <>
+                  <p className="text-xs text-green-700">距下次自动备份还有</p>
+                  <p className="text-lg font-mono font-bold text-green-700 leading-tight">
+                    {formatCountdown(countdown)}
+                  </p>
+                </>
+              ) : (
+                <p className="text-lg font-bold text-gray-500 leading-tight">已关闭</p>
+              )}
             </div>
           </div>
         </div>

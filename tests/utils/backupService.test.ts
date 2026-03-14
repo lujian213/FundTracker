@@ -60,7 +60,7 @@ const BASE_BACKUP: BackupData = {
       { id: 't1', date: '2025-01-01', type: 'buy', shares: 1000, price: 1.48, fee: 1 },
     ],
   },
-  config: { autoExportTime: '16:00' },
+  config: { autoExportTime: '16:00', autoBackupEnabled: false },
 };
 
 // ─── readBackupConfig / writeBackupConfig ─────────────────────────────────────
@@ -71,25 +71,31 @@ describe('readBackupConfig', () => {
 
   test('returns default when nothing stored', () => {
     const bs = loadBackupService();
-    expect(bs.readBackupConfig()).toEqual({ autoExportTime: '16:00' });
+    expect(bs.readBackupConfig()).toEqual({ autoExportTime: '16:00', autoBackupEnabled: false });
   });
 
-  test('returns stored config when valid', () => {
+  test('returns stored config when valid with autoBackupEnabled', () => {
+    localStorage.setItem('fund_backup_config', JSON.stringify({ autoExportTime: '09:30', autoBackupEnabled: true }));
+    const bs = loadBackupService();
+    expect(bs.readBackupConfig()).toEqual({ autoExportTime: '09:30', autoBackupEnabled: true });
+  });
+
+  test('defaults to false when autoBackupEnabled is not present', () => {
     localStorage.setItem('fund_backup_config', JSON.stringify({ autoExportTime: '09:30' }));
     const bs = loadBackupService();
-    expect(bs.readBackupConfig()).toEqual({ autoExportTime: '09:30' });
+    expect(bs.readBackupConfig()).toEqual({ autoExportTime: '09:30', autoBackupEnabled: false });
   });
 
   test('returns default when stored value has invalid format', () => {
     localStorage.setItem('fund_backup_config', JSON.stringify({ autoExportTime: 'invalid' }));
     const bs = loadBackupService();
-    expect(bs.readBackupConfig()).toEqual({ autoExportTime: '16:00' });
+    expect(bs.readBackupConfig()).toEqual({ autoExportTime: '16:00', autoBackupEnabled: false });
   });
 
   test('returns default when localStorage contains malformed JSON', () => {
     localStorage.setItem('fund_backup_config', '{broken json');
     const bs = loadBackupService();
-    expect(bs.readBackupConfig()).toEqual({ autoExportTime: '16:00' });
+    expect(bs.readBackupConfig()).toEqual({ autoExportTime: '16:00', autoBackupEnabled: false });
   });
 });
 
@@ -97,12 +103,20 @@ describe('writeBackupConfig', () => {
   beforeEach(() => { localStorage.clear(); });
   afterEach(() => { localStorage.clear(); jest.resetModules(); });
 
-  test('persists config to fund_backup_config', () => {
+  test('persists config to fund_backup_config with autoBackupEnabled', () => {
     const bs = loadBackupService();
-    bs.writeBackupConfig({ autoExportTime: '08:00' });
+    bs.writeBackupConfig({ autoExportTime: '08:00', autoBackupEnabled: true });
     const raw = localStorage.getItem('fund_backup_config');
     expect(raw).not.toBeNull();
-    expect(JSON.parse(raw!)).toEqual({ autoExportTime: '08:00' });
+    expect(JSON.parse(raw!)).toEqual({ autoExportTime: '08:00', autoBackupEnabled: true });
+  });
+
+  test('persists config to fund_backup_config with autoBackupEnabled disabled', () => {
+    const bs = loadBackupService();
+    bs.writeBackupConfig({ autoExportTime: '08:00', autoBackupEnabled: false });
+    const raw = localStorage.getItem('fund_backup_config');
+    expect(raw).not.toBeNull();
+    expect(JSON.parse(raw!)).toEqual({ autoExportTime: '08:00', autoBackupEnabled: false });
   });
 });
 
@@ -165,17 +179,19 @@ describe('buildBackupData', () => {
     });
   });
 
-  test('reads autoExportTime from fund_backup_config', () => {
+  test('reads autoExportTime and autoBackupEnabled from fund_backup_config', () => {
     const { bs } = loadBoth();
-    localStorage.setItem('fund_backup_config', JSON.stringify({ autoExportTime: '09:30' }));
+    localStorage.setItem('fund_backup_config', JSON.stringify({ autoExportTime: '09:30', autoBackupEnabled: true }));
     const result = bs.buildBackupData([], [], [], [], []);
     expect(result.config.autoExportTime).toBe('09:30');
+    expect(result.config.autoBackupEnabled).toBe(true);
   });
 
-  test('uses default autoExportTime when config not stored', () => {
+  test('uses default autoBackupEnabled when config not stored', () => {
     const { bs } = loadBoth();
     const result = bs.buildBackupData([], [], [], [], []);
     expect(result.config.autoExportTime).toBe('16:00');
+    expect(result.config.autoBackupEnabled).toBe(false);
   });
 });
 
@@ -393,13 +409,31 @@ describe('applyBackupData', () => {
     expect(cs.getValuation('000001')!.previousPrice).toBeCloseTo(9.99);
   });
 
-  test('writes config.autoExportTime to fund_backup_config', () => {
+  test('writes config.autoExportTime and autoBackupEnabled to fund_backup_config', () => {
     const { bs } = loadBoth();
-    const backup = { ...BASE_BACKUP, config: { autoExportTime: '08:30' } };
+    const backup = { ...BASE_BACKUP, config: { autoExportTime: '08:30', autoBackupEnabled: true } };
     bs.applyBackupData(backup);
 
     const raw = localStorage.getItem('fund_backup_config');
-    expect(JSON.parse(raw!)).toEqual({ autoExportTime: '08:30' });
+    expect(JSON.parse(raw!)).toEqual({ autoExportTime: '08:30', autoBackupEnabled: true });
+  });
+
+  test('writes config with autoBackupEnabled as false', () => {
+    const { bs } = loadBoth();
+    const backup = { ...BASE_BACKUP, config: { autoExportTime: '08:30', autoBackupEnabled: false } };
+    bs.applyBackupData(backup);
+
+    const raw = localStorage.getItem('fund_backup_config');
+    expect(JSON.parse(raw!)).toEqual({ autoExportTime: '08:30', autoBackupEnabled: false });
+  });
+
+  test('handles missing autoBackupEnabled during import by defaulting to false', () => {
+    const { bs } = loadBoth();
+    const backup = { ...BASE_BACKUP, config: { autoExportTime: '08:30' } }; // No autoBackupEnabled
+    bs.applyBackupData(backup);
+
+    const raw = localStorage.getItem('fund_backup_config');
+    expect(JSON.parse(raw!)).toEqual({ autoExportTime: '08:30', autoBackupEnabled: false });
   });
 
   test('normalizes missing trade price to 0', () => {

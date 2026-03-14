@@ -125,6 +125,7 @@ export interface BackupTrade {
 
 export interface BackupConfig {
   autoExportTime: string;    // "HH:mm" local time, default "16:00"
+  autoBackupEnabled?: boolean; // Whether auto backup is enabled, default false
 }
 
 export interface BackupData {
