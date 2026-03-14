@@ -369,35 +369,33 @@ const InvestmentNoticeModal: React.FC<InvestmentNoticeModalProps> = ({
     return []; // No default strategies since they should be dynamically determined
   }, [recommendations]);
 
-  // Calculate best strategy for each fund
+  // Calculate best strategy for each fund (highest profit among ALL strategies)
   const recommendationsWithBest = useMemo(() => {
     const result = recommendations.map(rec => {
-      // Only consider strategies that have a buy/sell recommendation (not hold)
       // Find all strategy profit fields (those ending in 'Profit')
       const strategyProfitFields = Object.keys(rec).filter(key =>
         key.endsWith('Profit') && key !== 'realProfit' // Exclude realProfit
       );
 
-      // Build valid profits array dynamically
-      const validProfits = strategyProfitFields.map(key => {
+      // Build profit array for all strategies (including hold)
+      const allProfits = strategyProfitFields.map(key => {
         const strategyName = key.replace('Profit', ''); // Get base name
         return {
           name: strategyName,
-          profit: rec[key],
-          action: rec[strategyName]?.action
+          profit: rec[key]
         };
-      }).filter(item => item.action !== 'hold'); // Only consider non-hold strategies
+      });
 
-      // If no valid strategies (all holds), then no best strategy
-      if (validProfits.length === 0) {
+      // If no strategies exist, then no best strategy
+      if (allProfits.length === 0) {
         return {
           ...rec,
           bestStrategy: null,
         };
       }
 
-      // Find strategy with highest profit among valid strategies
-      const bestStrategy = validProfits.reduce((max, current) =>
+      // Find strategy with highest profit among ALL strategies (including hold strategies)
+      const bestStrategy = allProfits.reduce((max, current) =>
         current.profit > max.profit ? current : max
       );
 
@@ -418,43 +416,82 @@ const InvestmentNoticeModal: React.FC<InvestmentNoticeModalProps> = ({
   };
 
   // Render recommendation cell with proper styling
-  const renderRecommendationCell = (tip: VirtualTradeResult['todayTip'], fundSymbol: string, fundName: string, strategy: StrategyType) => {
+  const renderRecommendationCell = (
+    tip: VirtualTradeResult['todayTip'],
+    fundSymbol: string,
+    fundName: string,
+    strategy: StrategyType,
+    strategyProfit: number // Add this new parameter
+  ) => {
+    // If no tip, just show dash
     if (!tip) {
-      return <span className="text-black">-</span>;
+      // Format and display profit only
+      const formattedProfit = formatMoneyWithSeparators(strategyProfit, 2);
+      const profitClass = strategyProfit > 0 ? 'text-red-600' : strategyProfit < 0 ? 'text-green-600' : '';
+
+      return (
+        <div className="flex flex-col">
+          <span className={`text-xs ${profitClass}`}>策略总盈亏：{formattedProfit}</span>
+          <span className="text-black">-</span>
+        </div>
+      );
     }
 
+    // If hold action, just show dash
     if (tip.action === 'hold') {
-      return <span className="text-black">-</span>;
+      const formattedProfit = formatMoneyWithSeparators(strategyProfit, 2);
+      const profitClass = strategyProfit > 0 ? 'text-red-600' : strategyProfit < 0 ? 'text-green-600' : '';
+
+      return (
+        <div className="flex flex-col">
+          <span className={`text-xs ${profitClass}`}>策略总盈亏：{formattedProfit}</span>
+          <span className="text-black">-</span>
+        </div>
+      );
     }
 
+    // Format tip and profit
     const displayShares = tip.shares.toFixed(2);
     const isBuy = tip.action === 'buy';
     const actionText = isBuy ? '买入' : '卖出';
     const displayContent = `${actionText} ${displayShares} 份`;
 
+    const formattedProfit = formatMoneyWithSeparators(strategyProfit, 2);
+    const profitClass = strategyProfit > 0 ? 'text-red-600' : strategyProfit < 0 ? 'text-green-600' : '';
+
     return (
-      <a
-        href="#"
-        className={`${isBuy ? 'text-green-600' : 'text-red-600'} underline`}
-        onClick={(e) => {
-          e.preventDefault();
-          goToVirtualTrade(fundSymbol, fundName, strategy);
-        }}
-      >
-        {displayContent}
-      </a>
+      <div className="flex flex-col">
+        <span className={`text-xs ${profitClass}`}>策略总盈亏：{formattedProfit}</span>
+        <a
+          href="#"
+          className={`${isBuy ? 'text-green-600' : 'text-red-600'} underline text-xs`}
+          onClick={(e) => {
+            e.preventDefault();
+            goToVirtualTrade(fundSymbol, fundName, strategy);
+          }}
+        >
+          {displayContent}
+        </a>
+      </div>
     );
   };
 
-  const renderCellWithThumbsUp = (tip: VirtualTradeResult['todayTip'], fundSymbol: string, fundName: string, strategy: StrategyType, isBest: boolean) => {
-    const cellContent = renderRecommendationCell(tip, fundSymbol, fundName, strategy);
+  const renderCellWithThumbsUp = (
+    tip: VirtualTradeResult['todayTip'],
+    fundSymbol: string,
+    fundName: string,
+    strategy: StrategyType,
+    isBest: boolean,
+    strategyProfit: number // Add this parameter
+  ) => {
+    const cellContent = renderRecommendationCell(tip, fundSymbol, fundName, strategy, strategyProfit);
 
-    // Only show thumbs up for strategies that recommend buy/sell (not hold) and is the best strategy
-    if (tip && tip.action !== 'hold' && isBest) {
+    // Show thumbs up for the strategy with the highest profit among all strategies
+    if (isBest) {
       return (
-        <div className="flex items-center justify-start">
+        <div className="flex items-start justify-start">
           {cellContent}
-          <ThumbsUpIcon className="ml-1 text-amber-500" title="当前收益最高" />
+          <ThumbsUpIcon className="ml-1 text-amber-500 flex-shrink-0" title="当前收益最高" />
         </div>
       );
     }
@@ -542,6 +579,7 @@ const InvestmentNoticeModal: React.FC<InvestmentNoticeModalProps> = ({
                           </td>
                           {availableStrategyKeys.map((strategyKey) => {
                             const strategyTip = (rec as any)[strategyKey]; // Use type assertion to handle dynamic property access
+                            const strategyProfit = (rec as any)[`${strategyKey}Profit`]; // Get stored profit
                             const isBestStrategy = rec.bestStrategy === strategyKey;
 
                             return (
@@ -551,7 +589,8 @@ const InvestmentNoticeModal: React.FC<InvestmentNoticeModalProps> = ({
                                   rec.fund.symbol,
                                   rec.fund.name || rec.fund.symbol,
                                   strategyKey,
-                                  isBestStrategy
+                                  isBestStrategy,
+                                  strategyProfit // Pass the profit value
                                 )}
                               </td>
                             );
