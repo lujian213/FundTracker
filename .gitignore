@@ -2,3 +2,7 @@ FundTracker.iml
 .idea/
 node_modules/
 dist/
+backup/
+__tests__/
+.claude/
+features/

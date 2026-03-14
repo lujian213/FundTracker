@@ -15,6 +15,7 @@ import { defaultVirtualCash } from '../services/strategyConfig';
 import { computeProfitTimeline } from '../utils/profitCalculator';
 import useTrades from '../hooks/useTrades';
 import { adjustProfitTimelineForDisplay } from '../utils/profitAdjustment';
+import { calculateRealProfit, calculateRealProfitSync, getStoredPosition, getTradesForFund } from '../utils/realProfitCalculator';
 
 interface Props {
   symbol: string;
@@ -168,22 +169,12 @@ export const VirtualTradeModal: React.FC<Props> = ({ symbol, fundName, history: 
 
   // read stored position config (initialPosition, startDate, initialPrice) from localStorage
   const storedPosition = useMemo(() => {
-    try {
-      const rawKey = `fund_position_${symbol}`;
-      const padKey = `fund_position_${String(symbol).padStart(6, '0')}`;
-      const raw = localStorage.getItem(rawKey) || localStorage.getItem(padKey);
-      if (!raw) return null;
-      const cfg = JSON.parse(raw);
-      return {
-        startDate: typeof cfg.startDate === 'string' ? cfg.startDate : null,
-        initialPosition: typeof cfg.initialPosition === 'number' ? Number(cfg.initialPosition) || 0 : (typeof cfg.initialPosition === 'string' ? Number(cfg.initialPosition) || 0 : 0),
-        initialPrice: cfg.initialPrice !== undefined ? (cfg.initialPrice === null ? null : Number(cfg.initialPrice)) : null,
-      };
-    } catch (e) { return null; }
+    return getStoredPosition(symbol);
   }, [symbol]);
 
   // compute real (实盘) profit from startDate to latest using existing computeProfitTimeline util
   const { trades } = useTrades(symbol);
+
   // normalize trades: ensure date is YYYY-MM-DD string for computeProfitTimeline
   const normalizedTrades = useMemo(() => {
     try {
@@ -198,6 +189,7 @@ export const VirtualTradeModal: React.FC<Props> = ({ symbol, fundName, history: 
       });
     } catch (e) { return trades || []; }
   }, [trades]);
+
   const loadingProfit = history === null;
 
   const fullRealProfitTimeline = useMemo(() => {
@@ -230,13 +222,23 @@ export const VirtualTradeModal: React.FC<Props> = ({ symbol, fundName, history: 
     return adjustProfitTimelineForDisplay(dedup, startDate);
   }, [startDate, storedPosition, fullRealProfitTimeline, todayLocal]);
 
-  const realProfit = useMemo(() => {
-    if (!startDate || !storedPosition || !storedPosition.startDate) return null;
-    if (startDate < storedPosition.startDate) return null;
-    if (!displayedRealProfitTimeline || displayedRealProfitTimeline.length === 0) return null;
-    const total = displayedRealProfitTimeline.reduce((sum, point) => sum + (point.dailyProfit || 0), 0);
-    return Math.round(total * 100) / 100;
-  }, [startDate, storedPosition, displayedRealProfitTimeline]);
+  // calculate real profit using shared utility
+  const realProfit = useMemo((): number | null => {
+    if (!storedPosition || !storedPosition.startDate) return null;
+    if (!effectiveHistoryForProfit || effectiveHistoryForProfit.length === 0) return null;
+    if (!startDate || startDate < storedPosition.startDate) return null;
+
+    // For consistency with existing behavior, calculate synchronously using the utility function
+    // Since all data is available in the component, we don't need async calculation here
+    return calculateRealProfitSync(
+      symbol,
+      startDate,
+      effectiveHistoryForProfit,
+      storedPosition,
+      normalizedTrades || [],
+      valuation || null
+    );
+  }, [storedPosition, effectiveHistoryForProfit, startDate, normalizedTrades, valuation]);
 
   // compute and expose the effective interval actually used by computeProfitTimeline for display
   const profitInterval = useMemo(() => {
@@ -410,10 +412,10 @@ export const VirtualTradeModal: React.FC<Props> = ({ symbol, fundName, history: 
           const strat = strategies[i];
           const res = runVirtualTrade(strat, history || [], { startDate, initialCash: parsedCash || 0, initialShares: parsedShares || 0, currentPrice: valuation?.currentPrice ?? null, realtimeDate: valuation?.realtimeDate ?? null, previousPrice: valuation?.previousPrice ?? null, netWorthDate: valuation?.netWorthDate ?? null });
           newResults.push(res);
-        } catch (e:any) {
+        } catch (e: any) {
           // if one strategy fails, record null and continue
           newResults.push(null);
-          console.error('strategy run failed', strategies[i].name, e);
+          // console.error('strategy run failed', strategies[i].name, e);
         }
       }
 

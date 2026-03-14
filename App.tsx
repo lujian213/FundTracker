@@ -12,6 +12,8 @@ import { MarketNewsTicker } from './components/MarketNewsTicker';
 import OverallProfitModal from './components/OverallProfitModal';
 import TransactionsModal from './components/TransactionsModal';
 import PositionsModal from './components/PositionsModal';
+import InvestmentNoticeModal from './components/InvestmentNoticeModal';
+import VirtualTradeModal from './components/VirtualTradeModal';
 import BackupSettingsModal from './components/BackupSettingsModal';
 import {
   buildBackupData, downloadBackupFile, applyBackupData,
@@ -134,6 +136,7 @@ const App: React.FC = () => {
   const [showOverallProfit, setShowOverallProfit] = useState<boolean>(false);
   const [showTransactions, setShowTransactions] = useState<boolean>(false);
   const [showPositions, setShowPositions] = useState<boolean>(false);
+  const [isInvestmentNoticeModalOpen, setIsInvestmentNoticeModalOpen] = useState<boolean>(false);
   const [selectedItems, setSelectedItems] = useState<Set<ManageSelectionKey>>(new Set());
   const [backgroundTasks, setBackgroundTasks] = useState<number>(0);
 
@@ -142,6 +145,7 @@ const App: React.FC = () => {
   const [indexStatuses, setIndexStatuses] = useState<Record<string, CardStatus>>({});
 
   const [viewingSymbol, setViewingSymbol] = useState<string | null>(null);
+  const [virtualTradeModalFund, setVirtualTradeModalFund] = useState<string | null>(null);
   const [viewingIndex, setViewingIndex] = useState<MarketIndex | null>(null);
   const [pendingImportData, setPendingImportData] = useState<BackupData | null>(null);
   const [showBackupSettings, setShowBackupSettings] = useState<boolean>(false);
@@ -635,6 +639,7 @@ const App: React.FC = () => {
                     <button onClick={() => setShowPositions(true)} className="px-4 py-1.5 rounded-full bg-blue-600 shadow-md text-[11px] font-bold text-white hover:bg-blue-700 transition-all">持仓</button>
                     <button onClick={() => setShowOverallProfit(true)} className="px-4 py-1.5 rounded-full bg-blue-600 shadow-md text-[11px] font-bold text-white hover:bg-blue-700 transition-all">盈利</button>
                     <button onClick={() => setShowTransactions(true)} className="px-4 py-1.5 rounded-full bg-blue-600 shadow-md text-[11px] font-bold text-white hover:bg-blue-700 transition-all">交易</button>
+                    <button onClick={() => setIsInvestmentNoticeModalOpen(true)} className="px-4 py-1.5 rounded-full bg-blue-600 shadow-md text-[11px] font-bold text-white hover:bg-blue-700 transition-all">投顾</button>
                     <button disabled={manageableItemCount === 0} onClick={() => { setSelectedItems(new Set()); setIsSelectionMode(true); }} className={`px-4 py-1.5 rounded-full shadow-md text-[11px] font-bold text-white transition-all ${manageableItemCount === 0 ? 'bg-blue-300 cursor-not-allowed opacity-60' : 'bg-blue-600 hover:bg-blue-700'}`}>管理</button>
                     <button onClick={() => setSortOrder(o => o === 'desc' ? 'asc' : 'desc')} className="w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center text-gray-500">
                       <i className={`fas fa-sort-amount-${sortOrder === 'asc' ? 'up' : 'down'}`}></i>
@@ -712,7 +717,33 @@ const App: React.FC = () => {
       {showOverallProfit && <OverallProfitModal onClose={() => setShowOverallProfit(false)} onSelectFund={(sym) => { setShowOverallProfit(false); setViewingSymbol(sym); }} />}
       {showPositions && <PositionsModal portfolio={portfolio} marketData={marketData} onClose={() => setShowPositions(false)} onSelectFund={(sym) => { setShowPositions(false); setViewingSymbol(sym); }} />}
       {showTransactions && <TransactionsModal portfolio={portfolio} marketData={marketData} onClose={() => setShowTransactions(false)} onSelectFund={(sym) => { setShowTransactions(false); setViewingSymbol(sym); }} />}
+      {isInvestmentNoticeModalOpen && <InvestmentNoticeModal portfolio={portfolio} onClose={() => setIsInvestmentNoticeModalOpen(false)} onSelectFund={(sym) => {
+        setIsInvestmentNoticeModalOpen(false);
+        // Check if sym contains query parameters for virtual trade
+        if (sym.includes('?')) {
+          const [fundSymbol, paramsStr] = sym.split('?');
+          const params = new URLSearchParams(paramsStr);
+          const tab = params.get('tab');
+
+          // If it's a virtual trade tab request, open VirtualTradeModal
+          if (tab && ['trendFollowing', 'meanReversion', 'constantMix'].includes(tab)) {
+            setVirtualTradeModalFund(fundSymbol);
+          } else {
+            setViewingSymbol(fundSymbol);
+          }
+        } else {
+          setViewingSymbol(sym);
+        }
+      }} marketData={marketData} />}
       {viewingSymbol && marketData[viewingSymbol] && <FundDetailsModal data={marketData[viewingSymbol]} onClose={() => setViewingSymbol(null)} />}
+      {virtualTradeModalFund && portfolio.some(f => f.symbol === virtualTradeModalFund) && (
+        <VirtualTradeModal
+          symbol={virtualTradeModalFund}
+          fundName={portfolio.find(f => f.symbol === virtualTradeModalFund)?.name}
+          onClose={() => setVirtualTradeModalFund(null)}
+          valuation={marketData[virtualTradeModalFund]}
+        />
+      )}
       {viewingIndex && <IndexDetailsModal data={viewingIndex} onClose={() => setViewingIndex(null)} />}
       <ConfirmDialog
         isOpen={!!pendingImportData}
