@@ -1,8 +1,8 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { HistoricalPoint } from '../types';
+import { HistoricalPoint, TradeRecord } from '../types';
 import { fetchFundHistory } from '../services/fundService';
 import { resolvePreferredPrice, toLocalDateKey } from '../utils/priceResolver';
-import useTrades, { TradeRecord } from '../hooks/useTrades';
+import useTrades from '../hooks/useTrades';
 
 type TradeType = 'buy' | 'sell';
 

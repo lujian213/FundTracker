@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { createPortal } from 'react-dom';
-import { ValuationData, HistoricalPoint, IntradayPoint } from '../types';
+import { ValuationData, HistoricalPoint, IntradayPoint, TradeRecord } from '../types';
 import { fetchFundHistory as defaultFetchFundHistory } from '../services/fundService';
 import * as cacheService from '../services/cacheService';
 import { computeMultipleSMAs, MA_COLORS } from '../utils/movingAverage';
@@ -8,7 +8,7 @@ import { DEFAULT_VISIBLE_MAS, MA_WINDOWS } from '../utils/maConfig';
 import { computeRatingFromHistory } from '../utils/ratingHelper';
 import RatingTooltip from './RatingTooltip';
 import TradeManager from './TradeManager';
-import useTrades, { TradeRecord } from '../hooks/useTrades';
+import useTrades from '../hooks/useTrades';
 import ProfitModal from './ProfitModal';
 import VirtualTradeModal from './VirtualTradeModal';
 import { resolvePreferredPrice, toLocalDateKey } from '../utils/priceResolver';

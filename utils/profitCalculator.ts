@@ -1,5 +1,4 @@
-import { HistoricalPoint, ProfitPoint } from '../types';
-import { TradeRecord } from '../hooks/useTrades';
+import { HistoricalPoint, ProfitPoint, TradeRecord } from '../types';
 
 // helper: convert timestamp (ms) to YYYY-MM-DD local
 function tsToISODate(ts: number): string {

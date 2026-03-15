@@ -15,6 +15,8 @@ import PositionsModal from './components/PositionsModal';
 import InvestmentNoticeModal from './components/InvestmentNoticeModal';
 import VirtualTradeModal from './components/VirtualTradeModal';
 import BackupSettingsModal from './components/BackupSettingsModal';
+import SyncManagementModal from './components/SyncManagementModal';
+import SyncConfirmationModal from './components/SyncConfirmationModal';
 import { getAvailableStrategyKeys } from './services/strategyRegistry';
 import {
   buildBackupData, downloadBackupFile, applyBackupData,
@@ -22,6 +24,7 @@ import {
 } from './utils/backupService';
 import { VERSION } from './version';
 import ManageSelectButton from './components/ManageSelectButton';
+import { applySyncUpdates } from './services/syncService';
 
 type SortOrder = 'asc' | 'desc';
 
@@ -150,6 +153,8 @@ const App: React.FC = () => {
   const [viewingIndex, setViewingIndex] = useState<MarketIndex | null>(null);
   const [pendingImportData, setPendingImportData] = useState<BackupData | null>(null);
   const [showBackupSettings, setShowBackupSettings] = useState<boolean>(false);
+  const [showSyncManagement, setShowSyncManagement] = useState<boolean>(false);
+  const [showSyncConfirmation, setShowSyncConfirmation] = useState<boolean>(false);
   const [autoExportTime, setAutoExportTime] = useState<string>(() => readBackupConfig().autoExportTime);
   const [autoBackupEnabled, setAutoBackupEnabled] = useState<boolean>(() => readBackupConfig().autoBackupEnabled ?? false);
   const [autoBackupStatus, setAutoBackupStatus] = useState<'pending' | 'done' | null>(null);
@@ -609,6 +614,8 @@ const App: React.FC = () => {
                 <div className="absolute right-0 top-full mt-2 w-48 bg-white rounded-2xl shadow-2xl border py-1 z-20 animate-in fade-in zoom-in-95 duration-150 origin-top-right">
                   <button onClick={handleExport} className="w-full px-4 py-3 text-left text-sm hover:bg-gray-50 flex items-center space-x-3"><i className="fas fa-file-export opacity-70"></i><span>导出备份</span></button>
                   <button onClick={() => { setShowBackupSettings(true); setIsMenuOpen(false); }} className="w-full px-4 py-3 text-left text-sm hover:bg-gray-50 flex items-center space-x-3"><i className="fas fa-clock opacity-70"></i><span>备份设置</span></button>
+                  <button onClick={() => { setShowSyncManagement(true); setIsMenuOpen(false); }} className="w-full px-4 py-3 text-left text-sm hover:bg-gray-50 flex items-center space-x-3"><i className="fas fa-sync-alt opacity-70"></i><span>同步配置</span></button>
+                  <button onClick={() => { setShowSyncConfirmation(true); setIsMenuOpen(false); }} className="w-full px-4 py-3 text-left text-sm hover:bg-gray-50 flex items-center space-x-3"><i className="fas fa-exchange-alt opacity-70"></i><span>数据同步</span></button>
                   <button onClick={() => fileInputRef.current?.click()} className="w-full px-4 py-3 text-left text-sm hover:bg-gray-50 flex items-center space-x-3"><i className="fas fa-file-import opacity-70"></i><span>导入备份</span></button>
                   <div className="h-px bg-gray-100 my-1 mx-2"></div>
                   <button onClick={() => { setIndicesConfig([]); setGlobalIndicesConfig([]); setIsMenuOpen(false); }} className="w-full px-4 py-3 text-left text-sm hover:bg-gray-50 flex items-center space-x-3 text-red-500"><i className="fas fa-trash-alt opacity-70"></i><span>清空指数</span></button>
@@ -770,6 +777,43 @@ const App: React.FC = () => {
             setShowBackupSettings(false);
           }}
           onClose={() => setShowBackupSettings(false)}
+        />
+      )}
+      {showSyncManagement && (
+        <SyncManagementModal
+          isOpen={showSyncManagement}
+          onClose={() => setShowSyncManagement(false)}
+          onSave={(config) => {
+            // Save the sync configuration to localStorage
+            localStorage.setItem('eggfund_sync_config', JSON.stringify(config));
+            setShowSyncManagement(false);
+          }}
+          initialConfig={JSON.parse(localStorage.getItem('eggfund_sync_config') || '{}')}
+        />
+      )}
+      {showSyncConfirmation && (
+        <SyncConfirmationModal
+          isOpen={showSyncConfirmation}
+          onClose={() => setShowSyncConfirmation(false)}
+          onConfirm={(selectedDifferences) => {
+            // Process the selected differences
+            console.log('Confirmed sync for:', selectedDifferences);
+
+            if (selectedDifferences.length > 0) {
+              // Apply the sync updates
+              try {
+                applySyncUpdates(selectedDifferences);
+
+                // Show success notification or refresh UI as needed
+                alert(`成功同步 ${selectedDifferences.length} 个交易差异`);
+              } catch (error) {
+                console.error('同步过程中出现错误:', error);
+                alert('同步过程中出现错误，请查看控制台了解详细信息');
+              }
+            }
+
+            setShowSyncConfirmation(false);
+          }}
         />
       )}
     </div>

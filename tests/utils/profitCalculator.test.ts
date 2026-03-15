@@ -1,6 +1,6 @@
 import { computeProfitTimeline } from '../../utils/profitCalculator';
 import { HistoricalPoint } from '../../types';
-import { TradeRecord } from '../../hooks/useTrades';
+import { TradeRecord } from '../../types';
 
 describe('profitCalculator', () => {
   test('computes profit timeline basic scenario', () => {

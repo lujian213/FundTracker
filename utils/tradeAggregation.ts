@@ -1,4 +1,4 @@
-import { TradeRecord } from '../hooks/useTrades';
+import { TradeRecord } from '../types';
 import { HistoricalPoint } from '../types';
 import { toLocalDateKey } from './priceResolver';
 

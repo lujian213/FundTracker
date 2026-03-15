@@ -1,5 +1,4 @@
-import { HistoricalPoint, ValuationData } from '../types';
-import { TradeRecord } from '../hooks/useTrades';
+import { HistoricalPoint, ValuationData, TradeRecord } from '../types';
 import { computeProfitTimeline } from './profitCalculator';
 import { adjustProfitTimelineForDisplay } from './profitAdjustment';
 import { toLocalDateKey } from './priceResolver';

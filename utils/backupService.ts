@@ -7,18 +7,18 @@
  */
 
 import {
-  BackupData, BackupFund, BackupIndex, BackupPosition, BackupTrade,
-  MarketIndex, Ticker, MarketType,
+  BackupData, BackupFund, BackupIndex, BackupPosition, BackupTrade, BackupConfig,
 } from '../types';
 import * as cacheService from '../services/cacheService';
 import { readAll as readAllTrades } from '../hooks/useTrades';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 const BACKUP_CONFIG_KEY = 'fund_backup_config';
+const SYNC_CONFIG_KEY = 'fund_sync_config';  // 新增：同步配置存储键
 const DEFAULT_AUTO_EXPORT_TIME = '16:00';
 
 // ─── Config helpers ───────────────────────────────────────────────────────────
-export function readBackupConfig(): { autoExportTime: string; autoBackupEnabled?: boolean } {
+export function readBackupConfig(): BackupConfig {
   try {
     const raw = localStorage.getItem(BACKUP_CONFIG_KEY);
     if (raw) {
@@ -26,7 +26,8 @@ export function readBackupConfig(): { autoExportTime: string; autoBackupEnabled?
       if (typeof cfg.autoExportTime === 'string' && /^\d{2}:\d{2}$/.test(cfg.autoExportTime)) {
         return {
           autoExportTime: cfg.autoExportTime,
-          autoBackupEnabled: cfg.autoBackupEnabled !== undefined ? cfg.autoBackupEnabled : false
+          autoBackupEnabled: cfg.autoBackupEnabled !== undefined ? cfg.autoBackupEnabled : false,
+          syncConfig: cfg.syncConfig  // 包含同步配置
         };
       }
     }
@@ -34,9 +35,26 @@ export function readBackupConfig(): { autoExportTime: string; autoBackupEnabled?
   return { autoExportTime: DEFAULT_AUTO_EXPORT_TIME, autoBackupEnabled: false };
 }
 
-export function writeBackupConfig(cfg: { autoExportTime: string; autoBackupEnabled?: boolean }): void {
+export function writeBackupConfig(cfg: BackupConfig): void {
   try {
     localStorage.setItem(BACKUP_CONFIG_KEY, JSON.stringify(cfg));
+  } catch { /* ignore */ }
+}
+
+// ─── Sync Config helpers ──────────────────────────────────────────────────────
+export function readSyncConfig(): { eggfundUsername?: string; eggfundPassword?: string } {
+  try {
+    const raw = localStorage.getItem(SYNC_CONFIG_KEY);
+    if (raw) {
+      return JSON.parse(raw);
+    }
+  } catch { /* ignore */ }
+  return { eggfundUsername: undefined, eggfundPassword: undefined };
+}
+
+export function writeSyncConfig(syncCfg: { eggfundUsername?: string; eggfundPassword?: string }): void {
+  try {
+    localStorage.setItem(SYNC_CONFIG_KEY, JSON.stringify(syncCfg));
   } catch { /* ignore */ }
 }
 
@@ -48,16 +66,20 @@ export function writeBackupConfig(cfg: { autoExportTime: string; autoBackupEnabl
  * available, so the backup is as complete as possible.
  */
 export function buildBackupData(
-  portfolio: Ticker[],
+  portfolio: any[],  // 使用 any 类型避免复杂类型导入
   indicesConfig: string[],
   globalIndicesConfig: string[],
-  marketIndices: MarketIndex[],
-  globalIndices: MarketIndex[],
+  marketIndices: any[],
+  globalIndices: any[],
 ): BackupData {
-  const valuations = cacheService.getAllValuations();
+  // 获取缓存的估值数据
+  let valuations: any = {};
+  try {
+    valuations = (cacheService as any).getAllValuations();
+  } catch { /* ignore */ }
 
   // 1. portfolio → BackupFund[]
-  const backupPortfolio: BackupFund[] = portfolio.map(t => {
+  const backupPortfolio: BackupFund[] = portfolio.map((t: any) => {
     const v = valuations[t.symbol];
     return {
       symbol: t.symbol,
@@ -70,10 +92,10 @@ export function buildBackupData(
   });
 
   // 2. indices → BackupIndex[]
-  const indexMap = new Map<string, MarketIndex>(marketIndices.map(i => [i.symbol, i]));
-  const globalIndexMap = new Map<string, MarketIndex>(globalIndices.map(i => [i.symbol, i]));
+  const indexMap = new Map<string, any>(marketIndices.map((i: any) => [i.symbol, i]));
+  const globalIndexMap = new Map<string, any>(globalIndices.map((i: any) => [i.symbol, i]));
 
-  const toBackupIndex = (sym: string, map: Map<string, MarketIndex>): BackupIndex => {
+  const toBackupIndex = (sym: string, map: Map<string, any>): BackupIndex => {
     const idx = map.get(sym);
     return {
       symbol: sym,
@@ -116,7 +138,7 @@ export function buildBackupData(
   const rawTrades = readAllTrades();
   const trades: Record<string, BackupTrade[]> = {};
   Object.entries(rawTrades).forEach(([sym, arr]) => {
-    trades[sym] = arr.map(t => ({
+    trades[sym] = arr.map((t: any) => ({
       id: t.id,
       date: t.date,
       type: t.type,
@@ -126,8 +148,18 @@ export function buildBackupData(
     }));
   });
 
-  // 5. config
-  const config = readBackupConfig();
+  // 5. config - including sync config
+  const backupConfig = readBackupConfig();
+  const syncConfig = readSyncConfig();
+
+  // 合并配置
+  const config: BackupConfig = {
+    ...backupConfig,
+    syncConfig: {
+      eggfundUsername: syncConfig.eggfundUsername,
+      eggfundPassword: syncConfig.eggfundPassword
+    }
+  };
 
   return {
     portfolio: backupPortfolio,
@@ -175,7 +207,7 @@ export function downloadBackupFile(data: BackupData, isAuto: boolean): void {
 // ─── Apply (Import) ───────────────────────────────────────────────────────────
 
 export interface AppliedData {
-  portfolio: Ticker[];
+  portfolio: any[];  // 使用 any 类型避免复杂类型导入
   indicesConfig: string[];
   globalIndicesConfig: string[];
 }
@@ -195,34 +227,38 @@ export interface AppliedData {
  */
 export function applyBackupData(imported: BackupData): AppliedData {
   // ── 1. Build the new portfolio (Ticker[]) ──────────────────────────────────
-  const newPortfolio: Ticker[] = (imported.portfolio || []).map((f, i) => ({
+  const newPortfolio: any[] = (imported.portfolio || []).map((f: any, i: number) => ({
     id: Math.random().toString(36).substr(2, 9),
     symbol: f.symbol,
     name: f.name || '',
-    market: MarketType.FUND,
+    market: 'Fund', // 使用字符串而非枚举以简化类型导入
   }));
 
-  const newSymbolSet = new Set(newPortfolio.map(t => t.symbol));
+  const newSymbolSet = new Set(newPortfolio.map((t: any) => t.symbol));
 
   // ── 2. Evict valuations that no longer belong to the portfolio ─────────────
-  cacheService.evictValuations(newSymbolSet);
+  try {
+    (cacheService as any).evictValuations(newSymbolSet);
+  } catch { /* ignore */ }
 
   // ── 3. Apply optional fallback valuations (only if absent from cache) ──────
-  (imported.portfolio || []).forEach(f => {
+  (imported.portfolio || []).forEach((f: any) => {
     if (f.previousPrice !== undefined || f.currentPrice !== undefined) {
       // Reconstruct a minimal ValuationData from optional fields
-      cacheService.setValuationIfAbsent(f.symbol, {
-        symbol: f.symbol,
-        name: f.name || f.symbol,
-        currentPrice: f.currentPrice ?? 0,
-        previousPrice: f.previousPrice ?? 0,
-        changePercentage: 0,
-        lastUpdated: f.realtimeDate ?? '',
-        realtimeDate: f.realtimeDate ?? '',
-        netWorthDate: f.netWorthDate ?? '',
-        valuationDate: f.realtimeDate ?? '',
-        sourceUrl: '',
-      });
+      try {
+        (cacheService as any).setValuationIfAbsent(f.symbol, {
+          symbol: f.symbol,
+          name: f.name || f.symbol,
+          currentPrice: f.currentPrice ?? 0,
+          previousPrice: f.previousPrice ?? 0,
+          changePercentage: 0,
+          lastUpdated: f.realtimeDate ?? '',
+          realtimeDate: f.realtimeDate ?? '',
+          netWorthDate: f.netWorthDate ?? '',
+          valuationDate: f.realtimeDate ?? '',
+          sourceUrl: '',
+        });
+      } catch { /* ignore */ }
     }
   });
 
@@ -255,7 +291,7 @@ export function applyBackupData(imported: BackupData): AppliedData {
   try { localStorage.setItem('fund_global_indices_config', JSON.stringify(newGlobalIndicesConfig)); } catch { /* ignore */ }
 
   // ── 7. Write positions ─────────────────────────────────────────────────────
-  const positions: Record<string, BackupPosition> = imported.positions || {};
+  const positions: Record<string, any> = imported.positions || {};
   Object.entries(positions).forEach(([sym, pos]) => {
     try {
       localStorage.setItem(`fund_position_${sym}`, JSON.stringify({
@@ -268,10 +304,10 @@ export function applyBackupData(imported: BackupData): AppliedData {
   });
 
   // ── 8. Write trades ────────────────────────────────────────────────────────
-  const trades: Record<string, BackupTrade[]> = imported.trades || {};
+  const trades: Record<string, any[]> = imported.trades || {};
   const normalizedTrades: Record<string, any[]> = {};
   Object.entries(trades).forEach(([sym, arr]) => {
-    normalizedTrades[sym] = (Array.isArray(arr) ? arr : []).map(t => ({
+    normalizedTrades[sym] = (Array.isArray(arr) ? arr : []).map((t: any) => ({
       id: t.id,
       date: t.date,
       type: t.type,
@@ -282,13 +318,26 @@ export function applyBackupData(imported: BackupData): AppliedData {
   });
   try { localStorage.setItem('fund_trades', JSON.stringify(normalizedTrades)); } catch { /* ignore */ }
 
-  // ── 9. Write config ────────────────────────────────────────────────────────
-  if (imported.config?.autoExportTime) {
-    const configToSave = {
+  // ── 9. Write config including sync config ────────────────────────────────────
+  if (imported.config) {
+    const configToSave: any = {
       autoExportTime: imported.config.autoExportTime,
       autoBackupEnabled: imported.config.autoBackupEnabled !== undefined ? imported.config.autoBackupEnabled : false
     };
-    writeBackupConfig(configToSave);
+
+    // 如果导入的数据包含同步配置，则保存
+    if (imported.config.syncConfig) {
+      configToSave.syncConfig = imported.config.syncConfig;
+
+      // 同时将同步配置保存到专门的存储键中
+      try {
+        localStorage.setItem('fund_sync_config', JSON.stringify(imported.config.syncConfig));
+      } catch { /* ignore */ }
+    }
+
+    try {
+      localStorage.setItem('fund_backup_config', JSON.stringify(configToSave));
+    } catch { /* ignore */ }
   }
 
   return {

@@ -1,6 +1,6 @@
 import { calculateRealProfit, calculateRealProfitSync, getStoredPosition, getTradesForFund } from '../../utils/realProfitCalculator';
 import { HistoricalPoint } from '../../types';
-import { TradeRecord } from '../../hooks/useTrades';
+import { TradeRecord } from '../../types';
 
 // Setup localStorage mock before running tests
 const localStorageMock = (() => {

@@ -1,16 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-
-export type TradeType = 'buy' | 'sell';
-export interface TradeRecord {
-  id: string;
-  date: string; // YYYY-MM-DD
-  type: TradeType;
-  shares: number;
-  price: number;
-  fee: number;
-  // total is not persisted anymore; kept optional for backward compatibility
-  total?: number;
-}
+import { TradeRecord, TradeType } from '../types';
 
 const TRADES_KEY = 'fund_trades';
 

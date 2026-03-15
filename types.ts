@@ -123,9 +123,16 @@ export interface BackupTrade {
   fee: number;
 }
 
+// 同步配置
+export interface SyncConfig {
+  eggfundUsername?: string;
+  eggfundPassword?: string;
+}
+
 export interface BackupConfig {
   autoExportTime: string;    // "HH:mm" local time, default "16:00"
   autoBackupEnabled?: boolean; // Whether auto backup is enabled, default false
+  syncConfig?: SyncConfig;   // Synchronization configuration
 }
 
 export interface BackupData {
@@ -146,6 +153,19 @@ export interface IntradayPoint {
 
 // --- Virtual trade types ---
 export type VirtualTradeAction = 'buy' | 'sell' | 'hold';
+
+// --- Trade types (moved from useTrades.ts to make them globally available) ---
+export type TradeType = 'buy' | 'sell';
+export interface TradeRecord {
+  id: string;
+  date: string; // YYYY-MM-DD
+  type: TradeType;
+  shares: number;
+  price: number;
+  fee: number;
+  // total is not persisted anymore; kept optional for backward compatibility
+  total?: number;
+}
 
 // structured reason for strategy decisions (for hovertip)
 export type StrategyReasonType = 'golden' | 'death' | 'insufficient' | 'info' | 'other';
