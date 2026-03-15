@@ -814,6 +814,7 @@ const App: React.FC = () => {
 
             setShowSyncConfirmation(false);
           }}
+          marketData={marketData}
         />
       )}
     </div>

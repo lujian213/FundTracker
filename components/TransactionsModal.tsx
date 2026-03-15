@@ -10,6 +10,7 @@ interface Props {
   marketData: Record<string, ValuationData>;
   onClose: () => void;
   onSelectFund?: (symbol: string) => void;
+  initiallySelectedFund?: string; // 新增属性：初始选中的基金
 }
 
 // Parse a local YYYY-MM-DD string into a local Date (midnight)
@@ -36,7 +37,7 @@ function formatNum(v: number): React.ReactNode {
   return <span>{fmt.format(v)}</span>;
 }
 
-const TransactionsModal: React.FC<Props> = ({ portfolio, marketData, onClose, onSelectFund }) => {
+const TransactionsModal: React.FC<Props> = ({ portfolio, marketData, onClose, onSelectFund, initiallySelectedFund }) => {
   const [tradeDateStrs, setTradeDateStrs] = useState<string[]>([]);
   const [selectedDateStr, setSelectedDateStr] = useState<string | null>(null);
   const [pickerOpen, setPickerOpen] = useState(false);
@@ -47,12 +48,39 @@ const TransactionsModal: React.FC<Props> = ({ portfolio, marketData, onClose, on
     const dates = getAllTradeDates(); // descending
     setTradeDateStrs(dates);
     if (dates.length > 0) {
-      setSelectedDateStr(dates[0]);
-      setPickerMonth(parseLocalDate(dates[0]));
+      // 如果提供了initiallySelectedFund，则尝试找到该基金的第一个交易日期
+      if (initiallySelectedFund) {
+        const all = readAll();
+        const fundTrades = all[initiallySelectedFund] || [];
+        if (fundTrades.length > 0) {
+          // 找到该基金最早的交易日期
+          const earliestFundDate = fundTrades.reduce((earliest, trade) => {
+            return trade.date < earliest ? trade.date : earliest;
+          }, fundTrades[0].date);
+
+          // 检查这个日期是否在总的交易日期列表中
+          if (dates.includes(earliestFundDate)) {
+            setSelectedDateStr(earliestFundDate);
+            setPickerMonth(parseLocalDate(earliestFundDate));
+          } else {
+            // 如果不在列表中，使用列表中的第一个日期
+            setSelectedDateStr(dates[0]);
+            setPickerMonth(parseLocalDate(dates[0]));
+          }
+        } else {
+          // 如果该基金没有交易记录，使用列表中的第一个日期
+          setSelectedDateStr(dates[0]);
+          setPickerMonth(parseLocalDate(dates[0]));
+        }
+      } else {
+        // 没有提供特定基金时，使用原来的逻辑
+        setSelectedDateStr(dates[0]);
+        setPickerMonth(parseLocalDate(dates[0]));
+      }
     } else {
       setSelectedDateStr(null);
     }
-  }, []);
+  }, [initiallySelectedFund]);
 
   const tradeDateSet = useMemo(
     () => new Set(tradeDateStrs),
