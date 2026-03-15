@@ -285,18 +285,8 @@ const SyncConfirmationModal: React.FC<Props> = ({
 
   // 重新从eggfund同步数据并刷新表格
   const handleRefreshSync = async () => {
-    // DEBUG_START - 用于调试同步窗口关闭问题 @TEMP: 2026-03-15
-    console.log('[DEBUG] 开始执行handleRefreshSync函数');
-    console.log('[DEBUG] 当前状态 - loading:', loading, 'isOpen:', isOpen);
-    console.log('[DEBUG] 检查是否存在会导致窗口关闭的逻辑');
-    // DEBUG_END
-
     // 防止在已有操作进行时再次触发
     if (loading) {
-      // DEBUG_START - 用于调试同步窗口关闭问题 @TEMP: 2026-03-15
-      console.log('[DEBUG] loading状态为true，阻止新的同步操作');
-      // DEBUG_END
-
       return;
     }
 
@@ -304,31 +294,16 @@ const SyncConfirmationModal: React.FC<Props> = ({
       setLoading(true);
       setSyncMessage(''); // 清空之前的同步消息
 
-      // DEBUG_START - 用于调试同步窗口关闭问题 @TEMP: 2026-03-15
-      console.log('[DEBUG] 设置loading为true后的状态');
-      console.log('[DEBUG] loading状态:', true);
-      // DEBUG_END
-
       // Get sync configuration
       const configStr = localStorage.getItem('eggfund_sync_config');
       if (!configStr) {
         alert('请先在同步配置中设置 Eggfund 账户信息');
-
-        // DEBUG_START - 用于调试同步窗口关闭问题 @TEMP: 2026-03-15
-        console.log('[DEBUG] 未找到同步配置，但在返回前检查是否会导致窗口关闭');
-        // DEBUG_END
-
         return;
       }
 
       const config = JSON.parse(configStr);
       if (!config.eggfundUsername || !config.eggfundPassword) {
         alert('同步配置信息不完整，请检查用户名和密码');
-
-        // DEBUG_START - 用于调试同步窗口关闭问题 @TEMP: 2026-03-15
-        console.log('[DEBUG] 配置信息不完整，但在返回前检查是否会导致窗口关闭');
-        // DEBUG_END
-
         return;
       }
 
@@ -336,11 +311,6 @@ const SyncConfirmationModal: React.FC<Props> = ({
 
       // Step 1: Get all funds from eggfund
       setLoadingMessage('正在重新获取 Eggfund 基金列表...');
-
-      // DEBUG_START - 用于调试同步窗口关闭问题 @TEMP: 2026-03-15
-      console.log('[DEBUG] 开始获取Eggfund基金列表');
-      // DEBUG_END
-
       const eggfundFunds = await getEggfundFunds(eggfundUsername, eggfundPassword);
 
       // Step 2: Get current portfolio from local storage
@@ -362,12 +332,6 @@ const SyncConfirmationModal: React.FC<Props> = ({
         // 如果没有找到匹配的基金，显示警告但不关闭窗口
         alert('未找到与本地基金组合匹配的基金，无法进行同步');
         setLoading(false);
-
-        // DEBUG_START - 用于调试同步窗口关闭问题 @TEMP: 2026-03-15
-        console.log('[DEBUG] 没有找到匹配的基金，设置loading为false但不会调用onClose');
-        console.log('[DEBUG] 当前状态 - loading:', false, 'isOpen:', isOpen);
-        // DEBUG_END
-
         return; // 仅退出本次同步操作，不关闭窗口
       }
 
@@ -376,11 +340,6 @@ const SyncConfirmationModal: React.FC<Props> = ({
 
       // Step 4: For each intersecting fund, get trades from both systems and compare
       setLoadingMessage(`正在重新获取 ${intersectingFunds.length} 个基金的交易记录...`);
-
-      // DEBUG_START - 用于调试同步窗口关闭问题 @TEMP: 2026-03-15
-      console.log('[DEBUG] 开始处理每个基金的交易记录');
-      console.log('[DEBUG] 相交基金数量:', intersectingFunds.length);
-      // DEBUG_END
 
       // Store the eggfund data for potential reuse after sync
       const allEggfundData: Record<string, any[]> = {};
@@ -392,10 +351,6 @@ const SyncConfirmationModal: React.FC<Props> = ({
 
         // Use fundInfo which already contains name
         setLoadingMessage(`正在重新处理基金 ${fundInfo.name} (${i + 1}/${intersectingFunds.length})...`);
-
-        // DEBUG_START - 用于调试同步窗口关闭问题 @TEMP: 2026-03-15
-        console.log(`[DEBUG] 处理第${i + 1}个基金: ${fundCode}, 名称: ${fundInfo.name}`);
-        // DEBUG_END
 
         // Get local trades
         const localTrades = getTradesForFund(fundCode);
@@ -410,17 +365,8 @@ const SyncConfirmationModal: React.FC<Props> = ({
           // Compare and get differences
           const fundDifferences = compareTrades(localTrades, externalTrades, fundCode);
           allDifferences.push(...fundDifferences);
-
-          // DEBUG_START - 用于调试同步窗口关闭问题 @TEMP: 2026-03-15
-          console.log(`[DEBUG] 基金${fundCode}比较完成，发现差异数量:`, fundDifferences.length);
-          // DEBUG_END
         } catch (error) {
           console.error(`Error fetching trades for fund ${fundCode}:`, error);
-
-          // DEBUG_START - 用于调试同步窗口关闭问题 @TEMP: 2026-03-15
-          console.log(`[DEBUG] 获取基金${fundCode}交易记录出错，但继续处理其他基金，不会关闭窗口`);
-          // DEBUG_END
-
           // Continue with other funds
         }
       }
@@ -430,32 +376,12 @@ const SyncConfirmationModal: React.FC<Props> = ({
       setDifferences(allDifferences);
 
       setSyncMessage(`重新同步完成，共获取 ${allDifferences.length} 个交易差异`);
-
-      // DEBUG_START - 用于调试同步窗口关闭问题 @TEMP: 2026-03-15
-      console.log('[DEBUG] 重新同步完成，检查是否有导致窗口关闭的逻辑');
-      console.log('[DEBUG] 最终状态 - loading:', false, 'differences count:', allDifferences.length, 'isOpen:', isOpen);
-      // DEBUG_END
     } catch (error) {
       console.error('重新同步过程中发生错误:', error);
       setSyncMessage('重新同步过程中发生错误，请查看控制台了解详细信息');
-
-      // DEBUG_START - 用于调试同步窗口关闭问题 @TEMP: 2026-03-15
-      console.log('[DEBUG] 捕获到异常，但不会调用onClose，窗口应保持开启');
-      console.log('[DEBUG] 错误详情:', error);
-      // DEBUG_END
     } finally {
       setLoading(false);
-
-      // DEBUG_START - 用于调试同步窗口关闭问题 @TEMP: 2026-03-15
-      console.log('[DEBUG] finally块执行，设置loading为false');
-      console.log('[DEBUG] finally中当前状态 - loading:', false, 'isOpen:', isOpen);
-      // DEBUG_END
     }
-
-    // DEBUG_START - 用于调试同步窗口关闭问题 @TEMP: 2026-03-15
-    console.log('[DEBUG] handleRefreshSync函数即将结束执行');
-    console.log('[DEBUG] 函数结束时的状态 - loading:', false, 'isOpen:', isOpen);
-    // DEBUG_END
   };
 
   // 全选/取消全选
