@@ -431,7 +431,7 @@ const InvestmentNoticeModal: React.FC<InvestmentNoticeModalProps> = ({
 
       return (
         <div className="flex flex-col">
-          <span className={`text-xs ${profitClass}`}>策略总盈亏：{formattedProfit}</span>
+          <span className={`inline whitespace-nowrap text-xs ${profitClass}`}>策略总盈亏：{formattedProfit}</span>
           <span className="text-black">-</span>
         </div>
       );
@@ -444,7 +444,7 @@ const InvestmentNoticeModal: React.FC<InvestmentNoticeModalProps> = ({
 
       return (
         <div className="flex flex-col">
-          <span className={`text-xs ${profitClass}`}>策略总盈亏：{formattedProfit}</span>
+          <span className={`inline whitespace-nowrap text-xs ${profitClass}`}>策略总盈亏：{formattedProfit}</span>
           <span className="text-black">-</span>
         </div>
       );
@@ -461,7 +461,7 @@ const InvestmentNoticeModal: React.FC<InvestmentNoticeModalProps> = ({
 
     return (
       <div className="flex flex-col">
-        <span className={`text-xs ${profitClass}`}>策略总盈亏：{formattedProfit}</span>
+        <span className={`inline whitespace-nowrap text-xs ${profitClass}`}>策略总盈亏：{formattedProfit}</span>
         <a
           href="#"
           className={`${isBuy ? 'text-green-600' : 'text-red-600'} underline text-xs`}
@@ -595,7 +595,7 @@ const InvestmentNoticeModal: React.FC<InvestmentNoticeModalProps> = ({
                               </td>
                             );
                           })}
-                          <td className="px-3 py-2 text-left text-xs">
+                          <td className="px-3 py-2 text-left text-xs align-top">
                             {renderRealProfitCell(rec.realProfit)}
                           </td>
                         </tr>

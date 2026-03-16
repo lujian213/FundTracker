@@ -1,7 +1,7 @@
 # FundTracker — 产品需求文档 (PRD)
 
-版本：1.21
-最后更新：2026-03-15
+版本：1.22
+最后更新：2026-03-16
 
 ---
 
@@ -49,13 +49,14 @@
     - 初始总资产：`现有现金 + 现有份额 * 开始日期净值`。
 - **策略总盈亏**：`最后一日总资产 - 初始总资产`，并显示盈利率 `%`。
 
-预置交易策略（`services/strategyConfig.ts`）
+预置交易策略（`services/strategyConfig.ts``）
 1. **趋势追踪策略 (Trend Following)**：基于均线金叉死叉。当短均线 (5日) 上穿长均线 (20日) 时买入，下穿时卖出。
 2. **均值回归策略 (Mean Reversion)**：基于布林带。价格触及下轨 (20日均线 - 2倍标准差) 视为超卖买入，触及上轨视为超买卖出。
 3. **恒定混合策略 (Constant Mix)**：股债平衡。维持基金仓位占总资产 50%。当偏离度超过 5% 时触发再平衡，实现高抛低吸。
+4. **固定金额正金字塔买卖策略 (Fixed Amount Pyramid)**：采用固定金额方式执行金字塔式建仓和平仓操作。当净值下跌时以固定金额买入更多份额，当净值上涨时以固定金额卖出部分份额，帮助投资者在低位积累更多份额，在高位锁定利润。参数包括：初始净值参考（${fundConfig.initialPrice || 1.0}）、下跌触发幅度（3%）、上涨触发幅度（3%）、固定买入金额（10000元）、固定卖出金额（10000元）、最大仓位（${fundConfig.maxPosition || 100000}）、最小现金储备（${userConfig.minCashReserve || 1000}）。
 
 测试要求
-- 单元测试：对各策略类（`trendFollowing.ts`, `meanReversion.ts`, `constantMix.ts`）进行逻辑覆盖。
+- 单元测试：对各策略类（`trendFollowing.ts`, `meanReversion.ts`, `constantMix.ts`, `fixedAmountPyramid.ts`）进行逻辑覆盖。
 - 集成测试：验证 `VirtualTradeModal` 的输入联动、Tab 切换逻辑以及 👍 图标的分配正确性。
 
 ---

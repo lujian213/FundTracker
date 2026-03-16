@@ -6,6 +6,7 @@ const strategyImportMap: Record<string, () => Promise<any>> = {
   trendFollowing: () => import('./virtualTradeStrategies/trendFollowing'),
   meanReversion: () => import('./virtualTradeStrategies/meanReversion'),
   constantMix: () => import('./virtualTradeStrategies/constantMix'),
+  fixedAmountPyramid: () => import('./virtualTradeStrategies/fixedAmountPyramid'),
 };
 
 /**

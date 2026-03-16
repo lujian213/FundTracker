@@ -35,6 +35,20 @@ export const strategyConfig: Record<string, StrategyMeta> = {
       rebalance_threshold: 0.05,
       min_unit: 'initialTotal/startNav/10'
     }
+  },
+  fixedAmountPyramid: {
+    key: 'fixedAmountPyramid',
+    name: '固定金额正金字塔买卖策略',
+    description: `采用固定金额方式执行金字塔式建仓和平仓操作。当净值下跌时以固定金额买入更多份额，当净值上涨时以固定金额卖出部分份额，帮助投资者在低位积累更多份额，在高位锁定利润。\n\n策略特点：\n\n|维度| 描述 |\n|---|------|\n|✅ 优点| 在下跌中逐步加仓降低成本，在上涨中逐步获利了结 |\n|❌ 缺点| 需要持续监控和资金支持，在持续下跌中可能面临较大回撤 |\n|📊 适用市场| 震荡向上或波动较大的市场 |\n|⚠️ 风险等级| 中等 |\n|🔄 交易频率| 中等 |\n`,
+    params: {
+      initial_nav: '${fundConfig.initialPrice || 1.0}',
+      down_step: 0.03,
+      up_step: 0.03,
+      fixed_buy_amount: 10000,
+      fixed_sell_amount: 10000,
+      max_position: '${fundConfig.maxPosition || 100000}',
+      min_cash_reserve: '${userConfig.minCashReserve || 1000}'
+    }
   }
 };
 

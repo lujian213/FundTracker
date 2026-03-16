@@ -218,6 +218,29 @@ export interface VirtualStrategyContext {
   baseUnit: number;
   // startNav (net value on start date)
   startNav: number;
+  // optional: transaction history from previous decisions by this strategy
+  transactionHistory?: Array<{
+    date: string; // YYYY-MM-DD
+    action: 'buy' | 'sell' | 'hold';
+    nav: number;  // NAV at the time of decision
+    shares: number; // number of shares traded (positive for buy, negative for sell)
+    amount: number; // monetary amount involved
+  }>;
+  // optional: fund-specific configuration based on existing backup config
+  fundConfig?: {
+    maxPosition?: number;           // 最大仓位限制 (可从 fullCapacity 推导)
+    startDate?: string | null;     // 开始日期 (对应 BackupPosition.startDate)
+    initialPosition?: number;      // 初始仓位 (对应 BackupPosition.initialPosition)
+    initialPrice?: number | null;  // 初始价格 (对应 BackupPosition.initialPrice)
+    [key: string]: any;            // 支持扩展属性
+  };
+  // optional: user-specific configuration
+  userConfig?: {
+    globalMaxPosition?: number;    // 全局最大仓位
+    riskPreference?: 'conservative' | 'balanced' | 'aggressive';
+    minCashReserve?: number;       // 最小现金储备
+    [key: string]: any;            // 支持扩展属性
+  };
 }
 
 export interface VirtualStrategy {

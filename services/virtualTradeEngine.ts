@@ -15,6 +15,21 @@ export interface RunOpts {
   realtimeDate?: string | null;
   previousPrice?: number | null;
   netWorthDate?: string | null;
+  // optional fund-specific configuration
+  fundConfig?: {
+    maxPosition?: number;
+    initialDate?: string | null;
+    initialPosition?: number;
+    initialPrice?: number | null;
+    [key: string]: any;
+  };
+  // optional user-specific configuration
+  userConfig?: {
+    globalMaxPosition?: number;
+    riskPreference?: 'conservative' | 'balanced' | 'aggressive';
+    minCashReserve?: number;
+    [key: string]: any;
+  };
 }
 
 // Main runner: returns complete timeline from startDate to yesterday (skipping dates without history points)
@@ -57,6 +72,15 @@ export function runVirtualTrade(strategy: VirtualStrategy, history: HistoricalPo
   const timeline: VirtualTradeRow[] = [];
   let prevTotal = initialTotal;
 
+  // Track transaction history for the strategy
+  let transactionHistory: Array<{
+    date: string; // YYYY-MM-DD
+    action: 'buy' | 'sell' | 'hold';
+    nav: number;  // NAV at the time of decision
+    shares: number; // number of shares traded (positive for buy, negative for sell)
+    amount: number; // monetary amount involved
+  }> = [];
+
   for (let i = 0; i < tradeDates.length; i++) {
     const d = tradeDates[i];
     const idx = dateIndex[d];
@@ -65,8 +89,17 @@ export function runVirtualTrade(strategy: VirtualStrategy, history: HistoricalPo
     // context history up to previous day (ascending)
     const histUpToPrev = dates.slice(0, idx).map((dd, j) => ({ date: new Date(dd + ' 00:00').getTime(), value: byDate[dd], equityReturn: 0 } as HistoricalPoint));
 
-    // build strategy context (baseUnit computed above)
-    const ctx: VirtualStrategyContext = { history: histUpToPrev, cash, shares, baseUnit, startNav };
+    // build strategy context (baseUnit computed above) with transaction history
+    const ctx: VirtualStrategyContext = {
+      history: histUpToPrev,
+      cash,
+      shares,
+      baseUnit,
+      startNav,
+      transactionHistory,
+      fundConfig: opts.fundConfig,
+      userConfig: opts.userConfig
+    };
 
     const decision = strategy.decide(ctx) || { action: 'hold' as const, shares: 0 };
     let tradeShares = Math.max(0, Number(Number(decision.shares).toFixed(2)));
@@ -94,6 +127,17 @@ export function runVirtualTrade(strategy: VirtualStrategy, history: HistoricalPo
     } else {
       action = 'hold';
       tradeShares = 0;
+    }
+
+    // Add this transaction to history if it was a buy or sell
+    if (action !== 'hold' || tradeShares > 0) {
+      transactionHistory.push({
+        date: d,
+        action,
+        nav,
+        shares: action === 'buy' ? tradeShares : (action === 'sell' ? -tradeShares : 0),
+        amount: action === 'buy' ? amount : (action === 'sell' ? -amount : 0)
+      });
     }
 
     // compute totalAfter: use next day's nav if available; for the last historical row, use a later available valuation price; otherwise fall back to the current nav
@@ -132,7 +176,16 @@ export function runVirtualTrade(strategy: VirtualStrategy, history: HistoricalPo
 
   // today's tip: decide based on history up-to-last-day
   const lastIdx = dateIndex[tradeDates[tradeDates.length - 1]];
-  const ctxForToday: VirtualStrategyContext = { history: dates.slice(0, lastIdx + 1).map(dd => ({ date: new Date(dd + ' 00:00').getTime(), value: byDate[dd], equityReturn: 0 } as HistoricalPoint)), cash, shares, baseUnit, startNav };
+  const ctxForToday: VirtualStrategyContext = {
+    history: dates.slice(0, lastIdx + 1).map(dd => ({ date: new Date(dd + ' 00:00').getTime(), value: byDate[dd], equityReturn: 0 } as HistoricalPoint)),
+    cash,
+    shares,
+    baseUnit,
+    startNav,
+    transactionHistory,
+    fundConfig: opts.fundConfig,
+    userConfig: opts.userConfig
+  };
   const todayDecision = strategy.decide(ctxForToday) || { action: 'hold' as const, shares: 0 };
   let todayReason = (todayDecision as any).reason as any;
   if (!todayReason && todayDecision.action === 'hold') todayReason = { type: 'info', text: '无明确信号' };

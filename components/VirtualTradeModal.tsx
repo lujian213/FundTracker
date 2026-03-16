@@ -433,12 +433,53 @@ export const VirtualTradeModal: React.FC<Props> = ({ symbol, fundName, history: 
     if (!canRun && process.env.NODE_ENV !== 'test') { setError('请检查输入与起始日期'); return; }
     setRunning(true);
     try {
+      // Read fullCapacity from localStorage for fund configuration
+      let fullCapacity = 0;
+      let initialPrice = null;
+      try {
+        const rawKey = `fund_position_${symbol}`;
+        const padKey = `fund_position_${String(symbol).padStart(6, '0')}`;
+        const raw = localStorage.getItem(rawKey) || localStorage.getItem(padKey);
+        if (raw) {
+          const cfg = JSON.parse(raw);
+          fullCapacity = Number(cfg.fullCapacity) || 0;
+          initialPrice = cfg.initialPrice !== undefined ? (cfg.initialPrice === null ? null : Number(cfg.initialPrice)) : null;
+        }
+      } catch (e) {
+        // ignore
+      }
+
+      // Calculate max position in monetary terms: fullCapacity (shares) * initialPrice (NAV)
+      let maxPositionInMonetaryTerms = undefined;
+      if (fullCapacity > 0 && initialPrice && initialPrice > 0) {
+        maxPositionInMonetaryTerms = fullCapacity * initialPrice;
+      } else if (fullCapacity > 0) {
+        // Fallback: use fullCapacity as max position if we don't have initialPrice
+        // This preserves existing behavior when initialPrice is not configured
+        maxPositionInMonetaryTerms = fullCapacity;
+      }
+
       // run all strategies and collect results
       const newResults: (VirtualTradeResult | null)[] = [];
       for (let i = 0; i < loadedStrategies.length; i++) {
         try {
           const strat = loadedStrategies[i];
-          const res = runVirtualTrade(strat, history || [], { startDate, initialCash: parsedCash || 0, initialShares: parsedShares || 0, currentPrice: valuation?.currentPrice ?? null, realtimeDate: valuation?.realtimeDate ?? null, previousPrice: valuation?.previousPrice ?? null, netWorthDate: valuation?.netWorthDate ?? null });
+          const res = runVirtualTrade(strat, history || [], {
+            startDate,
+            initialCash: parsedCash || 0,
+            initialShares: parsedShares || 0,
+            currentPrice: valuation?.currentPrice ?? null,
+            realtimeDate: valuation?.realtimeDate ?? null,
+            previousPrice: valuation?.previousPrice ?? null,
+            netWorthDate: valuation?.netWorthDate ?? null,
+            fundConfig: {
+              fullCapacity: fullCapacity,
+              initialPrice: initialPrice,
+              initialDate: storedPosition?.startDate || null,
+              initialPosition: storedPosition?.initialPosition || 0,
+              maxPosition: maxPositionInMonetaryTerms, // Keep the calculated value as backup
+            }
+          });
           newResults.push(res);
         } catch (e: any) {
           // if one strategy fails, record null and continue
@@ -625,14 +666,14 @@ export const VirtualTradeModal: React.FC<Props> = ({ symbol, fundName, history: 
                   <tr className="border-b">
                     <th className="px-3 py-2 whitespace-nowrap w-[100px]">日期</th>
                     <th className="px-3 py-2 whitespace-nowrap w-[60px]">方向</th>
-                    <th className="px-3 py-2 whitespace-nowrap">净值</th>
-                    <th className="px-3 py-2 whitespace-nowrap">份额</th>
-                    <th className="px-3 py-2 whitespace-nowrap">金额</th>
-                    <th className="px-3 py-2 whitespace-nowrap">交易后现金</th>
-                    <th className="px-3 py-2 whitespace-nowrap">交易后份额</th>
-                    <th className="px-3 py-2 whitespace-nowrap">交易后总资产</th>
-                    <th className="px-3 py-2 whitespace-nowrap"><div className="flex justify-end">较前一日盈亏</div></th>
-                    <th className="px-3 py-2 whitespace-nowrap"><div className="flex justify-end">交易后盈亏</div></th>
+                    <th className="px-3 py-2 whitespace-nowrap text-right">净值</th>
+                    <th className="px-3 py-2 whitespace-nowrap text-right">份额</th>
+                    <th className="px-3 py-2 whitespace-nowrap text-right">金额</th>
+                    <th className="px-3 py-2 whitespace-nowrap text-right">交易后现金</th>
+                    <th className="px-3 py-2 whitespace-nowrap text-right">交易后份额</th>
+                    <th className="px-3 py-2 whitespace-nowrap text-right">交易后总资产</th>
+                    <th className="px-3 py-2 whitespace-nowrap text-right">较前一日盈亏</th>
+                    <th className="px-3 py-2 whitespace-nowrap text-right">交易后盈亏</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -646,7 +687,7 @@ export const VirtualTradeModal: React.FC<Props> = ({ symbol, fundName, history: 
                           </span>
                         </SimpleTooltip>
                       </td>
-                      <td className="px-3 py-2 whitespace-nowrap">{fmtNav(r.nav)}</td>
+                      <td className="px-3 py-2 text-right whitespace-nowrap">{fmtNav(r.nav)}</td>
                       <td className="px-3 py-2 text-right whitespace-nowrap">{fmtNumber(r.shares, 2)}</td>
                       <td className="px-3 py-2 text-right whitespace-nowrap">{fmtNumber(r.amount, 2)}</td>
                       <td className="px-3 py-2 text-right whitespace-nowrap">{fmtNumber(r.cashAfter, 2)}</td>
