@@ -13,6 +13,7 @@ import OverallProfitModal from './components/OverallProfitModal';
 import TransactionsModal from './components/TransactionsModal';
 import PositionsModal from './components/PositionsModal';
 import InvestmentNoticeModal from './components/InvestmentNoticeModal';
+import InvestmentDraftModal from './components/InvestmentDraftModal';
 import VirtualTradeModal from './components/VirtualTradeModal';
 import BackupSettingsModal from './components/BackupSettingsModal';
 import SyncManagementModal from './components/SyncManagementModal';
@@ -141,6 +142,7 @@ const App: React.FC = () => {
   const [showTransactions, setShowTransactions] = useState<boolean>(false);
   const [showPositions, setShowPositions] = useState<boolean>(false);
   const [isInvestmentNoticeModalOpen, setIsInvestmentNoticeModalOpen] = useState<boolean>(false);
+  const [isInvestmentDraftModalOpen, setIsInvestmentDraftModalOpen] = useState<boolean>(false);
   const [selectedItems, setSelectedItems] = useState<Set<ManageSelectionKey>>(new Set());
   const [backgroundTasks, setBackgroundTasks] = useState<number>(0);
 
@@ -652,6 +654,7 @@ const App: React.FC = () => {
                     <button onClick={() => setShowOverallProfit(true)} className="px-4 py-1.5 rounded-full bg-blue-600 shadow-md text-[11px] font-bold text-white hover:bg-blue-700 transition-all">盈利</button>
                     <button onClick={() => setShowTransactions(true)} className="px-4 py-1.5 rounded-full bg-blue-600 shadow-md text-[11px] font-bold text-white hover:bg-blue-700 transition-all">交易</button>
                     <button onClick={() => setIsInvestmentNoticeModalOpen(true)} className="px-4 py-1.5 rounded-full bg-blue-600 shadow-md text-[11px] font-bold text-white hover:bg-blue-700 transition-all">投顾</button>
+                    <button onClick={() => setIsInvestmentDraftModalOpen(true)} className="px-4 py-1.5 rounded-full bg-blue-600 shadow-md text-[11px] font-bold text-white hover:bg-blue-700 transition-all">草稿</button>
                     <button disabled={manageableItemCount === 0} onClick={() => { setSelectedItems(new Set()); setIsSelectionMode(true); }} className={`px-4 py-1.5 rounded-full shadow-md text-[11px] font-bold text-white transition-all ${manageableItemCount === 0 ? 'bg-blue-300 cursor-not-allowed opacity-60' : 'bg-blue-600 hover:bg-blue-700'}`}>管理</button>
                     <button onClick={() => setSortOrder(o => o === 'desc' ? 'asc' : 'desc')} className="w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center text-gray-500">
                       <i className={`fas fa-sort-amount-${sortOrder === 'asc' ? 'up' : 'down'}`}></i>
@@ -746,6 +749,10 @@ const App: React.FC = () => {
         } else {
           setViewingSymbol(sym);
         }
+      }} marketData={marketData} />}
+      {isInvestmentDraftModalOpen && <InvestmentDraftModal portfolio={portfolio} onClose={() => setIsInvestmentDraftModalOpen(false)} onSelectFund={(sym) => {
+        setIsInvestmentDraftModalOpen(false);
+        setViewingSymbol(sym);
       }} marketData={marketData} />}
       {viewingSymbol && marketData[viewingSymbol] && <FundDetailsModal data={marketData[viewingSymbol]} onClose={() => setViewingSymbol(null)} />}
       {virtualTradeModalFund && portfolio.some(f => f.symbol === virtualTradeModalFund) && (
