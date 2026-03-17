@@ -18,6 +18,7 @@ import VirtualTradeModal from './components/VirtualTradeModal';
 import BackupSettingsModal from './components/BackupSettingsModal';
 import SyncManagementModal from './components/SyncManagementModal';
 import SyncConfirmationModal from './components/SyncConfirmationModal';
+import AIMenuItem from './components/AIMenuItem';
 import { getAvailableStrategyKeys } from './services/strategyRegistry';
 import {
   buildBackupData, downloadBackupFile, applyBackupData,
@@ -430,8 +431,8 @@ const App: React.FC = () => {
 
       preBannerTimer = setTimeout(() => {
         setAutoBackupStatus('pending');
-        exportTimer = setTimeout(() => {
-          const data = buildBackupData(portfolio, indicesConfig, globalIndicesConfig, marketIndices, globalIndices);
+        exportTimer = setTimeout(async () => {
+          const data = await buildBackupData(portfolio, indicesConfig, globalIndicesConfig, marketIndices, globalIndices);
           downloadBackupFile(data, true);
           setAutoBackupStatus('done');
           setTimeout(() => setAutoBackupStatus(null), 3000);
@@ -470,8 +471,8 @@ const App: React.FC = () => {
     });
   }, [portfolio, marketData, sortOrder]);
 
-  const handleExport = () => {
-    const data = buildBackupData(portfolio, indicesConfig, globalIndicesConfig, marketIndices, globalIndices);
+  const handleExport = async () => {
+    const data = await buildBackupData(portfolio, indicesConfig, globalIndicesConfig, marketIndices, globalIndices);
     downloadBackupFile(data, false);
     setIsMenuOpen(false);
   };
@@ -505,9 +506,9 @@ const App: React.FC = () => {
     setIsMenuOpen(false);
   };
 
-  const handleConfirmImport = useCallback(() => {
+  const handleConfirmImport = useCallback(async () => {
     if (!pendingImportData) return;
-    const applied = applyBackupData(pendingImportData);
+    const applied = await applyBackupData(pendingImportData);
     setPortfolio(applied.portfolio);
     setIndicesConfig(applied.indicesConfig);
     setGlobalIndicesConfig(applied.globalIndicesConfig);
@@ -617,6 +618,7 @@ const App: React.FC = () => {
                   <button onClick={handleExport} className="w-full px-4 py-3 text-left text-sm hover:bg-gray-50 flex items-center space-x-3"><i className="fas fa-file-export opacity-70"></i><span>导出备份</span></button>
                   <button onClick={() => { setShowBackupSettings(true); setIsMenuOpen(false); }} className="w-full px-4 py-3 text-left text-sm hover:bg-gray-50 flex items-center space-x-3"><i className="fas fa-clock opacity-70"></i><span>备份设置</span></button>
                   <button onClick={() => { setShowSyncManagement(true); setIsMenuOpen(false); }} className="w-full px-4 py-3 text-left text-sm hover:bg-gray-50 flex items-center space-x-3"><i className="fas fa-sync-alt opacity-70"></i><span>同步配置</span></button>
+                  <AIMenuItem />
                   <button onClick={() => { setShowSyncConfirmation(true); setIsMenuOpen(false); }} className="w-full px-4 py-3 text-left text-sm hover:bg-gray-50 flex items-center space-x-3"><i className="fas fa-exchange-alt opacity-70"></i><span>数据同步</span></button>
                   <button onClick={() => fileInputRef.current?.click()} className="w-full px-4 py-3 text-left text-sm hover:bg-gray-50 flex items-center space-x-3"><i className="fas fa-file-import opacity-70"></i><span>导入备份</span></button>
                   <div className="h-px bg-gray-100 my-1 mx-2"></div>
@@ -804,7 +806,6 @@ const App: React.FC = () => {
           onClose={() => setShowSyncConfirmation(false)}
           onConfirm={(selectedDifferences) => {
             // Process the selected differences
-            console.log('Confirmed sync for:', selectedDifferences);
 
             if (selectedDifferences.length > 0) {
               // Apply the sync updates

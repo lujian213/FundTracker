@@ -65,18 +65,31 @@ export function writeSyncConfig(syncCfg: { eggfundUsername?: string; eggfundPass
  * localStorage.  Optional fields are populated from cacheService where
  * available, so the backup is as complete as possible.
  */
-export function buildBackupData(
+export async function buildBackupData(
   portfolio: any[],  // 使用 any 类型避免复杂类型导入
   indicesConfig: string[],
   globalIndicesConfig: string[],
   marketIndices: any[],
   globalIndices: any[],
-): BackupData {
+): Promise<BackupData> {
   // 获取缓存的估值数据
   let valuations: any = {};
   try {
     valuations = (cacheService as any).getAllValuations();
   } catch { /* ignore */ }
+
+  // 获取AI配置备份
+  let aiConfig: any = {};
+  try {
+    // 直接同步导入aiConfigService以避免循环依赖
+    // 这种方法可以避免 require 的问题
+    const aiConfigModule = await import('../services/aiConfigService');
+    if (aiConfigModule && typeof aiConfigModule.createAIConfigBackup === 'function') {
+      aiConfig = aiConfigModule.createAIConfigBackup();
+    }
+  } catch (error) {
+    console.warn('Could not create AI config backup:', error);
+  }
 
   // 1. portfolio → BackupFund[]
   const backupPortfolio: BackupFund[] = portfolio.map((t: any) => {
@@ -168,6 +181,7 @@ export function buildBackupData(
     positions,
     trades,
     config,
+    aiConfig,  // 添加AI配置到备份数据
   };
 }
 
@@ -225,7 +239,7 @@ export interface AppliedData {
  *
  * Returns the new React state values to be applied by the caller.
  */
-export function applyBackupData(imported: BackupData): AppliedData {
+export async function applyBackupData(imported: BackupData): Promise<AppliedData> {
   // ── 1. Build the new portfolio (Ticker[]) ──────────────────────────────────
   const newPortfolio: any[] = (imported.portfolio || []).map((f: any, i: number) => ({
     id: Math.random().toString(36).substr(2, 9),
@@ -235,6 +249,19 @@ export function applyBackupData(imported: BackupData): AppliedData {
   }));
 
   const newSymbolSet = new Set(newPortfolio.map((t: any) => t.symbol));
+
+  // ── Restore AI Configuration ────────────────────────────────────────────────
+  if (imported.aiConfig) {
+    try {
+      // 动态导入aiConfigService以避免循环依赖
+      const aiConfigModule = await import('../services/aiConfigService');
+      if (aiConfigModule && typeof aiConfigModule.restoreAIConfigBackup === 'function') {
+        aiConfigModule.restoreAIConfigBackup(imported.aiConfig);
+      }
+    } catch (error) {
+      console.warn('Could not restore AI config from backup:', error);
+    }
+  }
 
   // ── 2. Evict valuations that no longer belong to the portfolio ─────────────
   try {

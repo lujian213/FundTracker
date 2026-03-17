@@ -1,0 +1,46 @@
+{
+  "templates": [
+    {
+      "id": "openai-gpt4",
+      "name": "OpenAI GPT-4",
+      "apiEndpoint": "https://api.openai.com/v1/chat/completions",
+      "model": "gpt-4"
+    },
+    {
+      "id": "openai-gpt35",
+      "name": "OpenAI GPT-3.5 Turbo",
+      "apiEndpoint": "https://api.openai.com/v1/chat/completions",
+      "model": "gpt-3.5-turbo"
+    },
+    {
+      "id": "anthropic-claude",
+      "name": "Anthropic Claude 3",
+      "apiEndpoint": "https://api.anthropic.com/v1/messages",
+      "model": "claude-3-sonnet-20240229"
+    },
+    {
+      "id": "google-gemini",
+      "name": "Google Gemini Pro",
+      "apiEndpoint": "https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent",
+      "model": "gemini-pro"
+    },
+    {
+      "id": "ali-qwen",
+      "name": "阿里通义千问",
+      "apiEndpoint": "https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions",
+      "model": "qwen-max"
+    },
+    {
+      "id": "deepseek",
+      "name": "DeepSeek Chat",
+      "apiEndpoint": "https://api.deepseek.com/chat/completions",
+      "model": "deepseek-chat"
+    },
+    {
+      "id": "custom-template",
+      "name": "自定义模型配置",
+      "apiEndpoint": "",
+      "model": "gpt-4"
+    }
+  ]
+}

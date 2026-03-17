@@ -692,6 +692,9 @@ export const FundDetailsModal: React.FC<FundDetailsModalProps> = ({ data, onClos
                aria-label="AI投资助手"
                title="AI投资助手"
                onClick={() => {
+                 // DEBUG_START - Debug AI assistant toggle - 2026-03-17
+                 console.log('FundDetailsModal: Opening AI assistant for fund', data.symbol);
+                 // DEBUG_END
                  // Set reset flag to false when opening for same fund
                  setShouldResetAIChat(false);
                  setShowAI(true);

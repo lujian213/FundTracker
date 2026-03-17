@@ -126,22 +126,24 @@ describe('buildBackupData', () => {
   beforeEach(() => { localStorage.clear(); });
   afterEach(() => { localStorage.clear(); jest.resetModules(); });
 
-  test('basic structure: portfolio, indices, globalIndices, config', () => {
+  test('basic structure: portfolio, indices, globalIndices, config', async () => {
     const { bs } = loadBoth();
     const portfolio = [{ id: 'a1', symbol: '000001', name: '华夏成长', market: MarketType.FUND }];
-    const result = bs.buildBackupData(portfolio, ['1.000001'], ['100.NDX'], [], []);
+    const result = await bs.buildBackupData(portfolio, ['1.000001'], ['100.NDX'], [], []);
     expect(result.portfolio).toHaveLength(1);
     expect(result.portfolio[0].symbol).toBe('000001');
     expect(result.indices).toEqual([{ symbol: '1.000001', name: undefined, current: undefined, change: undefined, changePercent: undefined, lastUpdated: undefined }]);
     expect(result.globalIndices).toEqual([{ symbol: '100.NDX', name: undefined, current: undefined, change: undefined, changePercent: undefined, lastUpdated: undefined }]);
+    // 检查aiConfig是否存在（即使为空）
+    expect(result).toHaveProperty('aiConfig');
   });
 
-  test('fills optional valuation fields from cacheService when available', () => {
+  test('fills optional valuation fields from cacheService when available', async () => {
     const { cs, bs } = loadBoth();
     cs.setValuation('000001', SAMPLE_VALUATION);
 
     const portfolio = [{ id: 'a1', symbol: '000001', name: '', market: MarketType.FUND }];
-    const result = bs.buildBackupData(portfolio, [], [], [], []);
+    const result = await bs.buildBackupData(portfolio, [], [], [], []);
 
     const fund = result.portfolio[0];
     expect(fund.previousPrice).toBeCloseTo(1.48);
@@ -150,46 +152,46 @@ describe('buildBackupData', () => {
     expect(fund.realtimeDate).toBe('2026-03-03');
   });
 
-  test('fills index optional fields from marketIndices state', () => {
+  test('fills index optional fields from marketIndices state', async () => {
     const { bs } = loadBoth();
     const marketIndices = [{ symbol: '1.000001', name: '上证指数', current: 3200, change: 10, changePercent: 0.31, lastUpdated: '15:00' }];
-    const result = bs.buildBackupData([], ['1.000001'], [], marketIndices, []);
+    const result = await bs.buildBackupData([], ['1.000001'], [], marketIndices, []);
     expect(result.indices[0].name).toBe('上证指数');
     expect(result.indices[0].current).toBe(3200);
   });
 
-  test('includes trades from localStorage fund_trades', () => {
+  test('includes trades from localStorage fund_trades', async () => {
     const { bs } = loadBoth();
     localStorage.setItem('fund_trades', JSON.stringify({
       '000001': [{ id: 't1', date: '2026-01-01', type: 'buy', shares: 500, price: 1.48, fee: 0.5 }],
     }));
-    const result = bs.buildBackupData([], [], [], [], []);
+    const result = await bs.buildBackupData([], [], [], [], []);
     expect(result.trades['000001']).toHaveLength(1);
     expect(result.trades['000001'][0].shares).toBe(500);
   });
 
-  test('includes positions from localStorage fund_position_* keys', () => {
+  test('includes positions from localStorage fund_position_* keys', async () => {
     const { bs } = loadBoth();
     localStorage.setItem('fund_position_000001', JSON.stringify({
       fullCapacity: 10000, initialPosition: 2000, startDate: '2025-01-01', initialPrice: 1.48,
     }));
-    const result = bs.buildBackupData([], [], [], [], []);
+    const result = await bs.buildBackupData([], [], [], [], []);
     expect(result.positions['000001']).toEqual({
       fullCapacity: 10000, initialPosition: 2000, startDate: '2025-01-01', initialPrice: 1.48,
     });
   });
 
-  test('reads autoExportTime and autoBackupEnabled from fund_backup_config', () => {
+  test('reads autoExportTime and autoBackupEnabled from fund_backup_config', async () => {
     const { bs } = loadBoth();
     localStorage.setItem('fund_backup_config', JSON.stringify({ autoExportTime: '09:30', autoBackupEnabled: true }));
-    const result = bs.buildBackupData([], [], [], [], []);
+    const result = await bs.buildBackupData([], [], [], [], []);
     expect(result.config.autoExportTime).toBe('09:30');
     expect(result.config.autoBackupEnabled).toBe(true);
   });
 
-  test('uses default autoBackupEnabled when config not stored', () => {
+  test('uses default autoBackupEnabled when config not stored', async () => {
     const { bs } = loadBoth();
-    const result = bs.buildBackupData([], [], [], [], []);
+    const result = await bs.buildBackupData([], [], [], [], []);
     expect(result.config.autoExportTime).toBe('16:00');
     expect(result.config.autoBackupEnabled).toBe(false);
   });
@@ -285,9 +287,9 @@ describe('applyBackupData', () => {
     localStorage.setItem('fund_history_999999', JSON.stringify([{ date: 1000000, value: 1, equityReturn: 0 }]));
   }
 
-  test('returns correct portfolio, indicesConfig, globalIndicesConfig', () => {
+  test('returns correct portfolio, indicesConfig, globalIndicesConfig', async () => {
     const { bs } = loadBoth();
-    const result = bs.applyBackupData(BASE_BACKUP);
+    const result = await bs.applyBackupData(BASE_BACKUP);
     expect(result.portfolio).toHaveLength(1);
     expect(result.portfolio[0].symbol).toBe('000001');
     expect(result.portfolio[0].market).toBe(MarketType.FUND);
@@ -295,10 +297,10 @@ describe('applyBackupData', () => {
     expect(result.globalIndicesConfig).toEqual(['100.NDX']);
   });
 
-  test('completely overwrites old portfolio in localStorage', () => {
+  test('completely overwrites old portfolio in localStorage', async () => {
     const { bs } = loadBoth();
     seedOldData();
-    bs.applyBackupData(BASE_BACKUP);
+    await bs.applyBackupData(BASE_BACKUP);
 
     const raw = localStorage.getItem('fund_portfolio');
     const portfolio = JSON.parse(raw!);
@@ -307,10 +309,10 @@ describe('applyBackupData', () => {
     expect(symbols).toContain('000001');
   });
 
-  test('completely overwrites old trades in localStorage', () => {
+  test('completely overwrites old trades in localStorage', async () => {
     const { bs } = loadBoth();
     seedOldData();
-    bs.applyBackupData(BASE_BACKUP);
+    await bs.applyBackupData(BASE_BACKUP);
 
     const raw = localStorage.getItem('fund_trades');
     const trades = JSON.parse(raw!);
@@ -319,10 +321,10 @@ describe('applyBackupData', () => {
     expect(trades['000001'][0].id).toBe('t1');
   });
 
-  test('removes old fund_position_* keys and writes new ones', () => {
+  test('removes old fund_position_* keys and writes new ones', async () => {
     const { bs } = loadBoth();
     seedOldData();
-    bs.applyBackupData(BASE_BACKUP);
+    await bs.applyBackupData(BASE_BACKUP);
 
     expect(localStorage.getItem('fund_position_999999')).toBeNull();
     const newPos = localStorage.getItem('fund_position_000001');
@@ -332,19 +334,19 @@ describe('applyBackupData', () => {
     expect(pos.startDate).toBe('2025-01-01');
   });
 
-  test('preserves fund_history_* keys (not cleared)', () => {
+  test('preserves fund_history_* keys (not cleared)', async () => {
     const { bs } = loadBoth();
     seedOldData();
-    bs.applyBackupData(BASE_BACKUP);
+    await bs.applyBackupData(BASE_BACKUP);
 
     // History for old fund is preserved
     expect(localStorage.getItem('fund_history_999999')).not.toBeNull();
   });
 
-  test('writes new indices config to localStorage', () => {
+  test('writes new indices config to localStorage', async () => {
     const { bs } = loadBoth();
     seedOldData();
-    bs.applyBackupData(BASE_BACKUP);
+    await bs.applyBackupData(BASE_BACKUP);
 
     const idx = JSON.parse(localStorage.getItem('fund_indices_config')!);
     expect(idx).toEqual(['1.000001']);
@@ -352,18 +354,18 @@ describe('applyBackupData', () => {
     expect(gidx).toEqual(['100.NDX']);
   });
 
-  test('evicts old valuations from cacheService for removed symbols', () => {
+  test('evicts old valuations from cacheService for removed symbols', async () => {
     const { cs, bs } = loadBoth();
     // Seed old symbol in cache
     cs.setValuation('999999', { ...SAMPLE_VALUATION, symbol: '999999' });
     expect(cs.getValuation('999999')).toBeDefined();
 
-    bs.applyBackupData(BASE_BACKUP);
+    await bs.applyBackupData(BASE_BACKUP);
 
     expect(cs.getValuation('999999')).toBeUndefined();
   });
 
-  test('fallback: writes valuation to cache when cache is empty', () => {
+  test('fallback: writes valuation to cache when cache is empty', async () => {
     const { cs, bs } = loadBoth();
     // Cache is empty
     expect(cs.getValuation('000001')).toBeUndefined();
@@ -380,15 +382,15 @@ describe('applyBackupData', () => {
         realtimeDate: '2026-03-03',
       }],
     };
-    bs.applyBackupData(backupWithPrices);
+    await bs.applyBackupData(backupWithPrices);
 
     // Backup has previousPrice=1.48, should be written as fallback
     const cached = cs.getValuation('000001');
     expect(cached).toBeDefined();
-    expect(cached.previousPrice).toBeCloseTo(1.48);
+    expect(cached!.previousPrice).toBeCloseTo(1.48);
   });
 
-  test('fallback: does NOT overwrite existing valuation in cache', () => {
+  test('fallback: does NOT overwrite existing valuation in cache', async () => {
     const { cs, bs } = loadBoth();
     // Seed a "live" valuation with up-to-date data
     const liveVal = { ...SAMPLE_VALUATION, previousPrice: 9.99 };
@@ -403,40 +405,40 @@ describe('applyBackupData', () => {
         currentPrice: 1.50,
       }],
     };
-    bs.applyBackupData(backupWithPrices);
+    await bs.applyBackupData(backupWithPrices);
 
     // Cache should still have the live value, not the backup fallback
     expect(cs.getValuation('000001')!.previousPrice).toBeCloseTo(9.99);
   });
 
-  test('writes config.autoExportTime and autoBackupEnabled to fund_backup_config', () => {
+  test('writes config.autoExportTime and autoBackupEnabled to fund_backup_config', async () => {
     const { bs } = loadBoth();
     const backup = { ...BASE_BACKUP, config: { autoExportTime: '08:30', autoBackupEnabled: true } };
-    bs.applyBackupData(backup);
+    await bs.applyBackupData(backup);
 
     const raw = localStorage.getItem('fund_backup_config');
     expect(JSON.parse(raw!)).toEqual({ autoExportTime: '08:30', autoBackupEnabled: true });
   });
 
-  test('writes config with autoBackupEnabled as false', () => {
+  test('writes config with autoBackupEnabled as false', async () => {
     const { bs } = loadBoth();
     const backup = { ...BASE_BACKUP, config: { autoExportTime: '08:30', autoBackupEnabled: false } };
-    bs.applyBackupData(backup);
+    await bs.applyBackupData(backup);
 
     const raw = localStorage.getItem('fund_backup_config');
     expect(JSON.parse(raw!)).toEqual({ autoExportTime: '08:30', autoBackupEnabled: false });
   });
 
-  test('handles missing autoBackupEnabled during import by defaulting to false', () => {
+  test('handles missing autoBackupEnabled during import by defaulting to false', async () => {
     const { bs } = loadBoth();
     const backup = { ...BASE_BACKUP, config: { autoExportTime: '08:30' } }; // No autoBackupEnabled
-    bs.applyBackupData(backup);
+    await bs.applyBackupData(backup);
 
     const raw = localStorage.getItem('fund_backup_config');
     expect(JSON.parse(raw!)).toEqual({ autoExportTime: '08:30', autoBackupEnabled: false });
   });
 
-  test('normalizes missing trade price to 0', () => {
+  test('normalizes missing trade price to 0', async () => {
     const { bs } = loadBoth();
     const backup: BackupData = {
       ...BASE_BACKUP,
@@ -444,12 +446,12 @@ describe('applyBackupData', () => {
         '000001': [{ id: 't2', date: '2025-02-01', type: 'sell', shares: 200, fee: 0 } as any],
       },
     };
-    bs.applyBackupData(backup);
+    await bs.applyBackupData(backup);
     const trades = JSON.parse(localStorage.getItem('fund_trades')!);
     expect(trades['000001'][0].price).toBe(0);
   });
 
-  test('normalizes missing position initialPrice to null', () => {
+  test('normalizes missing position initialPrice to null', async () => {
     const { bs } = loadBoth();
     const backup: BackupData = {
       ...BASE_BACKUP,
@@ -457,26 +459,26 @@ describe('applyBackupData', () => {
         '000001': { fullCapacity: 5000, initialPosition: 0, startDate: null, initialPrice: null },
       },
     };
-    bs.applyBackupData(backup);
+    await bs.applyBackupData(backup);
     const pos = JSON.parse(localStorage.getItem('fund_position_000001')!);
     expect(pos.initialPrice).toBeNull();
   });
 
   // ── Old-format compatibility ───────────────────────────────────────────────
 
-  test('compat: old format indices as string[] (not BackupIndex[])', () => {
+  test('compat: old format indices as string[] (not BackupIndex[])', async () => {
     const { bs } = loadBoth();
     const oldFormat = {
       ...BASE_BACKUP,
       indices: ['1.000001', '0.399001'] as any,
       globalIndices: ['100.NDX'] as any,
     };
-    const result = bs.applyBackupData(oldFormat);
+    const result = await bs.applyBackupData(oldFormat);
     expect(result.indicesConfig).toEqual(['1.000001', '0.399001']);
     expect(result.globalIndicesConfig).toEqual(['100.NDX']);
   });
 
-  test('compat: old format portfolio as plain array without optional fields', () => {
+  test('compat: old format portfolio as plain array without optional fields', async () => {
     const { bs } = loadBoth();
     const oldFormat: BackupData = {
       portfolio: [{ symbol: '000001' } as any],
@@ -486,22 +488,22 @@ describe('applyBackupData', () => {
       trades: {},
       config: { autoExportTime: '16:00' },
     };
-    const result = bs.applyBackupData(oldFormat);
+    const result = await bs.applyBackupData(oldFormat);
     expect(result.portfolio[0].symbol).toBe('000001');
     expect(result.portfolio[0].name).toBe('');
   });
 
-  test('compat: missing config field uses stored default', () => {
+  test('compat: missing config field uses stored default', async () => {
     const { bs } = loadBoth();
     localStorage.setItem('fund_backup_config', JSON.stringify({ autoExportTime: '07:00' }));
     const backup = { ...BASE_BACKUP, config: undefined as any };
     // Should not throw; config not written if absent
-    expect(() => bs.applyBackupData(backup)).not.toThrow();
+    await expect(bs.applyBackupData(backup)).resolves.not.toThrow();
   });
 
-  test('compat: empty portfolio and indices produce empty arrays', () => {
+  test('compat: empty portfolio and indices produce empty arrays', async () => {
     const { bs } = loadBoth();
-    const result = bs.applyBackupData({
+    const result = await bs.applyBackupData({
       portfolio: [],
       indices: [],
       globalIndices: [],
@@ -514,13 +516,13 @@ describe('applyBackupData', () => {
     expect(result.globalIndicesConfig).toEqual([]);
   });
 
-  test('compat: indices array with mixed string and object entries', () => {
+  test('compat: indices array with mixed string and object entries', async () => {
     const { bs } = loadBoth();
     const mixedFormat = {
       ...BASE_BACKUP,
       indices: ['1.000001', { symbol: '0.399001', name: '深证成指' }] as any,
     };
-    const result = bs.applyBackupData(mixedFormat);
+    const result = await bs.applyBackupData(mixedFormat);
     expect(result.indicesConfig).toContain('1.000001');
     expect(result.indicesConfig).toContain('0.399001');
   });

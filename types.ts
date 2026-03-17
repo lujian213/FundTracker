@@ -142,6 +142,7 @@ export interface BackupData {
   positions: Record<string, BackupPosition>;
   trades: Record<string, BackupTrade[]>;
   config: BackupConfig;
+  aiConfig?: any;  // AI configuration backup data
 }
 
 // ─── Intraday point type (for per-minute day-limited caching used by intraday chart)
