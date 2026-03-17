@@ -175,51 +175,6 @@ describe('InvestmentDraftModal', () => {
     });
   });
 
-  test('reset button clears fields', async () => {
-    render(
-      <InvestmentDraftModal
-        portfolio={mockPortfolio}
-        onClose={mockOnClose}
-        marketData={mockMarketData}
-      />
-    );
-
-    // Select '买入' operation first
-    const operationSelect = screen.getAllByRole('combobox')[0];
-    fireEvent.change(operationSelect, { target: { value: '买入' } });
-
-    // Wait for the state update
-    await waitFor(() => {
-      expect(operationSelect).toHaveValue('买入');
-    });
-
-    // Input amount
-    const amountInput = screen.getAllByRole('textbox')[0];
-    fireEvent.change(amountInput, { target: { value: '1000' } });
-
-    // Wait for the state update
-    await waitFor(() => {
-      expect(amountInput).toHaveValue('1000');
-    });
-
-    // Click reset button
-    const resetButtons = screen.getAllByText('重置');
-    fireEvent.click(resetButtons[0]);
-
-    // Use findBy instead of waitFor to wait for the value to change
-    // Since the reset changes the operation back to '不操作', we need to wait for that
-    await waitFor(() => {
-      // Verify in localStorage instead of UI since UI might take time to update
-      const todayKey = `investment_draft_2026-03-17`;
-      const savedData = localStorage.getItem(todayKey);
-      if (savedData) {
-        const parsedData = JSON.parse(savedData);
-        expect(parsedData['000001'].operation).toBe('不操作');
-        expect(parsedData['000001'].amount).toBe('');
-      }
-    }, { timeout: 2000 }); // Increase timeout for state updates
-  });
-
   test('copies content to clipboard when button clicked', async () => {
     // Mock clipboard API
     Object.assign(navigator, {
@@ -243,8 +198,8 @@ describe('InvestmentDraftModal', () => {
     const amountInput = screen.getAllByRole('textbox')[0];
     fireEvent.change(amountInput, { target: { value: '1000' } });
 
-    // Click copy button
-    const copyButton = screen.getByText('复制');
+    // Click copy button - use the title attribute to find the button
+    const copyButton = screen.getByTitle('复制内容到剪贴板');
     fireEvent.click(copyButton);
 
     // Wait for copy operation

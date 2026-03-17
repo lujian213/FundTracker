@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom';
 import { Ticker, ValuationData, BackupPosition } from '../types';
 import { fetchFundData } from '../services/fundService';  // Import fetchFundData
 import { toLocalDateKey } from '../utils/priceResolver';
+import * as cacheService from '../services/cacheService';  // Import cacheService for enhanced valuation
 
 interface InvestmentDraftModalProps {
   portfolio: Ticker[];
@@ -142,14 +143,29 @@ const InvestmentDraftModal: React.FC<InvestmentDraftModalProps> = ({
   };
 
   const handleReset = (fundSymbol: string) => {
-    setDraftData(prev => ({
-      ...prev,
-      [fundSymbol]: {
+    setDraftData(prev => {
+      const resetEntry: DraftEntry = {
         fundSymbol,
         operation: '不操作',
         amount: ''
+      };
+
+      const newData = {
+        ...prev,
+        [fundSymbol]: resetEntry
+      };
+
+      // Also save to localStorage immediately to ensure consistency
+      const today = toLocalDateKey(new Date());
+      const storedKey = `investment_draft_${today}`;
+      try {
+        localStorage.setItem(storedKey, JSON.stringify(newData));
+      } catch (e) {
+        console.error('Error saving draft data after reset:', e);
       }
-    }));
+
+      return newData;
+    });
   };
 
   const handleCopyToClipboard = () => {
@@ -250,9 +266,12 @@ const InvestmentDraftModal: React.FC<InvestmentDraftModalProps> = ({
     const amount = parseFloat(entry.amount);
     if (isNaN(amount)) return '-';
 
-    // Use refreshed market data if available, otherwise use original marketData
-    const currentMarketData = refreshedMarketData || marketData || {};
-    const valuation = currentMarketData[fundSymbol];
+    // Use enhanced valuation from cacheService which includes validation logic
+    const enhancedValuation = cacheService.getValuation(fundSymbol);
+
+    // If enhanced valuation is not available, fallback to marketData
+    const valuation = enhancedValuation || (refreshedMarketData || marketData || {})[fundSymbol];
+
     if (!valuation || !valuation.currentPrice) return '-';
 
     const shares = amount / valuation.currentPrice;
@@ -260,9 +279,12 @@ const InvestmentDraftModal: React.FC<InvestmentDraftModalProps> = ({
   };
 
   const getGainLoss = (fundSymbol: string): string => {
-    // Use refreshed market data if available, otherwise use original marketData
-    const currentMarketData = refreshedMarketData || marketData || {};
-    const valuation = currentMarketData[fundSymbol];
+    // Use enhanced valuation from cacheService which includes validation logic
+    const enhancedValuation = cacheService.getValuation(fundSymbol);
+
+    // If enhanced valuation is not available, fallback to marketData
+    const valuation = enhancedValuation || (refreshedMarketData || marketData || {})[fundSymbol];
+
     if (!valuation) return '-';
 
     // Use the changePercentage directly to ensure consistency with sorting
@@ -279,9 +301,12 @@ const InvestmentDraftModal: React.FC<InvestmentDraftModalProps> = ({
   };
 
   const getGainLossColor = (fundSymbol: string): string => {
-    // Use refreshed market data if available, otherwise use original marketData
-    const currentMarketData = refreshedMarketData || marketData || {};
-    const valuation = currentMarketData[fundSymbol];
+    // Use enhanced valuation from cacheService which includes validation logic
+    const enhancedValuation = cacheService.getValuation(fundSymbol);
+
+    // If enhanced valuation is not available, fallback to marketData
+    const valuation = enhancedValuation || (refreshedMarketData || marketData || {})[fundSymbol];
+
     if (!valuation) return 'text-gray-400';
 
     // Use the changePercentage directly to ensure consistency with sorting
@@ -355,7 +380,10 @@ const InvestmentDraftModal: React.FC<InvestmentDraftModalProps> = ({
                       const entry = draftData[fund.symbol] || { operation: '不操作', amount: '' };
                       // Use refreshed market data if available, otherwise use original marketData
                       const currentMarketData = refreshedMarketData || marketData || {};
-                      const valuation = currentMarketData[fund.symbol];
+
+                      // Try to get enhanced valuation from cacheService first, fallback to marketData
+                      const enhancedValuation = cacheService.getValuation(fund.symbol);
+                      const valuation = enhancedValuation || currentMarketData[fund.symbol];
 
                       return (
                         <tr key={fund.symbol} className={`border-b border-gray-50 hover:bg-gray-50 transition-colors ${index % 2 === 0 ? 'bg-white' : 'bg-gray-25'}`} style={{ height: '40px' }}>
@@ -383,27 +411,51 @@ const InvestmentDraftModal: React.FC<InvestmentDraftModalProps> = ({
 
                           <td className="px-4 py-1 text-left text-xs">
                             <div className="truncate flex items-center" style={{ maxWidth: '100px' }}>
-                              {valuation && valuation.currentPrice ? (
-                                <>
-                                  {formatCurrency(valuation.currentPrice, 4)}
-                                  <span className={valuation.realtimeDate !== toLocalDateKey(new Date()) ? 'bg-yellow-200 px-1 rounded ml-1 text-[9px]' : 'ml-1 text-[9px]'}>
-                                    ({valuation.realtimeDate ? formatDateMMDD(valuation.realtimeDate) : '-'})
-                                  </span>
-                                </>
-                              ) : '-'}
+                              {(() => {
+                                // Use enhanced valuation from cacheService which includes validation logic
+                                const enhancedValuation = cacheService.getValuation(fund.symbol);
+
+                                // If enhanced valuation is not available, fallback to marketData
+                                const valuation = enhancedValuation || (refreshedMarketData || marketData || {})[fund.symbol];
+
+                                if (valuation && valuation.currentPrice) {
+                                  return (
+                                    <>
+                                      {formatCurrency(valuation.currentPrice, 4)}
+                                      <span className={valuation.realtimeDate !== toLocalDateKey(new Date()) ? 'bg-yellow-200 px-1 rounded ml-1 text-[9px]' : 'ml-1 text-[9px]'}>
+                                        ({valuation.realtimeDate ? formatDateMMDD(valuation.realtimeDate) : '-'})
+                                      </span>
+                                    </>
+                                  );
+                                } else {
+                                  return '-';
+                                }
+                              })()}
                             </div>
                           </td>
 
                           <td className="px-4 py-1 text-left text-xs">
                             <div className="truncate flex items-center" style={{ maxWidth: '100px' }}>
-                              {valuation && valuation.previousPrice ?
-                                <>
-                                  {formatCurrency(valuation.previousPrice, 4)}
-                                  <span className="ml-1 text-[9px]">
-                                    ({valuation.netWorthDate ? formatDateMMDD(valuation.netWorthDate) : '-'})
-                                  </span>
-                                </>
-                                : '-'}
+                              {(() => {
+                                // Use enhanced valuation from cacheService which includes validation logic
+                                const enhancedValuation = cacheService.getValuation(fund.symbol);
+
+                                // If enhanced valuation is not available, fallback to marketData
+                                const valuation = enhancedValuation || (refreshedMarketData || marketData || {})[fund.symbol];
+
+                                if (valuation && valuation.previousPrice) {
+                                  return (
+                                    <>
+                                      {formatCurrency(valuation.previousPrice, 4)}
+                                      <span className="ml-1 text-[9px]">
+                                        ({valuation.netWorthDate ? formatDateMMDD(valuation.netWorthDate) : '-'})
+                                      </span>
+                                    </>
+                                  );
+                                } else {
+                                  return '-';
+                                }
+                              })()}
                             </div>
                           </td>
 

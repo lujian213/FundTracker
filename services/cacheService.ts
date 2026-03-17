@@ -13,6 +13,7 @@
  */
 
 import { ValuationData, HistoricalPoint, IntradayPoint } from '../types';
+import { toLocalDateKey } from '../utils/priceResolver';
 
 export interface NewsItem {
   id: string;
@@ -125,8 +126,66 @@ function init() {
 init();
 
 // ─── Valuation (real-time estimate) ──────────────────────────────────────────
+function applyAccuracyEnhancements(
+  valuation: ValuationData,
+  history: HistoricalPoint[]
+): ValuationData {
+  // Sort history by date ascending to find the most recent and previous values
+  const sortedHistory = [...history].sort((a, b) => (a.date as number) - (b.date as number));
+  const latestHistory = sortedHistory[sortedHistory.length - 1];
+  const previousHistory = sortedHistory.length > 1 ? sortedHistory[sortedHistory.length - 2] : null;
+
+  // Create a copy of the original valuation to potentially modify
+  let result = {...valuation};
+
+  // Rule 1: Compare valuationDate and the date of the most recent historical net worth data
+  const latestHistoryDate = toLocalDateKey(latestHistory.date);
+  const valuationDate = valuation.valuationDate?.split(' ')[0] || valuation.realtimeDate;
+
+  if (valuationDate && latestHistoryDate && valuationDate < latestHistoryDate) {
+    // Use the most recent historical data as the valuation data
+    result = {
+      ...result,
+      currentPrice: latestHistory.value,
+      realtimeDate: latestHistoryDate,
+      valuationDate: latestHistoryDate,
+      // Adjust previous value to be the historical previous
+      previousPrice: previousHistory ? previousHistory.value : valuation.previousPrice,
+      netWorthDate: previousHistory ? toLocalDateKey(previousHistory.date) : valuation.netWorthDate,
+    };
+  }
+
+  // Rule 2: Compare valuationDate and netWorthDate
+  const netWorthDate = valuation.netWorthDate;
+  if (valuationDate && netWorthDate && valuationDate <= netWorthDate) {
+    // Find the closest historical net worth before the valuation date
+    const closestHistory = sortedHistory
+      .filter(h => toLocalDateKey(h.date) < valuationDate)
+      .sort((a, b) => (b.date as number) - (a.date as number))[0]; // Most recent before valuation date
+
+    if (closestHistory) {
+      result = {
+        ...result,
+        previousPrice: closestHistory.value,
+        netWorthDate: toLocalDateKey(closestHistory.date),
+      };
+    }
+  }
+
+  // Return the potentially modified valuation
+  return result;
+}
+
 export function getValuation(symbol: string): ValuationData | undefined {
-  return valuationMap.get(symbol);
+  const valuation = valuationMap.get(symbol);
+  if (!valuation) return undefined;
+
+  // Get historical data for validation
+  const history = getHistory(symbol);
+  if (!history || history.length === 0) return valuation;
+
+  // Apply the enhancement logic as described in the feature document
+  return applyAccuracyEnhancements(valuation, history);
 }
 
 export function setValuation(symbol: string, data: ValuationData): void {
@@ -140,6 +199,19 @@ export function setValuation(symbol: string, data: ValuationData): void {
 }
 
 export function getAllValuations(): Record<string, ValuationData> {
+  const obj: Record<string, ValuationData> = {};
+  valuationMap.forEach((_, k) => {
+    // Use getValuation to ensure accuracy enhancements are applied
+    const enhancedValuation = getValuation(k);
+    if (enhancedValuation) {
+      obj[k] = enhancedValuation;
+    }
+  });
+  return obj;
+}
+
+// Legacy function that returns raw valuations without enhancements (for internal use only)
+export function getRawValuations(): Record<string, ValuationData> {
   const obj: Record<string, ValuationData> = {};
   valuationMap.forEach((v, k) => { obj[k] = v; });
   return obj;
