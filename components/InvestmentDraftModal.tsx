@@ -263,7 +263,16 @@ const InvestmentDraftModal: React.FC<InvestmentDraftModalProps> = ({
     // Use refreshed market data if available, otherwise use original marketData
     const currentMarketData = refreshedMarketData || marketData || {};
     const valuation = currentMarketData[fundSymbol];
-    if (!valuation || !valuation.currentPrice || !valuation.previousPrice) return '-';
+    if (!valuation) return '-';
+
+    // Use the changePercentage directly to ensure consistency with sorting
+    if (typeof valuation.changePercentage === 'number') {
+      const changePercentage = valuation.changePercentage;
+      return `${changePercentage >= 0 ? '+' : ''}${changePercentage.toFixed(2)}%`;
+    }
+
+    // Fallback to calculation if changePercentage is not available
+    if (!valuation.currentPrice || !valuation.previousPrice) return '-';
 
     const gainLoss = ((valuation.currentPrice - valuation.previousPrice) / valuation.previousPrice) * 100;
     return `${gainLoss >= 0 ? '+' : ''}${gainLoss.toFixed(2)}%`;
@@ -273,7 +282,16 @@ const InvestmentDraftModal: React.FC<InvestmentDraftModalProps> = ({
     // Use refreshed market data if available, otherwise use original marketData
     const currentMarketData = refreshedMarketData || marketData || {};
     const valuation = currentMarketData[fundSymbol];
-    if (!valuation || !valuation.currentPrice || !valuation.previousPrice) return 'text-gray-400';
+    if (!valuation) return 'text-gray-400';
+
+    // Use the changePercentage directly to ensure consistency with sorting
+    if (typeof valuation.changePercentage === 'number') {
+      const changePercentage = valuation.changePercentage;
+      return changePercentage >= 0 ? 'text-red-600' : 'text-green-600';
+    }
+
+    // Fallback to calculation if changePercentage is not available
+    if (!valuation.currentPrice || !valuation.previousPrice) return 'text-gray-400';
 
     const gainLoss = ((valuation.currentPrice - valuation.previousPrice) / valuation.previousPrice) * 100;
     return gainLoss >= 0 ? 'text-red-600' : 'text-green-600';

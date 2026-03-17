@@ -6,3 +6,4 @@ backup/
 __tests__/
 .claude/
 features/
+debug/
