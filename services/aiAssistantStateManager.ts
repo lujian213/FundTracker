@@ -16,15 +16,35 @@ class AIAssistantStateManager {
    * 设置特定基金的 AI 助手状态
    */
   setState(fundSymbol: string, state: AIAssistantState): void {
-    this.states.set(fundSymbol, { ...state, lastAccessed: new Date() });
+    // 如果没有初始化日期，设置为今天
+    const initializationDate = state.initializationDate || new Date();
+    this.states.set(fundSymbol, {
+      ...state,
+      lastAccessed: new Date(),
+      initializationDate
+    });
   }
 
   /**
-   * 检查特定基金的 AI 助手是否已初始化
+   * 检查特定基金的 AI 助手是否在今天已初始化
+   * 根据功能要求：AI助手窗口有使用时效，当天内用户第一次打开这个窗口时，系统会记录一个时间戳。
+   * 之后这个窗口的使用时效截止为第二天的0点。
    */
-  isInitialized(fundSymbol: string): boolean {
+  isInitializedToday(fundSymbol: string): boolean {
     const state = this.states.get(fundSymbol);
-    return state ? state.hasBeenInitialized : false;
+    if (!state || !state.hasBeenInitialized) {
+      return false;
+    }
+
+    // 检查是否是同一天（年月日相同）
+    const today = new Date();
+    const initDate = new Date(state.initializationDate);
+
+    return (
+      today.getFullYear() === initDate.getFullYear() &&
+      today.getMonth() === initDate.getMonth() &&
+      today.getDate() === initDate.getDate()
+    );
   }
 
   /**
@@ -34,7 +54,8 @@ class AIAssistantStateManager {
     this.states.set(fundSymbol, {
       messages: [],
       hasBeenInitialized: false,
-      lastAccessed: new Date()
+      lastAccessed: new Date(),
+      initializationDate: new Date() // 重置时也要更新初始化日期
     });
   }
 

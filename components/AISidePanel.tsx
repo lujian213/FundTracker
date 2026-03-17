@@ -113,7 +113,7 @@ const AISidePanel: React.FC<AISidePanelProps> = ({
   }, []);
 
 
-  // Initialize messages and fetch initial data when panel becomes visible for the first time
+  // Initialize messages and fetch initial data when panel becomes visible for the first time today
   useEffect(() => {
     // 每次可见性变化时，先从全局状态同步当前状态
     const currentGlobalState = aiAssistantStateManager.getState(fundSymbol);
@@ -122,21 +122,30 @@ const AISidePanel: React.FC<AISidePanelProps> = ({
     setMessages(currentGlobalState?.messages || []);
     setHasBeenInitialized(currentGlobalState?.hasBeenInitialized || false);
 
-    // 只有在面板可见且尚未初始化时才进行初始化
-    if (isVisible && (!currentGlobalState || !currentGlobalState.hasBeenInitialized)) {
+    // 检查是否在今天已初始化
+    const isInitializedToday = aiAssistantStateManager.isInitializedToday(fundSymbol);
+
+    // 只有在面板可见且今天尚未初始化时才进行初始化
+    if (isVisible && (!currentGlobalState || !isInitializedToday)) {
       initializeChat();
+      // 更新状态标记为已初始化
       setHasBeenInitialized(true);
-    } else if (isVisible && currentGlobalState?.hasBeenInitialized) {
-      // Reuse existing chat if it exists
+    } else if (isVisible && isInitializedToday) {
+      // Reuse existing chat if it exists and was initialized today
     }
   }, [isVisible, fundSymbol]);
 
   // 更新全局状态管理器 - 只有当本地状态改变时才更新
   useEffect(() => {
+    // 获取当前状态来决定初始化日期 - 如果已经有初始化日期则保持不变，否则使用当前日期
+    const currentState = aiAssistantStateManager.getState(fundSymbol);
+    const initializationDate = currentState?.initializationDate || new Date();
+
     aiAssistantStateManager.setState(fundSymbol, {
       messages,
       hasBeenInitialized,
-      lastAccessed: new Date()
+      lastAccessed: new Date(),
+      initializationDate
     });
   }, [messages, hasBeenInitialized, fundSymbol]);
 

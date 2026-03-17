@@ -11,4 +11,5 @@ export interface AIAssistantState {
   messages: AIAssistantMessage[];
   hasBeenInitialized: boolean;
   lastAccessed: Date;
+  initializationDate: Date; // 记录初始化日期，用于实现按天时效
 }
