@@ -662,8 +662,6 @@ const App: React.FC = () => {
                   <AIMenuItem onMenuClose={() => setIsMenuOpen(false)} onOpenConfig={() => setShowAIConfig(true)} />
                   <button onClick={handleDataSyncClick} className="w-full px-4 py-3 text-left text-sm hover:bg-gray-50 flex items-center space-x-3"><i className="fas fa-exchange-alt opacity-70"></i><span>数据同步</span></button>
                   <button onClick={() => fileInputRef.current?.click()} className="w-full px-4 py-3 text-left text-sm hover:bg-gray-50 flex items-center space-x-3"><i className="fas fa-file-import opacity-70"></i><span>导入备份</span></button>
-                  <div className="h-px bg-gray-100 my-1 mx-2"></div>
-                  <button onClick={() => { setIndicesConfig([]); setGlobalIndicesConfig([]); setIsMenuOpen(false); }} className="w-full px-4 py-3 text-left text-sm hover:bg-gray-50 flex items-center space-x-3 text-red-500"><i className="fas fa-trash-alt opacity-70"></i><span>清空指数</span></button>
                 </div>
               </>
             )}
