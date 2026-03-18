@@ -70,6 +70,7 @@ jest.mock('../../services/ContextCompressionService', () => {
 jest.mock('../../services/aiConfigService', () => ({
   getAIConfig: jest.fn(),
   hasValidAIConfig: jest.fn(),
+  hasUsableAIConfig: jest.fn(),
 }));
 jest.mock('../../services/aiService', () => ({
   queryAI: jest.fn(),

@@ -28,9 +28,16 @@ export interface PromptTemplate {
 export async function loadPromptTemplates(): Promise<PromptTemplate[]> {
   try {
     const response = await fetch('/assets/config/ai-prompt-templates.json');
+
+    if (!response.ok) {
+      console.error(`Failed to load templates: HTTP ${response.status} ${response.statusText}`);
+      return [];
+    }
+
     const data = await response.json();
 
     if (data && data.templates && Array.isArray(data.templates)) {
+      console.log(`Loaded ${data.templates.length} prompt templates`);
       return data.templates;
     } else {
       console.error('Invalid template data structure:', data);
@@ -211,8 +218,14 @@ export async function queryAIWithTemplate(
   const template = await getEnabledPromptTemplate(templateId);
 
   if (!template) {
+    const templates = await loadPromptTemplates();
+    const enabledCount = templates.filter(t => t.enabled).length;
+    const errorMsg = templateId
+      ? `模板 "${templateId}" 未找到或未启用`
+      : `没有启用的模板 (共${templates.length}个模板, ${enabledCount}个已启用)`;
+    console.error(errorMsg);
     return {
-      content: 'No enabled prompt template found',
+      content: errorMsg,
       success: false,
       error: 'No template'
     };

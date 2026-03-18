@@ -239,10 +239,7 @@ export function validateAIConfig(config: AIConfigProfile): { isValid: boolean; e
     return { isValid: false, error: 'API端点不能为空' };
   }
 
-  if (!config.apiKey || config.apiKey.trim() === '') {
-    return { isValid: false, error: 'API密钥不能为空' };
-  }
-
+  // API密钥可以为空，允许从备份恢复后由用户补充
   // 基本URL验证
   try {
     new URL(config.apiEndpoint);
@@ -254,7 +251,8 @@ export function validateAIConfig(config: AIConfigProfile): { isValid: boolean; e
 }
 
 /**
- * 检查是否存在有效配置
+ * 检查是否存在有效配置（配置结构完整）
+ * 注意：API Key为空的配置仍被认为是有效的，只是不能用于调用API
  */
 export function hasValidAIConfig(): boolean {
   const config = getActiveAIConfig();
@@ -262,6 +260,17 @@ export function hasValidAIConfig(): boolean {
 
   const validation = validateAIConfig(config);
   return validation.isValid;
+}
+
+/**
+ * 检查是否存在可用于调用API的配置（必须包含API Key）
+ */
+export function hasUsableAIConfig(): boolean {
+  const config = getActiveAIConfig();
+  if (!config) return false;
+
+  const validation = validateAIConfig(config);
+  return validation.isValid && !!(config.apiKey && config.apiKey.trim() !== '');
 }
 
 /**
@@ -290,10 +299,13 @@ export function createAIConfigBackup(): any {
 /**
  * 从备份恢复配置
  */
-export function restoreAIConfigBackup(backup: any): void {
+export function restoreAIConfigBackup(backup: any): boolean {
   if (!backup || !backup.configs) {
-    throw new Error('Invalid backup data');
+    console.warn('restoreAIConfigBackup: Invalid backup data', backup);
+    return false;
   }
+
+  console.log(`restoreAIConfigBackup: Restoring ${backup.configs.length} configs, activeId: ${backup.activeConfigId}`);
 
   // 重置现有配置
   const newManager: AIConfigManager = {
@@ -312,6 +324,8 @@ export function restoreAIConfigBackup(backup: any): void {
   }));
 
   saveAIConfigManager(newManager);
+  console.log('restoreAIConfigBackup: Configs restored successfully');
+  return true;
 }
 
 // 保留旧版兼容的类型定义和函数

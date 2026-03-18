@@ -19,6 +19,7 @@ import BackupSettingsModal from './components/BackupSettingsModal';
 import SyncManagementModal from './components/SyncManagementModal';
 import SyncConfirmationModal from './components/SyncConfirmationModal';
 import AIMenuItem from './components/AIMenuItem';
+import AIConfigModal from './components/AIConfigModal';
 import { getAvailableStrategyKeys } from './services/strategyRegistry';
 import {
   buildBackupData, downloadBackupFile, applyBackupData,
@@ -157,7 +158,9 @@ const App: React.FC = () => {
   const [pendingImportData, setPendingImportData] = useState<BackupData | null>(null);
   const [showBackupSettings, setShowBackupSettings] = useState<boolean>(false);
   const [showSyncManagement, setShowSyncManagement] = useState<boolean>(false);
+  const [showAIConfig, setShowAIConfig] = useState<boolean>(false);
   const [showSyncConfirmation, setShowSyncConfirmation] = useState<boolean>(false);
+  const [syncErrorMessage, setSyncErrorMessage] = useState<string | null>(null);
   const [autoExportTime, setAutoExportTime] = useState<string>(() => readBackupConfig().autoExportTime);
   const [autoBackupEnabled, setAutoBackupEnabled] = useState<boolean>(() => readBackupConfig().autoBackupEnabled ?? false);
   const [autoBackupStatus, setAutoBackupStatus] = useState<'pending' | 'done' | null>(null);
@@ -479,6 +482,27 @@ const App: React.FC = () => {
     setIsMenuOpen(false);
   };
 
+  // 处理数据同步点击，先检查配置
+  const handleDataSyncClick = () => {
+    setIsMenuOpen(false);
+    const configStr = localStorage.getItem('eggfund_sync_config');
+    if (!configStr) {
+      setSyncErrorMessage('请先在"同步配置"中设置 Eggfund 账户信息');
+      return;
+    }
+    try {
+      const config = JSON.parse(configStr);
+      if (!config.eggfundUsername || !config.eggfundPassword) {
+        setSyncErrorMessage('同步配置信息不完整，请检查用户名和密码');
+        return;
+      }
+    } catch (e) {
+      setSyncErrorMessage('同步配置格式错误，请重新配置');
+      return;
+    }
+    setShowSyncConfirmation(true);
+  };
+
   const handleImport = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) return;
@@ -498,6 +522,7 @@ const App: React.FC = () => {
           positions: imported.positions || {},
           trades: imported.trades || {},
           config: imported.config || { autoExportTime: '16:00' },
+          aiConfig: imported.aiConfig,
         };
         setPendingImportData(normalized);
       } catch { /* ignore parse errors */ }
@@ -620,8 +645,8 @@ const App: React.FC = () => {
                   <button onClick={handleExport} className="w-full px-4 py-3 text-left text-sm hover:bg-gray-50 flex items-center space-x-3"><i className="fas fa-file-export opacity-70"></i><span>导出备份</span></button>
                   <button onClick={() => { setShowBackupSettings(true); setIsMenuOpen(false); }} className="w-full px-4 py-3 text-left text-sm hover:bg-gray-50 flex items-center space-x-3"><i className="fas fa-clock opacity-70"></i><span>备份设置</span></button>
                   <button onClick={() => { setShowSyncManagement(true); setIsMenuOpen(false); }} className="w-full px-4 py-3 text-left text-sm hover:bg-gray-50 flex items-center space-x-3"><i className="fas fa-sync-alt opacity-70"></i><span>同步配置</span></button>
-                  <AIMenuItem />
-                  <button onClick={() => { setShowSyncConfirmation(true); setIsMenuOpen(false); }} className="w-full px-4 py-3 text-left text-sm hover:bg-gray-50 flex items-center space-x-3"><i className="fas fa-exchange-alt opacity-70"></i><span>数据同步</span></button>
+                  <AIMenuItem onMenuClose={() => setIsMenuOpen(false)} onOpenConfig={() => setShowAIConfig(true)} />
+                  <button onClick={handleDataSyncClick} className="w-full px-4 py-3 text-left text-sm hover:bg-gray-50 flex items-center space-x-3"><i className="fas fa-exchange-alt opacity-70"></i><span>数据同步</span></button>
                   <button onClick={() => fileInputRef.current?.click()} className="w-full px-4 py-3 text-left text-sm hover:bg-gray-50 flex items-center space-x-3"><i className="fas fa-file-import opacity-70"></i><span>导入备份</span></button>
                   <div className="h-px bg-gray-100 my-1 mx-2"></div>
                   <button onClick={() => { setIndicesConfig([]); setGlobalIndicesConfig([]); setIsMenuOpen(false); }} className="w-full px-4 py-3 text-left text-sm hover:bg-gray-50 flex items-center space-x-3 text-red-500"><i className="fas fa-trash-alt opacity-70"></i><span>清空指数</span></button>
@@ -802,6 +827,12 @@ const App: React.FC = () => {
           initialConfig={JSON.parse(localStorage.getItem('eggfund_sync_config') || '{}')}
         />
       )}
+      {showAIConfig && (
+        <AIConfigModal
+          isOpen={showAIConfig}
+          onClose={() => setShowAIConfig(false)}
+        />
+      )}
       {showSyncConfirmation && (
         <SyncConfirmationModal
           isOpen={showSyncConfirmation}
@@ -815,10 +846,10 @@ const App: React.FC = () => {
                 applySyncUpdates(selectedDifferences);
 
                 // Show success notification or refresh UI as needed
-                alert(`成功同步 ${selectedDifferences.length} 个交易差异`);
+                setSyncErrorMessage(`成功同步 ${selectedDifferences.length} 个交易差异`);
               } catch (error) {
                 console.error('同步过程中出现错误:', error);
-                alert('同步过程中出现错误，请查看控制台了解详细信息');
+                setSyncErrorMessage('同步过程中出现错误，请查看控制台了解详细信息');
               }
             }
 
@@ -826,6 +857,31 @@ const App: React.FC = () => {
           }}
           marketData={marketData}
         />
+      )}
+      {/* 同步错误/成功提示 Modal */}
+      {syncErrorMessage && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4" role="dialog" aria-modal="true">
+          <div
+            className="absolute inset-0 bg-black/40 backdrop-blur-sm animate-in fade-in duration-200"
+            onClick={() => setSyncErrorMessage(null)}
+          ></div>
+          <div className="relative bg-white rounded-3xl w-full max-w-xs overflow-hidden shadow-2xl animate-in zoom-in-95 duration-200">
+            <div className="p-6 text-center">
+              <div className="w-12 h-12 rounded-full mx-auto flex items-center justify-center mb-4 bg-blue-50 text-blue-600">
+                <i className="fas fa-info-circle text-xl"></i>
+              </div>
+              <p className="text-sm text-gray-500 leading-relaxed">{syncErrorMessage}</p>
+            </div>
+            <div className="flex border-t border-gray-100">
+              <button
+                onClick={() => setSyncErrorMessage(null)}
+                className="flex-1 py-4 text-sm font-bold text-blue-600 hover:bg-blue-50 transition-colors"
+              >
+                确定
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { ValuationData } from '../types';
 import { queryAI, queryAIWithTemplate, AIResponse, AIQueryContext } from '../services/aiService';
-import { getAIConfig, hasValidAIConfig } from '../services/aiConfigService';
+import { getAIConfig, hasValidAIConfig, hasUsableAIConfig } from '../services/aiConfigService';
 import { AIConfiguration } from '../types/aiConfigTypes';
 import { aiAssistantStateManager } from '../services/aiAssistantStateManager';
 import { AIAssistantMessage, AIAssistantState } from '../types/aiAssistantTypes';
@@ -140,31 +140,11 @@ const AISidePanel: React.FC<AISidePanelProps> = ({
   const stateVersionRef = useRef(0);
   // 添加计数器来跳过压缩后/发送消息时的状态同步，防止历史消息被错误地添加到newContent
   const skipMessagesEffectCountRef = useRef(0);
+  // 添加引用来防止重复初始化
+  const isInitializingRef = useRef(false);
 
   // 初始化上下文压缩服务
   const compressionService = new ContextCompressionService();
-
-  // 初始化时从全局状态加载数据
-  useEffect(() => {
-    const currentState = aiAssistantStateManager.getState(fundSymbol);
-
-    if (currentState) {
-      const messagesForDisplay = compressionService.getMessagesForDisplay(currentState);
-      setMessages(messagesForDisplay);
-      setHasBeenInitialized(currentState.hasBeenInitialized);
-
-      const contextLength = compressionService.getContextLength(currentState);
-      setContextLength(contextLength);
-
-      const needsCompression = compressionService.needsCompression(currentState);
-      setCompressionStatus(needsCompression ? 'Needs Compression' : 'OK');
-    } else {
-      setMessages([]);
-      setHasBeenInitialized(false);
-      setContextLength(0);
-      setCompressionStatus('Ready');
-    }
-  }, [fundSymbol]);
 
   // 更新全局状态管理器
   const [inputValue, setInputValue] = useState('');
@@ -174,7 +154,7 @@ const AISidePanel: React.FC<AISidePanelProps> = ({
   const [apiEndpoint, setApiEndpoint] = useState('');
   const [apiKey, setApiKey] = useState('');
   const [model, setModel] = useState('gpt-4');
-  const [isValidConfig, setIsValidConfig] = useState(hasValidAIConfig());
+  const [isValidConfig, setIsValidConfig] = useState(hasUsableAIConfig());
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   // Load config on mount
@@ -196,8 +176,12 @@ const AISidePanel: React.FC<AISidePanelProps> = ({
       const currentGlobalState = aiAssistantStateManager.getState(fundSymbol);
 
       // 同步本地状态与全局状态
-      if (currentGlobalState) {
+      if (currentGlobalState && currentGlobalState.hasBeenInitialized) {
+        // 只有已成功初始化的状态才同步
         const messagesForDisplay = compressionService.getMessagesForDisplay(currentGlobalState);
+
+        // 设置跳过标志，防止 messages useEffect 覆盖状态
+        skipMessagesEffectCountRef.current = 1;
 
         setMessages(messagesForDisplay);
         setHasBeenInitialized(currentGlobalState.hasBeenInitialized);
@@ -207,12 +191,21 @@ const AISidePanel: React.FC<AISidePanelProps> = ({
 
         const needsCompression = compressionService.needsCompression(currentGlobalState);
         setCompressionStatus(needsCompression ? 'Needs Compression' : 'OK');
-      } else {
-        // Only initialize if there's no existing state for today
+      } else if (!isInitializingRef.current) {
+        // 只有在不正在初始化时才执行初始化
+        // 清除可能存在的失败状态
+        if (currentGlobalState && !currentGlobalState.hasBeenInitialized) {
+          aiAssistantStateManager.clearState(fundSymbol);
+        }
+
         const isInitializedToday = aiAssistantStateManager.isInitializedToday(fundSymbol);
         if (!isInitializedToday) {
+          // 重置本地状态后初始化
+          setMessages([]);
+          setHasBeenInitialized(false);
+          setContextLength(0);
+          setCompressionStatus('Ready');
           initializeChat();
-          setHasBeenInitialized(true);
         } else {
           setMessages([]);
           setContextLength(0);
@@ -226,6 +219,18 @@ const AISidePanel: React.FC<AISidePanelProps> = ({
   useEffect(() => {
     // 避免在压缩过程中执行此副作用
     if (isCompressingRef.current) {
+      return;
+    }
+
+    // 避免在初始化过程中执行此副作用（初始化完成后会手动更新状态）
+    if (isInitializingRef.current) {
+      return;
+    }
+
+    // 如果全局状态已经标记为已初始化，且本地 messages 为空或很少，直接跳过
+    // 这防止了在恢复状态时意外覆盖
+    const existingState = aiAssistantStateManager.getState(fundSymbol);
+    if (existingState && existingState.hasBeenInitialized && messages.length <= existingState.newContent.length) {
       return;
     }
 
@@ -297,7 +302,7 @@ const AISidePanel: React.FC<AISidePanelProps> = ({
         historyContent: currentHistory,
         newContent: finalNewContent,
         summaryContent: currentState?.summaryContent || '',
-        hasBeenInitialized,
+        hasBeenInitialized: currentState?.hasBeenInitialized || hasBeenInitialized,
         lastAccessed: new Date(),
         initializationDate
       };
@@ -359,9 +364,16 @@ const AISidePanel: React.FC<AISidePanelProps> = ({
   }, [messages, hasBeenInitialized, fundSymbol]); // 移除了compressionStatus依赖
 
   const initializeChat = async () => {
-    const validConfig = hasValidAIConfig();
+    // 防止重复初始化
+    if (isInitializingRef.current) {
+      return;
+    }
+    isInitializingRef.current = true;
+
+    const validConfig = hasUsableAIConfig();
 
     // If no valid config, show welcome message without making API call
+    // 不标记为已初始化，下次打开时还会重试
     if (!validConfig) {
       const newMessage: Message = {
         id: 'welcome',
@@ -371,22 +383,18 @@ const AISidePanel: React.FC<AISidePanelProps> = ({
       };
 
       setMessages(prev => [...prev, newMessage]);
+      isInitializingRef.current = false;
       return;
     }
 
-    // Add loading indicator
-    const loadingMessage: Message = {
-      id: 'initial-loading',
-      content: '正在初始化AI助手...',
-      role: 'assistant',
-      timestamp: new Date()
-    };
-
-    setMessages(prev => [...prev, loadingMessage]);
+    // 显示等待动画
+    setIsLoading(true);
 
     // Ensure config is loaded before attempting API call
     const currentConfig = getAIConfig();
     if (!currentConfig) {
+      setIsLoading(false);
+      isInitializingRef.current = false;
       const errorMessage: Message = {
         id: 'error-config',
         content: '无法加载AI配置，请检查您的设置',
@@ -395,7 +403,7 @@ const AISidePanel: React.FC<AISidePanelProps> = ({
       };
 
       setMessages(prev => [...prev, errorMessage]);
-      return;
+      return; // 不标记为已初始化，下次打开时还会重试
     }
 
     try {
@@ -408,9 +416,6 @@ const AISidePanel: React.FC<AISidePanelProps> = ({
 
       const response: AIResponse = await queryAIWithTemplate(currentConfig, undefined, context);
 
-      // Remove loading indicator
-      setMessages(prev => prev.filter(msg => msg.id !== 'initial-loading'));
-
       if (response.success) {
         const aiMessage: Message = {
           id: `ai-${Date.now()}`,
@@ -419,11 +424,31 @@ const AISidePanel: React.FC<AISidePanelProps> = ({
           timestamp: new Date()
         };
 
-        setMessages(prev => [...prev, aiMessage]);
+        // 设置跳过标志，防止 messages useEffect 覆盖状态
+        skipMessagesEffectCountRef.current = 1;
+
+        setMessages([aiMessage]);
+
+        // 只有初始化成功时才标记为已初始化
+        setHasBeenInitialized(true);
+
+        // 更新全局状态管理器，标记为已初始化
+        const newState: AIAssistantState = {
+          historyContent: [],
+          newContent: [aiMessage as AIAssistantMessage],
+          summaryContent: '',
+          hasBeenInitialized: true,
+          lastAccessed: new Date(),
+          initializationDate: new Date()
+        };
+        aiAssistantStateManager.setState(fundSymbol, newState);
+
+        // 更新上下文长度
+        const contextLength = compressionService.getContextLength(newState);
+        setContextLength(contextLength);
 
         // 检查是否需要压缩
-        const currentState = aiAssistantStateManager.getState(fundSymbol);
-        if (currentState && compressionService.needsCompression(currentState)) {
+        if (compressionService.needsCompression(newState)) {
           setCompressionStatus('Needs Compression');
         }
       } else {
@@ -435,11 +460,9 @@ const AISidePanel: React.FC<AISidePanelProps> = ({
         };
 
         setMessages(prev => [...prev, errorMessage]);
+        // 不标记为已初始化，下次打开时还会重试
       }
     } catch (error: any) {
-      // Remove loading indicator
-      setMessages(prev => prev.filter(msg => msg.id !== 'initial-loading'));
-
       const errorMessage: Message = {
         id: `error-${Date.now()}`,
         content: `初始化AI助手时发生错误: ${error.message || '未知错误'}`,
@@ -448,26 +471,22 @@ const AISidePanel: React.FC<AISidePanelProps> = ({
       };
 
       setMessages(prev => [...prev, errorMessage]);
+      // 不标记为已初始化，下次打开时还会重试
+    } finally {
+      setIsLoading(false);
+      isInitializingRef.current = false;
     }
   };
 
-  // Function to handle user manually closing the panel (resets chat for next open)
+  // Function to handle user manually closing the panel
   const closePanel = () => {
-    // 重置特定基金在全局状态管理器中的状态
-    aiAssistantStateManager.resetState(fundSymbol);
-
-    // 更新本地状态以反映重置
-    setMessages([]);
-    setHasBeenInitialized(false);
-    setContextLength(0);
-    setCompressionStatus('Ready');
-
+    // 不重置状态，保持初始化状态以便当天内再次打开时恢复
     onClose(); // Call the parent's onClose handler to hide the panel
   };
 
   // Check if there's a valid active AI config
   useEffect(() => {
-    const validConfig = hasValidAIConfig();
+    const validConfig = hasUsableAIConfig();
     setIsValidConfig(validConfig);
 
     // Reload config if needed
@@ -681,7 +700,7 @@ const AISidePanel: React.FC<AISidePanelProps> = ({
     setShowConfig(false);
 
     // Refresh config validity status
-    const validConfig = hasValidAIConfig();
+    const validConfig = hasUsableAIConfig();
     setIsValidConfig(validConfig);
   };
 

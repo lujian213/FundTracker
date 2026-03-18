@@ -50,9 +50,8 @@ const AIConfigModal: React.FC<AIConfigModalProps> = ({ isOpen, onClose }) => {
       validationErrors.apiEndpoint = 'API端点不能为空';
     }
 
-    if (!newConfig.apiKey.trim()) {
-      validationErrors.apiKey = 'API密钥不能为空';
-    }
+    // API密钥可以为空，允许用户稍后补充
+    // 从备份恢复时可能没有API密钥
 
     if (Object.keys(validationErrors).length > 0) {
       setErrors(validationErrors);
@@ -210,7 +209,7 @@ const AIConfigModal: React.FC<AIConfigModalProps> = ({ isOpen, onClose }) => {
                 </div>
 
                 <div className="md:col-span-2">
-                  <label className="block text-xs font-medium text-gray-700 mb-1">API 密钥 *</label>
+                  <label className="block text-xs font-medium text-gray-700 mb-1">API 密钥</label>
                   <input
                     type="password"
                     value={newConfig.apiKey}

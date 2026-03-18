@@ -24,7 +24,8 @@ jest.mock('../../services/aiConfigService', () => ({
     apiKey: 'test-key',
     model: 'gpt-4'
   })),
-  hasValidAIConfig: jest.fn(() => true)
+  hasValidAIConfig: jest.fn(() => true),
+  hasUsableAIConfig: jest.fn(() => true),
 }));
 
 describe('AISidePanel Reusability Test', () => {
@@ -92,7 +93,7 @@ describe('AISidePanel Reusability Test', () => {
     expect(state?.hasBeenInitialized).toBe(true);
   });
 
-  test('should properly reset state when panel is manually closed', () => {
+  test('should preserve state when panel is manually closed (within the same day)', () => {
     // Render the panel
     render(<AISidePanel {...defaultProps} isVisible={true} />);
 
@@ -115,11 +116,15 @@ describe('AISidePanel Reusability Test', () => {
     const closeButton = screen.getByLabelText('关闭');
     fireEvent.click(closeButton);
 
-    // Check that the state was reset
+    // Verify onClose was called
+    expect(defaultProps.onClose).toHaveBeenCalled();
+
+    // Check that the state is preserved (not reset) - new behavior
+    // The state should be preserved within the same day for re-entry
     const state = aiAssistantStateManager.getState('012349');
     expect(state).not.toBeNull();
-    expect(state?.newContent.length).toBe(0);
-    expect(state?.hasBeenInitialized).toBe(false);
+    expect(state?.newContent.length).toBe(2);
+    expect(state?.hasBeenInitialized).toBe(true);
   });
 
   test('should maintain separate states for different funds', () => {

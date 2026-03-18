@@ -18,7 +18,8 @@ jest.mock('../../services/aiService', () => ({
 
 jest.mock('../../services/aiConfigService', () => ({
   getAIConfig: jest.fn(),
-  hasValidAIConfig: jest.fn()
+  hasValidAIConfig: jest.fn(),
+  hasUsableAIConfig: jest.fn()
 }));
 
 describe('AISidePanel', () => {
@@ -87,6 +88,7 @@ describe('AISidePanel', () => {
   test('shows red warning when no config exists', () => {
     require('../../services/aiConfigService').getAIConfig.mockReturnValue(null);
     require('../../services/aiConfigService').hasValidAIConfig.mockReturnValue(false);
+    require('../../services/aiConfigService').hasUsableAIConfig.mockReturnValue(false);
 
     const { rerender } = render(
       <AISidePanel

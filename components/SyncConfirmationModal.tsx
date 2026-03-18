@@ -107,15 +107,18 @@ const SyncConfirmationModal: React.FC<Props> = ({
       // Get sync configuration
       const configStr = localStorage.getItem('eggfund_sync_config');
       if (!configStr) {
-        alert('请先在同步配置中设置 Eggfund 账户信息');
+        setSyncMessage('请先在"同步配置"中设置 Eggfund 账户信息');
         setLoading(false);
+        // 延迟关闭窗口，让用户看到错误信息
+        setTimeout(() => onClose(), 1500);
         return;
       }
 
       const config = JSON.parse(configStr);
       if (!config.eggfundUsername || !config.eggfundPassword) {
-        alert('同步配置信息不完整，请检查用户名和密码');
+        setSyncMessage('同步配置信息不完整，请检查用户名和密码');
         setLoading(false);
+        setTimeout(() => onClose(), 1500);
         return;
       }
 
@@ -141,8 +144,9 @@ const SyncConfirmationModal: React.FC<Props> = ({
       ).map((fund: any) => ({ code: fund.id, name: fund.name }));
 
       if (intersectingFunds.length === 0) {
-        alert('未找到与本地基金组合匹配的基金，无法进行同步');
+        setSyncMessage('未找到与本地基金组合匹配的基金，无法进行同步');
         setLoading(false);
+        setTimeout(() => onClose(), 1500);
         return;
       }
 
@@ -187,7 +191,7 @@ const SyncConfirmationModal: React.FC<Props> = ({
       setDifferences(allDifferences);
     } catch (error) {
       console.error('Error during sync process:', error);
-      alert('同步过程中发生错误，请检查网络连接和账户信息');
+      setSyncMessage('同步过程中发生错误，请检查网络连接和账户信息');
     } finally {
       setLoading(false);
     }
@@ -297,13 +301,15 @@ const SyncConfirmationModal: React.FC<Props> = ({
       // Get sync configuration
       const configStr = localStorage.getItem('eggfund_sync_config');
       if (!configStr) {
-        alert('请先在同步配置中设置 Eggfund 账户信息');
+        setSyncMessage('请先在"同步配置"中设置 Eggfund 账户信息');
+        setLoading(false);
         return;
       }
 
       const config = JSON.parse(configStr);
       if (!config.eggfundUsername || !config.eggfundPassword) {
-        alert('同步配置信息不完整，请检查用户名和密码');
+        setSyncMessage('同步配置信息不完整，请检查用户名和密码');
+        setLoading(false);
         return;
       }
 
@@ -330,7 +336,7 @@ const SyncConfirmationModal: React.FC<Props> = ({
 
       if (intersectingFunds.length === 0) {
         // 如果没有找到匹配的基金，显示警告但不关闭窗口
-        alert('未找到与本地基金组合匹配的基金，无法进行同步');
+        setSyncMessage('未找到与本地基金组合匹配的基金，无法进行同步');
         setLoading(false);
         return; // 仅退出本次同步操作，不关闭窗口
       }

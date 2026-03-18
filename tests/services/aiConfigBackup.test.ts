@@ -121,17 +121,9 @@ describe('AI Configuration Backup and Restore', () => {
 
   test('should handle invalid backup data', () => {
     // 测试传入无效备份数据时的行为
-    expect(() => {
-      restoreAIConfigBackup(null);
-    }).toThrow('Invalid backup data');
-
-    expect(() => {
-      restoreAIConfigBackup({});
-    }).toThrow('Invalid backup data');
-
-    expect(() => {
-      restoreAIConfigBackup({ configs: undefined });
-    }).toThrow('Invalid backup data');
+    expect(restoreAIConfigBackup(null)).toBe(false);
+    expect(restoreAIConfigBackup({})).toBe(false);
+    expect(restoreAIConfigBackup({ configs: undefined })).toBe(false);
   });
 
   test('should maintain config relationships after restore', () => {

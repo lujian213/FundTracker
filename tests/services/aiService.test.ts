@@ -59,10 +59,10 @@ describe('AI Services', () => {
       expect(result.error).toContain('API端点不能为空');
     });
 
-    test('should invalidate missing api key', () => {
+    test('should validate config with empty api key (allowed for backup restore)', () => {
       const config: AIConfigProfile = {
         id: 'test-id',
-        name: 'Test Config', // Required field in AIConfigProfile
+        name: 'Test Config',
         apiEndpoint: 'https://api.example.com',
         apiKey: '',
         model: 'gpt-4',
@@ -72,8 +72,7 @@ describe('AI Services', () => {
       };
 
       const result = validateAIConfig(config);
-      expect(result.isValid).toBe(false);
-      expect(result.error).toContain('API密钥不能为空');
+      expect(result.isValid).toBe(true); // API密钥为空时配置仍然有效
     });
 
     test('should invalidate invalid URL', () => {

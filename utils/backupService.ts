@@ -256,11 +256,14 @@ export async function applyBackupData(imported: BackupData): Promise<AppliedData
       // 动态导入aiConfigService以避免循环依赖
       const aiConfigModule = await import('../services/aiConfigService');
       if (aiConfigModule && typeof aiConfigModule.restoreAIConfigBackup === 'function') {
-        aiConfigModule.restoreAIConfigBackup(imported.aiConfig);
+        const result = aiConfigModule.restoreAIConfigBackup(imported.aiConfig);
+        console.log('AI config restore result:', result);
       }
     } catch (error) {
-      console.warn('Could not restore AI config from backup:', error);
+      console.error('Could not restore AI config from backup:', error);
     }
+  } else {
+    console.log('No aiConfig found in imported backup');
   }
 
   // ── 2. Evict valuations that no longer belong to the portfolio ─────────────

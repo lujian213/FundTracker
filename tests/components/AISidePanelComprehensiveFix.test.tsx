@@ -20,6 +20,7 @@ jest.mock('../../services/aiConfigService', () => ({
     model: 'gpt-4'
   })),
   hasValidAIConfig: jest.fn(() => true),
+  hasUsableAIConfig: jest.fn(() => true),
 }));
 
 jest.mock('../../services/aiService', () => ({
