@@ -5,7 +5,7 @@ import { AITemplate } from '../types/aiConfigTypes';
 async function loadAITemplatesFromConfig(): Promise<AITemplate[]> {
   try {
     // 从配置文件加载AI模板
-    const response = await fetch('/assets/config/ai-model-templates.json');
+    const response = await fetch('./assets/config/ai-model-templates.json');
     const data = await response.json();
 
     if (data && data.templates && Array.isArray(data.templates)) {

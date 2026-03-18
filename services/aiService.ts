@@ -31,7 +31,7 @@ export interface PromptTemplate {
  */
 export async function loadPromptTemplates(): Promise<PromptTemplate[]> {
   try {
-    const response = await fetch('/assets/config/ai-prompt-templates.json');
+    const response = await fetch('./assets/config/ai-prompt-templates.json');
 
     if (!response.ok) {
       console.error(`Failed to load templates: HTTP ${response.status} ${response.statusText}`);
