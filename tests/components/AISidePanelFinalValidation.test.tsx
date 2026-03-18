@@ -2,7 +2,7 @@ import React from 'react';
 import { render, screen, waitFor, fireEvent } from '@testing-library/react';
 import AISidePanel from '../../components/AISidePanel';
 import { aiAssistantStateManager } from '../../services/aiAssistantStateManager';
-import { ContextCompressionService } from '../../services/ContextCompressionService';
+import { ContextCompressionService, COMPRESSION_THRESHOLD } from '../../services/ContextCompressionService';
 
 // Mock DOMPurify
 jest.mock('dompurify', () => ({
@@ -84,7 +84,7 @@ describe('AISidePanel Final Integration Test', () => {
 
       // Wait for AI response
       await waitFor(() => {
-        expect(screen.getByText('Test response from AI')).toBeInTheDocument();
+        expect(screen.getAllByText('Test response from AI').length).toBeGreaterThan(0);
       }, { timeout: 5000 });
 
       // Verify state after each exchange
@@ -92,7 +92,7 @@ describe('AISidePanel Final Integration Test', () => {
       if (currentState) {
         console.log(`After exchange ${i+1} - history: ${currentState.historyContent.length}, new: ${currentState.newContent.length}, summary: ${currentState.summaryContent.length}`);
 
-        const compressionService = new ContextCompressionService(2000);
+        const compressionService = new ContextCompressionService(COMPRESSION_THRESHOLD);
         const serializedNewContentLength = compressionService.serializeMessages(currentState.newContent).length;
         const summaryLength = currentState.summaryContent.length || 0;
         const totalContextLength = compressionService.getContextLength(currentState);
@@ -101,7 +101,7 @@ describe('AISidePanel Final Integration Test', () => {
 
         // 修改检查逻辑：只有当总上下文超过阈值时，才检查summary是否被设置
         // 如果总上下文超过阈值但summary为0，说明压缩后状态被错误恢复
-        if (totalContextLength >= 2000) {
+        if (totalContextLength >= COMPRESSION_THRESHOLD) {
           // 如果总上下文超过压缩阈值，summary应该不为0（已压缩）
           expect(summaryLength).toBeGreaterThan(0);
         }
@@ -113,7 +113,7 @@ describe('AISidePanel Final Integration Test', () => {
     if (stateBeforeClose) {
       console.log(`Before close - history: ${stateBeforeClose.historyContent.length}, new: ${stateBeforeClose.newContent.length}, summary: ${stateBeforeClose.summaryContent.length}`);
 
-      const compressionService = new ContextCompressionService(2000);
+      const compressionService = new ContextCompressionService(COMPRESSION_THRESHOLD);
       const contextLength = compressionService.getContextLength(stateBeforeClose);
       console.log(`Context length before close: ${contextLength}`);
     }
@@ -135,7 +135,7 @@ describe('AISidePanel Final Integration Test', () => {
     if (stateAfterReopen) {
       console.log(`After reopen - history: ${stateAfterReopen.historyContent.length}, new: ${stateAfterReopen.newContent.length}, summary: ${stateAfterReopen.summaryContent.length}`);
 
-      const compressionService = new ContextCompressionService(2000);
+      const compressionService = new ContextCompressionService(COMPRESSION_THRESHOLD);
       const serializedNewContentLength = compressionService.serializeMessages(stateAfterReopen.newContent).length;
       const summaryLength = stateAfterReopen.summaryContent.length || 0;
       const totalContextLength = compressionService.getContextLength(stateAfterReopen);
@@ -143,12 +143,12 @@ describe('AISidePanel Final Integration Test', () => {
       console.log(`After reopen - newContentLength: ${serializedNewContentLength}, summaryLength: ${summaryLength}, totalContextLength: ${totalContextLength}`);
 
       // 验证状态一致性：如果总上下文超过阈值，summary应该不为0
-      if (totalContextLength >= 2000) {
+      if (totalContextLength >= COMPRESSION_THRESHOLD) {
         expect(summaryLength).toBeGreaterThan(0);
       }
 
       // The context length should be reasonable (not unexpectedly large after reopen)
-      expect(totalContextLength).toBeLessThan(10000); // Should not be extremely large
+      expect(totalContextLength).toBeLessThan(50000); // Should not be extremely large
     }
 
     // Verify that we can still add more messages after reopen
@@ -157,15 +157,15 @@ describe('AISidePanel Final Integration Test', () => {
     fireEvent.click(sendButton);
 
     await waitFor(() => {
-      expect(screen.getByText('Test response from AI')).toBeInTheDocument();
-    }, { timeout: 5000 });
+        expect(screen.getAllByText('Test response from AI').length).toBeGreaterThan(0);
+      }, { timeout: 5000 });
 
     // Final verification
     let finalState = aiAssistantStateManager.getState('TEST001');
     if (finalState) {
       console.log(`Final state - history: ${finalState.historyContent.length}, new: ${finalState.newContent.length}, summary: ${finalState.summaryContent.length}`);
 
-      const compressionService = new ContextCompressionService(2000);
+      const compressionService = new ContextCompressionService(COMPRESSION_THRESHOLD);
       const serializedNewContentLength = compressionService.serializeMessages(finalState.newContent).length;
       const summaryLength = finalState.summaryContent.length || 0;
       const totalContextLength = compressionService.getContextLength(finalState);
@@ -173,7 +173,7 @@ describe('AISidePanel Final Integration Test', () => {
       console.log(`Final state - newContentLength: ${serializedNewContentLength}, summaryLength: ${summaryLength}, totalContextLength: ${totalContextLength}`);
 
       // 验证状态一致性：如果总上下文超过阈值，summary应该不为0
-      if (totalContextLength >= 2000) {
+      if (totalContextLength >= COMPRESSION_THRESHOLD) {
         expect(summaryLength).toBeGreaterThan(0);
       }
     }

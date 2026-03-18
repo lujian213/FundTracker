@@ -1,8 +1,8 @@
-import { ContextCompressionService } from '../../services/ContextCompressionService';
+import { ContextCompressionService, COMPRESSION_THRESHOLD } from '../../services/ContextCompressionService';
 import { AIAssistantState } from '../../types/aiAssistantTypes';
 
 describe('Context Compression State Fix', () => {
-  const compressionService = new ContextCompressionService(2000);
+  const compressionService = new ContextCompressionService();
 
   test('should correctly identify compressed state', () => {
     // 模拟压缩后的状态

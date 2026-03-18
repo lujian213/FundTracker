@@ -2,7 +2,7 @@ import React from 'react';
 import { render, screen, waitFor, fireEvent } from '@testing-library/react';
 import AISidePanel from '../../components/AISidePanel';
 import { aiAssistantStateManager } from '../../services/aiAssistantStateManager';
-import { ContextCompressionService } from '../../services/ContextCompressionService';
+import { ContextCompressionService, COMPRESSION_THRESHOLD } from '../../services/ContextCompressionService';
 
 // Mock DOMPurify
 jest.mock('dompurify', () => ({
@@ -125,7 +125,7 @@ describe('AISidePanel Comprehensive Fix Validation Test', () => {
     // Add content to trigger potential compression
     const input = screen.getByPlaceholderText('输入您的问题...');
 
-    // Add multiple questions to exceed the threshold (currently 2000 chars for testing)
+    // Add multiple questions to exceed the threshold
     for (let i = 0; i < 5; i++) {
       fireEvent.change(input, { target: { value: `Question ${i + 1} to test compression behavior with sufficient length to exceed threshold.`.repeat(20) } });
       const sendButton = screen.getByLabelText('发送');
@@ -156,7 +156,7 @@ describe('AISidePanel Comprehensive Fix Validation Test', () => {
         expect(finalState.summaryContent.length).toBeGreaterThan(0);
 
         // The critical test: ensure that we don't have the bug where summary=0 and newContent=large
-        const compressionService = new ContextCompressionService(2000); // Use same threshold as in component
+        const compressionService = new ContextCompressionService(); // 使用默认阈值
         const expectedContextLength = compressionService.getContextLength(finalState);
 
         // Verify the internal consistency of the state
@@ -203,11 +203,11 @@ describe('AISidePanel Comprehensive Fix Validation Test', () => {
 
     // The compression should happen based on the full context (user input + AI response), not just user input
     if (stateAfterResponse) {
-      const compressionService = new ContextCompressionService(2000);
+      const compressionService = new ContextCompressionService();
       const contextLength = compressionService.getContextLength(stateAfterResponse);
 
       // Compression should only happen if the total context exceeds the threshold
-      if (contextLength >= 2000) {
+      if (contextLength >= COMPRESSION_THRESHOLD) {
         // If compression was needed, it should have been applied correctly
         const needsCompression = compressionService.needsCompression(stateAfterResponse);
 

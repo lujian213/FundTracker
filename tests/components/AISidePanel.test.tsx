@@ -110,7 +110,7 @@ describe('AISidePanel', () => {
     );
 
     // Check that the red warning message is shown
-    expect(screen.getByText('未检测到AI配置，请前往设置页面配置AI助手')).toBeInTheDocument();
+    expect(screen.getByText('未配置AI助手')).toBeInTheDocument();
   });
 
   test('allows input and submit when config is provided', async () => {

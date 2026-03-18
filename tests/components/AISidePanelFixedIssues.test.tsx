@@ -2,7 +2,7 @@ import React from 'react';
 import { render, screen, waitFor, fireEvent } from '@testing-library/react';
 import AISidePanel from '../../components/AISidePanel';
 import { aiAssistantStateManager } from '../../services/aiAssistantStateManager';
-import { ContextCompressionService } from '../../services/ContextCompressionService';
+import { ContextCompressionService, COMPRESSION_THRESHOLD } from '../../services/ContextCompressionService';
 
 // Mock DOMPurify
 jest.mock('dompurify', () => ({
@@ -150,7 +150,7 @@ describe('AISidePanel Context Length Consistency Test', () => {
     expect(state?.summaryContent.length).toBeGreaterThan(0);
 
     // The context length should be calculated correctly
-    const compressionService = new ContextCompressionService(2000);
+    const compressionService = new ContextCompressionService();
     const expectedLength = compressionService.getContextLength(state!);
 
     const contextElement = screen.getByText(/上下文: \d+ 字符/);

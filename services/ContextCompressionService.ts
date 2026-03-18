@@ -2,8 +2,9 @@ import { AIAssistantMessage, AIAssistantState } from '../types/aiAssistantTypes'
 import { AIConfiguration, getAIConfig } from './aiConfigService';
 import { queryAI } from './aiService';
 
-// 默认字符数阈值
-const DEFAULT_THRESHOLD = 10000; // 10K字符
+// 上下文压缩阈值（字符数）
+// 当上下文长度达到此阈值时触发压缩
+export const COMPRESSION_THRESHOLD = 10000; // 10K字符
 
 export interface CompressionResult {
   success: boolean;
@@ -14,7 +15,7 @@ export interface CompressionResult {
 export class ContextCompressionService {
   private threshold: number;
 
-  constructor(threshold: number = DEFAULT_THRESHOLD) {
+  constructor(threshold: number = COMPRESSION_THRESHOLD) {
     this.threshold = threshold;
   }
 
