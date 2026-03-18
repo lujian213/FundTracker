@@ -4,6 +4,8 @@ import { Ticker, ValuationData } from '../types';
 import { computePositions, PositionEntry } from '../utils/positionHelper';
 import PositionTrendChart from './PositionTrendChart';
 import usePositionTrend from '../hooks/usePositionTrend';
+import AIPortfolioAnalysisModal from './AIPortfolioAnalysisModal';
+import { PortfolioItem } from '../services/aiPortfolioService';
 
 interface Props {
   portfolio: Ticker[];
@@ -49,11 +51,23 @@ const PIE_R = 100;
 const PositionsModal: React.FC<Props> = ({ portfolio, marketData, onClose, onSelectFund }) => {
   const [hoveredSymbol, setHoveredSymbol] = useState<string | null>(null);
   const [showTrend, setShowTrend] = useState(false);
+  const [showAIPanel, setShowAIPanel] = useState(false);
 
   const { entries, totalMarketValue } = useMemo(
     () => computePositions(portfolio, marketData),
     [portfolio, marketData]
   );
+
+  // 转换为AI分析所需的投资组合数据格式
+  const portfolioDataForAI: PortfolioItem[] = useMemo(() => {
+    return entries.map(e => ({
+      symbol: e.symbol,
+      name: e.name,
+      position: e.currentShares,
+      marketValue: e.marketValue,
+      ratio: e.ratio
+    }));
+  }, [entries]);
 
   // Trend modal component: mounted only when opened so hook runs lazily
   function TrendModal({ onClose: onCloseTrend }: { onClose: () => void }) {
@@ -146,6 +160,16 @@ const PositionsModal: React.FC<Props> = ({ portfolio, marketData, onClose, onSel
              >
                <i className="fas fa-search" />
              </button>
+            {/* AI分析按钮 */}
+            <button
+              type="button"
+              onClick={(e) => { e.stopPropagation(); setShowAIPanel(true); }}
+              aria-label="AI分析投资组合"
+              title="AI分析投资组合"
+              className="ml-2 inline-flex items-center justify-center w-7 h-7 rounded-full bg-blue-50 text-blue-500 hover:bg-blue-100"
+            >
+              <i className="fas fa-robot text-xs" />
+            </button>
           </div>
 
           {/* Pie chart + legend — fixed height, legend scrolls */}
@@ -295,6 +319,13 @@ const PositionsModal: React.FC<Props> = ({ portfolio, marketData, onClose, onSel
           )}
         </div>
         {showTrend && <TrendModal onClose={() => setShowTrend(false)} />}
+        {showAIPanel && (
+          <AIPortfolioAnalysisModal
+            isVisible={showAIPanel}
+            onClose={() => setShowAIPanel(false)}
+            portfolioData={portfolioDataForAI}
+          />
+        )}
       </div>
     </div>
   );

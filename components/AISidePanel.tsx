@@ -825,15 +825,8 @@ const AISidePanel: React.FC<AISidePanelProps> = ({
                   : 'bg-gray-100 text-gray-800 rounded-bl-none'
               }`}
             >
-              <div className="markdown-content">
-                <ReactMarkdown
-                  remarkPlugins={[remarkGfm]}
-                  components={{
-                    table: ({ children }) => (
-                      <table className="markdown-table">{children}</table>
-                    ),
-                  }}
-                >
+              <div className="prose prose-sm max-w-none">
+                <ReactMarkdown remarkPlugins={[remarkGfm]}>
                   {message.content}
                 </ReactMarkdown>
               </div>

@@ -1,0 +1,18 @@
+{
+  "templates": [
+    {
+      "id": "portfolio-analysis",
+      "name": "投资组合综合分析",
+      "description": "对投资组合进行全面分析，包括风险评估和优化建议",
+      "enabled": true,
+      "template": "请你扮演一个专业的投资顾问，帮我分析我的投资组合。\n\n以下是我的投资组合详情：\n{portfolio}\n\n请结合当前市场环境，帮我分析：\n1. 组合的整体风险水平\n2. 潜在的优化建议\n3. 需要关注的风险点"
+    },
+    {
+      "id": "portfolio-risk",
+      "name": "投资组合风险评估",
+      "description": "重点评估投资组合的风险",
+      "enabled": false,
+      "template": "请评估以下投资组合的风险水平：\n\n{portfolio}\n\n请从以下几个方面进行分析：\n1. 行业集中度风险\n2. 市场波动风险\n3. 流动性风险\n\n并给出风险等级评定（低/中/高）和具体建议。"
+    }
+  ]
+}
