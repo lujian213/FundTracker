@@ -95,7 +95,7 @@ const InvestmentDraftModal: React.FC<InvestmentDraftModalProps> = ({
     setRefreshedMarketData(marketData || {});
   }, [marketData]);
 
-  // Filter portfolio to only include funds with fullCapacity and sort by gain/loss percentage (descending)
+  // Filter portfolio to only include funds with fullCapacity and sort by gain/loss percentage
   const fundsWithPositions = [...portfolio].filter(fund => {
     try {
       const rawKey = `fund_position_${fund.symbol}`;
@@ -110,12 +110,24 @@ const InvestmentDraftModal: React.FC<InvestmentDraftModalProps> = ({
     }
     return false;
   }).sort((a, b) => {
-    // Get gain/loss percentages for sorting
-    const valA = marketData[a.symbol]?.changePercentage ?? 0;
-    const valB = marketData[b.symbol]?.changePercentage ?? 0;
+    const today = toLocalDateKey(new Date());
 
-    // Sort in descending order (highest gain first)
-    return valB - valA;
+    // 使用 cacheService.getValuation 获取增强估值数据，与表格显示逻辑一致
+    const valA = cacheService.getValuation(a.symbol) || marketData[a.symbol];
+    const valB = cacheService.getValuation(b.symbol) || marketData[b.symbol];
+
+    // 判断是否有当日估值：realtimeDate 等于今天日期
+    const hasTodayValuationA = valA?.realtimeDate === today;
+    const hasTodayValuationB = valB?.realtimeDate === today;
+
+    // A类（有当日估值）排在B类（无当日估值）前面
+    if (hasTodayValuationA && !hasTodayValuationB) return -1;
+    if (!hasTodayValuationA && hasTodayValuationB) return 1;
+
+    // 同类内部按涨跌幅降序排序（最高涨幅在前）
+    const changeA = valA?.changePercentage ?? -9999;
+    const changeB = valB?.changePercentage ?? -9999;
+    return changeB - changeA;
   });
 
   const handleOperationChange = (fundSymbol: string, operation: '买入' | '卖出' | '不操作') => {

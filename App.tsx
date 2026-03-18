@@ -469,10 +469,24 @@ const App: React.FC = () => {
   }, [autoExportTime, autoBackupEnabled]);
 
   const sortedPortfolio = useMemo(() => {
+    const today = toLocalDateKey(new Date());
+
     return [...portfolio].sort((a, b) => {
-      const valA = marketData[a.symbol]?.changePercentage ?? -9999;
-      const valB = marketData[b.symbol]?.changePercentage ?? -9999;
-      return sortOrder === 'asc' ? valA - valB : valB - valA;
+      const valA = marketData[a.symbol];
+      const valB = marketData[b.symbol];
+
+      // 判断是否有当日估值：realtimeDate 等于今天日期
+      const hasTodayValuationA = valA?.realtimeDate === today;
+      const hasTodayValuationB = valB?.realtimeDate === today;
+
+      // A类（有当日估值）排在B类（无当日估值）前面
+      if (hasTodayValuationA && !hasTodayValuationB) return -1;
+      if (!hasTodayValuationA && hasTodayValuationB) return 1;
+
+      // 同类内部按涨跌幅排序
+      const changeA = valA?.changePercentage ?? -9999;
+      const changeB = valB?.changePercentage ?? -9999;
+      return sortOrder === 'asc' ? changeA - changeB : changeB - changeA;
     });
   }, [portfolio, marketData, sortOrder]);
 

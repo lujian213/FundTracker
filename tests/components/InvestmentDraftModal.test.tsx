@@ -4,6 +4,11 @@ import '@testing-library/jest-dom';
 import InvestmentDraftModal from '../../components/InvestmentDraftModal';
 import { Ticker, ValuationData, MarketType } from '../../types';
 
+// Mock cacheService.getValuation to return null (use marketData directly)
+jest.mock('../../services/cacheService', () => ({
+  getValuation: jest.fn(() => null),
+}));
+
 // Mock localStorage
 const localStorageMock = (() => {
   let store: Record<string, string> = {};
@@ -233,6 +238,121 @@ describe('InvestmentDraftModal', () => {
       const parsedData = JSON.parse(savedData!);
       expect(parsedData['000001'].operation).toBe('买入');
       expect(parsedData['000001'].amount).toBe('1000');
+    });
+  });
+
+  describe('排序算法', () => {
+    // 模拟 InvestmentDraftModal 中的排序逻辑
+    const sortFunds = (
+      portfolio: Ticker[],
+      marketData: Record<string, ValuationData>
+    ): Ticker[] => {
+      const today = '2026-03-17';
+
+      return [...portfolio].sort((a, b) => {
+        // 使用 marketData 获取估值数据
+        const valA = marketData[a.symbol];
+        const valB = marketData[b.symbol];
+
+        // 判断是否有当日估值：realtimeDate 等于今天日期
+        const hasTodayValuationA = valA?.realtimeDate === today;
+        const hasTodayValuationB = valB?.realtimeDate === today;
+
+        // A类（有当日估值）排在B类（无当日估值）前面
+        if (hasTodayValuationA && !hasTodayValuationB) return -1;
+        if (!hasTodayValuationA && hasTodayValuationB) return 1;
+
+        // 同类内部按涨跌幅降序排序
+        const changeA = valA?.changePercentage ?? -9999;
+        const changeB = valB?.changePercentage ?? -9999;
+        return changeB - changeA;
+      });
+    };
+
+    test('有当日估值(A类)排在无当日估值(B类)前面', () => {
+      const portfolio: Ticker[] = [
+        { id: '1', symbol: '000001', name: '华夏成长混合', market: MarketType.FUND },
+        { id: '2', symbol: '000002', name: '易方达消费行业', market: MarketType.FUND },
+        { id: '3', symbol: '000003', name: '南方稳健成长', market: MarketType.FUND },
+      ];
+
+      const marketData: Record<string, ValuationData> = {
+        '000001': {
+          symbol: '000001', name: '华夏成长混合', currentPrice: 2.5, previousPrice: 2.4,
+          changePercentage: 1.0, lastUpdated: '2026-03-17 15:00',
+          realtimeDate: '2026-03-17', netWorthDate: '2026-03-16', valuationDate: '2026-03-17', sourceUrl: ''
+        },
+        '000002': {
+          symbol: '000002', name: '易方达消费行业', currentPrice: 3.2, previousPrice: 3.1,
+          changePercentage: 5.0, lastUpdated: '2026-03-17 15:00',
+          realtimeDate: '2026-03-16', netWorthDate: '2026-03-15', valuationDate: '2026-03-16', sourceUrl: ''
+        },
+        '000003': {
+          symbol: '000003', name: '南方稳健成长', currentPrice: 1.5, previousPrice: 1.4,
+          changePercentage: 2.0, lastUpdated: '2026-03-17 15:00',
+          realtimeDate: '2026-03-17', netWorthDate: '2026-03-16', valuationDate: '2026-03-17', sourceUrl: ''
+        },
+      };
+
+      const result = sortFunds(portfolio, marketData);
+
+      // A类（当日估值）：000003(涨2%), 000001(涨1%) -> 000003排在前面（降序）
+      // B类（历史估值）：000002(涨5%)
+      expect(result[0].symbol).toBe('000003');
+      expect(result[1].symbol).toBe('000001');
+      expect(result[2].symbol).toBe('000002');
+    });
+
+    test('同类内部按涨跌幅降序排序', () => {
+      const portfolio: Ticker[] = [
+        { id: '1', symbol: '000001', name: '华夏成长混合', market: MarketType.FUND },
+        { id: '2', symbol: '000002', name: '易方达消费行业', market: MarketType.FUND },
+      ];
+
+      const marketData: Record<string, ValuationData> = {
+        '000001': {
+          symbol: '000001', name: '华夏成长混合', currentPrice: 2.5, previousPrice: 2.4,
+          changePercentage: 3.0, lastUpdated: '2026-03-17 15:00',
+          realtimeDate: '2026-03-17', netWorthDate: '2026-03-16', valuationDate: '2026-03-17', sourceUrl: ''
+        },
+        '000002': {
+          symbol: '000002', name: '易方达消费行业', currentPrice: 3.2, previousPrice: 3.1,
+          changePercentage: 1.0, lastUpdated: '2026-03-17 15:00',
+          realtimeDate: '2026-03-17', netWorthDate: '2026-03-16', valuationDate: '2026-03-17', sourceUrl: ''
+        },
+      };
+
+      const result = sortFunds(portfolio, marketData);
+
+      // 降序：涨幅高的排在前面
+      expect(result[0].symbol).toBe('000001'); // 涨幅3%
+      expect(result[1].symbol).toBe('000002'); // 涨幅1%
+    });
+
+    test('全部为历史估值时按涨跌幅降序排序', () => {
+      const portfolio: Ticker[] = [
+        { id: '1', symbol: '000001', name: '华夏成长混合', market: MarketType.FUND },
+        { id: '2', symbol: '000002', name: '易方达消费行业', market: MarketType.FUND },
+      ];
+
+      const marketData: Record<string, ValuationData> = {
+        '000001': {
+          symbol: '000001', name: '华夏成长混合', currentPrice: 2.5, previousPrice: 2.4,
+          changePercentage: 3.0, lastUpdated: '2026-03-16 15:00',
+          realtimeDate: '2026-03-16', netWorthDate: '2026-03-15', valuationDate: '2026-03-16', sourceUrl: ''
+        },
+        '000002': {
+          symbol: '000002', name: '易方达消费行业', currentPrice: 3.2, previousPrice: 3.1,
+          changePercentage: 1.0, lastUpdated: '2026-03-16 15:00',
+          realtimeDate: '2026-03-16', netWorthDate: '2026-03-15', valuationDate: '2026-03-16', sourceUrl: ''
+        },
+      };
+
+      const result = sortFunds(portfolio, marketData);
+
+      // 都是B类，按涨幅降序
+      expect(result[0].symbol).toBe('000001'); // 涨幅3%
+      expect(result[1].symbol).toBe('000002'); // 涨幅1%
     });
   });
 });
