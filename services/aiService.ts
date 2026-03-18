@@ -6,6 +6,10 @@ export interface AIQueryContext {
   fundSymbol?: string;
   valuationData?: ValuationData;
   tradeHistory?: any[]; // 用户交易历史
+  fullCapacity?: number; // 基金满仓份额
+  initialCapacity?: number; // 用户投资该基金的初始份额
+  initialDate?: string; // 用户投资该基金的起始日期
+  initialPrice?: number; // 用户投资该基金的初始价格
 }
 
 export interface AIResponse {
@@ -87,6 +91,35 @@ export function fillTemplateVariables(template: string, context: AIQueryContext)
     filledTemplate = filledTemplate.replace(/\{history\}/g, "[]");
   }
 
+  // 添加新的变量支持
+  // fullCapacity: 当值为 undefined 或 0 时显示"未设置"
+  if (context.fullCapacity !== undefined && context.fullCapacity > 0) {
+    filledTemplate = filledTemplate.replace(/\{fullCapacity\}/g, String(context.fullCapacity));
+  } else {
+    filledTemplate = filledTemplate.replace(/\{fullCapacity\}/g, "未设置");
+  }
+
+  // initialCapacity: 当值为 undefined 或 0 时显示"未设置"
+  if (context.initialCapacity !== undefined && context.initialCapacity > 0) {
+    filledTemplate = filledTemplate.replace(/\{initialCapacity\}/g, String(context.initialCapacity));
+  } else {
+    filledTemplate = filledTemplate.replace(/\{initialCapacity\}/g, "未设置");
+  }
+
+  // initialDate: 当值为 undefined、null 或空字符串时显示"未设置"
+  if (context.initialDate) {
+    filledTemplate = filledTemplate.replace(/\{initialDate\}/g, context.initialDate);
+  } else {
+    filledTemplate = filledTemplate.replace(/\{initialDate\}/g, "未设置");
+  }
+
+  // initialPrice: 当值为 undefined 或 null 时显示"未设置"
+  if (context.initialPrice !== undefined && context.initialPrice !== null) {
+    filledTemplate = filledTemplate.replace(/\{initialPrice\}/g, String(context.initialPrice));
+  } else {
+    filledTemplate = filledTemplate.replace(/\{initialPrice\}/g, "未设置");
+  }
+
   return filledTemplate;
 }
 
@@ -139,7 +172,7 @@ export async function queryAI(
         { role: 'user', content: fullPrompt }
       ],
       temperature: 0.7,
-      max_tokens: 1000
+      max_tokens: 4000  // 增加到4000以避免回复被截断
     };
 
     const response = await fetch(config.apiEndpoint, {

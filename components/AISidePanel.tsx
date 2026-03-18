@@ -6,7 +6,8 @@ import { AIConfiguration } from '../types/aiConfigTypes';
 import { aiAssistantStateManager } from '../services/aiAssistantStateManager';
 import { AIAssistantMessage, AIAssistantState } from '../types/aiAssistantTypes';
 import { ContextCompressionService } from '../services/ContextCompressionService';
-import DOMPurify from 'dompurify';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 
 interface AISidePanelProps {
   isVisible: boolean;
@@ -15,6 +16,10 @@ interface AISidePanelProps {
   fundName: string;
   valuationData?: ValuationData;
   tradeHistory?: any[]; // 用户交易历史
+  fullCapacity?: number; // 基金满仓份额
+  initialCapacity?: number; // 用户投资该基金的初始份额
+  initialDate?: string; // 用户投资该基金的起始日期
+  initialPrice?: number; // 用户投资该基金的初始价格
 }
 
 interface Message {
@@ -24,110 +29,17 @@ interface Message {
   timestamp: Date;
 }
 
-// 将Markdown转换为HTML的辅助函数
-const renderMarkdown = (text: string) => {
-  // 首先处理表格，因为表格需要特殊处理多行结构
-  let html = text;
-
-  // 转义HTML特殊字符（但保留表格相关字符用于后续处理）
-  html = html
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;');
-
-  // 处理代码块（需要在其他处理之前）
-  html = html.replace(/```([\s\S]*?)```/g, '<pre><code>$1</code></pre>');
-
-  // 处理表格
-  // Markdown表格格式：
-  // | 列1 | 列2 | 列3 |
-  // |-----|-----|-----|
-  // | 值1 | 值2 | 值3 |
-  const tableRegex = /(\|.+\|[\r\n]+\|[-:| ]+\|[\r\n]+(?:\|.+\|[\r\n]*)+)/g;
-  html = html.replace(tableRegex, (tableMatch) => {
-    const lines = tableMatch.trim().split(/[\r\n]+/).filter(line => line.trim());
-
-    if (lines.length < 2) return tableMatch;
-
-    // 第一行是表头
-    const headerCells = lines[0].split('|').filter(cell => cell.trim());
-    // 第二行是分隔符（忽略）
-    // 剩余行是数据行
-
-    let tableHtml = '<table class="markdown-table"><thead><tr>';
-    headerCells.forEach(cell => {
-      tableHtml += `<th>${cell.trim()}</th>`;
-    });
-    tableHtml += '</tr></thead><tbody>';
-
-    // 处理数据行（从第三行开始）
-    for (let i = 2; i < lines.length; i++) {
-      const cells = lines[i].split('|').filter(cell => cell.trim());
-      if (cells.length > 0) {
-        tableHtml += '<tr>';
-        cells.forEach(cell => {
-          tableHtml += `<td>${cell.trim()}</td>`;
-        });
-        tableHtml += '</tr>';
-      }
-    }
-
-    tableHtml += '</tbody></table>';
-    return tableHtml;
-  });
-
-  // 处理标题
-  html = html.replace(/^### (.*$)/gm, '<h3>$1</h3>');
-  html = html.replace(/^## (.*$)/gm, '<h2>$1</h2>');
-  html = html.replace(/^# (.*$)/gm, '<h1>$1</h1>');
-
-  // 处理粗体 **text**（必须先于斜体处理）
-  html = html.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
-
-  // 处理斜体 *text*（粗体已处理，剩下的单星号即为斜体）
-  html = html.replace(/\*(.+?)\*/g, '<em>$1</em>');
-
-  // 处理行内代码
-  html = html.replace(/`(.*?)`/g, '<code>$1</code>');
-
-  // 处理链接
-  html = html.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>');
-
-  // 处理无序列表
-  html = html.replace(/^\s*-\s(.*)$/gm, '<li>$1</li>');
-  html = html.replace(/(<li>.*<\/li>)+/g, '<ul>$&</ul>');
-
-  // 处理换行（排除已经在表格、代码块等元素内的内容）
-  if (!html.includes('<table') && !html.includes('<pre>')) {
-    html = html.replace(/\n\n/g, '</p><p>');
-    html = html.replace(/\n/g, '<br />');
-  }
-
-  // 如果文本开头没有段落标签，则添加
-  if (!html.startsWith('<p>') && !html.startsWith('<h') && !html.startsWith('<ul') && !html.startsWith('<pre') && !html.startsWith('<table')) {
-    html = '<p>' + html;
-  }
-
-  // 如果文本结尾没有闭合段落标签，则添加
-  if (!html.endsWith('</p>') && !html.endsWith('</li>') && !html.endsWith('</ul>') && !html.endsWith('</pre>') && !html.endsWith('</table>')) {
-    html += '</p>';
-  }
-
-  // 清理可能的不安全内容
-  const sanitizedHtml = DOMPurify.sanitize(html, {
-    ADD_TAGS: ['table', 'thead', 'tbody', 'tr', 'th', 'td'],
-    ADD_ATTR: ['class']
-  });
-  return { __html: sanitizedHtml };
-};
-
 const AISidePanel: React.FC<AISidePanelProps> = ({
   isVisible,
   onClose,
   fundSymbol,
   fundName,
   valuationData,
-  tradeHistory
+  tradeHistory,
+  fullCapacity,
+  initialCapacity,
+  initialDate,
+  initialPrice
 }) => {
   const [messages, setMessages] = useState<Message[]>([]);
   const [hasBeenInitialized, setHasBeenInitialized] = useState<boolean>(false);
@@ -142,6 +54,32 @@ const AISidePanel: React.FC<AISidePanelProps> = ({
   const skipMessagesEffectCountRef = useRef(0);
   // 添加引用来防止重复初始化
   const isInitializingRef = useRef(false);
+
+  // 使用 ref 保存 props 的最新值，解决闭包问题
+  const propsRef = useRef({
+    fundName,
+    fundSymbol,
+    valuationData,
+    tradeHistory,
+    fullCapacity,
+    initialCapacity,
+    initialDate,
+    initialPrice,
+  });
+
+  // 更新 ref 以保持最新值
+  useEffect(() => {
+    propsRef.current = {
+      fundName,
+      fundSymbol,
+      valuationData,
+      tradeHistory,
+      fullCapacity,
+      initialCapacity,
+      initialDate,
+      initialPrice,
+    };
+  }, [fundName, fundSymbol, valuationData, tradeHistory, fullCapacity, initialCapacity, initialDate, initialPrice]);
 
   // 初始化上下文压缩服务
   const compressionService = new ContextCompressionService();
@@ -377,7 +315,7 @@ const AISidePanel: React.FC<AISidePanelProps> = ({
     if (!validConfig) {
       const newMessage: Message = {
         id: 'welcome',
-        content: `欢迎使用AI投资助手！我可以为您提供关于${fundName}(${fundSymbol})的分析和投资建议。\n\n请先配置有效的AI服务才能开始使用。`,
+        content: `欢迎使用AI投资助手！我可以为您提供关于${propsRef.current.fundName}(${propsRef.current.fundSymbol})的分析和投资建议。\n\n请先配置有效的AI服务才能开始使用。`,
         role: 'assistant',
         timestamp: new Date()
       };
@@ -408,10 +346,14 @@ const AISidePanel: React.FC<AISidePanelProps> = ({
 
     try {
       const context: AIQueryContext = {
-        fundName,
-        fundSymbol,
-        valuationData,
-        tradeHistory
+        fundName: propsRef.current.fundName,
+        fundSymbol: propsRef.current.fundSymbol,
+        valuationData: propsRef.current.valuationData,
+        tradeHistory: propsRef.current.tradeHistory,
+        fullCapacity: propsRef.current.fullCapacity,
+        initialCapacity: propsRef.current.initialCapacity,
+        initialDate: propsRef.current.initialDate,
+        initialPrice: propsRef.current.initialPrice,
       };
 
       const response: AIResponse = await queryAIWithTemplate(currentConfig, undefined, context);
@@ -552,10 +494,14 @@ const AISidePanel: React.FC<AISidePanelProps> = ({
 
       // 准备上下文与基金信息
       const context: AIQueryContext = {
-        fundName,
-        fundSymbol,
-        valuationData,
-        tradeHistory,
+        fundName: propsRef.current.fundName,
+        fundSymbol: propsRef.current.fundSymbol,
+        valuationData: propsRef.current.valuationData,
+        tradeHistory: propsRef.current.tradeHistory,
+        fullCapacity: propsRef.current.fullCapacity,
+        initialCapacity: propsRef.current.initialCapacity,
+        initialDate: propsRef.current.initialDate,
+        initialPrice: propsRef.current.initialPrice,
       };
 
       // 构建完整提示
@@ -879,10 +825,18 @@ const AISidePanel: React.FC<AISidePanelProps> = ({
                   : 'bg-gray-100 text-gray-800 rounded-bl-none'
               }`}
             >
-              <div
-                className="whitespace-pre-wrap"
-                dangerouslySetInnerHTML={renderMarkdown(message.content)}
-              />
+              <div className="markdown-content">
+                <ReactMarkdown
+                  remarkPlugins={[remarkGfm]}
+                  components={{
+                    table: ({ children }) => (
+                      <table className="markdown-table">{children}</table>
+                    ),
+                  }}
+                >
+                  {message.content}
+                </ReactMarkdown>
+              </div>
               <div
                 className={`text-xs mt-1 ${
                   message.role === 'user' ? 'text-blue-200' : 'text-gray-500'

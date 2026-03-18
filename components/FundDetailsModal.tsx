@@ -567,20 +567,31 @@ export const FundDetailsModal: React.FC<FundDetailsModalProps> = ({ data, onClos
     const { trades: tradeList } = useTrades(data.symbol);
 
     // 使用 useRef 来缓存基金数据，避免在数据更新时重新渲染 AI 助手
-    const aiFundDataRef = useRef<{symbol: string, name: string, valuationData: ValuationData, tradeHistory: any[]} | null>(null);
+    const aiFundDataRef = useRef<{
+      symbol: string;
+      name: string;
+      valuationData: ValuationData;
+      tradeHistory: any[];
+      fullCapacity: number;
+      initialCapacity: number;
+      initialDate: string | null;
+      initialPrice: number | null;
+    } | null>(null);
 
     // 更新缓存的基金数据（只在基金真正改变时更新）
     useEffect(() => {
-      if (!aiFundDataRef.current || aiFundDataRef.current.symbol !== data.symbol) {
-        aiFundDataRef.current = {
-          symbol: data.symbol,
-          name: valuationData.name,
-          valuationData: valuationData,
-          tradeHistory: tradeList
-        };
-      } else {
-      }
-    }, [data.symbol, valuationData, tradeList]);
+      // 始终更新 ref 中的数据，确保仓位配置等字段保持最新
+      aiFundDataRef.current = {
+        symbol: data.symbol,
+        name: valuationData.name,
+        valuationData: valuationData,
+        tradeHistory: tradeList,
+        fullCapacity,
+        initialCapacity: initialPosition,
+        initialDate: startDate,
+        initialPrice,
+      };
+    }, [data.symbol, valuationData, tradeList, fullCapacity, initialPosition, startDate, initialPrice]);
 
     // Aggregate trades into markers using a pure util (improves testability)
     const markers = useMemo(() => {
@@ -1039,6 +1050,10 @@ export const FundDetailsModal: React.FC<FundDetailsModalProps> = ({ data, onClos
                    fundName={aiFundDataRef.current.name}
                    valuationData={aiFundDataRef.current.valuationData}
                    tradeHistory={aiFundDataRef.current.tradeHistory}
+                   fullCapacity={aiFundDataRef.current.fullCapacity}
+                   initialCapacity={aiFundDataRef.current.initialCapacity}
+                   initialDate={aiFundDataRef.current.initialDate ?? undefined}
+                   initialPrice={aiFundDataRef.current.initialPrice ?? undefined}
                  />,
                  document.body
                ) : <AISidePanel
@@ -1048,6 +1063,10 @@ export const FundDetailsModal: React.FC<FundDetailsModalProps> = ({ data, onClos
                  fundName={aiFundDataRef.current.name}
                  valuationData={aiFundDataRef.current.valuationData}
                  tradeHistory={aiFundDataRef.current.tradeHistory}
+                 fullCapacity={aiFundDataRef.current.fullCapacity}
+                 initialCapacity={aiFundDataRef.current.initialCapacity}
+                 initialDate={aiFundDataRef.current.initialDate ?? undefined}
+                 initialPrice={aiFundDataRef.current.initialPrice ?? undefined}
                />)}
             </div>
           )}
