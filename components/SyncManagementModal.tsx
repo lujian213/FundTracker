@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
+import { testConnection } from '../services/eggfundService';
 
 interface SyncConfig {
   eggfundUsername: string;
@@ -36,15 +37,8 @@ const SyncManagementModal: React.FC<Props> = ({ isOpen, onClose, onSave, initial
     setTestResult(null);
 
     try {
-      // TODO: 实现实际的连接测试逻辑
-      // 模拟连接测试延迟
-      await new Promise(resolve => setTimeout(resolve, 1000));
-
-      // 模拟连接成功
-      setTestResult({
-        success: true,
-        message: '连接成功！'
-      });
+      const result = await testConnection(username, password);
+      setTestResult(result);
     } catch (error: any) {
       setTestResult({
         success: false,

@@ -305,8 +305,6 @@ export function restoreAIConfigBackup(backup: any): boolean {
     return false;
   }
 
-  console.log(`restoreAIConfigBackup: Restoring ${backup.configs.length} configs, activeId: ${backup.activeConfigId}`);
-
   // 重置现有配置
   const newManager: AIConfigManager = {
     configs: backup.configs.map((config: any) => ({
@@ -324,7 +322,6 @@ export function restoreAIConfigBackup(backup: any): boolean {
   }));
 
   saveAIConfigManager(newManager);
-  console.log('restoreAIConfigBackup: Configs restored successfully');
   return true;
 }
 

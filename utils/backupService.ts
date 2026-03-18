@@ -14,7 +14,7 @@ import { readAll as readAllTrades } from '../hooks/useTrades';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 const BACKUP_CONFIG_KEY = 'fund_backup_config';
-const SYNC_CONFIG_KEY = 'fund_sync_config';  // 新增：同步配置存储键
+const SYNC_CONFIG_KEY = 'fund_sync_config';  // 同步配置存储键（不备份敏感信息）
 const DEFAULT_AUTO_EXPORT_TIME = '16:00';
 
 // ─── Config helpers ───────────────────────────────────────────────────────────
@@ -55,6 +55,25 @@ export function readSyncConfig(): { eggfundUsername?: string; eggfundPassword?: 
 export function writeSyncConfig(syncCfg: { eggfundUsername?: string; eggfundPassword?: string }): void {
   try {
     localStorage.setItem(SYNC_CONFIG_KEY, JSON.stringify(syncCfg));
+  } catch { /* ignore */ }
+}
+
+// ─── Sync Filter Config helpers ───────────────────────────────────────────────
+const SYNC_FILTER_CONFIG_KEY = 'sync_filter_config';
+
+export function readSyncFilterConfig(): { selectedFunds: string[]; filterDate: string; selectedTypes: string[] } | null {
+  try {
+    const raw = localStorage.getItem(SYNC_FILTER_CONFIG_KEY);
+    if (raw) {
+      return JSON.parse(raw);
+    }
+  } catch { /* ignore */ }
+  return null;
+}
+
+export function writeSyncFilterConfig(filterCfg: { selectedFunds: string[]; filterDate: string; selectedTypes: string[] }): void {
+  try {
+    localStorage.setItem(SYNC_FILTER_CONFIG_KEY, JSON.stringify(filterCfg));
   } catch { /* ignore */ }
 }
 
@@ -161,17 +180,14 @@ export async function buildBackupData(
     }));
   });
 
-  // 5. config - including sync config
+  // 5. config - including sync filter config (not sync credentials)
   const backupConfig = readBackupConfig();
-  const syncConfig = readSyncConfig();
+  const syncFilterConfig = readSyncFilterConfig();
 
   // 合并配置
   const config: BackupConfig = {
     ...backupConfig,
-    syncConfig: {
-      eggfundUsername: syncConfig.eggfundUsername,
-      eggfundPassword: syncConfig.eggfundPassword
-    }
+    syncFilterConfig: syncFilterConfig || undefined
   };
 
   return {
@@ -348,20 +364,17 @@ export async function applyBackupData(imported: BackupData): Promise<AppliedData
   });
   try { localStorage.setItem('fund_trades', JSON.stringify(normalizedTrades)); } catch { /* ignore */ }
 
-  // ── 9. Write config including sync config ────────────────────────────────────
+  // ── 9. Write config including sync filter config ────────────────────────────────────
   if (imported.config) {
     const configToSave: any = {
       autoExportTime: imported.config.autoExportTime,
       autoBackupEnabled: imported.config.autoBackupEnabled !== undefined ? imported.config.autoBackupEnabled : false
     };
 
-    // 如果导入的数据包含同步配置，则保存
-    if (imported.config.syncConfig) {
-      configToSave.syncConfig = imported.config.syncConfig;
-
-      // 同时将同步配置保存到专门的存储键中
+    // 恢复同步过滤条件配置
+    if (imported.config.syncFilterConfig) {
       try {
-        localStorage.setItem('fund_sync_config', JSON.stringify(imported.config.syncConfig));
+        writeSyncFilterConfig(imported.config.syncFilterConfig);
       } catch { /* ignore */ }
     }
 

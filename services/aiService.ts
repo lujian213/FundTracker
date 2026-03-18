@@ -37,7 +37,6 @@ export async function loadPromptTemplates(): Promise<PromptTemplate[]> {
     const data = await response.json();
 
     if (data && data.templates && Array.isArray(data.templates)) {
-      console.log(`Loaded ${data.templates.length} prompt templates`);
       return data.templates;
     } else {
       console.error('Invalid template data structure:', data);

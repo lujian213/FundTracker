@@ -129,10 +129,17 @@ export interface SyncConfig {
   eggfundPassword?: string;
 }
 
+export interface SyncFilterConfig {
+  selectedFunds: string[];
+  filterDate: string;
+  selectedTypes: string[];
+}
+
 export interface BackupConfig {
   autoExportTime: string;    // "HH:mm" local time, default "16:00"
   autoBackupEnabled?: boolean; // Whether auto backup is enabled, default false
   syncConfig?: SyncConfig;   // Synchronization configuration
+  syncFilterConfig?: SyncFilterConfig; // Sync confirmation modal filter settings
 }
 
 export interface BackupData {

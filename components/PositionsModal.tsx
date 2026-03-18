@@ -137,8 +137,7 @@ const PositionsModal: React.FC<Props> = ({ portfolio, marketData, onClose, onSel
             {/* magnifier button to open trend modal */}
             <button
               type="button"
-              onClick={(e) => { e.stopPropagation(); // DEBUG
-                // (magnifier clicked)
+              onClick={(e) => { e.stopPropagation();
                 setShowTrend(true);
               }}
                aria-label="查看持仓总金额趋势"

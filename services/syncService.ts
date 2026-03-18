@@ -121,9 +121,6 @@ export function applySyncUpdates(selectedDifferences: TradeDifference[]): void {
 
     // 保存更新后的数据
     localStorage.setItem('fund_trades', JSON.stringify(allTrades));
-
-    // 通知其他组件数据已更新（可以通过事件或其他方式）
-    console.log('同步更新已完成', selectedDifferences.length, '个差异项');
   } catch (error) {
     console.error('应用同步更新时出错:', error);
     throw error;
