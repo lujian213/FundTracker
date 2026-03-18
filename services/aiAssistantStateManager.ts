@@ -52,7 +52,9 @@ class AIAssistantStateManager {
    */
   resetState(fundSymbol: string): void {
     this.states.set(fundSymbol, {
-      messages: [],
+      historyContent: [],
+      newContent: [],
+      summaryContent: '',
       hasBeenInitialized: false,
       lastAccessed: new Date(),
       initializationDate: new Date() // 重置时也要更新初始化日期

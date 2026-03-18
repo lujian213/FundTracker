@@ -1,7 +1,7 @@
 # FundTracker — 产品需求文档 (PRD)
 
 版本：1.24
-最后更新：2026-03-17
+最后更新：2026-03-18
 
 ---
 
@@ -1365,10 +1365,23 @@ AI投资助手是一个集成的人工智能功能，允许用户在基金详情
 - 配置验证以防止注入攻击
 - 密钥以密码字段形式隐藏输入
 
+#### 上下文压缩功能
+为了提高AI助手的性能和降低成本，系统实现了智能上下文压缩功能：
+1. **阈值管理**：当对话历史超过一定大小（默认10K字符）时触发压缩
+2. **AI摘要**：使用配置的AI模型对历史对话进行智能摘要，提取关键信息
+3. **分层存储**：
+   - `historyContent`：存放已压缩的历史对话
+   - `summaryContent`：存放AI生成的摘要内容
+   - `newContent`：存放最新对话内容，未被压缩
+4. **状态显示**：在AI助手窗口顶部显示当前上下文长度和压缩状态
+5. **智能合并**：发送给AI模型的上下文为摘要内容与新内容的组合
+
 #### 技术实现
 - **组件**：`components/AISidePanel.tsx` - AI助手侧边面板组件
 - **服务**：`services/aiService.ts` - AI API通信处理
 - **配置服务**：`services/aiConfigService.ts` - API配置管理
+- **上下文压缩服务**：`services/ContextCompressionService.ts` - 上下文压缩与摘要管理
+- **状态管理器**：`services/aiAssistantStateManager.ts` - 会话状态管理（已更新以支持上下文压缩）
 - **存储键**：`ai_api_config` - 用于存储AI配置的localStorage键
 - **集成点**：`components/FundDetailsModal.tsx` - 基金详情页面集成
 

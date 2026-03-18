@@ -63,9 +63,12 @@ describe('AISidePanel Reusability Test', () => {
 
     // Manually set state for this fund to simulate a conversation
     aiAssistantStateManager.setState('012349', {
-      messages: [testMessage],
+      historyContent: [],
+      newContent: [testMessage],
+      summaryContent: '',
       hasBeenInitialized: true,
-      lastAccessed: new Date()
+      lastAccessed: new Date(),
+      initializationDate: new Date()
     });
 
     // Close the panel by re-rendering with isVisible=false
@@ -85,7 +88,7 @@ describe('AISidePanel Reusability Test', () => {
     // Verify that the state was retrieved correctly from the global state manager
     const state = aiAssistantStateManager.getState('012349');
     expect(state).not.toBeNull();
-    expect(state?.messages.length).toBeGreaterThan(0);
+    expect(state?.newContent.length).toBeGreaterThan(0);
     expect(state?.hasBeenInitialized).toBe(true);
   });
 
@@ -100,9 +103,12 @@ describe('AISidePanel Reusability Test', () => {
     ];
 
     aiAssistantStateManager.setState('012349', {
-      messages,
+      historyContent: [],
+      newContent: messages,
+      summaryContent: '',
       hasBeenInitialized: true,
-      lastAccessed: new Date()
+      lastAccessed: new Date(),
+      initializationDate: new Date()
     });
 
     // Get the close button and click it
@@ -112,7 +118,7 @@ describe('AISidePanel Reusability Test', () => {
     // Check that the state was reset
     const state = aiAssistantStateManager.getState('012349');
     expect(state).not.toBeNull();
-    expect(state?.messages.length).toBe(0);
+    expect(state?.newContent.length).toBe(0);
     expect(state?.hasBeenInitialized).toBe(false);
   });
 
@@ -136,16 +142,22 @@ describe('AISidePanel Reusability Test', () => {
 
     // Set state for Fund A
     aiAssistantStateManager.setState(fundASymbol, {
-      messages: [fundAMessage],
+      historyContent: [],
+      newContent: [fundAMessage],
+      summaryContent: '',
       hasBeenInitialized: true,
-      lastAccessed: new Date()
+      lastAccessed: new Date(),
+      initializationDate: new Date()
     });
 
     // Set state for Fund B
     aiAssistantStateManager.setState(fundBSymbol, {
-      messages: [fundBMessage],
+      historyContent: [],
+      newContent: [fundBMessage],
+      summaryContent: '',
       hasBeenInitialized: true,
-      lastAccessed: new Date()
+      lastAccessed: new Date(),
+      initializationDate: new Date()
     });
 
     // Verify both states exist separately
@@ -155,7 +167,7 @@ describe('AISidePanel Reusability Test', () => {
     expect(fundAState).not.toBeNull();
     expect(fundBState).not.toBeNull();
 
-    expect(fundAState?.messages[0].content).toBe('Fund A message');
-    expect(fundBState?.messages[0].content).toBe('Fund B message');
+    expect(fundAState?.newContent[0].content).toBe('Fund A message');
+    expect(fundBState?.newContent[0].content).toBe('Fund B message');
   });
 });
