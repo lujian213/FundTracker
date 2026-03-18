@@ -32,6 +32,9 @@ const AIPortfolioAnalysisModal: React.FC<AIPortfolioAnalysisModalProps> = ({
   const dragStartPos = useRef({ x: 0, y: 0 });
   const modalStartPos = useRef({ x: 0, y: 0 });
 
+  // 防止重复初始化
+  const hasInitialized = useRef(false);
+
   // 执行分析
   const performAnalysis = useCallback(async () => {
     if (!hasUsableAIConfig()) {
@@ -70,7 +73,9 @@ const AIPortfolioAnalysisModal: React.FC<AIPortfolioAnalysisModalProps> = ({
 
   // 当浮窗打开时自动执行分析和焦点管理
   useEffect(() => {
-    if (isVisible) {
+    // 只在 isVisible 变为 true 且尚未初始化时执行
+    if (isVisible && !hasInitialized.current) {
+      hasInitialized.current = true;
       setContent('');
       setErrorMessage('');
       setPosition({ x: 0, y: 0 }); // 重置位置
@@ -79,6 +84,11 @@ const AIPortfolioAnalysisModal: React.FC<AIPortfolioAnalysisModalProps> = ({
       setTimeout(() => {
         modalRef.current?.focus();
       }, 0);
+    }
+
+    // 关闭时重置初始化标记
+    if (!isVisible) {
+      hasInitialized.current = false;
     }
   }, [isVisible, performAnalysis]);
 
