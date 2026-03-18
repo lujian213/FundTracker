@@ -222,9 +222,11 @@ const App: React.FC = () => {
         cacheService.setValuation(symbol, data);
         // Append intraday point based on this valuation (lastUpdated preferred inside append)
         try { cacheService.appendIntradayPoint(symbol, data); } catch (e) { /* swallow */ }
-        setMarketData(prev => ({ ...prev, [symbol]: data }));
+        // Use getValuation to get enhanced data with accuracy adjustments
+        const enhancedData = cacheService.getValuation(symbol) || data;
+        setMarketData(prev => ({ ...prev, [symbol]: enhancedData }));
         setPortfolio(prev => prev.map(item =>
-          item.symbol === symbol && !item.name ? { ...item, name: data.name } : item
+          item.symbol === symbol && !item.name ? { ...item, name: enhancedData.name } : item
         ));
         setFundStatuses(prev => ({ ...prev, [symbol]: 'ok' }));
 
@@ -232,7 +234,7 @@ const App: React.FC = () => {
         try {
           // increment backgroundTasks optimistically and call helper; helper does fire-and-forget fetch
           setBackgroundTasks(prev => prev + 1);
-          maybeTriggerHistoryRefresh(symbol, data.netWorthDate).finally(() => {
+          maybeTriggerHistoryRefresh(symbol, enhancedData.netWorthDate).finally(() => {
             setBackgroundTasks(prev => Math.max(0, prev - 1));
           });
         } catch (e) { setBackgroundTasks(prev => Math.max(0, prev - 1)); }

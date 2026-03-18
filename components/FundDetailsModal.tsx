@@ -86,11 +86,17 @@ export const FundDetailsModal: React.FC<FundDetailsModalProps> = ({ data, onClos
 
   const fetchFn = fetchHistory ?? defaultFetchFundHistory;
 
+  // Use enhanced valuation data with accuracy adjustments
+  const valuationData = useMemo(() => {
+    const enhanced = cacheService.getValuation(data.symbol);
+    return enhanced || data;
+  }, [data.symbol, data]);
+
   // runtime dev flag: prefer NODE_ENV (works in Jest); Vite may replace this at build time
   const isDev = typeof process !== 'undefined' && process.env && process.env.NODE_ENV === 'development';
 
   // localStorage key per fund symbol
-  const storageKey = `fund_position_${data.symbol}`;
+  const storageKey = `fund_position_${valuationData.symbol}`;
 
   // shared chart visual height used by HistoryChart and IntradayChart
   // reduced to 180 per request; top/bottom padding will be removed to eliminate extra whitespace
@@ -208,25 +214,25 @@ export const FundDetailsModal: React.FC<FundDetailsModalProps> = ({ data, onClos
     if (!history || history.length === 0) return [];
 
     const lastHist = history[history.length - 1];
-    const hasRealtimeDate = !!(data.realtimeDate && data.realtimeDate !== '---');
+    const hasRealtimeDate = !!(valuationData.realtimeDate && valuationData.realtimeDate !== '---');
     if (!hasRealtimeDate) return history;
 
-    const valuationTs = new Date(`${data.realtimeDate} 15:00`).getTime();
+    const valuationTs = new Date(`${valuationData.realtimeDate} 15:00`).getTime();
     if (!Number.isFinite(valuationTs)) return history;
 
     // If lastHist.date is on same local day as valuationTs, replace it with realtime point to avoid duplicate days.
     const lastDayKey = localDateKey(lastHist.date);
     const valDayKey = localDateKey(valuationTs);
     if (lastDayKey === valDayKey) {
-      return [...history.slice(0, history.length - 1), { date: valuationTs, value: data.currentPrice, equityReturn: data.changePercentage }];
+      return [...history.slice(0, history.length - 1), { date: valuationTs, value: valuationData.currentPrice, equityReturn: valuationData.changePercentage }];
     }
 
     // Only append when realtime point is strictly newer than the latest confirmed history point.
     if (valuationTs > lastHist.date) {
-      return [...history, { date: valuationTs, value: data.currentPrice, equityReturn: data.changePercentage }];
+      return [...history, { date: valuationTs, value: valuationData.currentPrice, equityReturn: valuationData.changePercentage }];
     }
     return history;
-    }, [history, data.currentPrice, data.changePercentage, data.realtimeDate]);
+    }, [history, valuationData.currentPrice, valuationData.changePercentage, valuationData.realtimeDate]);
 
   const { path, area, points, viewBox, yLabels, xLabels, maPaths, maValues } = useMemo(() => {
     // Use a display window of the most recent 90 points for the chart drawing and MA lines
@@ -320,17 +326,17 @@ export const FundDetailsModal: React.FC<FundDetailsModalProps> = ({ data, onClos
       };
     }
 
-  }, [chartData, data]);
+  }, [chartData, valuationData]);
 
-  const formattedNetWorthDate = data.netWorthDate && data.netWorthDate !== '---'
-    ? data.netWorthDate.split('-').slice(1).join('/')
+  const formattedNetWorthDate = valuationData.netWorthDate && valuationData.netWorthDate !== '---'
+    ? valuationData.netWorthDate.split('-').slice(1).join('/')
     : '---';
 
   // helpers for config modal
   const openConfig = () => {
     setTmpFull(fullCapacity.toString());
     setTmpInitial(initialPosition.toString());
-    setTmpStartDate(startDate ?? (data.realtimeDate && data.realtimeDate !== '---' ? data.realtimeDate : ''));
+    setTmpStartDate(startDate ?? (valuationData.realtimeDate && valuationData.realtimeDate !== '---' ? valuationData.realtimeDate : ''));
     // clear previous errors when opening
     setTmpFullError(null);
     setTmpInitialError(null);
@@ -442,9 +448,9 @@ export const FundDetailsModal: React.FC<FundDetailsModalProps> = ({ data, onClos
     try {
       // Prepare context with fund data
       const context = {
-        fundName: data.name,
+        fundName: valuationData.name,
         fundSymbol: data.symbol,
-        valuationData: data
+        valuationData: valuationData
       };
 
       // Get the current AI config
@@ -539,11 +545,11 @@ export const FundDetailsModal: React.FC<FundDetailsModalProps> = ({ data, onClos
     targetDate: todayLocal,
     todayDate: todayLocal,
     history,
-    currentPrice: data.currentPrice,
-    realtimeDate: data.realtimeDate,
-    previousPrice: data.previousPrice,
-    netWorthDate: data.netWorthDate,
-  }), [todayLocal, history, data.currentPrice, data.realtimeDate, data.previousPrice, data.netWorthDate]);
+    currentPrice: valuationData.currentPrice,
+    realtimeDate: valuationData.realtimeDate,
+    previousPrice: valuationData.previousPrice,
+    netWorthDate: valuationData.netWorthDate,
+  }), [todayLocal, history, valuationData.currentPrice, valuationData.realtimeDate, valuationData.previousPrice, valuationData.netWorthDate]);
 
   // 基金份额计算器：金额 / 估值，优先 currentPrice，fallback 到 previousPrice
   const calcShares = useMemo(() => {
@@ -568,13 +574,13 @@ export const FundDetailsModal: React.FC<FundDetailsModalProps> = ({ data, onClos
       if (!aiFundDataRef.current || aiFundDataRef.current.symbol !== data.symbol) {
         aiFundDataRef.current = {
           symbol: data.symbol,
-          name: data.name,
-          valuationData: data,
+          name: valuationData.name,
+          valuationData: valuationData,
           tradeHistory: tradeList
         };
       } else {
       }
-    }, [data, tradeList]);
+    }, [data.symbol, valuationData, tradeList]);
 
     // Aggregate trades into markers using a pure util (improves testability)
     const markers = useMemo(() => {
@@ -613,10 +619,10 @@ export const FundDetailsModal: React.FC<FundDetailsModalProps> = ({ data, onClos
       targetDate: todayLocal,
       todayDate: todayLocal,
       history,
-      currentPrice: data.currentPrice,
-      realtimeDate: data.realtimeDate,
-      previousPrice: data.previousPrice,
-      netWorthDate: data.netWorthDate,
+      currentPrice: valuationData.currentPrice,
+      realtimeDate: valuationData.realtimeDate,
+      previousPrice: valuationData.previousPrice,
+      netWorthDate: valuationData.netWorthDate,
     });
     const effectivePrice = resolved ? resolved.price : 0;
     const marketValue = totalShares * effectivePrice;
@@ -624,7 +630,7 @@ export const FundDetailsModal: React.FC<FundDetailsModalProps> = ({ data, onClos
     const initPrice = initialPrice !== null ? initialPrice : 0;
     const profit = (totalShares * effectivePrice) + sellAmount - buyAmount - (initialPosition * initPrice);
     return { totalShares, buyShares, sellShares, buyAmount, sellAmount, marketValue, profit };
-    }, [tradeList, todayLocal, history, data.currentPrice, data.realtimeDate, data.previousPrice, data.netWorthDate, initialPosition, initialPrice, fullCapacity]);
+    }, [tradeList, todayLocal, history, valuationData.currentPrice, valuationData.realtimeDate, valuationData.previousPrice, valuationData.netWorthDate, initialPosition, initialPrice, fullCapacity]);
 
     const { totalShares, buyShares, sellShares, buyAmount, sellAmount, marketValue, profit } = holdings;
 
@@ -636,19 +642,19 @@ export const FundDetailsModal: React.FC<FundDetailsModalProps> = ({ data, onClos
         <div className="px-6 py-6 border-b border-gray-50 flex justify-between items-start">
           <div className="min-w-0"> {/* allow left column to shrink and not push actions out */}
              <div className="flex items-center space-x-2 mb-1">
-               <h2 className="text-xl font-black text-gray-800 leading-tight truncate">{data.name}</h2>
+               <h2 className="text-xl font-black text-gray-800 leading-tight truncate">{valuationData.name}</h2>
                <span className="px-2 py-0.5 bg-gray-100 text-gray-500 rounded text-[10px] font-mono">{data.symbol}</span>
                 {/* Rating badge */}
                 <RatingTooltip ratingInfo={ratingInfo} open={showTooltip} onOpen={() => setShowTooltip(true)} onClose={() => setShowTooltip(false)} alignRight={false} />
              </div>
             <div className="flex items-baseline space-x-3">
-              <span className={`text-2xl font-normal ${data.changePercentage >= 0 ? 'text-red-600' : 'text-green-600'}`}>
-                {data.currentPrice.toFixed(4)}
+              <span className={`text-2xl font-normal ${valuationData.changePercentage >= 0 ? 'text-red-600' : 'text-green-600'}`}>
+                {valuationData.currentPrice.toFixed(4)}
               </span>
-              <span className={`text-sm font-medium ${data.changePercentage >= 0 ? 'text-red-500' : 'text-green-500'}`}>
-                {data.changePercentage >= 0 ? '+' : ''}{data.changePercentage.toFixed(2)}%
+              <span className={`text-sm font-medium ${valuationData.changePercentage >= 0 ? 'text-red-500' : 'text-green-500'}`}>
+                {valuationData.changePercentage >= 0 ? '+' : ''}{valuationData.changePercentage.toFixed(2)}%
               </span>
-              <span className="text-[10px] text-gray-400 font-medium">前值: {data.previousPrice.toFixed(4)} ({formattedNetWorthDate})</span>
+              <span className="text-[10px] text-gray-400 font-medium">前值: {valuationData.previousPrice.toFixed(4)} ({formattedNetWorthDate})</span>
             </div>
             {/* Position summary: show only when configured (fullCapacity > 0 or startDate present) */}
             {(fullCapacity > 0 || startDate || initialPrice !== null) && (
@@ -883,7 +889,7 @@ export const FundDetailsModal: React.FC<FundDetailsModalProps> = ({ data, onClos
                  </div>
                  <div className="p-4 bg-gray-50 rounded-2xl">
                     <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1">估值日期</p>
-                    <p className="text-sm font-bold text-gray-700">{data.realtimeDate}</p>
+                    <p className="text-sm font-bold text-gray-700">{valuationData.realtimeDate}</p>
                  </div>
               </div>
 
@@ -1013,17 +1019,17 @@ export const FundDetailsModal: React.FC<FundDetailsModalProps> = ({ data, onClos
                )}
                {/* Trade manager modal rendered into document.body to avoid z-index issues */}
                {showTrade && (typeof document !== 'undefined' && document.body ? createPortal(
-                 <TradeManager name={data.name} symbol={data.symbol} currentPrice={data.currentPrice} previousPrice={data.previousPrice} realtimeDate={data.realtimeDate} netWorthDate={data.netWorthDate} onClose={() => setShowTrade(false)} />,
+                 <TradeManager name={valuationData.name} symbol={data.symbol} currentPrice={valuationData.currentPrice} previousPrice={valuationData.previousPrice} realtimeDate={valuationData.realtimeDate} netWorthDate={valuationData.netWorthDate} onClose={() => setShowTrade(false)} />,
                  document.body
-               ) : <TradeManager name={data.name} symbol={data.symbol} currentPrice={data.currentPrice} previousPrice={data.previousPrice} realtimeDate={data.realtimeDate} netWorthDate={data.netWorthDate} onClose={() => setShowTrade(false)} />)}
+               ) : <TradeManager name={valuationData.name} symbol={data.symbol} currentPrice={valuationData.currentPrice} previousPrice={valuationData.previousPrice} realtimeDate={valuationData.realtimeDate} netWorthDate={valuationData.netWorthDate} onClose={() => setShowTrade(false)} />)}
                {showVirtual && (typeof document !== 'undefined' && document.body ? createPortal(
-                 <VirtualTradeModal symbol={data.symbol} fundName={data.name} history={history} valuation={data} onClose={() => setShowVirtual(false)} />,
+                 <VirtualTradeModal symbol={data.symbol} fundName={valuationData.name} history={history} valuation={valuationData} onClose={() => setShowVirtual(false)} />,
                  document.body
-               ) : <VirtualTradeModal symbol={data.symbol} fundName={data.name} history={history} valuation={data} onClose={() => setShowVirtual(false)} />)}
+               ) : <VirtualTradeModal symbol={data.symbol} fundName={valuationData.name} history={history} valuation={valuationData} onClose={() => setShowVirtual(false)} />)}
                {showProfit && (typeof document !== 'undefined' && document.body ? createPortal(
-                 <ProfitModal symbol={data.symbol} fundName={data.name} currentPrice={data.currentPrice} previousPrice={data.previousPrice} realtimeDate={data.realtimeDate} netWorthDate={data.netWorthDate} initialPosition={initialPosition} initialPrice={initialPrice} initialStartDate={startDate} onClose={() => setShowProfit(false)} />,
+                 <ProfitModal symbol={data.symbol} fundName={valuationData.name} currentPrice={valuationData.currentPrice} previousPrice={valuationData.previousPrice} realtimeDate={valuationData.realtimeDate} netWorthDate={valuationData.netWorthDate} initialPosition={initialPosition} initialPrice={initialPrice} initialStartDate={startDate} onClose={() => setShowProfit(false)} />,
                  document.body
-               ) : <ProfitModal symbol={data.symbol} fundName={data.name} currentPrice={data.currentPrice} previousPrice={data.previousPrice} realtimeDate={data.realtimeDate} netWorthDate={data.netWorthDate} initialPosition={initialPosition} initialPrice={initialPrice} initialStartDate={startDate} onClose={() => setShowProfit(false)} />)}
+               ) : <ProfitModal symbol={data.symbol} fundName={valuationData.name} currentPrice={valuationData.currentPrice} previousPrice={valuationData.previousPrice} realtimeDate={valuationData.realtimeDate} netWorthDate={valuationData.netWorthDate} initialPosition={initialPosition} initialPrice={initialPrice} initialStartDate={startDate} onClose={() => setShowProfit(false)} />)}
                {/* AI Assistant panel - rendered with portal to avoid parent re-renders */}
                {showAI && aiFundDataRef.current && (typeof document !== 'undefined' && document.body ? createPortal(
                  <AISidePanel
