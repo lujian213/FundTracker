@@ -182,8 +182,6 @@ export function getAITemplates(): AITemplate[] {
  * 异步获取预设模板
  */
 export async function getAITemplatesAsyncWrapper(): Promise<AITemplate[]> {
-  // 使用动态导入来避免循环依赖
-  const { getAITemplatesAsync } = await import('./dynamicAITemplateService');
   return await getAITemplatesAsync();
 }
 
@@ -210,8 +208,6 @@ export function createConfigFromTemplate(templateId: string, name: string, apiKe
  * 异步从模板创建配置（排除API密钥）
  */
 export async function createConfigFromTemplateAsync(templateId: string, name: string, apiKey: string): Promise<AIConfigProfile | null> {
-  // 动态导入异步函数来避免循环依赖
-  const { getAITemplatesAsync } = await import('./dynamicAITemplateService');
   const templates = await getAITemplatesAsync();
   const template = templates.find(t => t.id === templateId);
 

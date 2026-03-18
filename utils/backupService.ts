@@ -11,6 +11,7 @@ import {
 } from '../types';
 import * as cacheService from '../services/cacheService';
 import { readAll as readAllTrades } from '../hooks/useTrades';
+import { createAIConfigBackup, restoreAIConfigBackup } from '../services/aiConfigService';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 const BACKUP_CONFIG_KEY = 'fund_backup_config';
@@ -100,11 +101,8 @@ export async function buildBackupData(
   // 获取AI配置备份
   let aiConfig: any = {};
   try {
-    // 直接同步导入aiConfigService以避免循环依赖
-    // 这种方法可以避免 require 的问题
-    const aiConfigModule = await import('../services/aiConfigService');
-    if (aiConfigModule && typeof aiConfigModule.createAIConfigBackup === 'function') {
-      aiConfig = aiConfigModule.createAIConfigBackup();
+    if (typeof createAIConfigBackup === 'function') {
+      aiConfig = createAIConfigBackup();
     }
   } catch (error) {
     console.warn('Could not create AI config backup:', error);
@@ -269,10 +267,8 @@ export async function applyBackupData(imported: BackupData): Promise<AppliedData
   // ── Restore AI Configuration ────────────────────────────────────────────────
   if (imported.aiConfig) {
     try {
-      // 动态导入aiConfigService以避免循环依赖
-      const aiConfigModule = await import('../services/aiConfigService');
-      if (aiConfigModule && typeof aiConfigModule.restoreAIConfigBackup === 'function') {
-        const result = aiConfigModule.restoreAIConfigBackup(imported.aiConfig);
+      if (typeof restoreAIConfigBackup === 'function') {
+        const result = restoreAIConfigBackup(imported.aiConfig);
         console.log('AI config restore result:', result);
       }
     } catch (error) {

@@ -11,6 +11,18 @@ export default defineConfig({
   build: {
     outDir: 'dist',
     sourcemap: false,
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          // React 核心
+          'react-vendor': ['react', 'react-dom'],
+          // Markdown 渲染
+          'markdown': ['react-markdown', 'remark-gfm'],
+          // UI 组件
+          'ui': ['react-day-picker', 'dompurify'],
+        },
+      },
+    },
   },
   server: {
     port: 3000,
