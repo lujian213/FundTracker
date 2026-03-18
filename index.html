@@ -16,6 +16,30 @@
         }
         .no-scrollbar::-webkit-scrollbar { display: none; }
         .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+
+        /* Markdown 表格样式 */
+        .markdown-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 8px 0;
+            font-size: 13px;
+        }
+        .markdown-table th,
+        .markdown-table td {
+            border: 1px solid #e5e7eb;
+            padding: 6px 10px;
+            text-align: left;
+        }
+        .markdown-table th {
+            background-color: #f9fafb;
+            font-weight: 600;
+        }
+        .markdown-table tr:nth-child(even) {
+            background-color: #f9fafb;
+        }
+        .markdown-table tr:hover {
+            background-color: #f3f4f6;
+        }
     </style>
     <script type="importmap">
         {

@@ -26,44 +26,98 @@ interface Message {
 
 // 将Markdown转换为HTML的辅助函数
 const renderMarkdown = (text: string) => {
-  // 简单的 Markdown 解析，支持基本格式
-  let html = text
+  // 首先处理表格，因为表格需要特殊处理多行结构
+  let html = text;
+
+  // 转义HTML特殊字符（但保留表格相关字符用于后续处理）
+  html = html
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    // 处理标题
-    .replace(/^### (.*$)/gm, '<h3>$1</h3>')
-    .replace(/^## (.*$)/gm, '<h2>$1</h2>')
-    .replace(/^# (.*$)/gm, '<h1>$1</h1>')
-    // 处理粗体
-    .replace(/\*\*(.*?)\*/g, '<strong>$1</strong>')
-    // 处理斜体
-    .replace(/\*(.*?)\*/g, '<em>$1</em>')
-    // 处理行内代码
-    .replace(/`(.*?)`/g, '<code>$1</code>')
-    // 处理代码块
-    .replace(/```([\s\S]*?)```/g, '<pre><code>$1</code></pre>')
-    // 处理链接
-    .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>')
-    // 处理无序列表
-    .replace(/^\s*-\s(.*)$/gm, '<li>$1</li>')
-    .replace(/(<li>.*<\/li>)+/g, '<ul>$&</ul>')
-    // 处理换行
-    .replace(/\n\n/g, '</p><p>')
-    .replace(/\n/g, '<br />');
+    .replace(/>/g, '&gt;');
+
+  // 处理代码块（需要在其他处理之前）
+  html = html.replace(/```([\s\S]*?)```/g, '<pre><code>$1</code></pre>');
+
+  // 处理表格
+  // Markdown表格格式：
+  // | 列1 | 列2 | 列3 |
+  // |-----|-----|-----|
+  // | 值1 | 值2 | 值3 |
+  const tableRegex = /(\|.+\|[\r\n]+\|[-:| ]+\|[\r\n]+(?:\|.+\|[\r\n]*)+)/g;
+  html = html.replace(tableRegex, (tableMatch) => {
+    const lines = tableMatch.trim().split(/[\r\n]+/).filter(line => line.trim());
+
+    if (lines.length < 2) return tableMatch;
+
+    // 第一行是表头
+    const headerCells = lines[0].split('|').filter(cell => cell.trim());
+    // 第二行是分隔符（忽略）
+    // 剩余行是数据行
+
+    let tableHtml = '<table class="markdown-table"><thead><tr>';
+    headerCells.forEach(cell => {
+      tableHtml += `<th>${cell.trim()}</th>`;
+    });
+    tableHtml += '</tr></thead><tbody>';
+
+    // 处理数据行（从第三行开始）
+    for (let i = 2; i < lines.length; i++) {
+      const cells = lines[i].split('|').filter(cell => cell.trim());
+      if (cells.length > 0) {
+        tableHtml += '<tr>';
+        cells.forEach(cell => {
+          tableHtml += `<td>${cell.trim()}</td>`;
+        });
+        tableHtml += '</tr>';
+      }
+    }
+
+    tableHtml += '</tbody></table>';
+    return tableHtml;
+  });
+
+  // 处理标题
+  html = html.replace(/^### (.*$)/gm, '<h3>$1</h3>');
+  html = html.replace(/^## (.*$)/gm, '<h2>$1</h2>');
+  html = html.replace(/^# (.*$)/gm, '<h1>$1</h1>');
+
+  // 处理粗体 **text**（必须先于斜体处理）
+  html = html.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+
+  // 处理斜体 *text*（粗体已处理，剩下的单星号即为斜体）
+  html = html.replace(/\*(.+?)\*/g, '<em>$1</em>');
+
+  // 处理行内代码
+  html = html.replace(/`(.*?)`/g, '<code>$1</code>');
+
+  // 处理链接
+  html = html.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>');
+
+  // 处理无序列表
+  html = html.replace(/^\s*-\s(.*)$/gm, '<li>$1</li>');
+  html = html.replace(/(<li>.*<\/li>)+/g, '<ul>$&</ul>');
+
+  // 处理换行（排除已经在表格、代码块等元素内的内容）
+  if (!html.includes('<table') && !html.includes('<pre>')) {
+    html = html.replace(/\n\n/g, '</p><p>');
+    html = html.replace(/\n/g, '<br />');
+  }
 
   // 如果文本开头没有段落标签，则添加
-  if (!html.startsWith('<p>') && !html.startsWith('<h') && !html.startsWith('<ul') && !html.startsWith('<pre')) {
+  if (!html.startsWith('<p>') && !html.startsWith('<h') && !html.startsWith('<ul') && !html.startsWith('<pre') && !html.startsWith('<table')) {
     html = '<p>' + html;
   }
 
   // 如果文本结尾没有闭合段落标签，则添加
-  if (!html.endsWith('</p>') && !html.endsWith('</li>') && !html.endsWith('</ul>') && !html.endsWith('</pre>')) {
+  if (!html.endsWith('</p>') && !html.endsWith('</li>') && !html.endsWith('</ul>') && !html.endsWith('</pre>') && !html.endsWith('</table>')) {
     html += '</p>';
   }
 
   // 清理可能的不安全内容
-  const sanitizedHtml = DOMPurify.sanitize(html);
+  const sanitizedHtml = DOMPurify.sanitize(html, {
+    ADD_TAGS: ['table', 'thead', 'tbody', 'tr', 'th', 'td'],
+    ADD_ATTR: ['class']
+  });
   return { __html: sanitizedHtml };
 };
 
@@ -730,18 +784,13 @@ const AISidePanel: React.FC<AISidePanelProps> = ({
             <h3 className="text-lg font-bold text-gray-800">AI 投资助手</h3>
             <p className="text-xs text-gray-500 truncate">{fundName} ({fundSymbol})</p>
           </div>
-          <div className="flex items-center space-x-2">
-            <span className="text-xs text-gray-500">
-              上下文: {contextLength} 字符 ({compressionStatus})
-            </span>
-            <button
-              onClick={closePanel}
-              className="p-1.5 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-full"
-              aria-label="关闭"
-            >
-              <i className="fas fa-times"></i>
-            </button>
-          </div>
+          <button
+            onClick={closePanel}
+            className="p-1.5 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-full"
+            aria-label="关闭"
+          >
+            <i className="fas fa-times"></i>
+          </button>
         </div>
       </div>
 
@@ -862,15 +911,39 @@ const AISidePanel: React.FC<AISidePanelProps> = ({
               <i className="fas fa-paper-plane"></i>
             </button>
           </div>
-          {isValidConfig ? (
-            <p className="text-xs text-gray-500 mt-2 text-center">
-              AI 助手已连接 ({config?.model || 'gpt-4'})
-            </p>
-          ) : (
-            <p className="text-xs text-red-500 mt-2 text-center">
-              未检测到AI配置，请前往设置页面配置AI助手
-            </p>
-          )}
+          {/* 统一的信息栏 */}
+          <div className="mt-2 pt-2 border-t border-gray-100 space-y-1">
+            {/* 连接状态 */}
+            <div className="flex items-center justify-center text-xs">
+              {isValidConfig ? (
+                <span className="text-green-600">
+                  <i className="fas fa-check-circle mr-1"></i>
+                  已连接 {config?.model || 'gpt-4'}
+                </span>
+              ) : (
+                <span className="text-red-500">
+                  <i className="fas fa-exclamation-circle mr-1"></i>
+                  未配置AI助手
+                </span>
+              )}
+            </div>
+            {/* 上下文状态 */}
+            <div className="flex items-center justify-center text-xs text-gray-500">
+              <span>
+                上下文: {contextLength} 字符
+                {compressionStatus !== 'Ready' && compressionStatus !== 'OK' && (
+                  <span className={`ml-1 ${
+                    compressionStatus === 'Compressing...' ? 'text-yellow-600' :
+                    compressionStatus === 'Compressed' ? 'text-blue-600' :
+                    compressionStatus === 'Compression Failed' ? 'text-red-500' :
+                    compressionStatus === 'Needs Compression' ? 'text-orange-500' : ''
+                  }`}>
+                    ({compressionStatus})
+                  </span>
+                )}
+              </span>
+            </div>
+          </div>
         </div>
       </div>
     </div>
