@@ -176,7 +176,9 @@ const InvestmentDraftModal: React.FC<InvestmentDraftModalProps> = ({
       .map(entry => {
         const fund = portfolio.find(f => f.symbol === entry.fundSymbol);
         const fundName = fund?.name || entry.fundSymbol;
-        return `${fundName}:${entry.operation} ${Number(entry.amount).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+        const amount = Number(entry.amount).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+        const shares = calculateShares(entry.fundSymbol);
+        return `${fundName}: ${entry.operation} ${amount}，预计份额 ${shares}`;
       })
       .join('\n');
 
