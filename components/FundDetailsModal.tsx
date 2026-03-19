@@ -6,6 +6,7 @@ import * as cacheService from '../services/cacheService';
 import { computeMultipleSMAs, MA_COLORS } from '../utils/movingAverage';
 import { DEFAULT_VISIBLE_MAS, MA_WINDOWS } from '../utils/maConfig';
 import { computeRatingFromHistory } from '../utils/ratingHelper';
+import { computeAvgCostPrice } from '../utils/positionHelper';
 import RatingTooltip from './RatingTooltip';
 import TradeManager from './TradeManager';
 import useTrades from '../hooks/useTrades';
@@ -619,6 +620,7 @@ export const FundDetailsModal: React.FC<FundDetailsModalProps> = ({ data, onClos
       position: number | null;
       positionRate: number | null;
       profit: number | null;
+      avgCostPrice: number | null;
     } | null>(null);
 
     // Aggregate trades into markers using a pure util (improves testability)
@@ -673,6 +675,11 @@ export const FundDetailsModal: React.FC<FundDetailsModalProps> = ({ data, onClos
 
     const { totalShares, buyShares, sellShares, buyAmount, sellAmount, marketValue, profit } = holdings;
 
+    // 计算平均成本价
+    const avgCostPrice = useMemo(() => {
+      return computeAvgCostPrice(data.symbol, tradeList);
+    }, [data.symbol, tradeList]);
+
     // 计算仓位占比
     const holdingsPositionRate = (fullCapacity > 0 && typeof totalShares === 'number')
       ? (totalShares / fullCapacity) * 100
@@ -694,8 +701,9 @@ export const FundDetailsModal: React.FC<FundDetailsModalProps> = ({ data, onClos
         position: totalShares,
         positionRate: holdingsPositionRate,
         profit,
+        avgCostPrice,
       };
-    }, [data.symbol, valuationData, tradeList, fullCapacity, initialPosition, startDate, initialPrice, marketValue, totalShares, holdingsPositionRate, profit]);
+    }, [data.symbol, valuationData, tradeList, fullCapacity, initialPosition, startDate, initialPrice, marketValue, totalShares, holdingsPositionRate, profit, avgCostPrice]);
 
   // 计算 position：响应式设计，屏幕宽度 < 1200px 时强制使用居中
   const isWideScreen = typeof window !== 'undefined' && window.innerWidth >= 1200;
@@ -784,11 +792,14 @@ export const FundDetailsModal: React.FC<FundDetailsModalProps> = ({ data, onClos
 
            {/* Market / position / profit row - only show when fullCapacity configured (>0) */}
            {fullCapacity && fullCapacity > 0 ? (
-             <div className="mt-1 text-xs text-gray-600 flex items-baseline space-x-6 whitespace-nowrap">
-               <span className="whitespace-nowrap">市场价值：<span className="font-medium">{(marketValue !== null && !isNaN(marketValue as any)) ? formatCurrency(marketValue as number, 2) : '—'}</span></span>
-               <span className="whitespace-nowrap">当前仓位：<span className="font-medium">{(typeof totalShares === 'number') ? `${totalShares.toFixed(2)} 份` : '—'}</span></span>
-               <span className="whitespace-nowrap">仓位占比：<span className="font-medium">{(fullCapacity > 0) ? `${((totalShares / fullCapacity) * 100).toFixed(2)}%` : '—'}</span></span>
-               <span className="whitespace-nowrap">整体盈利：<span className={`font-medium ${typeof profit === 'number' ? (profit < 0 ? 'text-green-600' : profit > 0 ? 'text-red-600' : 'text-gray-600') : ''}`}>{(typeof profit === 'number') ? formatCurrency(profit, 2) : '—'}</span></span>
+             <div className="mt-1 text-xs text-gray-600 flex items-baseline space-x-3 whitespace-nowrap">
+               <span className="whitespace-nowrap">市值：<span className="font-medium">{(marketValue !== null && !isNaN(marketValue as any)) ? formatCurrency(marketValue as number, 2) : '—'}</span></span>
+               <span className="whitespace-nowrap">仓位：<span className="font-medium">{(typeof totalShares === 'number') ? `${totalShares.toFixed(2)} 份` : '—'}</span></span>
+               <span className="whitespace-nowrap">占比：<span className="font-medium">{(fullCapacity > 0) ? `${((totalShares / fullCapacity) * 100).toFixed(2)}%` : '—'}</span></span>
+               <span className="whitespace-nowrap">盈利：<span className={`font-medium ${typeof profit === 'number' ? (profit < 0 ? 'text-green-600' : profit > 0 ? 'text-red-600' : 'text-gray-600') : ''}`}>{(typeof profit === 'number') ? formatCurrency(profit, 2) : '—'}</span></span>
+               {avgCostPrice !== null && (
+                 <span className="whitespace-nowrap">成本价：<span className="font-medium">{avgCostPrice.toFixed(4)}</span></span>
+               )}
              </div>
            ) : null}
           </div>
@@ -1161,6 +1172,7 @@ export const FundDetailsModal: React.FC<FundDetailsModalProps> = ({ data, onClos
                    position={aiFundDataRef.current.position}
                    positionRate={aiFundDataRef.current.positionRate}
                    profit={aiFundDataRef.current.profit}
+                   avgCostPrice={aiFundDataRef.current.avgCostPrice}
                  />,
                  document.body
                ) : <AISidePanel
@@ -1178,6 +1190,7 @@ export const FundDetailsModal: React.FC<FundDetailsModalProps> = ({ data, onClos
                  position={aiFundDataRef.current.position}
                  positionRate={aiFundDataRef.current.positionRate}
                  profit={aiFundDataRef.current.profit}
+                 avgCostPrice={aiFundDataRef.current.avgCostPrice}
                />)}
             </div>
           )}

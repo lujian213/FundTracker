@@ -24,6 +24,7 @@ interface AISidePanelProps {
   position?: number | null; // 当前基金的仓位（份）
   positionRate?: number | null; // 当前基金的仓位占比（百分比）
   profit?: number | null; // 当前基金的整体盈利
+  avgCostPrice?: number | null; // 当前基金的平均成本价
 }
 
 interface Message {
@@ -47,7 +48,8 @@ const AISidePanel: React.FC<AISidePanelProps> = ({
   marketValue,
   position,
   positionRate,
-  profit
+  profit,
+  avgCostPrice
 }) => {
   const [messages, setMessages] = useState<Message[]>([]);
   const [hasBeenInitialized, setHasBeenInitialized] = useState<boolean>(false);
@@ -77,6 +79,7 @@ const AISidePanel: React.FC<AISidePanelProps> = ({
     position,
     positionRate,
     profit,
+    avgCostPrice,
   });
 
   // 更新 ref 以保持最新值
@@ -94,8 +97,9 @@ const AISidePanel: React.FC<AISidePanelProps> = ({
       position,
       positionRate,
       profit,
+      avgCostPrice,
     };
-  }, [fundName, fundSymbol, valuationData, tradeHistory, fullCapacity, initialCapacity, initialDate, initialPrice, marketValue, position, positionRate, profit]);
+  }, [fundName, fundSymbol, valuationData, tradeHistory, fullCapacity, initialCapacity, initialDate, initialPrice, marketValue, position, positionRate, profit, avgCostPrice]);
 
   // 初始化上下文压缩服务
   const compressionService = new ContextCompressionService();
@@ -374,6 +378,7 @@ const AISidePanel: React.FC<AISidePanelProps> = ({
         position: propsRef.current.position ?? undefined,
         positionRate: propsRef.current.positionRate ?? undefined,
         profit: propsRef.current.profit ?? undefined,
+        avgCostPrice: propsRef.current.avgCostPrice ?? undefined,
       };
 
       const response: AIResponse = await queryAIWithTemplate(currentConfig, undefined, context);
@@ -526,6 +531,7 @@ const AISidePanel: React.FC<AISidePanelProps> = ({
         position: propsRef.current.position ?? undefined,
         positionRate: propsRef.current.positionRate ?? undefined,
         profit: propsRef.current.profit ?? undefined,
+        avgCostPrice: propsRef.current.avgCostPrice ?? undefined,
       };
 
       // 构建完整提示

@@ -14,6 +14,7 @@ export interface AIQueryContext {
   position?: number; // 当前基金的仓位（份）
   positionRate?: number; // 当前基金的仓位占比（百分比，如 50.5 表示 50.5%）
   profit?: number; // 当前基金的整体盈利
+  avgCostPrice?: number; // 当前基金的平均成本价
 }
 
 export interface AIResponse {
@@ -187,6 +188,13 @@ export function fillTemplateVariables(template: string, context: AIQueryContext)
     filledTemplate = filledTemplate.replace(/\{profit\}/g, `${profit >= 0 ? '+' : ''}${profit.toFixed(2)}`);
   } else {
     filledTemplate = filledTemplate.replace(/\{profit\}/g, "未设置");
+  }
+
+  // avgCostPrice: 当前基金的平均成本价
+  if (context.avgCostPrice !== undefined && context.avgCostPrice !== null) {
+    filledTemplate = filledTemplate.replace(/\{avgCostPrice\}/g, context.avgCostPrice.toFixed(4));
+  } else {
+    filledTemplate = filledTemplate.replace(/\{avgCostPrice\}/g, "未设置");
   }
 
   return filledTemplate;

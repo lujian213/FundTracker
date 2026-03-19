@@ -396,6 +396,11 @@
     - 市场价值 = `currentShares × currentPrice`；若 `currentPrice = 0` 则回退到 `previousPrice`
     - 无 marketData 或价格仍为 0 时排除该基金
     - 结果按市场价值降序排列，`ratio` 为占总市场价值比例（0~1），`color` 按索引从 `POSITION_COLORS` 分配
+  - `computeAvgCostPrice(symbol, trades): number | null`：计算单个基金的平均成本价
+    - 公式：`持仓成本价 = (初始份额×初始价格 + Σ买入金额 - Σ卖出金额) ÷ 当前持仓份额`
+    - 其中：买入金额 = 价格 × 份额 + 手续费，卖出金额 = 价格 × 份额 - 手续费
+    - 从 `fund_position_{symbol}` 读取 initialPosition 和 initialPrice
+    - 当前持仓份额 ≤ 0 时返回 null
 
 服务层（`services/fundService.ts`）行为约定
 - `fetchFundData(symbol: string): Promise<ValuationData | null>`
@@ -1386,6 +1391,7 @@ AI投资助手是一个集成的人工智能功能，允许用户在基金详情
 | `{position}` | 当前基金的仓位（份） |
 | `{positionRate}` | 当前基金的仓位占比 |
 | `{profit}` | 当前基金的整体盈利 |
+| `{avgCostPrice}` | 当前基金的平均成本价 |
 
 #### 上下文压缩功能
 为了提高AI助手的性能和降低成本，系统实现了智能上下文压缩功能：
@@ -1460,11 +1466,13 @@ AI投资组合分析功能允许用户在持仓窗口中一键获取整个投资
    - 持仓份额: 1000.00份
    - 市场价值: 12345.67元
    - 占比: 25.00%
+   - 成本价: 1.2345元
 
 2. 招商中证白酒指数 (161725)
    - 持仓份额: 500.00份
    - 市场价值: 8765.43元
    - 占比: 17.50%
+   - 成本价: 0.9876元
 ```
 
 #### 模板配置

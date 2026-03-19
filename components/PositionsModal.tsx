@@ -1,11 +1,12 @@
 import React, { useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Ticker, ValuationData } from '../types';
-import { computePositions, PositionEntry } from '../utils/positionHelper';
+import { computePositions, PositionEntry, computeAvgCostPrice } from '../utils/positionHelper';
 import PositionTrendChart from './PositionTrendChart';
 import usePositionTrend from '../hooks/usePositionTrend';
 import AIPortfolioAnalysisModal from './AIPortfolioAnalysisModal';
 import { PortfolioItem } from '../services/aiPortfolioService';
+import { readAll as readAllTrades } from '../hooks/useTrades';
 
 interface Props {
   portfolio: Ticker[];
@@ -60,13 +61,20 @@ const PositionsModal: React.FC<Props> = ({ portfolio, marketData, onClose, onSel
 
   // 转换为AI分析所需的投资组合数据格式
   const portfolioDataForAI: PortfolioItem[] = useMemo(() => {
-    return entries.map(e => ({
-      symbol: e.symbol,
-      name: e.name,
-      position: e.currentShares,
-      marketValue: e.marketValue,
-      ratio: e.ratio
-    }));
+    // 获取所有交易记录
+    const allTrades = readAllTrades();
+
+    return entries.map(e => {
+      const avgCostPrice = computeAvgCostPrice(e.symbol, allTrades[e.symbol] || []);
+      return {
+        symbol: e.symbol,
+        name: e.name,
+        position: e.currentShares,
+        marketValue: e.marketValue,
+        ratio: e.ratio,
+        costPrice: avgCostPrice ?? undefined
+      };
+    });
   }, [entries]);
 
   // Trend modal component: mounted only when opened so hook runs lazily

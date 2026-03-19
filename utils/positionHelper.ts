@@ -1,4 +1,4 @@
-import { Ticker, ValuationData, HistoricalPoint } from '../types';
+import { Ticker, ValuationData, HistoricalPoint, TradeRecord } from '../types';
 import { getTradesForSymbol } from '../hooks/useTrades';
 import { fetchFundHistory } from '../services/fundService';
 
@@ -9,6 +9,54 @@ export interface PositionEntry {
   marketValue: number;
   ratio: number; // 0-1, fraction of total market value
   color: string;
+}
+
+/**
+ * 计算单个基金的平均成本价
+ * 公式：持仓成本价 = (初始份额×初始价格 + Σ买入金额 - Σ卖出金额) ÷ 当前持仓份额
+ * 其中：买入金额 = 价格 × 份额 + 手续费，卖出金额 = 价格 × 份额 - 手续费
+ */
+export function computeAvgCostPrice(
+  symbol: string,
+  trades: TradeRecord[]
+): number | null {
+  // 从 localStorage 读取持仓配置
+  const storageKey = `fund_position_${symbol}`;
+  let initialPosition = 0;
+  let initialPrice = 0;
+
+  try {
+    const raw = localStorage.getItem(storageKey);
+    if (raw) {
+      const obj = JSON.parse(raw);
+      initialPosition = Number(obj.initialPosition) || 0;
+      initialPrice = Number(obj.initialPrice) || 0;
+    }
+  } catch {
+    // ignore
+  }
+
+  // 计算买入和卖出金额
+  let buyAmount = 0;
+  let sellAmount = 0;
+  let buyShares = 0;
+  let sellShares = 0;
+
+  for (const t of trades || []) {
+    if (t.type === 'buy') {
+      buyShares += t.shares;
+      buyAmount += t.price * t.shares + (t.fee || 0);
+    } else {
+      sellShares += t.shares;
+      sellAmount += t.price * t.shares - (t.fee || 0);
+    }
+  }
+
+  const totalShares = initialPosition + buyShares - sellShares;
+  if (totalShares <= 0) return null;
+
+  const totalCost = initialPosition * initialPrice + buyAmount - sellAmount;
+  return totalCost / totalShares;
 }
 
 // 32-color palette using the golden angle (≈137.5°) for hue steps.
