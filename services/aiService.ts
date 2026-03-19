@@ -10,6 +10,10 @@ export interface AIQueryContext {
   initialCapacity?: number; // 用户投资该基金的初始份额
   initialDate?: string; // 用户投资该基金的起始日期
   initialPrice?: number; // 用户投资该基金的初始价格
+  marketValue?: number; // 当前基金的市场价值
+  position?: number; // 当前基金的仓位（份）
+  positionRate?: number; // 当前基金的仓位占比（百分比，如 50.5 表示 50.5%）
+  profit?: number; // 当前基金的整体盈利
 }
 
 export interface AIResponse {
@@ -118,6 +122,71 @@ export function fillTemplateVariables(template: string, context: AIQueryContext)
     filledTemplate = filledTemplate.replace(/\{initialPrice\}/g, String(context.initialPrice));
   } else {
     filledTemplate = filledTemplate.replace(/\{initialPrice\}/g, "未设置");
+  }
+
+  // currentPrice: 当前估值/净值
+  if (context.valuationData?.currentPrice !== undefined && context.valuationData.currentPrice !== null) {
+    filledTemplate = filledTemplate.replace(/\{currentPrice\}/g, context.valuationData.currentPrice.toFixed(4));
+  } else {
+    filledTemplate = filledTemplate.replace(/\{currentPrice\}/g, "未设置");
+  }
+
+  // currentDate: 当前日期（估值日期）
+  if (context.valuationData?.realtimeDate) {
+    filledTemplate = filledTemplate.replace(/\{currentDate\}/g, context.valuationData.realtimeDate);
+  } else {
+    filledTemplate = filledTemplate.replace(/\{currentDate\}/g, "未设置");
+  }
+
+  // previousPrice: 前值（上一交易日净值）
+  if (context.valuationData?.previousPrice !== undefined && context.valuationData.previousPrice !== null) {
+    filledTemplate = filledTemplate.replace(/\{previousPrice\}/g, context.valuationData.previousPrice.toFixed(4));
+  } else {
+    filledTemplate = filledTemplate.replace(/\{previousPrice\}/g, "未设置");
+  }
+
+  // previousDate: 前值日期
+  if (context.valuationData?.netWorthDate) {
+    filledTemplate = filledTemplate.replace(/\{previousDate\}/g, context.valuationData.netWorthDate);
+  } else {
+    filledTemplate = filledTemplate.replace(/\{previousDate\}/g, "未设置");
+  }
+
+  // rate: 涨跌幅
+  if (context.valuationData?.changePercentage !== undefined && context.valuationData.changePercentage !== null) {
+    const rate = context.valuationData.changePercentage;
+    filledTemplate = filledTemplate.replace(/\{rate\}/g, `${rate >= 0 ? '+' : ''}${rate.toFixed(2)}%`);
+  } else {
+    filledTemplate = filledTemplate.replace(/\{rate\}/g, "未设置");
+  }
+
+  // marketValue: 当前基金的市场价值
+  if (context.marketValue !== undefined && context.marketValue !== null) {
+    filledTemplate = filledTemplate.replace(/\{marketValue\}/g, context.marketValue.toFixed(2));
+  } else {
+    filledTemplate = filledTemplate.replace(/\{marketValue\}/g, "未设置");
+  }
+
+  // position: 当前基金的仓位（份）
+  if (context.position !== undefined && context.position !== null) {
+    filledTemplate = filledTemplate.replace(/\{position\}/g, context.position.toFixed(2));
+  } else {
+    filledTemplate = filledTemplate.replace(/\{position\}/g, "未设置");
+  }
+
+  // positionRate: 当前基金的仓位占比（百分比）
+  if (context.positionRate !== undefined && context.positionRate !== null) {
+    filledTemplate = filledTemplate.replace(/\{positionRate\}/g, `${context.positionRate.toFixed(2)}%`);
+  } else {
+    filledTemplate = filledTemplate.replace(/\{positionRate\}/g, "未设置");
+  }
+
+  // profit: 当前基金的整体盈利
+  if (context.profit !== undefined && context.profit !== null) {
+    const profit = context.profit;
+    filledTemplate = filledTemplate.replace(/\{profit\}/g, `${profit >= 0 ? '+' : ''}${profit.toFixed(2)}`);
+  } else {
+    filledTemplate = filledTemplate.replace(/\{profit\}/g, "未设置");
   }
 
   return filledTemplate;

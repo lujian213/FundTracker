@@ -1,4 +1,4 @@
-import { queryAI, AIResponse, AIQueryContext } from '../../services/aiService';
+import { queryAI, AIResponse, AIQueryContext, fillTemplateVariables } from '../../services/aiService';
 import { getAIConfig, AIConfiguration, saveAIConfig, validateAIConfig, hasValidAIConfig } from '../../services/aiConfigService';
 import { AIConfigProfile } from '../../types/aiConfigTypes';
 
@@ -224,5 +224,257 @@ describe('AI Services', () => {
       expect(result.success).toBe(false);
       expect(result.error).toBe('Network timeout');
     }, 15000);
+  });
+
+  describe('fillTemplateVariables', () => {
+    test('should fill currentPrice variable from valuationData', () => {
+      const template = '当前价格：{currentPrice}';
+      const context: AIQueryContext = {
+        valuationData: {
+          symbol: 'TEST',
+          name: 'Test Fund',
+          currentPrice: 1.2345,
+          previousPrice: 1.2000,
+          changePercentage: 2.88,
+          lastUpdated: '2023-01-01 15:00',
+          realtimeDate: '2023-01-01',
+          netWorthDate: '2022-12-31',
+          valuationDate: '2023-01-01',
+          sourceUrl: 'https://example.com'
+        }
+      };
+
+      const result = fillTemplateVariables(template, context);
+      expect(result).toBe('当前价格：1.2345');
+    });
+
+    test('should fill currentDate variable from valuationData.realtimeDate', () => {
+      const template = '估值日期：{currentDate}';
+      const context: AIQueryContext = {
+        valuationData: {
+          symbol: 'TEST',
+          name: 'Test Fund',
+          currentPrice: 1.2345,
+          previousPrice: 1.2000,
+          changePercentage: 2.88,
+          lastUpdated: '2023-01-01 15:00',
+          realtimeDate: '2023-01-01',
+          netWorthDate: '2022-12-31',
+          valuationDate: '2023-01-01',
+          sourceUrl: 'https://example.com'
+        }
+      };
+
+      const result = fillTemplateVariables(template, context);
+      expect(result).toBe('估值日期：2023-01-01');
+    });
+
+    test('should fill previousPrice variable from valuationData', () => {
+      const template = '前值：{previousPrice}';
+      const context: AIQueryContext = {
+        valuationData: {
+          symbol: 'TEST',
+          name: 'Test Fund',
+          currentPrice: 1.2345,
+          previousPrice: 1.2000,
+          changePercentage: 2.88,
+          lastUpdated: '2023-01-01 15:00',
+          realtimeDate: '2023-01-01',
+          netWorthDate: '2022-12-31',
+          valuationDate: '2023-01-01',
+          sourceUrl: 'https://example.com'
+        }
+      };
+
+      const result = fillTemplateVariables(template, context);
+      expect(result).toBe('前值：1.2000');
+    });
+
+    test('should fill previousDate variable from valuationData.netWorthDate', () => {
+      const template = '前值日期：{previousDate}';
+      const context: AIQueryContext = {
+        valuationData: {
+          symbol: 'TEST',
+          name: 'Test Fund',
+          currentPrice: 1.2345,
+          previousPrice: 1.2000,
+          changePercentage: 2.88,
+          lastUpdated: '2023-01-01 15:00',
+          realtimeDate: '2023-01-01',
+          netWorthDate: '2022-12-31',
+          valuationDate: '2023-01-01',
+          sourceUrl: 'https://example.com'
+        }
+      };
+
+      const result = fillTemplateVariables(template, context);
+      expect(result).toBe('前值日期：2022-12-31');
+    });
+
+    test('should fill rate variable with sign from valuationData.changePercentage', () => {
+      const template = '涨跌幅：{rate}';
+      const context: AIQueryContext = {
+        valuationData: {
+          symbol: 'TEST',
+          name: 'Test Fund',
+          currentPrice: 1.2345,
+          previousPrice: 1.2000,
+          changePercentage: 2.88,
+          lastUpdated: '2023-01-01 15:00',
+          realtimeDate: '2023-01-01',
+          netWorthDate: '2022-12-31',
+          valuationDate: '2023-01-01',
+          sourceUrl: 'https://example.com'
+        }
+      };
+
+      const result = fillTemplateVariables(template, context);
+      expect(result).toBe('涨跌幅：+2.88%');
+    });
+
+    test('should show negative sign for negative rate', () => {
+      const template = '涨跌幅：{rate}';
+      const context: AIQueryContext = {
+        valuationData: {
+          symbol: 'TEST',
+          name: 'Test Fund',
+          currentPrice: 1.1800,
+          previousPrice: 1.2000,
+          changePercentage: -1.67,
+          lastUpdated: '2023-01-01 15:00',
+          realtimeDate: '2023-01-01',
+          netWorthDate: '2022-12-31',
+          valuationDate: '2023-01-01',
+          sourceUrl: 'https://example.com'
+        }
+      };
+
+      const result = fillTemplateVariables(template, context);
+      expect(result).toBe('涨跌幅：-1.67%');
+    });
+
+    test('should show "未设置" when valuationData is missing', () => {
+      const template = '当前价格：{currentPrice}，前值：{previousPrice}，涨跌幅：{rate}';
+      const context: AIQueryContext = {};
+
+      const result = fillTemplateVariables(template, context);
+      expect(result).toBe('当前价格：未设置，前值：未设置，涨跌幅：未设置');
+    });
+
+    test('should fill all five new variables together', () => {
+      const template = '当前价格：{currentPrice}（{currentDate}），前值：{previousPrice}（{previousDate}），涨跌幅：{rate}';
+      const context: AIQueryContext = {
+        valuationData: {
+          symbol: 'TEST',
+          name: 'Test Fund',
+          currentPrice: 1.2345,
+          previousPrice: 1.2000,
+          changePercentage: 2.88,
+          lastUpdated: '2023-01-01 15:00',
+          realtimeDate: '2023-01-01',
+          netWorthDate: '2022-12-31',
+          valuationDate: '2023-01-01',
+          sourceUrl: 'https://example.com'
+        }
+      };
+
+      const result = fillTemplateVariables(template, context);
+      expect(result).toBe('当前价格：1.2345（2023-01-01），前值：1.2000（2022-12-31），涨跌幅：+2.88%');
+    });
+
+    test('should fill marketValue variable', () => {
+      const template = '市场价值：{marketValue}';
+      const context: AIQueryContext = {
+        marketValue: 12345.67
+      };
+
+      const result = fillTemplateVariables(template, context);
+      expect(result).toBe('市场价值：12345.67');
+    });
+
+    test('should show "未设置" when marketValue is missing', () => {
+      const template = '市场价值：{marketValue}';
+      const context: AIQueryContext = {};
+
+      const result = fillTemplateVariables(template, context);
+      expect(result).toBe('市场价值：未设置');
+    });
+
+    test('should fill position variable', () => {
+      const template = '当前仓位：{position} 份';
+      const context: AIQueryContext = {
+        position: 5000.50
+      };
+
+      const result = fillTemplateVariables(template, context);
+      expect(result).toBe('当前仓位：5000.50 份');
+    });
+
+    test('should show "未设置" when position is missing', () => {
+      const template = '当前仓位：{position}';
+      const context: AIQueryContext = {};
+
+      const result = fillTemplateVariables(template, context);
+      expect(result).toBe('当前仓位：未设置');
+    });
+
+    test('should fill positionRate variable', () => {
+      const template = '仓位占比：{positionRate}';
+      const context: AIQueryContext = {
+        positionRate: 50.55
+      };
+
+      const result = fillTemplateVariables(template, context);
+      expect(result).toBe('仓位占比：50.55%');
+    });
+
+    test('should show "未设置" when positionRate is missing', () => {
+      const template = '仓位占比：{positionRate}';
+      const context: AIQueryContext = {};
+
+      const result = fillTemplateVariables(template, context);
+      expect(result).toBe('仓位占比：未设置');
+    });
+
+    test('should fill profit variable with positive sign', () => {
+      const template = '整体盈利：{profit}';
+      const context: AIQueryContext = {
+        profit: 1234.56
+      };
+
+      const result = fillTemplateVariables(template, context);
+      expect(result).toBe('整体盈利：+1234.56');
+    });
+
+    test('should fill profit variable with negative sign', () => {
+      const template = '整体盈利：{profit}';
+      const context: AIQueryContext = {
+        profit: -567.89
+      };
+
+      const result = fillTemplateVariables(template, context);
+      expect(result).toBe('整体盈利：-567.89');
+    });
+
+    test('should show "未设置" when profit is missing', () => {
+      const template = '整体盈利：{profit}';
+      const context: AIQueryContext = {};
+
+      const result = fillTemplateVariables(template, context);
+      expect(result).toBe('整体盈利：未设置');
+    });
+
+    test('should fill all four new holding variables together', () => {
+      const template = '市场价值：{marketValue}，仓位：{position} 份，仓位占比：{positionRate}，盈利：{profit}';
+      const context: AIQueryContext = {
+        marketValue: 6172.50,
+        position: 5000.00,
+        positionRate: 50.00,
+        profit: 172.50
+      };
+
+      const result = fillTemplateVariables(template, context);
+      expect(result).toBe('市场价值：6172.50，仓位：5000.00 份，仓位占比：50.00%，盈利：+172.50');
+    });
   });
 });

@@ -615,22 +615,11 @@ export const FundDetailsModal: React.FC<FundDetailsModalProps> = ({ data, onClos
       initialCapacity: number;
       initialDate: string | null;
       initialPrice: number | null;
+      marketValue: number | null;
+      position: number | null;
+      positionRate: number | null;
+      profit: number | null;
     } | null>(null);
-
-    // 更新缓存的基金数据（只在基金真正改变时更新）
-    useEffect(() => {
-      // 始终更新 ref 中的数据，确保仓位配置等字段保持最新
-      aiFundDataRef.current = {
-        symbol: data.symbol,
-        name: valuationData.name,
-        valuationData: valuationData,
-        tradeHistory: tradeList,
-        fullCapacity,
-        initialCapacity: initialPosition,
-        initialDate: startDate,
-        initialPrice,
-      };
-    }, [data.symbol, valuationData, tradeList, fullCapacity, initialPosition, startDate, initialPrice]);
 
     // Aggregate trades into markers using a pure util (improves testability)
     const markers = useMemo(() => {
@@ -683,6 +672,30 @@ export const FundDetailsModal: React.FC<FundDetailsModalProps> = ({ data, onClos
     }, [tradeList, todayLocal, history, valuationData.currentPrice, valuationData.realtimeDate, valuationData.previousPrice, valuationData.netWorthDate, initialPosition, initialPrice, fullCapacity]);
 
     const { totalShares, buyShares, sellShares, buyAmount, sellAmount, marketValue, profit } = holdings;
+
+    // 计算仓位占比
+    const holdingsPositionRate = (fullCapacity > 0 && typeof totalShares === 'number')
+      ? (totalShares / fullCapacity) * 100
+      : null;
+
+    // 更新缓存的基金数据（只在基金真正改变时更新）
+    useEffect(() => {
+      // 始终更新 ref 中的数据，确保仓位配置等字段保持最新
+      aiFundDataRef.current = {
+        symbol: data.symbol,
+        name: valuationData.name,
+        valuationData: valuationData,
+        tradeHistory: tradeList,
+        fullCapacity,
+        initialCapacity: initialPosition,
+        initialDate: startDate,
+        initialPrice,
+        marketValue,
+        position: totalShares,
+        positionRate: holdingsPositionRate,
+        profit,
+      };
+    }, [data.symbol, valuationData, tradeList, fullCapacity, initialPosition, startDate, initialPrice, marketValue, totalShares, holdingsPositionRate, profit]);
 
   // 计算 position：响应式设计，屏幕宽度 < 1200px 时强制使用居中
   const isWideScreen = typeof window !== 'undefined' && window.innerWidth >= 1200;
@@ -1144,6 +1157,10 @@ export const FundDetailsModal: React.FC<FundDetailsModalProps> = ({ data, onClos
                    initialCapacity={aiFundDataRef.current.initialCapacity}
                    initialDate={aiFundDataRef.current.initialDate ?? undefined}
                    initialPrice={aiFundDataRef.current.initialPrice ?? undefined}
+                   marketValue={aiFundDataRef.current.marketValue}
+                   position={aiFundDataRef.current.position}
+                   positionRate={aiFundDataRef.current.positionRate}
+                   profit={aiFundDataRef.current.profit}
                  />,
                  document.body
                ) : <AISidePanel
@@ -1157,6 +1174,10 @@ export const FundDetailsModal: React.FC<FundDetailsModalProps> = ({ data, onClos
                  initialCapacity={aiFundDataRef.current.initialCapacity}
                  initialDate={aiFundDataRef.current.initialDate ?? undefined}
                  initialPrice={aiFundDataRef.current.initialPrice ?? undefined}
+                 marketValue={aiFundDataRef.current.marketValue}
+                 position={aiFundDataRef.current.position}
+                 positionRate={aiFundDataRef.current.positionRate}
+                 profit={aiFundDataRef.current.profit}
                />)}
             </div>
           )}

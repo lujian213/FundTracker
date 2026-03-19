@@ -20,6 +20,10 @@ interface AISidePanelProps {
   initialCapacity?: number; // 用户投资该基金的初始份额
   initialDate?: string; // 用户投资该基金的起始日期
   initialPrice?: number; // 用户投资该基金的初始价格
+  marketValue?: number | null; // 当前基金的市场价值
+  position?: number | null; // 当前基金的仓位（份）
+  positionRate?: number | null; // 当前基金的仓位占比（百分比）
+  profit?: number | null; // 当前基金的整体盈利
 }
 
 interface Message {
@@ -39,7 +43,11 @@ const AISidePanel: React.FC<AISidePanelProps> = ({
   fullCapacity,
   initialCapacity,
   initialDate,
-  initialPrice
+  initialPrice,
+  marketValue,
+  position,
+  positionRate,
+  profit
 }) => {
   const [messages, setMessages] = useState<Message[]>([]);
   const [hasBeenInitialized, setHasBeenInitialized] = useState<boolean>(false);
@@ -65,6 +73,10 @@ const AISidePanel: React.FC<AISidePanelProps> = ({
     initialCapacity,
     initialDate,
     initialPrice,
+    marketValue,
+    position,
+    positionRate,
+    profit,
   });
 
   // 更新 ref 以保持最新值
@@ -78,8 +90,12 @@ const AISidePanel: React.FC<AISidePanelProps> = ({
       initialCapacity,
       initialDate,
       initialPrice,
+      marketValue,
+      position,
+      positionRate,
+      profit,
     };
-  }, [fundName, fundSymbol, valuationData, tradeHistory, fullCapacity, initialCapacity, initialDate, initialPrice]);
+  }, [fundName, fundSymbol, valuationData, tradeHistory, fullCapacity, initialCapacity, initialDate, initialPrice, marketValue, position, positionRate, profit]);
 
   // 初始化上下文压缩服务
   const compressionService = new ContextCompressionService();
@@ -354,6 +370,10 @@ const AISidePanel: React.FC<AISidePanelProps> = ({
         initialCapacity: propsRef.current.initialCapacity,
         initialDate: propsRef.current.initialDate,
         initialPrice: propsRef.current.initialPrice,
+        marketValue: propsRef.current.marketValue ?? undefined,
+        position: propsRef.current.position ?? undefined,
+        positionRate: propsRef.current.positionRate ?? undefined,
+        profit: propsRef.current.profit ?? undefined,
       };
 
       const response: AIResponse = await queryAIWithTemplate(currentConfig, undefined, context);
@@ -502,6 +522,10 @@ const AISidePanel: React.FC<AISidePanelProps> = ({
         initialCapacity: propsRef.current.initialCapacity,
         initialDate: propsRef.current.initialDate,
         initialPrice: propsRef.current.initialPrice,
+        marketValue: propsRef.current.marketValue ?? undefined,
+        position: propsRef.current.position ?? undefined,
+        positionRate: propsRef.current.positionRate ?? undefined,
+        profit: propsRef.current.profit ?? undefined,
       };
 
       // 构建完整提示
@@ -708,11 +732,11 @@ const AISidePanel: React.FC<AISidePanelProps> = ({
     };
   };
 
-  const [position, setPosition] = useState(calculatePosition());
+  const [panelPosition, setPanelPosition] = useState(calculatePosition());
 
   useEffect(() => {
     const updatePosition = () => {
-      setPosition(calculatePosition());
+      setPanelPosition(calculatePosition());
     };
 
     // Update position on resize and scroll
@@ -735,9 +759,9 @@ const AISidePanel: React.FC<AISidePanelProps> = ({
     <div
       className="w-96 bg-white shadow-2xl z-[9999] flex flex-col border-l border-gray-200 fixed"
       style={{
-        top: position.top,
-        height: position.height,
-        left: position.left,
+        top: panelPosition.top,
+        height: panelPosition.height,
+        left: panelPosition.left,
         maxHeight: 'calc(100vh - 2rem)',
         marginTop: '1rem',
         marginBottom: '1rem'
