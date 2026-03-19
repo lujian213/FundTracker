@@ -15,19 +15,41 @@ export const TradeManager: React.FC<{
   netWorthDate?: string | null;
   onClose: () => void;
   zIndex?: number;
-}> = ({ name, symbol, currentPrice, previousPrice, realtimeDate, netWorthDate, onClose, zIndex = 130 }) => {
+  initialPosition?: number;
+  initialPrice?: number | null;
+  startDate?: string | null;
+}> = ({ name, symbol, currentPrice, previousPrice, realtimeDate, netWorthDate, onClose, zIndex = 130, initialPosition = 0, initialPrice = null, startDate = null }) => {
   const { trades, refresh, add, update, remove, setAll, exportJSON, exportCSV } = useTrades(symbol);
   const [page, setPage] = useState(0);
   const [history, setHistory] = useState<HistoricalPoint[]>([]);
   const [editingId, setEditingId] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
-  const localTrades = [...(trades || [])];
-  // sort by date desc
-  localTrades.sort((a,b) => (new Date(b.date).getTime()) - (new Date(a.date).getTime()));
+  // 是否显示建仓记录
+  const hasInitialPosition = initialPosition > 0;
+
+  // 构建包含建仓记录的完整交易列表
+  const allRecords = useMemo(() => {
+    const records = [...(trades || [])];
+    // 添加建仓记录
+    if (hasInitialPosition && startDate) {
+      records.push({
+        id: '__initial__',
+        date: startDate,
+        type: 'initial' as const,
+        shares: initialPosition,
+        price: initialPrice ?? 0,
+        fee: 0,
+        isInitial: true,
+      } as any);
+    }
+    // 按日期降序排序（最近的在上）
+    records.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+    return records;
+  }, [trades, hasInitialPosition, startDate, initialPosition, initialPrice]);
 
   const pageSize = 10;
-  const pageCount = Math.max(1, Math.ceil(localTrades.length / pageSize));
+  const pageCount = Math.max(1, Math.ceil(allRecords.length / pageSize));
 
   useEffect(() => { refresh(); }, [symbol, refresh]);
     useEffect(() => {
@@ -55,7 +77,10 @@ export const TradeManager: React.FC<{
 
   useEffect(() => { setError(null); }, [date, type, shares, total, fee]);
 
-  const visibleTrades = useMemo(() => localTrades.slice(page * pageSize, (page + 1) * pageSize), [localTrades, page]);
+  // 计算当前页应显示的记录
+  const visibleRecords = useMemo(() => {
+    return allRecords.slice(page * pageSize, (page + 1) * pageSize);
+  }, [allRecords, page]);
 
   const todayLocal = useMemo(() => toLocalDateKey(new Date()), []);
 
@@ -169,6 +194,16 @@ export const TradeManager: React.FC<{
     reader.readAsText(file);
   };
 
+  // 表格行固定高度: 42px，间距: 8px，10行总高度 = 10 * 42 + 9 * 8 = 492px
+  const rowHeight = 42;
+  const rowGap = 8;
+  const tableHeight = pageSize * rowHeight + (pageSize - 1) * rowGap;
+
+  // 数字格式化：千分位 + 小数位
+  const formatNumber = (num: number, decimals: number) => {
+    return num.toLocaleString('zh-CN', { minimumFractionDigits: decimals, maximumFractionDigits: decimals });
+  };
+
   return (
     <div className="fixed inset-0 flex items-center justify-center p-4" style={{ zIndex }}>
       <div className="absolute inset-0 bg-black/60" onClick={onClose}></div>
@@ -181,10 +216,10 @@ export const TradeManager: React.FC<{
           <button onClick={onClose} className="w-9 h-9 rounded-full bg-gray-50 flex items-center justify-center"><i className="fas fa-times text-gray-400"></i></button>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-4">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-2 mb-2">
           <div>
             <label className="text-xs text-gray-500">交易日期</label>
-            <input type="date" value={date} onChange={e => setDate(e.target.value)} className="w-full px-2 py-1 border rounded" />
+            <input type="date" value={date} onChange={e => setDate(e.target.value)} className="w-full px-2 py-1 border rounded h-8 text-sm" />
           </div>
           <div>
             <label className="text-xs text-gray-500">类型</label>
@@ -195,7 +230,7 @@ export const TradeManager: React.FC<{
                 setShares('0');
                 setTotal('0');
               }}
-              className="w-full px-2 py-1 border rounded"
+              className="w-full px-2 py-1 border rounded h-8 text-sm"
             >
               <option value="buy">买入</option>
               <option value="sell">卖出</option>
@@ -210,7 +245,7 @@ export const TradeManager: React.FC<{
                   step="0.01"
                   value={shares}
                   onChange={e => setShares(e.target.value)}
-                  className="w-full px-2 py-1 border rounded text-right"
+                  className="w-full px-2 py-1 border rounded h-8 text-sm text-right"
                 />
               </>
             ) : (
@@ -226,21 +261,21 @@ export const TradeManager: React.FC<{
                     const s = (t - f) / displayPrice;
                     return s.toFixed(2);
                   })()}
-                  className="w-full px-2 py-1 border rounded text-right bg-gray-50"
+                  className="w-full px-2 py-1 border rounded h-8 text-sm text-right bg-gray-50"
                 />
               </>
             )}
           </div>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-3 items-end">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-2 items-end">
           <div>
             <label className="text-xs text-gray-500">价格（只读，按交易日期）</label>
-            <input type="text" readOnly value={displayPrice.toFixed(4)} className="w-full px-2 py-1 border rounded text-right bg-gray-50" />
+            <input type="text" readOnly value={displayPrice.toFixed(4)} className="w-full px-2 py-1 border rounded h-8 text-sm text-right bg-gray-50" />
           </div>
           <div>
             <label className="text-xs text-gray-500">手续费</label>
-            <input type="number" step="0.01" value={fee} onChange={e => setFee(e.target.value)} className="w-full px-2 py-1 border rounded text-right" />
+            <input type="number" step="0.01" value={fee} onChange={e => setFee(e.target.value)} className="w-full px-2 py-1 border rounded h-8 text-sm text-right" />
           </div>
           <div>
             {type === 'buy' ? (
@@ -251,7 +286,7 @@ export const TradeManager: React.FC<{
                   step="0.01"
                   value={total}
                   onChange={e => setTotal(e.target.value)}
-                  className="w-full px-2 py-1 border rounded text-right"
+                  className="w-full px-2 py-1 border rounded h-8 text-sm text-right"
                 />
               </>
             ) : (
@@ -265,7 +300,7 @@ export const TradeManager: React.FC<{
                     const f = Number(fee) || 0;
                     return (displayPrice * s - f).toFixed(2);
                   })()}
-                  className="w-full px-2 py-1 border rounded text-right bg-gray-50"
+                  className="w-full px-2 py-1 border rounded h-8 text-sm text-right bg-gray-50"
                 />
               </>
             )}
@@ -274,7 +309,7 @@ export const TradeManager: React.FC<{
 
         {error && <div className="text-xs text-red-600 mt-2">{error}</div>}
 
-        <div className="flex justify-between mt-4 items-center">
+        <div className="flex justify-between mt-2 items-center">
           <div className="flex items-center space-x-2">
             <button onClick={onExportJSON} className="px-3 py-1 rounded bg-gray-100 text-xs">导出 JSON</button>
             <button onClick={onExportCSV} className="px-3 py-1 rounded bg-gray-100 text-xs">导出 CSV</button>
@@ -284,50 +319,67 @@ export const TradeManager: React.FC<{
           <div className="flex items-center space-x-2">
            {editingId ? (
              <>
-               <button onClick={cancelEdit} className="px-3 py-1 rounded bg-gray-100">取消</button>
-               <button onClick={addOrUpdateTrade} className="px-3 py-1 rounded bg-emerald-500 text-white">更新</button>
+               <button onClick={cancelEdit} className="px-3 py-1 rounded bg-gray-100 text-sm">取消</button>
+               <button onClick={addOrUpdateTrade} className="px-3 py-1 rounded bg-emerald-500 text-white text-sm">更新</button>
              </>
            ) : (
-             <button onClick={addOrUpdateTrade} className="px-3 py-1 rounded bg-emerald-500 text-white">添加交易</button>
+             <button onClick={addOrUpdateTrade} className="px-3 py-1 rounded bg-emerald-500 text-white text-sm">添加交易</button>
            )}
           </div>
          </div>
 
-        <hr className="my-4" />
+        <hr className="my-2" />
 
         <div>
           <h4 className="text-sm font-bold mb-2">交易记录（最近在上）</h4>
-          {trades.length === 0 ? (
-            <p className="text-xs text-gray-400">暂无交易记录</p>
+          {allRecords.length === 0 ? (
+            <div className="flex items-center justify-center" style={{ height: tableHeight }}>
+              <p className="text-xs text-gray-400">暂无交易记录</p>
+            </div>
           ) : (
-            <div className="space-y-2">
-              {visibleTrades.map(t => {
-                const computed = t.type === 'sell' ? t.price * t.shares - (t.fee || 0) : t.price * t.shares + (t.fee || 0);
-                return (
-                  <div key={t.id} className={`flex items-start justify-between px-2 py-1 border rounded ${t.type === 'buy' ? 'bg-green-50 border-green-100' : 'bg-red-50 border-red-100'}`}>
-                    <div className="flex flex-col min-w-0">
-                      <div className="text-xs font-medium leading-snug truncate">{t.date} <span className="text-[10px] text-gray-400 ml-2">{t.type === 'buy' ? '买入' : '卖出'}</span></div>
-                      <div className="text-[11px] text-gray-500 leading-snug truncate">{t.shares.toFixed(2)} 份 · {t.price.toFixed(4)} ({(t.fee || 0).toFixed(2)} 手续)</div>
-                    </div>
-                    <div className="text-right flex flex-col items-end ml-3">
-                      <div className="font-bold text-xs">{computed.toFixed(2)}</div>
-                      <div className="flex items-center space-x-2 mt-0.5">
-                        <button onClick={() => startEdit(t)} className="text-xs text-blue-500">编辑</button>
-                        <button onClick={() => removeTrade(t.id)} className="text-xs text-red-500">删除</button>
+            <>
+              <div style={{ height: tableHeight }} className="flex flex-col justify-start">
+                {visibleRecords.map((t, index) => {
+                  const isInitial = (t as any).isInitial;
+                  const computed = t.type === 'sell' ? t.price * t.shares - (t.fee || 0) : t.price * t.shares + (t.fee || 0);
+                  return (
+                    <div
+                      key={t.id}
+                      style={{ height: rowHeight, marginTop: index === 0 ? 0 : rowGap }}
+                      className={`flex items-start justify-between px-2 py-1 border rounded ${
+                        isInitial ? 'bg-blue-50 border-blue-200' : (t.type === 'buy' ? 'bg-green-50 border-green-100' : 'bg-red-50 border-red-100')
+                      }`}
+                    >
+                      <div className="flex flex-col min-w-0">
+                        <div className="text-xs font-medium leading-snug truncate">
+                          {t.date} <span className={`text-[10px] ml-2 ${isInitial ? 'text-blue-500' : 'text-gray-400'}`}>
+                            {isInitial ? '建仓' : (t.type === 'buy' ? '买入' : '卖出')}
+                          </span>
+                        </div>
+                        <div className="text-[11px] text-gray-500 leading-snug truncate">{formatNumber(t.shares, 2)} 份 · {t.price.toFixed(4)} ({formatNumber(t.fee || 0, 2)} 手续)</div>
+                      </div>
+                      <div className="text-right flex flex-col items-end ml-3">
+                        <div className="font-bold text-xs">{formatNumber(computed, 2)}</div>
+                        {!isInitial && (
+                          <div className="flex items-center space-x-2 mt-0.5">
+                            <button onClick={() => startEdit(t)} className="text-xs text-blue-500">编辑</button>
+                            <button onClick={() => removeTrade(t.id)} className="text-xs text-red-500">删除</button>
+                          </div>
+                        )}
                       </div>
                     </div>
-                  </div>
-                );
-              })}
+                  );
+                })}
+              </div>
 
-              <div className="flex justify-between items-center">
+              <div className="flex justify-between items-center mt-2">
                 <div className="text-xs text-gray-400">第 {page + 1} / {pageCount} 页</div>
                 <div className="space-x-2">
-                  <button disabled={page <= 0} onClick={() => setPage(p => Math.max(0, p - 1))} className="px-2 py-1 rounded bg-gray-100">上一页</button>
-                  <button disabled={page >= pageCount - 1} onClick={() => setPage(p => Math.min(pageCount - 1, p + 1))} className="px-2 py-1 rounded bg-gray-100">下一页</button>
+                  <button disabled={page <= 0} onClick={() => setPage(p => Math.max(0, p - 1))} className="px-2 py-1 rounded bg-gray-100 text-sm disabled:opacity-50 disabled:cursor-not-allowed">上一页</button>
+                  <button disabled={page >= pageCount - 1} onClick={() => setPage(p => Math.min(pageCount - 1, p + 1))} className="px-2 py-1 rounded bg-gray-100 text-sm disabled:opacity-50 disabled:cursor-not-allowed">下一页</button>
                 </div>
               </div>
-            </div>
+            </>
           )}
         </div>
 
@@ -337,4 +389,3 @@ export const TradeManager: React.FC<{
 };
 
 export default TradeManager;
-

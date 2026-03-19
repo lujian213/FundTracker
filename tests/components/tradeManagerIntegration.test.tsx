@@ -5,6 +5,7 @@ import { TradeManager } from '../../components/TradeManager';
 import { ValuationData } from '../../types';
 import { fetchFundHistory } from '../../services/fundService';
 import { toLocalDateKey } from '../../utils/priceResolver';
+import { setTradesForSymbol } from '../../hooks/useTrades';
 
 jest.mock('../../services/fundService', () => ({ fetchFundHistory: jest.fn() }));
 
@@ -177,5 +178,113 @@ describe('TradeManager price resolution', () => {
     const spinbuttons = screen.getAllByRole('spinbutton');
     fireEvent.change(spinbuttons[1], { target: { value: '150' } });
     expect(screen.getByDisplayValue('100.00')).toBeInTheDocument();
+  });
+});
+
+// ─── TradeManager initial position record tests ───────────────────────────────
+describe('TradeManager initial position record', () => {
+  beforeEach(() => {
+    (fetchFundHistory as jest.Mock).mockResolvedValue([]);
+  });
+
+  test('shows initial position record when initialPosition > 0', async () => {
+    render(
+      <TradeManager
+        symbol="TEST001"
+        currentPrice={1.5}
+        onClose={jest.fn()}
+        initialPosition={100}
+        initialPrice={1.2}
+        startDate="2024-01-15"
+      />
+    );
+
+    await waitFor(() => expect(fetchFundHistory).toHaveBeenCalled());
+
+    // Should show 建仓 record
+    expect(screen.getByText('建仓')).toBeInTheDocument();
+    expect(screen.getByText(/100.00 份/)).toBeInTheDocument();
+    // Date should be shown
+    expect(screen.getByText('2024-01-15')).toBeInTheDocument();
+    // Amount should be 100 * 1.2 = 120.00
+    expect(screen.getByText('120.00')).toBeInTheDocument();
+  });
+
+  test('hides initial position record when initialPosition is 0', async () => {
+    render(
+      <TradeManager
+        symbol="TEST001"
+        currentPrice={1.5}
+        onClose={jest.fn()}
+        initialPosition={0}
+        initialPrice={1.2}
+        startDate="2024-01-15"
+      />
+    );
+
+    await waitFor(() => expect(fetchFundHistory).toHaveBeenCalled());
+
+    // Should NOT show 建仓 record
+    expect(screen.queryByText('建仓')).not.toBeInTheDocument();
+  });
+
+  test('initial position record has blue background and no edit/delete buttons', async () => {
+    render(
+      <TradeManager
+        symbol="TEST001"
+        currentPrice={1.5}
+        onClose={jest.fn()}
+        initialPosition={100}
+        initialPrice={1.2}
+        startDate="2024-01-15"
+      />
+    );
+
+    await waitFor(() => expect(fetchFundHistory).toHaveBeenCalled());
+
+    // Should show 建仓 record
+    expect(screen.getByText('建仓')).toBeInTheDocument();
+
+    // Should NOT have edit/delete buttons for initial position record
+    // (only the 建仓 row exists, no 编辑/删除 buttons should be present)
+    const editButtons = screen.queryAllByText('编辑');
+    const deleteButtons = screen.queryAllByText('删除');
+    expect(editButtons.length).toBe(0);
+    expect(deleteButtons.length).toBe(0);
+  });
+
+  test('initial position record is sorted by date (should be at the end when date is earliest)', async () => {
+    // Clear localStorage and set up trades
+    localStorage.clear();
+    setTradesForSymbol('TEST001', [
+      { id: 't1', date: '2024-06-15', type: 'buy', shares: 50, price: 1.5, fee: 0 },
+      { id: 't2', date: '2024-03-20', type: 'sell', shares: 30, price: 1.6, fee: 0 },
+    ] as any);
+
+    render(
+      <TradeManager
+        symbol="TEST001"
+        currentPrice={1.5}
+        onClose={jest.fn()}
+        initialPosition={100}
+        initialPrice={1.2}
+        startDate="2024-01-15"
+      />
+    );
+
+    await waitFor(() => expect(fetchFundHistory).toHaveBeenCalled());
+
+    // Should have 建仓 record
+    expect(screen.getByText('建仓')).toBeInTheDocument();
+
+    // All dates should be visible (we have 3 records, pageSize=10, so all on one page)
+    // Records are sorted by date DESC, so order should be: 2024-06-15, 2024-03-20, 2024-01-15
+    const dateElements = screen.getAllByText(/2024-\d{2}-\d{2}/);
+    expect(dateElements.length).toBe(3);
+
+    // The first visible date should be the most recent (2024-06-15)
+    expect(dateElements[0]).toHaveTextContent('2024-06-15');
+    // The last visible date should be the earliest - which is the 建仓 date (2024-01-15)
+    expect(dateElements[2]).toHaveTextContent('2024-01-15');
   });
 });

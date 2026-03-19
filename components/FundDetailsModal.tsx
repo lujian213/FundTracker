@@ -1144,7 +1144,7 @@ export const FundDetailsModal: React.FC<FundDetailsModalProps> = ({ data, onClos
                )}
                {/* Trade manager modal rendered into document.body to avoid z-index issues */}
                {showTrade && (typeof document !== 'undefined' && document.body ? createPortal(
-                 <TradeManager name={valuationData.name} symbol={data.symbol} currentPrice={valuationData.currentPrice} previousPrice={valuationData.previousPrice} realtimeDate={valuationData.realtimeDate} netWorthDate={valuationData.netWorthDate} onClose={() => setShowTrade(false)} zIndex={SUBMODAL_Z_INDEX} />,
+                 <TradeManager name={valuationData.name} symbol={data.symbol} currentPrice={valuationData.currentPrice} previousPrice={valuationData.previousPrice} realtimeDate={valuationData.realtimeDate} netWorthDate={valuationData.netWorthDate} initialPosition={initialPosition} initialPrice={initialPrice} startDate={startDate} onClose={() => setShowTrade(false)} zIndex={SUBMODAL_Z_INDEX} />,
                  document.body
                ) : <TradeManager name={valuationData.name} symbol={data.symbol} currentPrice={valuationData.currentPrice} previousPrice={valuationData.previousPrice} realtimeDate={valuationData.realtimeDate} netWorthDate={valuationData.netWorthDate} onClose={() => setShowTrade(false)} zIndex={SUBMODAL_Z_INDEX} />)}
                {showVirtual && (typeof document !== 'undefined' && document.body ? createPortal(
