@@ -14,7 +14,8 @@ export const TradeManager: React.FC<{
   realtimeDate?: string | null;
   netWorthDate?: string | null;
   onClose: () => void;
-}> = ({ name, symbol, currentPrice, previousPrice, realtimeDate, netWorthDate, onClose }) => {
+  zIndex?: number;
+}> = ({ name, symbol, currentPrice, previousPrice, realtimeDate, netWorthDate, onClose, zIndex = 130 }) => {
   const { trades, refresh, add, update, remove, setAll, exportJSON, exportCSV } = useTrades(symbol);
   const [page, setPage] = useState(0);
   const [history, setHistory] = useState<HistoricalPoint[]>([]);
@@ -169,7 +170,7 @@ export const TradeManager: React.FC<{
   };
 
   return (
-    <div className="fixed inset-0 z-[130] flex items-center justify-center p-4">
+    <div className="fixed inset-0 flex items-center justify-center p-4" style={{ zIndex }}>
       <div className="absolute inset-0 bg-black/60" onClick={onClose}></div>
       <div className="relative bg-white rounded-2xl w-full max-w-2xl p-6 z-40">
         <div className="flex justify-between items-start mb-4">

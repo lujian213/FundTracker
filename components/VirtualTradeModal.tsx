@@ -24,9 +24,10 @@ interface Props {
   valuation?: ValuationData | null;
   onClose: () => void;
   fetchHistory?: (symbol: string) => Promise<HistoricalPoint[]>;
+  zIndex?: number;
 }
 
-export const VirtualTradeModal: React.FC<Props> = ({ symbol, fundName, history: initialHistory, valuation, onClose, fetchHistory }) => {
+export const VirtualTradeModal: React.FC<Props> = ({ symbol, fundName, history: initialHistory, valuation, onClose, fetchHistory, zIndex = 120 }) => {
   const [history, setHistory] = useState<HistoricalPoint[] | null>(initialHistory ?? null);
   const fetchFn = fetchHistory ?? defaultFetchFundHistory;
 
@@ -567,7 +568,7 @@ export const VirtualTradeModal: React.FC<Props> = ({ symbol, fundName, history: 
   const bestStrategyIndex = useMemo(() => computeBestIndexFromResults(results), [results]);
 
   const body = (
-    <div className="fixed inset-0 z-[120] flex items-center justify-center">
+    <div className="fixed inset-0 flex items-center justify-center" style={{ zIndex }}>
       <div className="absolute inset-0 bg-black/40" onClick={onClose} />
       <div className="relative bg-white rounded-lg shadow-lg w-full max-w-6xl p-6 z-30 max-h-[90vh] overflow-auto">
         <div className="flex justify-between items-start mb-4">

@@ -236,3 +236,85 @@ describe('基金份额计算器', () => {
     expect(screen.getByText(/参考价格：1\.1100（历史净值）/)).toBeInTheDocument();
   });
 });
+
+describe('FundDetailsModal position prop', () => {
+  const data: ValuationData = {
+    symbol: '000001',
+    name: 'Sample Fund',
+    currentPrice: 1.11,
+    previousPrice: 1.10,
+    changePercentage: 0.96,
+    lastUpdated: '2026-02-12 15:00',
+    realtimeDate: '2026-02-12',
+    netWorthDate: '2026-02-11',
+    valuationDate: '2026-02-12',
+    sourceUrl: 'https://example.com'
+  };
+
+  beforeEach(() => {
+    (fetchFundHistory as jest.Mock).mockResolvedValue(SAMPLE_HISTORY);
+    // Mock window.innerWidth for responsive design tests
+    Object.defineProperty(window, 'innerWidth', {
+      writable: true,
+      configurable: true,
+      value: 1400, // Wide screen by default
+    });
+  });
+
+  afterEach(() => jest.restoreAllMocks());
+
+  test('position="center" 居中显示', async () => {
+    render(<FundDetailsModal data={data} onClose={() => {}} position="center" />);
+    await screen.findByText('历史趋势图');
+
+    const modal = document.getElementById('fund-details-modal');
+    expect(modal).toHaveStyle({ justifyContent: 'center' });
+  });
+
+  test('position="right" 在宽屏时右侧显示', async () => {
+    window.innerWidth = 1400; // Wide screen
+    render(<FundDetailsModal data={data} onClose={() => {}} position="right" />);
+    await screen.findByText('历史趋势图');
+
+    const modal = document.getElementById('fund-details-modal');
+    expect(modal).toHaveStyle({ pointerEvents: 'none' });
+  });
+
+  test('position="right" 时不显示遮罩层', async () => {
+    window.innerWidth = 1400; // Wide screen
+    render(<FundDetailsModal data={data} onClose={() => {}} position="right" />);
+    await screen.findByText('历史趋势图');
+
+    // position="right" 时不应有遮罩层
+    const modal = document.getElementById('fund-details-modal');
+    const overlay = modal?.querySelector('.bg-black\\/60');
+    expect(overlay).toBeNull();
+  });
+
+  test('position="center" 时显示遮罩层', async () => {
+    window.innerWidth = 1400;
+    render(<FundDetailsModal data={data} onClose={() => {}} position="center" />);
+    await screen.findByText('历史趋势图');
+
+    const modal = document.getElementById('fund-details-modal');
+    const overlay = modal?.querySelector('.bg-black\\/60');
+    expect(overlay).toBeInTheDocument();
+  });
+
+  test('position="right" 在窄屏时回退到居中显示', async () => {
+    window.innerWidth = 1000; // Narrow screen (< 1200px)
+    render(<FundDetailsModal data={data} onClose={() => {}} position="right" />);
+    await screen.findByText('历史趋势图');
+
+    const modal = document.getElementById('fund-details-modal');
+    expect(modal).toHaveStyle({ justifyContent: 'center' });
+  });
+
+  test('position prop 默认值为 center', async () => {
+    render(<FundDetailsModal data={data} onClose={() => {}} />);
+    await screen.findByText('历史趋势图');
+
+    const modal = document.getElementById('fund-details-modal');
+    expect(modal).toHaveStyle({ justifyContent: 'center' });
+  });
+});

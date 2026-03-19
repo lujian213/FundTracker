@@ -10,6 +10,7 @@ interface InvestmentDraftModalProps {
   onClose: () => void;
   onSelectFund?: (symbol: string) => void;  // Optional callback to select a fund
   marketData?: Record<string, ValuationData>;
+  sideBySide?: boolean;  // 是否并排显示（与B窗口同时显示）
 }
 
 interface DraftEntry {
@@ -22,7 +23,8 @@ const InvestmentDraftModal: React.FC<InvestmentDraftModalProps> = ({
   portfolio,
   onClose,
   onSelectFund,
-  marketData = {}
+  marketData = {},
+  sideBySide = false
 }) => {
   const [draftData, setDraftData] = useState<Record<string, DraftEntry>>({});
   const [copied, setCopied] = useState(false);
@@ -337,10 +339,13 @@ const InvestmentDraftModal: React.FC<InvestmentDraftModalProps> = ({
   };
 
   const content = (
-    <div className="fixed inset-0 z-[130] flex items-center justify-center p-4">
-      <div className="absolute inset-0 bg-black/40" onClick={onClose} />
-      <div className="relative bg-white rounded-2xl w-full max-w-6xl shadow-2xl animate-in zoom-in-95 duration-200 flex flex-col" style={{ maxHeight: '90vh' }}>
-        <div className="px-6 py-4 border-b border-gray-100 flex justify-between items-center flex-shrink-0">
+    <div className="fixed inset-0 z-[130] flex items-center justify-center pointer-events-none">
+      <div className="absolute inset-0 bg-black/40 pointer-events-auto" onClick={onClose} />
+      <div
+        className="relative bg-white w-full max-w-4xl shadow-2xl animate-in zoom-in-95 duration-200 flex flex-col pointer-events-auto h-[62vh] transition-transform duration-300 ease-in-out"
+        style={{ transform: sideBySide ? 'translateX(calc(-50vw + 28rem + 32px))' : 'translateX(0)' }}
+      >
+        <div className="px-6 pt-3 pb-1 border-b border-gray-100 flex justify-between items-center flex-shrink-0">
           <h3 className="text-lg font-bold">投资计划草稿</h3>
           <div className="flex items-center gap-2">
             <button
@@ -368,24 +373,26 @@ const InvestmentDraftModal: React.FC<InvestmentDraftModalProps> = ({
           </div>
         </div>
 
-        <div className="p-6 flex-1 min-h-0">
-          <p className="text-sm text-gray-600 mb-4">
+        <div className="px-6 pt-2 pb-1 flex-shrink-0">
+          <p className="text-xs text-gray-600">
             这是您的投资计划草稿，用于规划今天的投资操作。计划仅保存当天，第二天会自动清空。
           </p>
+        </div>
 
-          <div className="border border-gray-100 rounded-xl overflow-hidden">
-            <div className="overflow-x-auto" style={{ maxHeight: '60vh', overflowY: 'auto' }}>
+        <div className="px-6 flex-1 min-h-0 pb-1">
+          <div className="border border-gray-100 rounded-xl overflow-hidden h-full flex flex-col">
+            <div className="overflow-x-auto flex-1" style={{ overflowY: 'auto' }}>
               <table className="w-full text-sm">
                 <thead className="sticky top-0 z-10 bg-gray-50">
                   <tr className="border-b border-gray-200" style={{ height: '35px' }}>
-                    <th className="px-4 py-1 text-left text-xs font-semibold text-gray-500 min-w-[140px] w-[140px]">基金名称</th>
-                    <th className="px-4 py-1 text-left text-xs font-semibold text-gray-500 min-w-[100px] w-[100px]">实时估值</th>
-                    <th className="px-4 py-1 text-left text-xs font-semibold text-gray-500 min-w-[100px] w-[100px]">前值</th>
-                    <th className="px-4 py-1 text-left text-xs font-semibold text-gray-500 min-w-[80px] w-[80px]">涨跌幅</th>
-                    <th className="px-4 py-1 text-left text-xs font-semibold text-gray-500 min-w-[100px] w-[100px]">操作</th>
-                    <th className="px-4 py-1 text-left text-xs font-semibold text-gray-500 min-w-[100px] w-[100px]">金额</th>
-                    <th className="px-4 py-1 text-left text-xs font-semibold text-gray-500 min-w-[100px] w-[100px]">份额</th>
-                    <th className="px-4 py-1 text-left text-xs font-semibold text-gray-500 min-w-[80px] w-[80px]">重置</th>
+                    <th className="px-2 py-1 text-left text-xs font-semibold text-gray-500 min-w-[140px] w-[140px]">基金名称</th>
+                    <th className="px-2 py-1 text-left text-xs font-semibold text-gray-500 min-w-[90px] w-[90px]">实时估值</th>
+                    <th className="px-2 py-1 text-left text-xs font-semibold text-gray-500 min-w-[90px] w-[90px]">前值</th>
+                    <th className="px-2 py-1 text-left text-xs font-semibold text-gray-500 min-w-[80px] w-[80px]">涨跌幅</th>
+                    <th className="px-2 py-1 text-left text-xs font-semibold text-gray-500 min-w-[100px] w-[100px]">操作</th>
+                    <th className="px-2 py-1 text-left text-xs font-semibold text-gray-500 min-w-[100px] w-[100px]">金额</th>
+                    <th className="px-2 py-1 text-left text-xs font-semibold text-gray-500 min-w-[100px] w-[100px]">份额</th>
+                    <th className="px-2 py-1 text-left text-xs font-semibold text-gray-500 min-w-[40px] w-[40px]"></th>
                   </tr>
                 </thead>
                 <tbody>
@@ -402,7 +409,7 @@ const InvestmentDraftModal: React.FC<InvestmentDraftModalProps> = ({
                       return (
                         <tr key={fund.symbol} className={`border-b border-gray-50 hover:bg-gray-50 transition-colors ${index % 2 === 0 ? 'bg-white' : 'bg-gray-25'}`} style={{ height: '40px' }}>
                           <td
-                            className="px-4 py-1 text-left text-xs text-gray-700 cursor-pointer hover:underline truncate max-w-[140px] overflow-hidden"
+                            className="px-2 py-1 text-left text-xs text-gray-700 cursor-pointer hover:underline truncate max-w-[140px] overflow-hidden"
                             onClick={() => {
                               // Save current state before navigating
                               const today = toLocalDateKey(new Date());
@@ -423,8 +430,8 @@ const InvestmentDraftModal: React.FC<InvestmentDraftModalProps> = ({
                             <div className="truncate" style={{ maxWidth: '140px' }}>{fund.name || fund.symbol}</div>
                           </td>
 
-                          <td className="px-4 py-1 text-left text-xs">
-                            <div className="truncate flex items-center" style={{ maxWidth: '100px' }}>
+                          <td className="px-2 py-1 text-left text-xs">
+                            <div className="truncate flex items-center" style={{ maxWidth: '90px' }}>
                               {(() => {
                                 // Use enhanced valuation from cacheService which includes validation logic
                                 const enhancedValuation = cacheService.getValuation(fund.symbol);
@@ -448,8 +455,8 @@ const InvestmentDraftModal: React.FC<InvestmentDraftModalProps> = ({
                             </div>
                           </td>
 
-                          <td className="px-4 py-1 text-left text-xs">
-                            <div className="truncate flex items-center" style={{ maxWidth: '100px' }}>
+                          <td className="px-2 py-1 text-left text-xs">
+                            <div className="truncate flex items-center" style={{ maxWidth: '90px' }}>
                               {(() => {
                                 // Use enhanced valuation from cacheService which includes validation logic
                                 const enhancedValuation = cacheService.getValuation(fund.symbol);
@@ -473,17 +480,17 @@ const InvestmentDraftModal: React.FC<InvestmentDraftModalProps> = ({
                             </div>
                           </td>
 
-                          <td className={`px-4 py-1 text-left text-xs font-medium ${getGainLossColor(fund.symbol)}`}>
+                          <td className={`px-2 py-1 text-left text-xs font-medium ${getGainLossColor(fund.symbol)}`}>
                             <div className="truncate" style={{ maxWidth: '80px' }}>
                               {getGainLoss(fund.symbol)}
                             </div>
                           </td>
 
-                          <td className="px-4 py-1 text-left text-xs">
+                          <td className="px-2 py-1 text-left text-xs">
                             <select
                               value={entry.operation}
                               onChange={(e) => handleOperationChange(fund.symbol, e.target.value as '买入' | '卖出' | '不操作')}
-                              className="w-[100px] p-1 text-xs border border-gray-200 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500 bg-white"
+                              className="w-[80px] p-1 text-xs border border-gray-200 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500 bg-white"
                             >
                               <option value="不操作">不操作</option>
                               <option value="买入">买入</option>
@@ -491,8 +498,8 @@ const InvestmentDraftModal: React.FC<InvestmentDraftModalProps> = ({
                             </select>
                           </td>
 
-                          <td className="px-4 py-1 text-left text-xs">
-                            <div className="w-[100px] h-full flex items-center">
+                          <td className="px-2 py-1 text-left text-xs">
+                            <div className="w-[80px] h-full flex items-center">
                               {entry.operation === '不操作' ? (
                                 <span className="text-gray-400 text-xs">-</span>
                               ) : (
@@ -500,25 +507,26 @@ const InvestmentDraftModal: React.FC<InvestmentDraftModalProps> = ({
                                   type="text"
                                   value={entry.amount}
                                   onChange={(e) => handleAmountChange(fund.symbol, e.target.value)}
-                                  placeholder="输入金额"
+                                  placeholder="金额"
                                   className="w-full p-1 text-xs border border-gray-200 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500"
                                 />
                               )}
                             </div>
                           </td>
 
-                          <td className="px-4 py-1 text-left text-xs">
-                            <div className="truncate" style={{ maxWidth: '100px' }}>
+                          <td className="px-2 py-1 text-left text-xs">
+                            <div className="truncate" style={{ maxWidth: '80px' }}>
                               {calculateShares(fund.symbol)}
                             </div>
                           </td>
 
-                          <td className="px-4 py-1 text-left text-xs">
+                          <td className="px-2 py-1 text-center text-xs">
                             <button
                               onClick={() => handleReset(fund.symbol)}
-                              className="px-2 py-0.5 text-xs bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-md transition-colors whitespace-nowrap"
+                              className="w-6 h-6 flex items-center justify-center text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded transition-colors"
+                              title="重置"
                             >
-                              重置
+                              <i className="fas fa-undo text-xs"></i>
                             </button>
                           </td>
                         </tr>
@@ -538,17 +546,11 @@ const InvestmentDraftModal: React.FC<InvestmentDraftModalProps> = ({
         </div>
 
         {/* Summary section - buy and sell counts and totals */}
-        <div className="px-6 py-3 border-t border-gray-100 bg-gray-50 text-xs text-gray-700 flex justify-end">
-          <div className="flex space-x-8">
-            <span>买入基金：{buyCount}只</span>
-            <span>买入总额：{formatCurrency(buyTotal, 2)}</span>
-            <span>卖出基金：{sellCount}只</span>
-            <span>卖出总额：{formatCurrency(sellTotal, 2)}</span>
-          </div>
-        </div>
-
         <div className="px-6 py-3 border-t border-gray-100 bg-gray-50 text-xs text-gray-500">
-          <p>注：投资计划草稿仅保存当天数据，第二天会自动清空。</p>
+          <div className="flex justify-end space-x-6">
+            <span>买入：{buyCount}只 / {formatCurrency(buyTotal, 2)}</span>
+            <span>卖出：{sellCount}只 / {formatCurrency(sellTotal, 2)}</span>
+          </div>
         </div>
       </div>
     </div>

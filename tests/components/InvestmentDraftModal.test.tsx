@@ -355,4 +355,78 @@ describe('InvestmentDraftModal', () => {
       expect(result[1].symbol).toBe('000002'); // 涨幅1%
     });
   });
+
+  describe('onSelectFund 回调', () => {
+    test('点击基金名称触发 onSelectFund 回调', async () => {
+      const mockOnSelectFund = jest.fn();
+
+      render(
+        <InvestmentDraftModal
+          portfolio={mockPortfolio}
+          onClose={mockOnClose}
+          onSelectFund={mockOnSelectFund}
+          marketData={mockMarketData}
+        />
+      );
+
+      // 点击基金名称
+      const fundName = screen.getByText('华夏成长混合');
+      fireEvent.click(fundName);
+
+      await waitFor(() => {
+        expect(mockOnSelectFund).toHaveBeenCalledWith('000001');
+      });
+    });
+
+    test('点击基金名称后草稿窗口保持打开（onClose 未被调用）', async () => {
+      const mockOnSelectFund = jest.fn();
+
+      render(
+        <InvestmentDraftModal
+          portfolio={mockPortfolio}
+          onClose={mockOnClose}
+          onSelectFund={mockOnSelectFund}
+          marketData={mockMarketData}
+        />
+      );
+
+      // 点击基金名称
+      const fundName = screen.getByText('华夏成长混合');
+      fireEvent.click(fundName);
+
+      await waitFor(() => {
+        expect(mockOnSelectFund).toHaveBeenCalled();
+      });
+
+      // onClose 不应该被调用（草稿窗口保持打开）
+      expect(mockOnClose).not.toHaveBeenCalled();
+    });
+
+    test('切换不同基金触发不同的 symbol', async () => {
+      const mockOnSelectFund = jest.fn();
+
+      render(
+        <InvestmentDraftModal
+          portfolio={mockPortfolio}
+          onClose={mockOnClose}
+          onSelectFund={mockOnSelectFund}
+          marketData={mockMarketData}
+        />
+      );
+
+      // 点击第一个基金
+      fireEvent.click(screen.getByText('华夏成长混合'));
+      await waitFor(() => {
+        expect(mockOnSelectFund).toHaveBeenCalledWith('000001');
+      });
+
+      mockOnSelectFund.mockClear();
+
+      // 点击第二个基金
+      fireEvent.click(screen.getByText('易方达消费行业'));
+      await waitFor(() => {
+        expect(mockOnSelectFund).toHaveBeenCalledWith('000002');
+      });
+    });
+  });
 });

@@ -153,6 +153,7 @@ const App: React.FC = () => {
   const [indexStatuses, setIndexStatuses] = useState<Record<string, CardStatus>>({});
 
   const [viewingSymbol, setViewingSymbol] = useState<string | null>(null);
+  const [viewingFromDraft, setViewingFromDraft] = useState<boolean>(false);
   const [virtualTradeModalFund, setVirtualTradeModalFund] = useState<string | null>(null);
   const [viewingIndex, setViewingIndex] = useState<MarketIndex | null>(null);
   const [pendingImportData, setPendingImportData] = useState<BackupData | null>(null);
@@ -635,7 +636,7 @@ const App: React.FC = () => {
           </div>
           <div className="flex items-center space-x-2 relative">
             {!isSelectionMode && (
-              <button disabled={isRefreshing} onClick={refreshAll} className={`p-2 w-10 h-10 rounded-full hover:bg-gray-100 transition-all flex items-center justify-center ${isRefreshing ? 'text-red-500' : 'text-gray-400'}`}>
+              <button disabled={isRefreshing} onClick={refreshAll} title="刷新行情" aria-label="刷新行情" className={`p-2 w-10 h-10 rounded-full hover:bg-gray-100 transition-all flex items-center justify-center ${isRefreshing ? 'text-red-500' : 'text-gray-400'}`}>
                 <i className={`fas fa-sync-alt ${isRefreshing ? 'animate-spin' : ''}`}></i>
               </button>
             )}
@@ -791,11 +792,11 @@ const App: React.FC = () => {
           setViewingSymbol(sym);
         }
       }} marketData={marketData} />}
-      {isInvestmentDraftModalOpen && <InvestmentDraftModal portfolio={portfolio} onClose={() => setIsInvestmentDraftModalOpen(false)} onSelectFund={(sym) => {
-        setIsInvestmentDraftModalOpen(false);
+      {isInvestmentDraftModalOpen && <InvestmentDraftModal portfolio={portfolio} onClose={() => { setIsInvestmentDraftModalOpen(false); setViewingSymbol(null); setViewingFromDraft(false); }} onSelectFund={(sym) => {
         setViewingSymbol(sym);
-      }} marketData={marketData} />}
-      {viewingSymbol && marketData[viewingSymbol] && <FundDetailsModal data={marketData[viewingSymbol]} onClose={() => setViewingSymbol(null)} />}
+        setViewingFromDraft(true);
+      }} marketData={marketData} sideBySide={viewingFromDraft} />}
+      {viewingSymbol && marketData[viewingSymbol] && <FundDetailsModal data={marketData[viewingSymbol]} onClose={() => { setViewingSymbol(null); setViewingFromDraft(false); }} position={viewingFromDraft ? 'right' : 'center'} animateSlide={viewingFromDraft} />}
       {virtualTradeModalFund && portfolio.some(f => f.symbol === virtualTradeModalFund) && (
         <VirtualTradeModal
           symbol={virtualTradeModalFund}

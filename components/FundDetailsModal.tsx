@@ -23,9 +23,12 @@ interface FundDetailsModalProps {
   data: ValuationData;
   onClose: () => void;
   fetchHistory?: (symbol: string) => Promise<HistoricalPoint[]>; // optional injection for tests
+  position?: 'center' | 'right';  // 定位模式：居中或右侧
+  animateSlide?: boolean;  // 是否启用滑入滑出动画（从草稿窗口打开时）
+  skipExitAnimation?: boolean;  // 是否跳过退出动画（草稿窗口关闭时）
 }
 
-export const FundDetailsModal: React.FC<FundDetailsModalProps> = ({ data, onClose, fetchHistory }) => {
+export const FundDetailsModal: React.FC<FundDetailsModalProps> = ({ data, onClose, fetchHistory, position = 'center', animateSlide = false, skipExitAnimation = false }) => {
   const [history, setHistory] = useState<HistoricalPoint[]>([]);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<'intraday' | 'history'>('intraday');
@@ -63,6 +66,20 @@ export const FundDetailsModal: React.FC<FundDetailsModalProps> = ({ data, onClos
 
   const [aiMessages, setAIMessages] = useState<Message[]>([]);
   const [aiInputValue, setAIInputValue] = useState('');
+
+  // 滑入滑出动画状态
+  const [isClosing, setIsClosing] = useState(false);
+  const [isEntering, setIsEntering] = useState(animateSlide && position === 'right'); // 初始是否在进入动画中
+
+  // 进入动画：组件挂载后立即开始
+  useEffect(() => {
+    if (animateSlide && position === 'right') {
+      // 使用requestAnimationFrame确保初始样式已应用
+      requestAnimationFrame(() => {
+        setIsEntering(false);
+      });
+    }
+  }, [animateSlide, position]);
   const [aiLoading, setAILoading] = useState(false);
   const [aiConfig, setAIConfig] = useState<AIConfiguration | null>(null);
   const [showAIConfig, setShowAIConfig] = useState(false);
@@ -645,15 +662,60 @@ export const FundDetailsModal: React.FC<FundDetailsModalProps> = ({ data, onClos
 
     const { totalShares, buyShares, sellShares, buyAmount, sellAmount, marketValue, profit } = holdings;
 
-  return (
-    <div id="fund-details-modal" className="fixed inset-0 z-[110] flex items-center justify-center p-4">
-      <div className="absolute inset-0 bg-black/60 backdrop-blur-md animate-in fade-in duration-300" onClick={onClose}></div>
+  // 计算 position：响应式设计，屏幕宽度 < 1200px 时强制使用居中
+  const isWideScreen = typeof window !== 'undefined' && window.innerWidth >= 1200;
+  const actualPosition = position === 'right' && isWideScreen ? 'right' : 'center';
 
-      <div className="relative bg-white rounded-3xl w-full max-w-2xl overflow-hidden shadow-2xl animate-in zoom-in-95 duration-300 flex flex-col max-h-[90vh]" style={{ maxWidth: '46.3rem' }}>
-        <div className="px-6 py-6 border-b border-gray-50 flex justify-between items-start">
+  // 处理关闭：如果需要动画且不是跳过退出动画，则先播放滑出动画
+  const handleClose = useCallback(() => {
+    if (animateSlide && actualPosition === 'right' && !skipExitAnimation) {
+      setIsClosing(true);
+      // 等待动画完成后再关闭
+      setTimeout(() => {
+        onClose();
+      }, 300); // 动画时长300ms
+    } else {
+      onClose();
+    }
+  }, [animateSlide, actualPosition, skipExitAnimation, onClose]);
+
+  // z-index 层级定义：B窗口层级，子弹窗层级 = B窗口层级 + 10
+  const MODAL_Z_INDEX = 140;
+  const SUBMODAL_Z_INDEX = MODAL_Z_INDEX + 10;
+
+  // 根据 position 计算容器样式
+  const containerStyle: React.CSSProperties = actualPosition === 'right'
+    ? { position: 'fixed', inset: 0, zIndex: MODAL_Z_INDEX, display: 'flex', alignItems: 'center', pointerEvents: 'none' }
+    : { position: 'fixed', inset: 0, zIndex: MODAL_Z_INDEX, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem', pointerEvents: 'auto' };
+
+  const contentStyle: React.CSSProperties = (() => {
+    const base: React.CSSProperties = { maxWidth: '46.3rem' };
+    if (actualPosition === 'right') {
+      base.marginLeft = 'calc(16px + 56rem)';
+      // 滑入滑出动画
+      if (animateSlide) {
+        base.transition = 'transform 300ms ease-in-out';
+        if (isEntering) {
+          base.transform = 'translateX(100%)'; // 初始位置：屏幕右侧外
+        } else if (isClosing) {
+          base.transform = 'translateX(100%)'; // 滑出
+        }
+      }
+    }
+    return base;
+  })();
+
+  return (
+    <div id="fund-details-modal" style={containerStyle}>
+      {actualPosition === 'center' && (
+        <div className="absolute inset-0 bg-black/60 backdrop-blur-md animate-in fade-in duration-300 pointer-events-auto" onClick={handleClose}></div>
+      )}
+
+      <div className="relative bg-white w-full max-w-2xl overflow-hidden shadow-2xl animate-in zoom-in-95 duration-300 flex flex-col max-h-[90vh] pointer-events-auto" style={contentStyle}>
+        <div className="px-6 pt-3 pb-1 border-b border-gray-50 flex justify-between items-start">
           <div className="min-w-0"> {/* allow left column to shrink and not push actions out */}
              <div className="flex items-center space-x-2 mb-1">
-               <h2 className="text-xl font-black text-gray-800 leading-tight truncate">{valuationData.name}</h2>
+               <h2 className="text-lg font-black text-gray-800 leading-tight truncate">{valuationData.name}</h2>
                <span className="px-2 py-0.5 bg-gray-100 text-gray-500 rounded text-[10px] font-mono">{data.symbol}</span>
                 {/* Rating badge */}
                 <RatingTooltip ratingInfo={ratingInfo} open={showTooltip} onOpen={() => setShowTooltip(true)} onClose={() => setShowTooltip(false)} alignRight={false} />
@@ -669,7 +731,7 @@ export const FundDetailsModal: React.FC<FundDetailsModalProps> = ({ data, onClos
             </div>
             {/* Position summary: show only when configured (fullCapacity > 0 or startDate present) */}
             {(fullCapacity > 0 || startDate || initialPrice !== null) && (
-             <div className="mt-2 text-xs text-gray-600 flex items-baseline space-x-6 whitespace-nowrap overflow-visible">
+             <div className="mt-1 text-xs text-gray-600 flex items-baseline space-x-6 whitespace-nowrap overflow-visible">
                 {fullCapacity > 0 && (
                   <span className="whitespace-nowrap">满仓份额：<span className="font-medium">{fullCapacity.toFixed(2)}份</span></span>
                 )}
@@ -732,35 +794,40 @@ export const FundDetailsModal: React.FC<FundDetailsModalProps> = ({ data, onClos
                disabled={!(fullCapacity && fullCapacity > 0)}>
                <i className="fas fa-chart-line"></i>
              </button>
-              <button onClick={onClose} className="w-10 h-10 rounded-full bg-gray-50 flex items-center justify-center text-gray-400 hover:bg-gray-100 transition-colors">
+              <button onClick={handleClose} className="w-10 h-10 rounded-full bg-gray-50 flex items-center justify-center text-gray-400 hover:bg-gray-100 transition-colors">
                 <i className="fas fa-times"></i>
               </button>
             </div>
         </div>
 
-        <div className="flex-1 overflow-hidden p-6">
+        <div className="flex-1 overflow-hidden p-1">
           {loading ? (
             <div className="h-64 flex flex-col items-center justify-center space-y-3">
               <i className="fas fa-circle-notch animate-spin text-red-500 text-3xl"></i>
               <p className="text-xs text-gray-400 font-bold uppercase tracking-widest">正在抓取净值趋势...</p>
             </div>
           ) : (
-            <div className="space-y-6">
-              <div className="relative bg-gray-50 rounded-2xl p-4">
-                <div className="mb-3 flex items-center space-x-2">
+            <div className="space-y-2">
+              <div className="relative bg-gray-50 rounded-2xl p-1">
+                <div className="flex items-center space-x-2">
                   <button onClick={() => setActiveTab('intraday')} className={`px-3 py-1 rounded text-sm ${activeTab === 'intraday' ? 'bg-white border' : 'bg-transparent text-gray-500'}`}>日内趋势图</button>
                   <button onClick={() => setActiveTab('history')} className={`px-3 py-1 rounded text-sm ${activeTab === 'history' ? 'bg-white border' : 'bg-transparent text-gray-500'}`}>历史趋势图</button>
                 </div>
                 {activeTab === 'intraday' ? (
                   // Keep intraday chart height same as history svg height to avoid layout jump when switching tabs
                   <>
-                    {/* MA placeholder to keep parity with history tab (legend area) */}
-                    <div className="mt-3 flex items-center space-x-2" aria-hidden>
-                      <div className="text-xs text-transparent font-medium">占位：均线</div>
+                    <div className="flex items-center space-x-2 h-6" aria-hidden>
+                      <div className="text-xs text-transparent font-medium">占位：均线区域</div>
                     </div>
-                    <IntradayChart points={intradayPoints} width={1000} height={chartHeight} onHover={(p) => setHoveredIntradayPoint(p)} />
+                    <div style={{ height: chartHeight }}>
+                      <IntradayChart points={intradayPoints} width={1000} height={chartHeight} onHover={(p) => setHoveredIntradayPoint(p)} />
+                    </div>
+                    {/* MA toggle placeholder to keep parity with history tab */}
+                    <div className="flex items-center space-x-2 h-6" aria-hidden>
+                      <span className="text-xs text-transparent">均线：</span>
+                    </div>
                     {/* Reserved fixed-width info area under intraday chart (time, value, change vs prev day) */}
-                    <div className="mt-2 h-14 bg-white flex items-center justify-start px-4 border-t">
+                    <div className="h-12 bg-white flex items-center justify-start px-4 border-t">
                       {(() => {
                         const hp = hoveredIntradayPoint as any;
                         const fmtTime = (ts: number) => {
@@ -803,7 +870,8 @@ export const FundDetailsModal: React.FC<FundDetailsModalProps> = ({ data, onClos
 
                 {activeTab === 'history' && (
                   <>
-                    <div className="mt-0">{/* remove extra gap between chart and MA toggles */}
+                    <div className="flex items-center space-x-2 h-6">{/* Top placeholder */}</div>
+                    <div style={{ height: chartHeight }}>
                       <HistoryChart
                          viewBox={viewBox}
                          path={path}
@@ -823,7 +891,7 @@ export const FundDetailsModal: React.FC<FundDetailsModalProps> = ({ data, onClos
                        />
                      </div>
 
-                    <div className="mt-0 flex items-center space-x-2">
+                    <div className="flex items-center space-x-2 h-6">
                       <label className="text-xs text-gray-500 font-medium">均线：</label>
                       {[5,10,20].map(n => {
                         const color = MA_COLORS[n] || '#2563eb';
@@ -844,7 +912,7 @@ export const FundDetailsModal: React.FC<FundDetailsModalProps> = ({ data, onClos
                     </div>
 
                     {/* Preallocated reserved info area under MA toggles to avoid layout jump when hover changes */}
-                    <div className="mt-2 h-14 bg-white flex items-center justify-start px-4 border-t">
+                    <div className="h-12 bg-white flex items-center justify-start px-4 border-t">
                       {(() => {
                         const hp = hoveredPoint as any;
                         let dateLabel = '—';
@@ -893,24 +961,24 @@ export const FundDetailsModal: React.FC<FundDetailsModalProps> = ({ data, onClos
                  )}
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
-                 <div className="p-4 bg-gray-50 rounded-2xl">
+              <div className="grid grid-cols-2 gap-3">
+                 <div className="p-3 bg-gray-50 rounded-2xl">
                     <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1">最后更新</p>
                     <p className="text-sm font-bold text-gray-700">{data.lastUpdated}</p>
                  </div>
-                 <div className="p-4 bg-gray-50 rounded-2xl">
+                 <div className="p-3 bg-gray-50 rounded-2xl">
                     <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1">估值日期</p>
                     <p className="text-sm font-bold text-gray-700">{valuationData.realtimeDate}</p>
                  </div>
               </div>
 
-              <a href={data.sourceUrl} target="_blank" rel="noreferrer" className="block w-full py-4 text-center text-xs font-bold text-gray-400 border border-gray-100 rounded-2xl hover:bg-gray-50 transition-colors">
+              <a href={data.sourceUrl} target="_blank" rel="noreferrer" className="block w-full py-3 text-center text-xs font-bold text-gray-400 border border-gray-100 rounded-2xl hover:bg-gray-50 transition-colors">
                 在天天基金查看详细页 <i className="fas fa-external-link-alt ml-1"></i>
               </a>
 
                {/* 基金份额计算器弹窗 */}
                {showCalculator && (
-                 <div className="fixed inset-0 z-[120] flex items-center justify-center">
+                 <div className="fixed inset-0 flex items-center justify-center" style={{ zIndex: SUBMODAL_Z_INDEX }}>
                    <div className="absolute inset-0 bg-black/40" onClick={() => { setShowCalculator(false); setCalcAmount(''); }} />
                    <div className="relative bg-white rounded-lg shadow-lg w-full max-w-sm p-6 z-30">
                      <h3 className="text-lg font-bold mb-4">基金份额计算器</h3>
@@ -954,7 +1022,7 @@ export const FundDetailsModal: React.FC<FundDetailsModalProps> = ({ data, onClos
                )}
                {/* Configuration modal (show when user clicks gear) */}
                {showConfig && (
-                 <div className="fixed inset-0 z-[120] flex items-center justify-center">
+                 <div className="fixed inset-0 flex items-center justify-center" style={{ zIndex: SUBMODAL_Z_INDEX }}>
                    <div className="absolute inset-0 bg-black/40" onClick={() => setShowConfig(false)} />
                    <div className="relative bg-white rounded-lg shadow-lg w-full max-w-md p-6 z-30">
                      <h3 className="text-lg font-bold mb-3">配置仓位（单位：份）</h3>
@@ -1030,17 +1098,17 @@ export const FundDetailsModal: React.FC<FundDetailsModalProps> = ({ data, onClos
                )}
                {/* Trade manager modal rendered into document.body to avoid z-index issues */}
                {showTrade && (typeof document !== 'undefined' && document.body ? createPortal(
-                 <TradeManager name={valuationData.name} symbol={data.symbol} currentPrice={valuationData.currentPrice} previousPrice={valuationData.previousPrice} realtimeDate={valuationData.realtimeDate} netWorthDate={valuationData.netWorthDate} onClose={() => setShowTrade(false)} />,
+                 <TradeManager name={valuationData.name} symbol={data.symbol} currentPrice={valuationData.currentPrice} previousPrice={valuationData.previousPrice} realtimeDate={valuationData.realtimeDate} netWorthDate={valuationData.netWorthDate} onClose={() => setShowTrade(false)} zIndex={SUBMODAL_Z_INDEX} />,
                  document.body
-               ) : <TradeManager name={valuationData.name} symbol={data.symbol} currentPrice={valuationData.currentPrice} previousPrice={valuationData.previousPrice} realtimeDate={valuationData.realtimeDate} netWorthDate={valuationData.netWorthDate} onClose={() => setShowTrade(false)} />)}
+               ) : <TradeManager name={valuationData.name} symbol={data.symbol} currentPrice={valuationData.currentPrice} previousPrice={valuationData.previousPrice} realtimeDate={valuationData.realtimeDate} netWorthDate={valuationData.netWorthDate} onClose={() => setShowTrade(false)} zIndex={SUBMODAL_Z_INDEX} />)}
                {showVirtual && (typeof document !== 'undefined' && document.body ? createPortal(
-                 <VirtualTradeModal symbol={data.symbol} fundName={valuationData.name} history={history} valuation={valuationData} onClose={() => setShowVirtual(false)} />,
+                 <VirtualTradeModal symbol={data.symbol} fundName={valuationData.name} history={history} valuation={valuationData} onClose={() => setShowVirtual(false)} zIndex={SUBMODAL_Z_INDEX} />,
                  document.body
-               ) : <VirtualTradeModal symbol={data.symbol} fundName={valuationData.name} history={history} valuation={valuationData} onClose={() => setShowVirtual(false)} />)}
+               ) : <VirtualTradeModal symbol={data.symbol} fundName={valuationData.name} history={history} valuation={valuationData} onClose={() => setShowVirtual(false)} zIndex={SUBMODAL_Z_INDEX} />)}
                {showProfit && (typeof document !== 'undefined' && document.body ? createPortal(
-                 <ProfitModal symbol={data.symbol} fundName={valuationData.name} currentPrice={valuationData.currentPrice} previousPrice={valuationData.previousPrice} realtimeDate={valuationData.realtimeDate} netWorthDate={valuationData.netWorthDate} initialPosition={initialPosition} initialPrice={initialPrice} initialStartDate={startDate} onClose={() => setShowProfit(false)} />,
+                 <ProfitModal symbol={data.symbol} fundName={valuationData.name} currentPrice={valuationData.currentPrice} previousPrice={valuationData.previousPrice} realtimeDate={valuationData.realtimeDate} netWorthDate={valuationData.netWorthDate} initialPosition={initialPosition} initialPrice={initialPrice} initialStartDate={startDate} onClose={() => setShowProfit(false)} zIndex={SUBMODAL_Z_INDEX} />,
                  document.body
-               ) : <ProfitModal symbol={data.symbol} fundName={valuationData.name} currentPrice={valuationData.currentPrice} previousPrice={valuationData.previousPrice} realtimeDate={valuationData.realtimeDate} netWorthDate={valuationData.netWorthDate} initialPosition={initialPosition} initialPrice={initialPrice} initialStartDate={startDate} onClose={() => setShowProfit(false)} />)}
+               ) : <ProfitModal symbol={data.symbol} fundName={valuationData.name} currentPrice={valuationData.currentPrice} previousPrice={valuationData.previousPrice} realtimeDate={valuationData.realtimeDate} netWorthDate={valuationData.netWorthDate} initialPosition={initialPosition} initialPrice={initialPrice} initialStartDate={startDate} onClose={() => setShowProfit(false)} zIndex={SUBMODAL_Z_INDEX} />)}
                {/* AI Assistant panel - rendered with portal to avoid parent re-renders */}
                {showAI && aiFundDataRef.current && (typeof document !== 'undefined' && document.body ? createPortal(
                  <AISidePanel
