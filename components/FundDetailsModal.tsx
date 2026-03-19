@@ -774,7 +774,7 @@ export const FundDetailsModal: React.FC<FundDetailsModalProps> = ({ data, onClos
             </div>
             {/* Position summary: show only when configured (fullCapacity > 0 or startDate present) */}
             {(fullCapacity > 0 || startDate || initialPrice !== null) && (
-             <div className="mt-1 text-xs text-gray-600 flex items-baseline space-x-6 whitespace-nowrap overflow-visible">
+             <div className="mt-1 text-xs text-gray-600 flex items-baseline space-x-3 whitespace-nowrap overflow-visible">
                 {fullCapacity > 0 && (
                   <span className="whitespace-nowrap">满仓份额：<span className="font-medium">{fullCapacity.toFixed(2)}份</span></span>
                 )}
