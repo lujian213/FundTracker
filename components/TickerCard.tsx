@@ -51,12 +51,14 @@ export const TickerCard: React.FC<TickerCardProps> = ({
   const hasData = !!data;
   const isNoValuation = hasData && (data!.lastUpdated?.includes('无估值') || data!.lastUpdated?.includes('已休市'));
 
-  const isTodayData = useMemo(() => {
+  // 判断估值日期是否在今天之前（每次渲染都重新计算，确保跨日场景正确）
+  const isTodayData = (() => {
     if (!hasData || !data!.realtimeDate) return true;
     const now = new Date();
     const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
-    return data!.realtimeDate === todayStr;
-  }, [hasData, data?.realtimeDate]);
+    // 估值日期在今天之前才显示"历史"标签
+    return data!.realtimeDate >= todayStr;
+  })();
 
   const change = hasData ? data!.changePercentage : 0;
   const absChange = Math.abs(change);

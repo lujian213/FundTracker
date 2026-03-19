@@ -289,5 +289,121 @@ describe('TickerCard', () => {
     expect(tooltip.textContent).toMatch(/金叉/);
   });
 
+  describe('历史标签显示逻辑', () => {
+    // 固定当前日期为 2026-03-19 进行测试
+    const FIXED_DATE = new Date('2026-03-19T12:00:00');
+
+    beforeEach(() => {
+      jest.useFakeTimers().setSystemTime(FIXED_DATE);
+    });
+
+    afterEach(() => {
+      jest.useRealTimers();
+    });
+
+    test('估值日期在今天之前时显示"历史"标签', async () => {
+      const data = {
+        symbol: '000001',
+        name: 'Sample Fund',
+        currentPrice: 1.2345,
+        previousPrice: 1.0000,
+        changePercentage: 2.5,
+        lastUpdated: '2026-03-18 15:00:00',
+        realtimeDate: '2026-03-18', // 昨天
+        netWorthDate: '2026-03-17',
+        valuationDate: '2026-03-18',
+        sourceUrl: ''
+      } as any;
+
+      await act(async () => {
+        render(<TickerCard ticker={sampleTicker} data={data} fetchHistory={mockFetchHistory} />);
+      });
+      await flushAct();
+
+      // 应该显示历史标签，格式为 "历史:MM/DD"
+      const historyLabel = screen.getByText(/历史:03\/18/);
+      expect(historyLabel).toBeInTheDocument();
+    });
+
+    test('估值日期是今天时不显示"历史"标签', async () => {
+      const data = {
+        symbol: '000001',
+        name: 'Sample Fund',
+        currentPrice: 1.2345,
+        previousPrice: 1.0000,
+        changePercentage: 2.5,
+        lastUpdated: '2026-03-19 15:00:00',
+        realtimeDate: '2026-03-19', // 今天
+        netWorthDate: '2026-03-18',
+        valuationDate: '2026-03-19',
+        sourceUrl: ''
+      } as any;
+
+      await act(async () => {
+        render(<TickerCard ticker={sampleTicker} data={data} fetchHistory={mockFetchHistory} />);
+      });
+      await flushAct();
+
+      // 不应该显示历史标签
+      expect(screen.queryByText(/历史:/)).not.toBeInTheDocument();
+    });
+
+    test('估值日期是未来时不显示"历史"标签', async () => {
+      const data = {
+        symbol: '000001',
+        name: 'Sample Fund',
+        currentPrice: 1.2345,
+        previousPrice: 1.0000,
+        changePercentage: 2.5,
+        lastUpdated: '2026-03-20 15:00:00',
+        realtimeDate: '2026-03-20', // 明天（未来）
+        netWorthDate: '2026-03-19',
+        valuationDate: '2026-03-20',
+        sourceUrl: ''
+      } as any;
+
+      await act(async () => {
+        render(<TickerCard ticker={sampleTicker} data={data} fetchHistory={mockFetchHistory} />);
+      });
+      await flushAct();
+
+      // 未来日期不应该显示历史标签
+      expect(screen.queryByText(/历史:/)).not.toBeInTheDocument();
+    });
+
+    test('无数据时不显示"历史"标签', async () => {
+      await act(async () => {
+        render(<TickerCard ticker={sampleTicker} fetchHistory={mockFetchHistory} />);
+      });
+      await flushAct();
+
+      // 无数据时没有历史标签
+      expect(screen.queryByText(/历史:/)).not.toBeInTheDocument();
+    });
+
+    test('realtimeDate为空或无效时按今天处理', async () => {
+      const dataWithoutDate = {
+        symbol: '000001',
+        name: 'Sample Fund',
+        currentPrice: 1.2345,
+        previousPrice: 1.0000,
+        changePercentage: 2.5,
+        lastUpdated: '2026-03-19 15:00:00',
+        realtimeDate: '', // 空字符串
+        netWorthDate: '2026-03-18',
+        valuationDate: '2026-03-19',
+        sourceUrl: ''
+      } as any;
+
+      await act(async () => {
+        render(<TickerCard ticker={sampleTicker} data={dataWithoutDate} fetchHistory={mockFetchHistory} />);
+      });
+      await flushAct();
+
+      // 空日期按今天处理，不显示历史标签
+      expect(screen.queryByText(/历史:/)).not.toBeInTheDocument();
+    });
+  });
+
 });
 
