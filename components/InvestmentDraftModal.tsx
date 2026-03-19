@@ -419,7 +419,7 @@ const InvestmentDraftModal: React.FC<InvestmentDraftModalProps> = ({
               <table className="w-full text-sm">
                 <thead className="sticky top-0 z-10 bg-gray-50">
                   <tr className="border-b border-gray-200" style={{ height: '35px' }}>
-                    <th className="px-2 py-1 text-center text-xs font-semibold text-gray-500 min-w-[32px] w-[32px]">
+                    <th className="px-2 py-1 text-center text-xs font-semibold text-gray-500 min-w-[28px] w-[28px]">
                       <input
                         type="checkbox"
                         checked={(() => {
@@ -430,7 +430,7 @@ const InvestmentDraftModal: React.FC<InvestmentDraftModalProps> = ({
                           return fundsWithAmount.length > 0 && fundsWithAmount.every(fund => selectedFunds.has(fund.symbol));
                         })()}
                         onChange={toggleSelectAll}
-                        className="w-4 h-4 cursor-pointer"
+                        className="w-3 h-3 cursor-pointer"
                         title="全选/取消全选有金额的记录"
                       />
                     </th>
@@ -458,13 +458,13 @@ const InvestmentDraftModal: React.FC<InvestmentDraftModalProps> = ({
                       return (
                         <tr key={fund.symbol} className={`border-b border-gray-50 hover:bg-gray-50 transition-colors ${index % 2 === 0 ? 'bg-white' : 'bg-gray-25'}`} style={{ height: '40px' }}>
                           {/* 复选框列 - 只有有金额的行才能选中 */}
-                          <td className="px-2 py-1 text-center">
+                          <td className="px-1 py-1 text-center">
                             {entry.operation !== '不操作' && entry.amount ? (
                               <input
                                 type="checkbox"
                                 checked={selectedFunds.has(fund.symbol)}
                                 onChange={() => toggleFundSelection(fund.symbol)}
-                                className="w-4 h-4 cursor-pointer"
+                                className="w-3 h-3 cursor-pointer"
                               />
                             ) : (
                               <span className="text-gray-300 text-xs">-</span>
