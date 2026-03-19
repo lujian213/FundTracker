@@ -146,8 +146,30 @@ export const FundDetailsModal: React.FC<FundDetailsModalProps> = ({ data, onClos
     }
   };
 
-  // load persisted config on mount
+  // load persisted config on mount and when symbol changes
   useEffect(() => {
+    // 先重置状态，避免显示上一个基金的数据
+    setFullCapacity(0);
+    setInitialPosition(0);
+    setStartDate(null);
+    setInitialPrice(null);
+
+    // 重置其他相关状态
+    setActiveTab('intraday');
+    setHoveredPoint(null);
+    setHoveredIntradayPoint(null);
+    setHoveredTrade(null);
+    setShowTooltip(false);
+    setShowConfig(false);
+    setShowTrade(false);
+    setShowProfit(false);
+    setShowVirtual(false);
+    setShowAI(false);
+    setAIMessages([]);
+    setAIInputValue('');
+    setCalcAmount('');
+    setMarkerTooltip(null);
+
     try {
       const raw = localStorage.getItem(storageKey);
       if (raw) {
@@ -167,7 +189,7 @@ export const FundDetailsModal: React.FC<FundDetailsModalProps> = ({ data, onClos
       // ignore parse errors
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [storageKey]);
 
 
   useEffect(() => {
