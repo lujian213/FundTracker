@@ -352,10 +352,10 @@ const InvestmentDraftModal: React.FC<InvestmentDraftModalProps> = ({
           <div className="flex items-center gap-2">
             <button
               onClick={handleCopyToClipboard}
-              className="p-2 rounded-lg bg-blue-600 text-white hover:bg-blue-700 transition-all flex items-center"
+              className="w-8 h-8 rounded-full bg-gray-50 flex items-center justify-center text-gray-400 hover:bg-gray-100"
               title={copied ? '已复制' : '复制内容到剪贴板'}
             >
-              <i className={`fas fa-${copied ? 'check' : 'copy'}`}></i>
+              <i className={`fas fa-${copied ? 'check text-green-500' : 'copy'}`}></i>
             </button>
             <button
               aria-label="关闭投资计划窗口"
