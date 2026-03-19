@@ -72,13 +72,6 @@ const InvestmentDraftModal: React.FC<InvestmentDraftModalProps> = ({
     }
   }, [portfolio]);
 
-  // Effect to update calculations when marketData changes (to reflect live updates)
-  useEffect(() => {
-    // Only reset refreshedMarketData when new marketData comes in from parent
-    // This will trigger re-calculation of all dependent values (gain/loss, shares, etc.)
-    setRefreshedMarketData(marketData || {});
-  }, [marketData]);
-
   // Save draft data to localStorage whenever it changes
   useEffect(() => {
     const today = toLocalDateKey(new Date());
@@ -90,13 +83,6 @@ const InvestmentDraftModal: React.FC<InvestmentDraftModalProps> = ({
       console.error('Error saving draft data:', e);
     }
   }, [draftData]);
-
-  // Effect to update calculations when marketData changes (to reflect live updates)
-  useEffect(() => {
-    // Only reset refreshedMarketData when new marketData comes in from parent
-    // This will trigger re-calculation of all dependent values (gain/loss, shares, etc.)
-    setRefreshedMarketData(marketData || {});
-  }, [marketData]);
 
   // Filter portfolio to only include funds with fullCapacity and sort by gain/loss percentage
   const fundsWithPositions = [...portfolio].filter(fund => {
@@ -240,25 +226,7 @@ const InvestmentDraftModal: React.FC<InvestmentDraftModalProps> = ({
     });
   };
 
-  // State to track refresh status
-  const [isRefreshing, setIsRefreshing] = useState(false);
-  const [refreshedMarketData, setRefreshedMarketData] = useState<Record<string, ValuationData> | undefined>();
-
-  // Refresh valuation data by resetting to the latest marketData passed to the component
-  // This preserves user inputs while ensuring we display the most recently available cached data
-  const handleRefresh = () => {
-    setIsRefreshing(true);
-    try {
-      // Reset to use the latest marketData passed from parent component
-      // This represents the most recently cached data without additional network calls
-      setRefreshedMarketData(marketData || {});
-    } catch (error) {
-      console.error("Error during refresh:", error);
-    } finally {
-      setIsRefreshing(false);
-    }
-  };
-
+  
   const formatCurrency = (value: number, decimals: number = 2): string => {
     if (isNaN(value) || !isFinite(value)) return '-';
 
@@ -320,7 +288,7 @@ const InvestmentDraftModal: React.FC<InvestmentDraftModalProps> = ({
     const enhancedValuation = cacheService.getValuation(fundSymbol);
 
     // If enhanced valuation is not available, fallback to marketData
-    const valuation = enhancedValuation || (refreshedMarketData || marketData || {})[fundSymbol];
+    const valuation = enhancedValuation || marketData[fundSymbol];
 
     if (!valuation || !valuation.currentPrice) return '-';
 
@@ -333,7 +301,7 @@ const InvestmentDraftModal: React.FC<InvestmentDraftModalProps> = ({
     const enhancedValuation = cacheService.getValuation(fundSymbol);
 
     // If enhanced valuation is not available, fallback to marketData
-    const valuation = enhancedValuation || (refreshedMarketData || marketData || {})[fundSymbol];
+    const valuation = enhancedValuation || marketData[fundSymbol];
 
     if (!valuation) return '-';
 
@@ -355,7 +323,7 @@ const InvestmentDraftModal: React.FC<InvestmentDraftModalProps> = ({
     const enhancedValuation = cacheService.getValuation(fundSymbol);
 
     // If enhanced valuation is not available, fallback to marketData
-    const valuation = enhancedValuation || (refreshedMarketData || marketData || {})[fundSymbol];
+    const valuation = enhancedValuation || marketData[fundSymbol];
 
     if (!valuation) return 'text-gray-400';
 
@@ -382,14 +350,6 @@ const InvestmentDraftModal: React.FC<InvestmentDraftModalProps> = ({
         <div className="px-6 pt-3 pb-1 border-b border-gray-100 flex justify-between items-center flex-shrink-0">
           <h3 className="text-lg font-bold">投资计划草稿</h3>
           <div className="flex items-center gap-2">
-            <button
-              onClick={handleRefresh}
-              disabled={isRefreshing}
-              className="p-2 rounded-lg bg-blue-600 text-white hover:bg-blue-700 transition-all flex items-center"
-              title={isRefreshing ? '正在刷新...' : '刷新估值数据'}
-            >
-              <i className={`fas fa-sync ${isRefreshing ? 'animate-spin' : ''}`}></i>
-            </button>
             <button
               onClick={handleCopyToClipboard}
               className="p-2 rounded-lg bg-blue-600 text-white hover:bg-blue-700 transition-all flex items-center"
@@ -448,12 +408,10 @@ const InvestmentDraftModal: React.FC<InvestmentDraftModalProps> = ({
                   {fundsWithPositions.length > 0 ? (
                     fundsWithPositions.map((fund, index) => {
                       const entry = draftData[fund.symbol] || { operation: '不操作', amount: '' };
-                      // Use refreshed market data if available, otherwise use original marketData
-                      const currentMarketData = refreshedMarketData || marketData || {};
 
                       // Try to get enhanced valuation from cacheService first, fallback to marketData
                       const enhancedValuation = cacheService.getValuation(fund.symbol);
-                      const valuation = enhancedValuation || currentMarketData[fund.symbol];
+                      const valuation = enhancedValuation || marketData[fund.symbol];
 
                       return (
                         <tr key={fund.symbol} className={`border-b border-gray-50 hover:bg-gray-50 transition-colors ${index % 2 === 0 ? 'bg-white' : 'bg-gray-25'}`} style={{ height: '40px' }}>
@@ -499,7 +457,7 @@ const InvestmentDraftModal: React.FC<InvestmentDraftModalProps> = ({
                                 const enhancedValuation = cacheService.getValuation(fund.symbol);
 
                                 // If enhanced valuation is not available, fallback to marketData
-                                const valuation = enhancedValuation || (refreshedMarketData || marketData || {})[fund.symbol];
+                                const valuation = enhancedValuation || marketData[fund.symbol];
 
                                 if (valuation && valuation.currentPrice) {
                                   return (
@@ -524,7 +482,7 @@ const InvestmentDraftModal: React.FC<InvestmentDraftModalProps> = ({
                                 const enhancedValuation = cacheService.getValuation(fund.symbol);
 
                                 // If enhanced valuation is not available, fallback to marketData
-                                const valuation = enhancedValuation || (refreshedMarketData || marketData || {})[fund.symbol];
+                                const valuation = enhancedValuation || marketData[fund.symbol];
 
                                 if (valuation && valuation.previousPrice) {
                                   return (
