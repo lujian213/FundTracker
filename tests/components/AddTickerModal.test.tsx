@@ -49,10 +49,9 @@ describe('AddTickerModal', () => {
     expect((textarea as HTMLTextAreaElement).value).toMatch(/000961/);
   });
 
-  test('shows alert on malformed input (invalid fund code)', () => {
+  test('shows alert modal on malformed input (invalid fund code)', () => {
     const onClose = jest.fn();
     const onAdd = jest.fn().mockResolvedValue(undefined);
-    window.alert = jest.fn();
     render(<AddTickerModal onClose={onClose} onAdd={onAdd} isLoading={false} />);
 
     const textarea = screen.getByPlaceholderText(/例如/);
@@ -61,7 +60,25 @@ describe('AddTickerModal', () => {
     const addButton = screen.getByText('添加代码');
     fireEvent.click(addButton);
 
-    expect(window.alert).toHaveBeenCalledWith(expect.stringContaining('请输入有效的基金代码'));
+    // AlertModal should appear with the error message
+    expect(screen.getByText('请输入有效的基金代码（4-6位数字）')).toBeInTheDocument();
+  });
+
+  test('shows alert modal on invalid index code', () => {
+    const onClose = jest.fn();
+    const onAdd = jest.fn().mockResolvedValue(undefined);
+    render(<AddTickerModal onClose={onClose} onAdd={onAdd} isLoading={false} />);
+
+    const textarea = screen.getByPlaceholderText(/例如/);
+    // input invalid index code like "abc"
+    fireEvent.change(textarea, { target: { value: 'abc' } });
+    const addButton = screen.getByText('添加代码');
+    fireEvent.click(addButton);
+
+    // AlertModal should appear with error message for invalid index
+    expect(screen.getByText(/请输入有效的行情代码/)).toBeInTheDocument();
+    // onAdd should NOT be called
+    expect(onAdd).not.toHaveBeenCalled();
   });
 
   test('close button triggers onClose and textarea gets focus on open', () => {

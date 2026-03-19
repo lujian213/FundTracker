@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { MarketType } from '../types';
+import AlertModal from './AlertModal';
 
 interface AddTickerModalProps {
   onClose: () => void;
@@ -16,6 +17,10 @@ export const AddTickerModal: React.FC<AddTickerModalProps> = ({ onClose, onAdd, 
     fund: '',
     domestic: '',
     global: ''
+  });
+  const [alertInfo, setAlertInfo] = useState<{ isOpen: boolean; message: string }>({
+    isOpen: false,
+    message: ''
   });
 
   const updateCurrentInput = (value: string) => {
@@ -42,7 +47,7 @@ export const AddTickerModal: React.FC<AddTickerModalProps> = ({ onClose, onAdd, 
       if (codes.length > 0) {
         onAdd(codes, MarketType.FUND);
       } else {
-        alert("请输入有效的基金代码（4-6位数字）");
+        setAlertInfo({ isOpen: true, message: "请输入有效的基金代码（4-6位数字）" });
       }
     } else {
       const codes = parts.map(c => {
@@ -69,10 +74,18 @@ export const AddTickerModal: React.FC<AddTickerModalProps> = ({ onClose, onAdd, 
         return code;
       });
 
-      if (codes.length > 0) {
-        onAdd(codes, MarketType.INDEX);
+      // 验证指数代码格式：必须是 "数字.数字" 或 "数字.字母" 格式
+      const validIndexPattern = /^\d+\.\d+$|^\d+\.[A-Za-z]+$/;
+      const validCodes = codes.filter(c => validIndexPattern.test(c));
+
+      if (validCodes.length > 0) {
+        onAdd(validCodes, MarketType.INDEX);
+        // 如果有无效代码，显示提示
+        if (validCodes.length < codes.length) {
+          setAlertInfo({ isOpen: true, message: `部分代码格式无效，已添加 ${validCodes.length} 个有效代码` });
+        }
       } else {
-        alert("请输入有效的行情代码");
+        setAlertInfo({ isOpen: true, message: "请输入有效的行情代码（如 100.NDX 或 1.000001）" });
       }
     }
   };
@@ -206,6 +219,12 @@ export const AddTickerModal: React.FC<AddTickerModalProps> = ({ onClose, onAdd, 
           </form>
         </div>
       </div>
+
+      <AlertModal
+        isOpen={alertInfo.isOpen}
+        message={alertInfo.message}
+        onClose={() => setAlertInfo({ isOpen: false, message: '' })}
+      />
     </div>
   );
 };

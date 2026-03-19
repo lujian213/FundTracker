@@ -4,6 +4,8 @@ import { AIConfigProfile, AITemplate, AIConfigManager } from '../types/aiConfigT
 import { getAIConfigManager, saveAIConfigManager, setActiveAIConfig, addAIConfig, updateAIConfig, deleteAIConfig, getAITemplates, validateAIConfig, createConfigFromTemplate } from '../services/aiConfigService';
 import { getAITemplatesAsync } from '../services/dynamicAITemplateService';
 import { createPortal } from 'react-dom';
+import AlertModal from './AlertModal';
+import { ConfirmDialog } from './ConfirmDialog';
 
 interface AIConfigModalProps {
   isOpen: boolean;
@@ -25,6 +27,10 @@ const AIConfigModal: React.FC<AIConfigModalProps> = ({ isOpen, onClose }) => {
   const [showTemplates, setShowTemplates] = useState(false);
   const [templateName, setTemplateName] = useState('');
   const [showDeleteConfirmation, setShowDeleteConfirmation] = useState<{show: boolean, id: string | null}>({show: false, id: null});
+  const [alertInfo, setAlertInfo] = useState<{ isOpen: boolean; message: string }>({
+    isOpen: false,
+    message: ''
+  });
 
   // 加载配置
   useEffect(() => {
@@ -125,7 +131,7 @@ const AIConfigModal: React.FC<AIConfigModalProps> = ({ isOpen, onClose }) => {
 
   const handleUseTemplate = () => {
     if (!selectedTemplate || !templateName.trim()) {
-      alert('请选择模板并输入配置名称'); // We can use alert here for simple validation
+      setAlertInfo({ isOpen: true, message: '请选择模板并输入配置名称' });
       return;
     }
 
@@ -143,7 +149,7 @@ const AIConfigModal: React.FC<AIConfigModalProps> = ({ isOpen, onClose }) => {
       setTemplateName('');
       setSelectedTemplate('');
     } else {
-      alert('模板不存在');
+      setAlertInfo({ isOpen: true, message: '模板不存在' });
     }
   };
 
@@ -386,36 +392,23 @@ const AIConfigModal: React.FC<AIConfigModalProps> = ({ isOpen, onClose }) => {
       </div>
 
       {/* 删除确认对话框 */}
-      {showDeleteConfirmation.show && (
-        <div className="fixed inset-0 z-[140] flex items-center justify-center p-4">
-          <div className="absolute inset-0 bg-black/60 backdrop-blur-md animate-in fade-in duration-300"></div>
+      <ConfirmDialog
+        isOpen={showDeleteConfirmation.show}
+        title="确认删除"
+        message="确定要删除这个配置吗？此操作不可撤销。"
+        onConfirm={confirmDeleteConfig}
+        onCancel={cancelDeleteConfig}
+        confirmText="确认删除"
+        cancelText="取消"
+        type="danger"
+      />
 
-          <div className="relative bg-white rounded-2xl w-full max-w-md overflow-hidden shadow-2xl animate-in zoom-in-95 duration-300">
-            <div className="px-6 py-4 border-b border-gray-100">
-              <h3 className="text-lg font-bold text-gray-800">确认删除</h3>
-            </div>
-
-            <div className="p-6">
-              <p className="text-gray-600">确定要删除这个配置吗？此操作不可撤销。</p>
-            </div>
-
-            <div className="px-6 py-4 bg-gray-50 border-t border-gray-200 flex justify-end space-x-3">
-              <button
-                onClick={cancelDeleteConfig}
-                className="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition-colors"
-              >
-                取消
-              </button>
-              <button
-                onClick={confirmDeleteConfig}
-                className="px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 transition-colors"
-              >
-                确认删除
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      {/* 提示弹窗 */}
+      <AlertModal
+        isOpen={alertInfo.isOpen}
+        message={alertInfo.message}
+        onClose={() => setAlertInfo({ isOpen: false, message: '' })}
+      />
     </>,
     document.body
   );
