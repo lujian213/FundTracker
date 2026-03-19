@@ -28,6 +28,7 @@ const InvestmentDraftModal: React.FC<InvestmentDraftModalProps> = ({
 }) => {
   const [draftData, setDraftData] = useState<Record<string, DraftEntry>>({});
   const [copied, setCopied] = useState(false);
+  const [selectedFunds, setSelectedFunds] = useState<Set<string>>(new Set()); // 选中的基金
 
   // Initialize draft data from localStorage and filter for funds with fullCapacity
   useEffect(() => {
@@ -182,11 +183,44 @@ const InvestmentDraftModal: React.FC<InvestmentDraftModalProps> = ({
     });
   };
 
+  // 切换单个基金的选中状态
+  const toggleFundSelection = (fundSymbol: string) => {
+    setSelectedFunds(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(fundSymbol)) {
+        newSet.delete(fundSymbol);
+      } else {
+        newSet.add(fundSymbol);
+      }
+      return newSet;
+    });
+  };
+
+  // 全选/取消全选（只选择有金额的行）
+  const toggleSelectAll = () => {
+    const fundsWithAmount = fundsWithPositions
+      .filter(fund => {
+        const entry = draftData[fund.symbol];
+        return entry && entry.operation !== '不操作' && entry.amount;
+      })
+      .map(fund => fund.symbol);
+
+    setSelectedFunds(prev => {
+      // 如果所有有金额的基金都已选中，则取消全选
+      if (fundsWithAmount.every(sym => prev.has(sym))) {
+        return new Set();
+      }
+      // 否则全选所有有金额的基金
+      return new Set(fundsWithAmount);
+    });
+  };
+
   const handleCopyToClipboard = () => {
     // Format the content according to the specified format
+    // 只复制被选中的记录
     const todayTips = fundsWithPositions
       .map(fund => draftData[fund.symbol])
-      .filter(entry => entry && entry.operation !== '不操作' && entry.amount)
+      .filter(entry => entry && entry.operation !== '不操作' && entry.amount && selectedFunds.has(entry.fundSymbol))
       .map(entry => {
         const fund = portfolio.find(f => f.symbol === entry.fundSymbol);
         const fundName = fund?.name || entry.fundSymbol;
@@ -385,6 +419,21 @@ const InvestmentDraftModal: React.FC<InvestmentDraftModalProps> = ({
               <table className="w-full text-sm">
                 <thead className="sticky top-0 z-10 bg-gray-50">
                   <tr className="border-b border-gray-200" style={{ height: '35px' }}>
+                    <th className="px-2 py-1 text-center text-xs font-semibold text-gray-500 min-w-[32px] w-[32px]">
+                      <input
+                        type="checkbox"
+                        checked={(() => {
+                          const fundsWithAmount = fundsWithPositions.filter(fund => {
+                            const entry = draftData[fund.symbol];
+                            return entry && entry.operation !== '不操作' && entry.amount;
+                          });
+                          return fundsWithAmount.length > 0 && fundsWithAmount.every(fund => selectedFunds.has(fund.symbol));
+                        })()}
+                        onChange={toggleSelectAll}
+                        className="w-4 h-4 cursor-pointer"
+                        title="全选/取消全选有金额的记录"
+                      />
+                    </th>
                     <th className="px-2 py-1 text-left text-xs font-semibold text-gray-500 min-w-[140px] w-[140px]">基金名称</th>
                     <th className="px-2 py-1 text-left text-xs font-semibold text-gray-500 min-w-[90px] w-[90px]">实时估值</th>
                     <th className="px-2 py-1 text-left text-xs font-semibold text-gray-500 min-w-[90px] w-[90px]">前值</th>
@@ -408,6 +457,19 @@ const InvestmentDraftModal: React.FC<InvestmentDraftModalProps> = ({
 
                       return (
                         <tr key={fund.symbol} className={`border-b border-gray-50 hover:bg-gray-50 transition-colors ${index % 2 === 0 ? 'bg-white' : 'bg-gray-25'}`} style={{ height: '40px' }}>
+                          {/* 复选框列 - 只有有金额的行才能选中 */}
+                          <td className="px-2 py-1 text-center">
+                            {entry.operation !== '不操作' && entry.amount ? (
+                              <input
+                                type="checkbox"
+                                checked={selectedFunds.has(fund.symbol)}
+                                onChange={() => toggleFundSelection(fund.symbol)}
+                                className="w-4 h-4 cursor-pointer"
+                              />
+                            ) : (
+                              <span className="text-gray-300 text-xs">-</span>
+                            )}
+                          </td>
                           <td
                             className="px-2 py-1 text-left text-xs text-gray-700 cursor-pointer hover:underline truncate max-w-[140px] overflow-hidden"
                             onClick={() => {
@@ -534,7 +596,7 @@ const InvestmentDraftModal: React.FC<InvestmentDraftModalProps> = ({
                     })
                   ) : (
                     <tr>
-                      <td colSpan={8} className="px-4 py-2 text-center text-sm text-gray-500" style={{ height: '40px' }}>
+                      <td colSpan={9} className="px-4 py-2 text-center text-sm text-gray-500" style={{ height: '40px' }}>
                         没有配置仓位的基金
                       </td>
                     </tr>
