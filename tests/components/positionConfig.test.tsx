@@ -146,7 +146,7 @@ describe('position config persistence and UI', () => {
     await waitFor(() => expect(fetchFundHistory).toHaveBeenCalled());
 
     // market/value/profit row should not be displayed when fullCapacity not configured
-    expect(screen.queryByText(/市场价值/)).toBeNull();
+    expect(screen.queryByText(/市值/)).toBeNull();
     expect(screen.queryByText(/整体盈利/)).toBeNull();
 
     // trade manager button should be present but disabled
@@ -174,6 +174,6 @@ describe('position config persistence and UI', () => {
     expect(tradeBtnAfter).not.toBeDisabled();
 
     // market/value row should now be visible
-    expect(screen.getByText(/市场价值/)).toBeTruthy();
+    expect(screen.getByText(/市值/)).toBeTruthy();
   });
 });
