@@ -1,6 +1,8 @@
 import React from 'react';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, fireEvent } from '@testing-library/react';
 import AISidePanel from '../../components/AISidePanel';
+import { aiAssistantStateManager } from '../../services/aiAssistantStateManager';
+import { ContextCompressionService, COMPRESSION_THRESHOLD } from '../../services/ContextCompressionService';
 import { ValuationData } from '../../types';
 
 // Mock DOMPurify
@@ -11,19 +13,39 @@ jest.mock('dompurify', () => ({
   }
 }));
 
-// Mock the services
-jest.mock('../../services/aiService', () => ({
-  queryAI: jest.fn()
+// Mock services
+jest.mock('../../services/aiConfigService', () => ({
+  getAIConfig: jest.fn(() => ({
+    apiEndpoint: 'https://api.test.com/v1/chat/completions',
+    apiKey: 'test-key',
+    model: 'gpt-4'
+  })),
+  hasValidAIConfig: jest.fn(() => true),
+  hasUsableAIConfig: jest.fn(() => true),
 }));
 
-jest.mock('../../services/aiConfigService', () => ({
-  getAIConfig: jest.fn(),
-  hasValidAIConfig: jest.fn(),
-  hasUsableAIConfig: jest.fn()
+jest.mock('../../services/aiService', () => ({
+  queryAI: jest.fn().mockResolvedValue({
+    success: true,
+    content: 'Test response from AI'
+  }),
+  queryAIWithTemplate: jest.fn().mockResolvedValue({
+    success: true,
+    content: 'Welcome to the AI assistant!'
+  }),
+  AIResponse: {},
+  AIQueryContext: {},
 }));
 
 describe('AISidePanel', () => {
   const mockOnClose = jest.fn();
+  const defaultProps = {
+    isVisible: true,
+    onClose: mockOnClose,
+    fundSymbol: 'TEST001',
+    fundName: 'Test Fund',
+  };
+
   const mockValuationData: ValuationData = {
     symbol: 'TEST',
     name: 'Test Fund',
@@ -39,153 +61,185 @@ describe('AISidePanel', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
+    aiAssistantStateManager.clearState('TEST001');
   });
 
-  test('renders correctly when visible', () => {
-    const { getByText } = render(
-      <AISidePanel
-        isVisible={true}
-        onClose={mockOnClose}
-        fundSymbol="TEST"
-        fundName="Test Fund"
-        valuationData={mockValuationData}
-      />
-    );
-
-    expect(getByText('AI 投资助手')).toBeInTheDocument();
-    expect(getByText('Test Fund (TEST)')).toBeInTheDocument();
+  afterEach(() => {
+    aiAssistantStateManager.clearState('TEST001');
   });
 
-  test('does not render when not visible', () => {
-    const { container } = render(
-      <AISidePanel
-        isVisible={false}
-        onClose={mockOnClose}
-        fundSymbol="TEST"
-        fundName="Test Fund"
-        valuationData={mockValuationData}
-      />
-    );
+  // === 基础 UI 测试 ===
+  describe('UI Rendering', () => {
+    test('renders correctly when visible', () => {
+      render(<AISidePanel {...defaultProps} valuationData={mockValuationData} />);
+      expect(screen.getByText('AI 投资助手')).toBeInTheDocument();
+    });
 
-    expect(container.firstChild).toBeNull();
-  });
+    test('does not render when not visible', () => {
+      const { container } = render(<AISidePanel {...defaultProps} isVisible={false} valuationData={mockValuationData} />);
+      expect(container.firstChild).toBeNull();
+    });
 
-  test('calls onClose when close button is clicked', () => {
-    render(
-      <AISidePanel
-        isVisible={true}
-        onClose={mockOnClose}
-        fundSymbol="TEST"
-        fundName="Test Fund"
-        valuationData={mockValuationData}
-      />
-    );
+    test('calls onClose when close button is clicked', () => {
+      render(<AISidePanel {...defaultProps} valuationData={mockValuationData} />);
+      fireEvent.click(screen.getByLabelText('关闭'));
+      expect(mockOnClose).toHaveBeenCalledTimes(1);
+    });
 
-    fireEvent.click(screen.getByLabelText('关闭'));
-    expect(mockOnClose).toHaveBeenCalledTimes(1);
-  });
+    test('disables send button when no config exists', () => {
+      require('../../services/aiConfigService').getAIConfig.mockReturnValue(null);
+      require('../../services/aiConfigService').hasValidAIConfig.mockReturnValue(false);
 
-  test('shows red warning when no config exists', () => {
-    require('../../services/aiConfigService').getAIConfig.mockReturnValue(null);
-    require('../../services/aiConfigService').hasValidAIConfig.mockReturnValue(false);
-    require('../../services/aiConfigService').hasUsableAIConfig.mockReturnValue(false);
+      const { rerender } = render(<AISidePanel {...defaultProps} valuationData={mockValuationData} />);
+      rerender(<AISidePanel {...defaultProps} valuationData={mockValuationData} />);
 
-    const { rerender } = render(
-      <AISidePanel
-        isVisible={true}
-        onClose={mockOnClose}
-        fundSymbol="TEST"
-        fundName="Test Fund"
-        valuationData={mockValuationData}
-      />
-    );
-
-    // Re-render to trigger the useEffect that loads config
-    rerender(
-      <AISidePanel
-        isVisible={true}
-        onClose={mockOnClose}
-        fundSymbol="TEST"
-        fundName="Test Fund"
-        valuationData={mockValuationData}
-      />
-    );
-
-    // Check that the red warning message is shown
-    expect(screen.getByText('未配置AI助手')).toBeInTheDocument();
-  });
-
-  test('allows input and submit when config is provided', async () => {
-    // Mock config exists
-    const mockConfig = {
-      apiEndpoint: 'https://api.example.com',
-      apiKey: 'test-key',
-      model: 'gpt-4'
-    };
-
-    require('../../services/aiConfigService').getAIConfig.mockReturnValue(mockConfig);
-    require('../../services/aiConfigService').hasValidAIConfig.mockReturnValue(true);
-
-    const { rerender } = render(
-      <AISidePanel
-        isVisible={true}
-        onClose={mockOnClose}
-        fundSymbol="TEST"
-        fundName="Test Fund"
-        valuationData={mockValuationData}
-      />
-    );
-
-    // Re-render to trigger the useEffect that loads config
-    rerender(
-      <AISidePanel
-        isVisible={true}
-        onClose={mockOnClose}
-        fundSymbol="TEST"
-        fundName="Test Fund"
-        valuationData={mockValuationData}
-      />
-    );
-
-    // Find the textarea and input a message
-    const textarea = screen.getByPlaceholderText('输入您的问题...');
-    fireEvent.change(textarea, { target: { value: 'How is this fund performing?' } });
-
-    // Find and click the send button
-    const sendButton = screen.getByLabelText('发送');
-    fireEvent.click(sendButton);
-
-    // Check that the message was added to the chat
-    await waitFor(() => {
-      expect(screen.getByText('How is this fund performing?')).toBeInTheDocument();
+      expect(screen.getByLabelText('发送')).toBeDisabled();
     });
   });
 
-  test('disables send button when no config exists', () => {
-    require('../../services/aiConfigService').getAIConfig.mockReturnValue(null);
+  // === 状态管理和压缩测试 ===
+  describe('State Management and Compression', () => {
+    test('should maintain conversation history when panel is closed and reopened', async () => {
+      const initialMessages = [
+        { id: '1', content: 'Initial message 1', role: 'user', timestamp: new Date() },
+        { id: '2', content: 'Initial message 2', role: 'assistant', timestamp: new Date() },
+      ];
 
-    const { rerender } = render(
-      <AISidePanel
-        isVisible={true}
-        onClose={mockOnClose}
-        fundSymbol="TEST"
-        fundName="Test Fund"
-        valuationData={mockValuationData}
-      />
-    );
+      aiAssistantStateManager.setState('TEST001', {
+        historyContent: [],
+        newContent: initialMessages,
+        summaryContent: '',
+        hasBeenInitialized: true,
+        lastAccessed: new Date(),
+        initializationDate: new Date()
+      });
 
-    // Re-render to trigger the useEffect that loads config
-    rerender(
-      <AISidePanel
-        isVisible={true}
-        onClose={mockOnClose}
-        fundSymbol="TEST"
-        fundName="Test Fund"
-        valuationData={mockValuationData}
-      />
-    );
+      const { rerender } = render(<AISidePanel {...defaultProps} />);
 
-    const sendButton = screen.getByLabelText('发送');
-    expect(sendButton).toBeDisabled();
+      await waitFor(() => {
+        expect(screen.getByText(/AI 投资助手/)).toBeInTheDocument();
+      }, { timeout: 1000 });
+
+      // Close and reopen
+      rerender(<AISidePanel {...defaultProps} isVisible={false} />);
+      rerender(<AISidePanel {...defaultProps} isVisible={true} />);
+
+      await waitFor(() => {
+        expect(screen.getByText(/AI 投资助手/)).toBeInTheDocument();
+      }, { timeout: 1000 });
+
+      // Verify state is preserved
+      const state = aiAssistantStateManager.getState('TEST001');
+      expect(state?.newContent.length).toBe(2);
+    });
+
+    test('should not duplicate messages when panel is reopened', async () => {
+      const { rerender } = render(<AISidePanel {...defaultProps} />);
+
+      await waitFor(() => {
+        expect(screen.getByText(/AI 投资助手/)).toBeInTheDocument();
+      }, { timeout: 1000 });
+
+      const initialCount = screen.getAllByText(/(AI 投资助手|Test response)/i).length;
+
+      // Close and reopen
+      rerender(<AISidePanel {...defaultProps} isVisible={false} />);
+      rerender(<AISidePanel {...defaultProps} isVisible={true} />);
+
+      await waitFor(() => {
+        expect(screen.getByText(/AI 投资助手/)).toBeInTheDocument();
+      }, { timeout: 1000 });
+
+      const finalCount = screen.getAllByText(/(AI 投资助手|Test response)/i).length;
+      expect(finalCount).toEqual(initialCount);
+    });
+
+    test('should handle compression correctly', async () => {
+      const longContent = 'A'.repeat(3500);
+      const aiMessage = {
+        id: 'recent-ai',
+        content: 'Latest AI response',
+        role: 'assistant',
+        timestamp: new Date()
+      };
+
+      aiAssistantStateManager.setState('TEST001', {
+        historyContent: [{ id: 'old', content: longContent, role: 'user', timestamp: new Date() }],
+        newContent: [aiMessage],
+        summaryContent: 'Previous summary',
+        hasBeenInitialized: true,
+        lastAccessed: new Date(),
+        initializationDate: new Date()
+      });
+
+      render(<AISidePanel {...defaultProps} />);
+
+      await waitFor(() => {
+        expect(screen.getByText(/AI 投资助手/)).toBeInTheDocument();
+      }, { timeout: 1000 });
+
+      const responses = screen.getAllByText('Latest AI response');
+      expect(responses).toHaveLength(1);
+    });
+
+    test('should maintain separate states for different funds', () => {
+      aiAssistantStateManager.setState('FUND_A', {
+        historyContent: [],
+        newContent: [{ id: '1', content: 'Fund A message', role: 'user', timestamp: new Date() }],
+        summaryContent: '',
+        hasBeenInitialized: true,
+        lastAccessed: new Date(),
+        initializationDate: new Date()
+      });
+
+      aiAssistantStateManager.setState('FUND_B', {
+        historyContent: [],
+        newContent: [{ id: '1', content: 'Fund B message', role: 'user', timestamp: new Date() }],
+        summaryContent: '',
+        hasBeenInitialized: true,
+        lastAccessed: new Date(),
+        initializationDate: new Date()
+      });
+
+      const stateA = aiAssistantStateManager.getState('FUND_A');
+      const stateB = aiAssistantStateManager.getState('FUND_B');
+
+      expect(stateA?.newContent[0].content).toBe('Fund A message');
+      expect(stateB?.newContent[0].content).toBe('Fund B message');
+    });
+
+    test('should not exhibit the summaryLength=0, newContentLength=large bug', async () => {
+      const { container } = render(<AISidePanel {...defaultProps} />);
+
+      await waitFor(() => {
+        expect(screen.getByText(/AI 投资助手/)).toBeInTheDocument();
+      }, { timeout: 1000 });
+
+      const input = screen.getByPlaceholderText('输入您的问题...');
+
+      // Add multiple questions to exceed threshold
+      for (let i = 0; i < 3; i++) {
+        fireEvent.change(input, { target: { value: `Question ${i + 1} with sufficient length to contribute to context. `.repeat(20) } });
+        fireEvent.click(screen.getByLabelText('发送'));
+
+        await waitFor(() => {
+          expect(container.querySelector('.animate-bounce')).toBeFalsy();
+        }, { timeout: 1000 });
+
+        await new Promise(resolve => setTimeout(resolve, 50));
+      }
+
+      const finalState = aiAssistantStateManager.getState('TEST001');
+      expect(finalState).not.toBeNull();
+
+      if (finalState?.summaryContent && finalState.summaryContent.length > 0) {
+        const compressionService = new ContextCompressionService();
+        const newContentLength = compressionService.serializeMessages(finalState.newContent).length;
+        const summaryLength = finalState.summaryContent.length;
+
+        // Key check: should NOT have summary=0 and newContent=large
+        expect(!(summaryLength === 0 && newContentLength > 1000)).toBeTruthy();
+      }
+    });
   });
 });

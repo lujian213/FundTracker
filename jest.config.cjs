@@ -13,8 +13,10 @@ module.exports = {
     '^react-markdown$': '<rootDir>/__mocks__/react-markdown.tsx',
     '^remark-gfm$': '<rootDir>/__mocks__/remark-gfm.ts'
   },
-  // Run suites in parallel across CPU cores (50% of available cores)
-  maxWorkers: '50%',
-  // Default timeout per test: 10 s covers async integration tests; pure unit tests finish in <100 ms
-  testTimeout: 10000,
+  // Run suites in parallel across CPU cores (75% for better performance)
+  maxWorkers: '75%',
+  // Default timeout per test: 5s is usually enough
+  testTimeout: 5000,
+  // Cache transform results for faster subsequent runs
+  cache: true,
 };
