@@ -203,9 +203,10 @@ describe('TradeManager initial position record', () => {
 
     // Should show 建仓 record
     expect(screen.getByText('建仓')).toBeInTheDocument();
-    expect(screen.getByText(/100.00 份/)).toBeInTheDocument();
-    // Date should be shown
-    expect(screen.getByText('2024-01-15')).toBeInTheDocument();
+    // 数量列只显示数字，没有"份"后缀（合计行也会显示相同数量）
+    expect(screen.getAllByText('100.00').length).toBeGreaterThanOrEqual(1);
+    // 日期格式为 yyyy/MM/dd
+    expect(screen.getByText('2024/01/15')).toBeInTheDocument();
     // Amount should be 100 * 1.2 = 120.00
     expect(screen.getByText('120.00')).toBeInTheDocument();
   });
@@ -246,9 +247,9 @@ describe('TradeManager initial position record', () => {
     expect(screen.getByText('建仓')).toBeInTheDocument();
 
     // Should NOT have edit/delete buttons for initial position record
-    // (only the 建仓 row exists, no 编辑/删除 buttons should be present)
-    const editButtons = screen.queryAllByText('编辑');
-    const deleteButtons = screen.queryAllByText('删除');
+    // (only the 建仓 row exists, no edit/delete icon buttons should be present)
+    const editButtons = screen.queryAllByTitle('编辑');
+    const deleteButtons = screen.queryAllByTitle('删除');
     expect(editButtons.length).toBe(0);
     expect(deleteButtons.length).toBe(0);
   });
@@ -278,13 +279,304 @@ describe('TradeManager initial position record', () => {
     expect(screen.getByText('建仓')).toBeInTheDocument();
 
     // All dates should be visible (we have 3 records, pageSize=10, so all on one page)
-    // Records are sorted by date DESC, so order should be: 2024-06-15, 2024-03-20, 2024-01-15
-    const dateElements = screen.getAllByText(/2024-\d{2}-\d{2}/);
+    // Records are sorted by date DESC, so order should be: 2024/06/15, 2024/03/20, 2024/01/15
+    // Date format is now yyyy/MM/dd (slash-separated)
+    const dateElements = screen.getAllByText(/2024\/\d{2}\/\d{2}/);
     expect(dateElements.length).toBe(3);
 
-    // The first visible date should be the most recent (2024-06-15)
-    expect(dateElements[0]).toHaveTextContent('2024-06-15');
-    // The last visible date should be the earliest - which is the 建仓 date (2024-01-15)
-    expect(dateElements[2]).toHaveTextContent('2024-01-15');
+    // The first visible date should be the most recent (2024/06/15)
+    expect(dateElements[0]).toHaveTextContent('2024/06/15');
+    // The last visible date should be the earliest - which is the 建仓 date (2024/01/15)
+    expect(dateElements[2]).toHaveTextContent('2024/01/15');
+  });
+});
+
+// ─── TradeManager view switching tests ───────────────────────────────────
+describe('TradeManager view switching', () => {
+  beforeEach(() => {
+    (fetchFundHistory as jest.Mock).mockResolvedValue([]);
+  });
+
+  test('default view is normal', async () => {
+    render(
+      <TradeManager symbol="TEST001" currentPrice={1.5} onClose={jest.fn()} />
+    );
+
+    await waitFor(() => expect(fetchFundHistory).toHaveBeenCalled());
+
+    const normalRadio = screen.getByLabelText('普通视图') as HTMLInputElement;
+    expect(normalRadio.checked).toBe(true);
+  });
+
+  test('can switch to fifo view', async () => {
+    render(
+      <TradeManager symbol="TEST001" currentPrice={1.5} onClose={jest.fn()} />
+    );
+
+    await waitFor(() => expect(fetchFundHistory).toHaveBeenCalled());
+
+    const fifoRadio = screen.getByLabelText('先进先出') as HTMLInputElement;
+    fireEvent.click(fifoRadio);
+
+    expect(fifoRadio.checked).toBe(true);
+    // FIFO view now implemented - should show empty state or records
+    expect(screen.getByText(/共 \d+ 条记录/)).toBeInTheDocument();
+  });
+
+  test('can switch to lifo view', async () => {
+    render(
+      <TradeManager symbol="TEST001" currentPrice={1.5} onClose={jest.fn()} />
+    );
+
+    await waitFor(() => expect(fetchFundHistory).toHaveBeenCalled());
+
+    const lifoRadio = screen.getByLabelText('后进先出') as HTMLInputElement;
+    fireEvent.click(lifoRadio);
+
+    expect(lifoRadio.checked).toBe(true);
+    // LIFO view now implemented - should show empty state or records
+    expect(screen.getByText(/共 \d+ 条记录/)).toBeInTheDocument();
+  });
+});
+
+// ─── TradeManager profit/loss display tests ───────────────────────────────
+describe('TradeManager profit/loss display', () => {
+  beforeEach(() => {
+    (fetchFundHistory as jest.Mock).mockResolvedValue([]);
+    localStorage.clear();
+  });
+
+  test('shows positive profit rate in red', async () => {
+    // 买入价 1.0，当前价 1.5，盈亏率 = (1.5-1.0)/1.0 = 50%
+    setTradesForSymbol('TEST001', [
+      { id: 't1', date: '2024-06-15', type: 'buy', shares: 100, price: 1.0, fee: 0 },
+    ] as any);
+
+    render(
+      <TradeManager symbol="TEST001" currentPrice={1.5} onClose={jest.fn()} />
+    );
+
+    await waitFor(() => expect(fetchFundHistory).toHaveBeenCalled());
+
+    // 应该显示 +50.00%
+    const profitRateElement = screen.getByText('+50.00%');
+    expect(profitRateElement).toBeInTheDocument();
+    expect(profitRateElement).toHaveClass('text-red-500');
+  });
+
+  test('shows negative profit rate in green', async () => {
+    // 买入价 2.0，当前价 1.5，盈亏率 = (1.5-2.0)/2.0 = -25%
+    setTradesForSymbol('TEST001', [
+      { id: 't1', date: '2024-06-15', type: 'buy', shares: 100, price: 2.0, fee: 0 },
+    ] as any);
+
+    render(
+      <TradeManager symbol="TEST001" currentPrice={1.5} onClose={jest.fn()} />
+    );
+
+    await waitFor(() => expect(fetchFundHistory).toHaveBeenCalled());
+
+    // 应该显示 -25.00%
+    const profitRateElement = screen.getByText('-25.00%');
+    expect(profitRateElement).toBeInTheDocument();
+    expect(profitRateElement).toHaveClass('text-green-500');
+  });
+
+  test('shows zero profit rate as dash', async () => {
+    // 买入价 1.5，当前价 1.5，盈亏率 = 0
+    setTradesForSymbol('TEST001', [
+      { id: 't1', date: '2024-06-15', type: 'buy', shares: 100, price: 1.5, fee: 0 },
+    ] as any);
+
+    render(
+      <TradeManager symbol="TEST001" currentPrice={1.5} onClose={jest.fn()} />
+    );
+
+    await waitFor(() => expect(fetchFundHistory).toHaveBeenCalled());
+
+    // 盈亏率列应该显示 "-"
+    const cells = screen.getAllByText('-');
+    // 至少有两个 - (手续费和盈亏率都是0)
+    expect(cells.length).toBeGreaterThanOrEqual(2);
+  });
+
+  test('shows zero fee as dash', async () => {
+    setTradesForSymbol('TEST001', [
+      { id: 't1', date: '2024-06-15', type: 'buy', shares: 100, price: 1.5, fee: 0 },
+    ] as any);
+
+    render(
+      <TradeManager symbol="TEST001" currentPrice={1.5} onClose={jest.fn()} />
+    );
+
+    await waitFor(() => expect(fetchFundHistory).toHaveBeenCalled());
+
+    // 手续费列应该显示 "-"
+    expect(screen.getAllByText('-').length).toBeGreaterThanOrEqual(1);
+  });
+
+  test('shows pagination format correctly', async () => {
+    setTradesForSymbol('TEST001', [
+      { id: 't1', date: '2024-06-15', type: 'buy', shares: 100, price: 1.5, fee: 0 },
+    ] as any);
+
+    render(
+      <TradeManager symbol="TEST001" currentPrice={1.5} onClose={jest.fn()} />
+    );
+
+    await waitFor(() => expect(fetchFundHistory).toHaveBeenCalled());
+
+    // 分页格式：共X条记录  第 Y / Z 页
+    expect(screen.getByText(/共 1 条记录/)).toBeInTheDocument();
+    expect(screen.getByText(/第 1 \/ 1 页/)).toBeInTheDocument();
+  });
+
+  test('initial position shows dash in operation column', async () => {
+    render(
+      <TradeManager
+        symbol="TEST001"
+        currentPrice={1.5}
+        onClose={jest.fn()}
+        initialPosition={100}
+        initialPrice={1.2}
+        startDate="2024-01-15"
+      />
+    );
+
+    await waitFor(() => expect(fetchFundHistory).toHaveBeenCalled());
+
+    // 建仓记录应该在表格中
+    expect(screen.getByText('建仓')).toBeInTheDocument();
+
+    // 操作列应该显示 "-" 而不是编辑/删除按钮
+    // 检查没有编辑按钮（建仓记录没有）
+    const editButtons = screen.queryAllByTitle('编辑');
+    expect(editButtons.length).toBe(0);
+  });
+
+  test('formats numbers with thousand separators', async () => {
+    // 使用大数字测试千分位
+    setTradesForSymbol('TEST001', [
+      { id: 't1', date: '2024-06-15', type: 'buy', shares: 12345.67, price: 1.5, fee: 100 },
+    ] as any);
+
+    render(
+      <TradeManager symbol="TEST001" currentPrice={1.5} onClose={jest.fn()} />
+    );
+
+    await waitFor(() => expect(fetchFundHistory).toHaveBeenCalled());
+
+    // 数量应该显示千分位: 12,345.67（合计行也会显示相同数量）
+    expect(screen.getAllByText('12,345.67').length).toBeGreaterThanOrEqual(1);
+  });
+
+  test('sell records show dash for profit/loss (no calculation in normal view)', async () => {
+    // 卖出记录在普通视图中不计算盈亏，显示"-"
+    setTradesForSymbol('TEST001', [
+      { id: 't1', date: '2024-06-15', type: 'sell', shares: 100, price: 1.5, fee: 0 },
+    ] as any);
+
+    render(
+      <TradeManager symbol="TEST001" currentPrice={2.0} onClose={jest.fn()} />
+    );
+
+    await waitFor(() => expect(fetchFundHistory).toHaveBeenCalled());
+
+    // 卖出记录应该显示"卖出"（在操作列）
+    const sellLabels = screen.getAllByText('卖出');
+    expect(sellLabels.length).toBeGreaterThanOrEqual(1);
+
+    // 盈亏率和盈亏额列应该显示"-"（至少2个：盈亏率和盈亏额）
+    const dashElements = screen.getAllByText('-');
+    expect(dashElements.length).toBeGreaterThanOrEqual(2);
+  });
+});
+
+// ─── TradeManager FIFO/LIFO view tests ───────────────────────────────────
+describe('TradeManager FIFO/LIFO views', () => {
+  beforeEach(() => {
+    (fetchFundHistory as jest.Mock).mockResolvedValue([]);
+    localStorage.clear();
+  });
+
+  test('FIFO view shows remaining shares after match', async () => {
+    setTradesForSymbol('TEST001', [
+      { id: '1', date: '2024-01-01', type: 'buy', shares: 100, price: 1.0, fee: 10 },
+      { id: '2', date: '2024-01-02', type: 'sell', shares: 60, price: 1.5, fee: 0 },
+    ] as any);
+
+    render(<TradeManager symbol="TEST001" currentPrice={1.5} onClose={jest.fn()} />);
+
+    await waitFor(() => expect(fetchFundHistory).toHaveBeenCalled());
+
+    // 切换到 FIFO 视图
+    fireEvent.click(screen.getByLabelText('先进先出'));
+
+    // 买入剩余40份（合计行也会显示相同数量）
+    expect(screen.getAllByText('40.00').length).toBeGreaterThanOrEqual(1);
+    // 剩余手续费 10 * (40/100) = 4
+    expect(screen.getByText('4.00')).toBeInTheDocument();
+  });
+
+  test('FIFO view shows error for unmatched sell', async () => {
+    setTradesForSymbol('TEST001', [
+      { id: '1', date: '2024-01-01', type: 'sell', shares: 100, price: 1.5, fee: 0 },
+    ] as any);
+
+    render(<TradeManager symbol="TEST001" currentPrice={1.5} onClose={jest.fn()} />);
+
+    await waitFor(() => expect(fetchFundHistory).toHaveBeenCalled());
+
+    fireEvent.click(screen.getByLabelText('先进先出'));
+
+    expect(screen.getByText(/未匹配/)).toBeInTheDocument();
+  });
+
+  test('FIFO view is read-only', async () => {
+    setTradesForSymbol('TEST001', [
+      { id: '1', date: '2024-01-01', type: 'buy', shares: 100, price: 1.0, fee: 0 },
+    ] as any);
+
+    render(<TradeManager symbol="TEST001" currentPrice={1.5} onClose={jest.fn()} />);
+
+    await waitFor(() => expect(fetchFundHistory).toHaveBeenCalled());
+
+    fireEvent.click(screen.getByLabelText('先进先出'));
+
+    // 操作列显示 "-" 而非图标按钮
+    expect(screen.queryByTitle('编辑')).not.toBeInTheDocument();
+  });
+
+  test('LIFO view matches recent buys first', async () => {
+    setTradesForSymbol('TEST001', [
+      { id: 'A', date: '2024-01-01', type: 'buy', shares: 100, price: 1.0, fee: 0 },
+      { id: 'B', date: '2024-01-02', type: 'buy', shares: 50, price: 1.2, fee: 0 },
+      { id: 'C', date: '2024-01-03', type: 'sell', shares: 70, price: 1.5, fee: 0 },
+    ] as any);
+
+    render(<TradeManager symbol="TEST001" currentPrice={1.5} onClose={jest.fn()} />);
+
+    await waitFor(() => expect(fetchFundHistory).toHaveBeenCalled());
+
+    fireEvent.click(screen.getByLabelText('后进先出'));
+
+    // LIFO: B(50)被完全匹配，A剩余80份
+    const elements = screen.getAllByText('80.00');
+    expect(elements.length).toBeGreaterThanOrEqual(1);
+  });
+
+  test('LIFO view is read-only', async () => {
+    setTradesForSymbol('TEST001', [
+      { id: '1', date: '2024-01-01', type: 'buy', shares: 100, price: 1.0, fee: 0 },
+    ] as any);
+
+    render(<TradeManager symbol="TEST001" currentPrice={1.5} onClose={jest.fn()} />);
+
+    await waitFor(() => expect(fetchFundHistory).toHaveBeenCalled());
+
+    fireEvent.click(screen.getByLabelText('后进先出'));
+
+    // 操作列显示 "-" 而非图标按钮
+    expect(screen.queryByTitle('编辑')).not.toBeInTheDocument();
   });
 });
