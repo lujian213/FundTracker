@@ -7,6 +7,48 @@ jest.mock('../../components/MarketNewsTicker', () => ({
   MarketNewsTicker: () => <div data-testid="market-news-ticker" />,
 }));
 
+jest.mock('../../components/AddTickerModal', () => ({
+  AddTickerModal: () => null,
+}));
+
+jest.mock('../../components/FundDetailsModal', () => ({
+  FundDetailsModal: () => null,
+}));
+
+jest.mock('../../components/IndexDetailsModal', () => ({
+  IndexDetailsModal: () => null,
+}));
+
+jest.mock('../../components/OverallProfitModal', () => ({
+  __esModule: true,
+  default: () => null,
+}));
+
+jest.mock('../../components/TransactionsModal', () => ({
+  __esModule: true,
+  default: () => null,
+}));
+
+jest.mock('../../components/PositionsModal', () => ({
+  __esModule: true,
+  default: () => null,
+}));
+
+jest.mock('../../components/InvestmentNoticeModal', () => ({
+  __esModule: true,
+  default: () => null,
+}));
+
+jest.mock('../../components/InvestmentDraftModal', () => ({
+  __esModule: true,
+  default: () => null,
+}));
+
+jest.mock('../../components/BackupSettingsModal', () => ({
+  __esModule: true,
+  default: () => null,
+}));
+
 const fetchFundDataMock = jest.fn();
 const fetchMarketIndicesMock = jest.fn();
 const forceFetchFundHistoryMock = jest.fn();
