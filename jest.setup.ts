@@ -1,4 +1,9 @@
 import '@testing-library/jest-dom';
+import { TextDecoder, TextEncoder } from 'util';
+
+// 提供全局 TextDecoder/TextEncoder（Jest jsdom 环境可能缺少）
+global.TextDecoder = TextDecoder as any;
+global.TextEncoder = TextEncoder as any;
 
 // 静默测试中预期的 console 输出，减少日志噪音
 const originalLog = console.log;

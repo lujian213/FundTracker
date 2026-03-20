@@ -70,7 +70,7 @@ describe('AIPortfolioAnalysisModal', () => {
     );
 
     expect(screen.getByText(/正在分析/i)).toBeTruthy();
-    expect(mockAnalyzePortfolio).toHaveBeenCalledWith(mockValidConfig, mockPortfolioData);
+    expect(mockAnalyzePortfolio).toHaveBeenCalledWith(mockValidConfig, mockPortfolioData, expect.any(Function));
   });
 
   // === AI请求成功 ===

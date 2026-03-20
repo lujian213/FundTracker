@@ -140,13 +140,29 @@ describe('AI Services', () => {
     });
 
     test('should construct proper request body with context', async () => {
-      const mockResponse = {
-        choices: [{ message: { content: 'Test response' } }]
+      // 模拟流式响应
+      const sseData = 'data: {"choices":[{"delta":{"content":"Test response"}}]}\n\ndata: [DONE]\n\n';
+      const uint8Array = new Uint8Array(sseData.length);
+      for (let i = 0; i < sseData.length; i++) {
+        uint8Array[i] = sseData.charCodeAt(i);
+      }
+      const chunks = [uint8Array];
+
+      let chunkIndex = 0;
+      const mockReader = {
+        read: jest.fn().mockImplementation(() => {
+          if (chunkIndex < chunks.length) {
+            return Promise.resolve({ done: false, value: chunks[chunkIndex++] });
+          }
+          return Promise.resolve({ done: true, value: undefined });
+        })
       };
 
       (global.fetch as jest.Mock).mockResolvedValue({
         ok: true,
-        json: () => Promise.resolve(mockResponse)
+        body: {
+          getReader: () => mockReader
+        }
       });
 
       const config: AIConfiguration = {

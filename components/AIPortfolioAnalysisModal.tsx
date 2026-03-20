@@ -5,6 +5,7 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { hasUsableAIConfig, getAIConfig, AIConfiguration } from '../services/aiConfigService';
 import { analyzePortfolio, PortfolioItem } from '../services/aiPortfolioService';
+import { StreamCallback } from '../services/aiService';
 
 interface AIPortfolioAnalysisModalProps {
   isVisible: boolean;
@@ -25,6 +26,8 @@ const AIPortfolioAnalysisModal: React.FC<AIPortfolioAnalysisModalProps> = ({
   const [modelName, setModelName] = useState<string>('');
   const [copySuccess, setCopySuccess] = useState(false);
   const modalRef = useRef<HTMLDivElement>(null);
+  const contentRef = useRef<HTMLDivElement>(null);
+  const contentEndRef = useRef<HTMLDivElement>(null);
 
   // 拖动相关状态
   const [position, setPosition] = useState({ x: 0, y: 0 });
@@ -34,6 +37,65 @@ const AIPortfolioAnalysisModal: React.FC<AIPortfolioAnalysisModalProps> = ({
 
   // 防止重复初始化
   const hasInitialized = useRef(false);
+
+  // 跟踪用户是否主动上滚（离开底部）
+  const userScrolledUpRef = useRef(false);
+
+  // 检查当前是否在底部附近
+  const checkIsAtBottom = useCallback(() => {
+    const container = contentRef.current;
+    if (!container) return true;
+    const { scrollTop, scrollHeight, clientHeight } = container;
+    return scrollHeight - scrollTop - clientHeight < 30;
+  }, []);
+
+  // 滚动到底部
+  const scrollToBottom = useCallback(() => {
+    // 如果用户主动上滚了，不自动滚动
+    if (userScrolledUpRef.current) return;
+
+    if (contentEndRef.current) {
+      contentEndRef.current.scrollIntoView({ behavior: 'instant' });
+    }
+  }, []);
+
+  // 内容变化时自动滚动
+  useEffect(() => {
+    if (state === 'loading' && content) {
+      scrollToBottom();
+    }
+  }, [content, state, scrollToBottom]);
+
+  // 监听用户主动滚动（wheel事件）和滚动到底部恢复自动滚动
+  useEffect(() => {
+    const container = contentRef.current;
+    if (!container) return;
+
+    // 用户使用鼠标滚轮向上滚动时，标记为用户主动上滚
+    const handleWheel = (e: WheelEvent) => {
+      if (e.deltaY < 0) {
+        // 向上滚动
+        userScrolledUpRef.current = true;
+      } else if (e.deltaY > 0 && checkIsAtBottom()) {
+        // 向下滚动且已到底部，恢复自动滚动
+        userScrolledUpRef.current = false;
+      }
+    };
+
+    // 滚动事件：如果用户滚动到底部，恢复自动滚动
+    const handleScroll = () => {
+      if (checkIsAtBottom()) {
+        userScrolledUpRef.current = false;
+      }
+    };
+
+    container.addEventListener('wheel', handleWheel, { passive: true });
+    container.addEventListener('scroll', handleScroll, { passive: true });
+    return () => {
+      container.removeEventListener('wheel', handleWheel);
+      container.removeEventListener('scroll', handleScroll);
+    };
+  }, [checkIsAtBottom]);
 
   // 执行分析
   const performAnalysis = useCallback(async () => {
@@ -53,13 +115,19 @@ const AIPortfolioAnalysisModal: React.FC<AIPortfolioAnalysisModalProps> = ({
     }
 
     setState('loading');
+    setContent(''); // 清空内容，准备接收流式数据
     setErrorMessage('');
 
     try {
-      const result = await analyzePortfolio(config, portfolioData);
+      // 流式回调：实时更新内容
+      const handleChunk: StreamCallback = (chunk, fullContent) => {
+        setContent(fullContent);
+      };
+
+      const result = await analyzePortfolio(config, portfolioData, handleChunk);
 
       if (result.success) {
-        setContent(result.content);
+        setContent(result.content); // 确保使用最终完整内容
         setState('success');
       } else {
         setErrorMessage(result.error || '分析失败');
@@ -212,10 +280,19 @@ const AIPortfolioAnalysisModal: React.FC<AIPortfolioAnalysisModalProps> = ({
 
   // 渲染分析结果
   const renderContent = () => (
-    <div className="prose prose-sm max-w-none">
+    <div className="prose prose-sm max-w-none text-sm">
       <ReactMarkdown remarkPlugins={[remarkGfm]}>
         {content}
       </ReactMarkdown>
+    </div>
+  );
+
+  // 渲染底部加载动画
+  const renderLoadingIndicator = () => (
+    <div className="flex items-center justify-center space-x-2 py-2">
+      <div className="h-2 w-2 bg-blue-500 rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></div>
+      <div className="h-2 w-2 bg-blue-500 rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></div>
+      <div className="h-2 w-2 bg-blue-500 rounded-full animate-bounce" style={{ animationDelay: '600ms' }}></div>
     </div>
   );
 
@@ -231,7 +308,8 @@ const AIPortfolioAnalysisModal: React.FC<AIPortfolioAnalysisModalProps> = ({
 
     switch (state) {
       case 'loading':
-        return renderLoading();
+        // 如果有内容，显示流式输出；否则显示加载动画
+        return content ? renderContent() : renderLoading();
       case 'error':
         return renderError();
       case 'success':
@@ -246,14 +324,14 @@ const AIPortfolioAnalysisModal: React.FC<AIPortfolioAnalysisModalProps> = ({
       {/* 背景遮罩 */}
       <div className="absolute inset-0 bg-black/40" onClick={onClose} />
 
-      {/* 浮窗主体 */}
+      {/* 浮窗主体 - 固定高度 */}
       <div
         ref={modalRef}
         tabIndex={-1}
         className="relative bg-white rounded-2xl w-full shadow-2xl animate-in zoom-in-95 duration-200 flex flex-col outline-none"
         style={{
           maxWidth: '56rem',
-          maxHeight: '80vh',
+          height: '70vh',  // 固定高度
           transform: `translate(${position.x}px, ${position.y}px)`,
           transition: isDragging ? 'none' : 'transform 0.1s ease-out'
         }}
@@ -268,7 +346,7 @@ const AIPortfolioAnalysisModal: React.FC<AIPortfolioAnalysisModalProps> = ({
         >
           <h3 id="ai-portfolio-title" className="text-lg font-bold pointer-events-none">AI 投资组合分析</h3>
           <div className="flex items-center gap-2">
-            {state === 'success' && (
+            {(state === 'success' || (state === 'loading' && content)) && (
               <button
                 aria-label="复制到剪贴板"
                 className="w-8 h-8 rounded-full bg-gray-50 flex items-center justify-center text-gray-400 hover:bg-gray-100 cursor-pointer"
@@ -289,16 +367,19 @@ const AIPortfolioAnalysisModal: React.FC<AIPortfolioAnalysisModalProps> = ({
         </div>
 
         {/* 内容区域 */}
-        <div className="flex-1 overflow-y-auto p-6 min-h-0">
+        <div ref={contentRef} className="flex-1 overflow-y-auto p-6 min-h-0">
           {renderMainContent()}
+          <div ref={contentEndRef} />
         </div>
 
-        {/* 底部状态栏 */}
-        {state === 'success' && modelName && (
-          <div className="px-6 py-3 border-t border-gray-100 text-sm text-gray-400 flex-shrink-0">
-            已连接 {modelName}
-          </div>
-        )}
+        {/* 底部状态栏 - 加载中显示动画，完成后显示连接状态 */}
+        <div className="px-6 py-3 border-t border-gray-100 text-sm text-gray-400 flex-shrink-0">
+          {state === 'loading' ? (
+            renderLoadingIndicator()
+          ) : state === 'success' && modelName ? (
+            <span>已连接 {modelName}</span>
+          ) : null}
+        </div>
       </div>
     </div>,
     document.body

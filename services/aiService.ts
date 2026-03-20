@@ -271,12 +271,21 @@ async function fetchWithRetry(
 }
 
 /**
+ * 流式响应回调类型
+ * @param chunk 新接收到的内容片段
+ * @param fullContent 到目前为止的完整内容
+ */
+export type StreamCallback = (chunk: string, fullContent: string) => void;
+
+/**
  * Queries the AI model with the provided query and context
+ * @param onChunk 可选的流式回调，每次收到新内容时调用
  */
 export async function queryAI(
   config: AIConfiguration,
   query: string,
-  context?: AIQueryContext
+  context?: AIQueryContext,
+  onChunk?: StreamCallback
 ): Promise<AIResponse> {
   try {
     // Construct the full prompt with context
@@ -359,10 +368,14 @@ export async function queryAI(
             const data = line.slice(6);
             if (data === '[DONE]') continue;
             try {
-              const json = JSON.parse(data);
+      const json = JSON.parse(data);
               const content = json.choices?.[0]?.delta?.content;
               if (content) {
                 fullContent += content;
+                // 调用流式回调
+                if (onChunk) {
+                  onChunk(content, fullContent);
+                }
               }
             } catch {
               // 忽略解析错误
@@ -407,11 +420,13 @@ export async function queryAI(
 
 /**
  * 使用模板发送AI查询
+ * @param onChunk 可选的流式回调
  */
 export async function queryAIWithTemplate(
   config: AIConfiguration,
   templateId?: string,
-  context?: AIQueryContext
+  context?: AIQueryContext,
+  onChunk?: StreamCallback
 ): Promise<AIResponse> {
   const template = await getEnabledPromptTemplate(templateId);
 
@@ -431,5 +446,5 @@ export async function queryAIWithTemplate(
 
   const filledPrompt = fillTemplateVariables(template.template, context || {});
 
-  return queryAI(config, filledPrompt, context);
+  return queryAI(config, filledPrompt, context, onChunk);
 }

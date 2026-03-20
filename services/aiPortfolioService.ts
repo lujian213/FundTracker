@@ -1,5 +1,5 @@
 // services/aiPortfolioService.ts
-import { queryAI, PromptTemplate } from './aiService';
+import { queryAI, PromptTemplate, StreamCallback } from './aiService';
 import { AIConfiguration } from './aiConfigService';
 
 /**
@@ -67,10 +67,12 @@ export function formatPortfolioData(items: PortfolioItem[]): string {
 
 /**
  * 执行投资组合分析
+ * @param onChunk 可选的流式回调，每次收到新内容时调用
  */
 export async function analyzePortfolio(
   config: AIConfiguration,
-  portfolioData: PortfolioItem[]
+  portfolioData: PortfolioItem[],
+  onChunk?: StreamCallback
 ): Promise<{ content: string; success: boolean; error?: string }> {
   // 加载模板
   const template = await loadPortfolioAnalysisTemplate();
@@ -89,6 +91,6 @@ export async function analyzePortfolio(
   // 替换模板变量
   const prompt = template.template.replace(/{portfolio}/g, portfolioText);
 
-  // 调用AI
-  return queryAI(config, prompt);
+  // 调用AI，传递流式回调
+  return queryAI(config, prompt, undefined, onChunk);
 }

@@ -1,6 +1,6 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { ValuationData } from '../types';
-import { queryAI, queryAIWithTemplate, AIResponse, AIQueryContext } from '../services/aiService';
+import { queryAI, queryAIWithTemplate, AIResponse, AIQueryContext, StreamCallback } from '../services/aiService';
 import { getAIConfig, hasValidAIConfig, hasUsableAIConfig } from '../services/aiConfigService';
 import { AIConfiguration } from '../types/aiConfigTypes';
 import { aiAssistantStateManager } from '../services/aiAssistantStateManager';
@@ -114,6 +114,10 @@ const AISidePanel: React.FC<AISidePanelProps> = ({
   const [model, setModel] = useState('gpt-4');
   const [isValidConfig, setIsValidConfig] = useState(hasUsableAIConfig());
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const messagesContainerRef = useRef<HTMLDivElement>(null);
+
+  // 跟踪用户是否主动上滚（离开底部）
+  const userScrolledUpRef = useRef(false);
 
   // Load config on mount
   useEffect(() => {
@@ -381,11 +385,34 @@ const AISidePanel: React.FC<AISidePanelProps> = ({
         avgCostPrice: propsRef.current.avgCostPrice ?? undefined,
       };
 
-      const response: AIResponse = await queryAIWithTemplate(currentConfig, undefined, context);
+      // 创建AI消息占位符
+      const aiMessageId = `ai-${Date.now()}`;
+      const aiMessage: Message = {
+        id: aiMessageId,
+        content: '',
+        role: 'assistant',
+        timestamp: new Date()
+      };
+
+      // 显示空的AI消息
+      skipMessagesEffectCountRef.current = 1;
+      setMessages([aiMessage]);
+
+      // 流式回调
+      const handleStreamChunk: StreamCallback = (chunk, fullContent) => {
+        setMessages(prev => prev.map(msg =>
+          msg.id === aiMessageId
+            ? { ...msg, content: fullContent }
+            : msg
+        ));
+      };
+
+      const response: AIResponse = await queryAIWithTemplate(currentConfig, undefined, context, handleStreamChunk);
 
       if (response.success) {
-        const aiMessage: Message = {
-          id: `ai-${Date.now()}`,
+        // 更新最终内容（流式回调已经更新了大部分内容，这里确保完整）
+        const finalAiMessage: Message = {
+          id: aiMessageId,
           content: response.content,
           role: 'assistant',
           timestamp: new Date()
@@ -394,7 +421,7 @@ const AISidePanel: React.FC<AISidePanelProps> = ({
         // 设置跳过标志，防止 messages useEffect 覆盖状态
         skipMessagesEffectCountRef.current = 1;
 
-        setMessages([aiMessage]);
+        setMessages([finalAiMessage]);
 
         // 只有初始化成功时才标记为已初始化
         setHasBeenInitialized(true);
@@ -402,7 +429,7 @@ const AISidePanel: React.FC<AISidePanelProps> = ({
         // 更新全局状态管理器，标记为已初始化
         const newState: AIAssistantState = {
           historyContent: [],
-          newContent: [aiMessage as AIAssistantMessage],
+          newContent: [finalAiMessage as AIAssistantMessage],
           summaryContent: '',
           hasBeenInitialized: true,
           lastAccessed: new Date(),
@@ -473,14 +500,55 @@ const AISidePanel: React.FC<AISidePanelProps> = ({
     scrollToBottom();
   }, [messages]);
 
-  const scrollToBottom = () => {
+  // 检查当前是否在底部附近
+  const checkIsAtBottom = useCallback(() => {
+    const container = messagesContainerRef.current;
+    if (!container) return true;
+    const { scrollTop, scrollHeight, clientHeight } = container;
+    return scrollHeight - scrollTop - clientHeight < 30;
+  }, []);
+
+  const scrollToBottom = useCallback(() => {
+    // 如果用户主动上滚了，不自动滚动
+    if (userScrolledUpRef.current) return;
+
     if (messagesEndRef.current) {
-      // Check if scrollIntoView is available (not available in some test environments)
       if (typeof messagesEndRef.current.scrollIntoView === 'function') {
-        messagesEndRef.current.scrollIntoView({ behavior: 'smooth' });
+        messagesEndRef.current.scrollIntoView({ behavior: 'instant' });
       }
     }
-  };
+  }, []);
+
+  // 监听用户主动滚动（wheel事件）和滚动到底部恢复自动滚动
+  useEffect(() => {
+    const container = messagesContainerRef.current;
+    if (!container) return;
+
+    // 用户使用鼠标滚轮向上滚动时，标记为用户主动上滚
+    const handleWheel = (e: WheelEvent) => {
+      if (e.deltaY < 0) {
+        // 向上滚动
+        userScrolledUpRef.current = true;
+      } else if (e.deltaY > 0 && checkIsAtBottom()) {
+        // 向下滚动且已到底部，恢复自动滚动
+        userScrolledUpRef.current = false;
+      }
+    };
+
+    // 滚动事件：如果用户滚动到底部，恢复自动滚动
+    const handleScroll = () => {
+      if (checkIsAtBottom()) {
+        userScrolledUpRef.current = false;
+      }
+    };
+
+    container.addEventListener('wheel', handleWheel, { passive: true });
+    container.addEventListener('scroll', handleScroll, { passive: true });
+    return () => {
+      container.removeEventListener('wheel', handleWheel);
+      container.removeEventListener('scroll', handleScroll);
+    };
+  }, [checkIsAtBottom]);
 
   const handleSend = async () => {
     if (!inputValue.trim() || !isValidConfig || !config) {
@@ -537,17 +605,41 @@ const AISidePanel: React.FC<AISidePanelProps> = ({
       // 构建完整提示
       const fullPrompt = `上下文信息:\n${aiContext}\n\n用户查询: ${inputValue}`;
 
-      const response: AIResponse = await queryAI(config, fullPrompt, context);
-
+      // 创建AI消息占位符，立即显示
+      const aiMessageId = `ai-${Date.now()}`;
       const aiMessage: Message = {
-        id: `ai-${Date.now()}`,
+        id: aiMessageId,
+        content: '',
+        role: 'assistant',
+        timestamp: new Date()
+      };
+
+      // 立即添加空的AI消息，让用户看到正在生成
+      setMessages(prev => [...prev, aiMessage]);
+
+      // 流式回调：更新AI消息内容
+      const handleStreamChunk: StreamCallback = (chunk, fullContent) => {
+        setMessages(prev => prev.map(msg =>
+          msg.id === aiMessageId
+            ? { ...msg, content: fullContent }
+            : msg
+        ));
+      };
+
+      const response: AIResponse = await queryAI(config, fullPrompt, context, handleStreamChunk);
+
+      // 更新AI消息的最终内容（确保使用完整响应）
+      const finalAiMessage: Message = {
+        id: aiMessageId,
         content: response.content,
         role: 'assistant',
         timestamp: new Date()
       };
 
-      // 添加AI响应到消息列表
-      setMessages(prev => [...prev, aiMessage]);
+      // 更新消息列表中的AI消息
+      setMessages(prev => prev.map(msg =>
+        msg.id === aiMessageId ? finalAiMessage : msg
+      ));
 
       // 更新全局状态管理器
       const updatedState = aiAssistantStateManager.getState(fundSymbol);
@@ -561,8 +653,8 @@ const AISidePanel: React.FC<AISidePanelProps> = ({
       if (!newNewContent.some(msg => msg.id === userMessage.id)) {
         newNewContent.push(userMessage as AIAssistantMessage);
       }
-      if (!newNewContent.some(msg => msg.id === aiMessage.id)) {
-        newNewContent.push(aiMessage as AIAssistantMessage);
+      if (!newNewContent.some(msg => msg.id === finalAiMessage.id)) {
+        newNewContent.push(finalAiMessage as AIAssistantMessage);
       }
 
       const newState: AIAssistantState = {
@@ -841,18 +933,18 @@ const AISidePanel: React.FC<AISidePanelProps> = ({
         </div>
       ) : null}
 
-      <div className="flex-1 overflow-hidden flex flex-col">
-        <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-gray-25">
+      <div className="flex-1 overflow-hidden flex flex-col relative">
+        <div ref={messagesContainerRef} className="flex-1 overflow-y-auto p-4 space-y-4 bg-gray-25">
           {messages.map((message) => (
             <div
               key={message.id}
               className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}
             >
             <div
-              className={`max-w-[85%] rounded-2xl px-4 py-2.5 text-sm ${
+              className={`rounded-2xl px-4 py-2.5 text-sm ${
                 message.role === 'user'
-                  ? 'bg-blue-500 text-white rounded-br-none'
-                  : 'bg-gray-100 text-gray-800 rounded-bl-none'
+                  ? 'max-w-[85%] bg-blue-500 text-white rounded-br-none'
+                  : 'max-w-[92%] bg-gray-100 text-gray-800 rounded-bl-none'
               }`}
             >
               <div className="prose prose-sm max-w-none">
@@ -870,19 +962,19 @@ const AISidePanel: React.FC<AISidePanelProps> = ({
             </div>
           </div>
           ))}
-          {isLoading && (
-            <div className="flex justify-start">
-              <div className="max-w-[85%] rounded-2xl rounded-bl-none bg-gray-100 text-gray-800 px-4 py-2.5 text-sm">
-                <div className="flex items-center space-x-2">
-                  <div className="h-2 w-2 bg-gray-500 rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></div>
-                  <div className="h-2 w-2 bg-gray-500 rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></div>
-                  <div className="h-2 w-2 bg-gray-500 rounded-full animate-bounce" style={{ animationDelay: '600ms' }}></div>
-                </div>
-              </div>
-            </div>
-          )}
           <div ref={messagesEndRef} />
         </div>
+
+        {/* 加载动画 - 固定在右下角 */}
+        {isLoading && (
+          <div className="absolute bottom-2 right-4 bg-white/90 backdrop-blur-sm rounded-lg px-3 py-2 shadow-sm">
+            <div className="flex items-center space-x-2">
+              <div className="h-2 w-2 bg-blue-500 rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></div>
+              <div className="h-2 w-2 bg-blue-500 rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></div>
+              <div className="h-2 w-2 bg-blue-500 rounded-full animate-bounce" style={{ animationDelay: '600ms' }}></div>
+            </div>
+          </div>
+        )}
 
         <div className="p-4 border-t border-gray-200 bg-white">
           <div className="flex space-x-2">
