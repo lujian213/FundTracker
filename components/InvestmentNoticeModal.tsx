@@ -582,8 +582,18 @@ const InvestmentNoticeModal: React.FC<InvestmentNoticeModalProps> = ({
                             const strategyProfit = (rec as any)[`${strategyKey}Profit`]; // Get stored profit
                             const isBestStrategy = rec.bestStrategy === strategyKey;
 
+                            // 高亮条件：今日操作不为"不操作" + 是最佳策略 + 策略总盈亏 > 实盘盈亏
+                            const shouldHighlight =
+                              strategyTip !== null &&
+                              strategyTip?.action !== 'hold' &&
+                              isBestStrategy &&
+                              strategyProfit > (rec.realProfit ?? -Infinity);
+
                             return (
-                              <td key={`cell-${rec.fund.symbol}-${strategyKey}`} className="px-3 py-2 text-left text-xs">
+                              <td
+                                key={`cell-${rec.fund.symbol}-${strategyKey}`}
+                                className={`px-3 py-2 text-left text-xs ${shouldHighlight ? 'border-2 border-amber-400 bg-amber-50' : ''}`}
+                              >
                                 {renderCellWithThumbsUp(
                                   strategyTip,
                                   rec.fund.symbol,
