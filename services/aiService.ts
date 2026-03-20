@@ -201,6 +201,76 @@ export function fillTemplateVariables(template: string, context: AIQueryContext)
 }
 
 /**
+ * 带重试的 fetch 请求，处理 HTTP/2 协议错误等网络问题
+ * 返回 Response 对象，由调用方处理流式响应
+ */
+async function fetchWithRetry(
+  url: string,
+  options: RequestInit,
+  maxRetries: number = 2,
+  retryDelay: number = 1000,
+  timeout: number = 60000
+): Promise<Response> {
+  let lastError: Error | null = null;
+
+  console.log('[AI Debug] 发送请求到:', url);
+
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), timeout);
+
+    try {
+      const startTime = Date.now();
+      const response = await fetch(url, {
+        ...options,
+        signal: controller.signal
+      });
+      const elapsed = Date.now() - startTime;
+
+      console.log('[AI Debug] 响应收到:', {
+        status: response.status,
+        elapsed: elapsed + 'ms'
+      });
+
+      if (!response.ok) {
+        clearTimeout(timeoutId);
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+
+      // 清除超时，返回 Response 对象让调用方处理流
+      clearTimeout(timeoutId);
+      return response;
+    } catch (error: any) {
+      clearTimeout(timeoutId);
+      lastError = error;
+
+      console.error('[AI Debug] 请求失败:', {
+        attempt: attempt + 1,
+        errorName: error.name,
+        errorMessage: error.message
+      });
+
+      const isRetryable =
+        error.name === 'TypeError' ||
+        error.name === 'AbortError' ||
+        error.message?.includes('ERR_HTTP2') ||
+        error.message?.includes('Failed to fetch') ||
+        error.message?.includes('NetworkError');
+
+      if (isRetryable && attempt < maxRetries) {
+        console.warn(`[AI Debug] 将在 ${retryDelay * (attempt + 1)}ms 后重试...`);
+        await new Promise(resolve => setTimeout(resolve, retryDelay * (attempt + 1)));
+        continue;
+      }
+
+      throw error;
+    }
+  }
+
+  throw lastError;
+}
+
+/**
  * Queries the AI model with the provided query and context
  */
 export async function queryAI(
@@ -208,9 +278,6 @@ export async function queryAI(
   query: string,
   context?: AIQueryContext
 ): Promise<AIResponse> {
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 second timeout
-
   try {
     // Construct the full prompt with context
     let fullPrompt = query;
@@ -249,65 +316,87 @@ export async function queryAI(
         { role: 'user', content: fullPrompt }
       ],
       temperature: 0.7,
-      max_tokens: 4000  // 增加到4000以避免回复被截断
+      max_tokens: 2000,
+      stream: true  // 使用流式响应，避免 HTTP/2 长连接中断
     };
 
-    const response = await fetch(config.apiEndpoint, {
+    // DEBUG: 打印完整请求体，便于在控制台手动测试
+    console.log('[AI Debug] 请求体大小:', JSON.stringify(requestBody).length, '字节');
+
+    // 使用流式响应
+    const response = await fetchWithRetry(config.apiEndpoint, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${config.apiKey}`,
       },
-      body: JSON.stringify(requestBody),
-      signal: controller.signal
+      body: JSON.stringify(requestBody)
     });
 
-    clearTimeout(timeoutId);
-
-    if (!response.ok) {
-      // 根据HTTP状态码提供更详细的错误信息
-      let errorMessage = `API request failed with status ${response.status}: ${response.statusText}`;
-
-      if (response.status === 401) {
-        errorMessage = 'API密钥无效或已过期，请检查您的AI配置';
-      } else if (response.status === 403) {
-        errorMessage = 'API访问被拒绝，请检查您的权限';
-      } else if (response.status === 429) {
-        errorMessage = 'API请求频率超限，请稍后再试';
-      } else if (response.status === 404) {
-        errorMessage = 'API端点未找到，请检查您的AI配置';
-      } else if (response.status >= 500) {
-        errorMessage = 'AI服务内部服务器错误，请稍后再试';
-      }
-
-      throw new Error(errorMessage);
+    // 读取流式响应
+    const reader = response.body?.getReader();
+    if (!reader) {
+      return {
+        content: 'Failed to get response stream',
+        success: false,
+        error: 'No stream'
+      };
     }
 
-    const data = await response.json();
+    const decoder = new TextDecoder();
+    let fullContent = '';
 
-    if (data.choices && data.choices.length > 0) {
+    try {
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        const chunk = decoder.decode(value, { stream: true });
+        // 解析 SSE 格式: data: {...}\n\n
+        const lines = chunk.split('\n');
+        for (const line of lines) {
+          if (line.startsWith('data: ')) {
+            const data = line.slice(6);
+            if (data === '[DONE]') continue;
+            try {
+              const json = JSON.parse(data);
+              const content = json.choices?.[0]?.delta?.content;
+              if (content) {
+                fullContent += content;
+              }
+            } catch {
+              // 忽略解析错误
+            }
+          }
+        }
+      }
+    } catch (streamError: any) {
+      console.error('[AI Debug] 流读取错误:', streamError);
+      // 如果已有部分内容，返回它
+      if (fullContent) {
+        return {
+          content: fullContent,
+          success: true
+        };
+      }
+      throw streamError;
+    }
+
+    console.log('[AI Debug] 响应内容长度:', fullContent.length);
+
+    if (fullContent) {
       return {
-        content: data.choices[0].message.content || 'No response content received',
+        content: fullContent,
         success: true
       };
     } else {
       return {
-        content: 'Invalid response format from AI API',
+        content: 'No response content received',
         success: false,
-        error: 'Invalid response format'
+        error: 'Empty response'
       };
     }
   } catch (error: any) {
-    clearTimeout(timeoutId);
-
-    if (error.name === 'AbortError') {
-      return {
-        content: 'Request timed out. Please try again.',
-        success: false,
-        error: 'Timeout'
-      };
-    }
-
     return {
       content: `Error communicating with AI service: ${error.message}`,
       success: false,
