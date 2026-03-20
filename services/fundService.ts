@@ -76,6 +76,43 @@ class RequestQueue {
 
 const globalQueue = new RequestQueue();
 
+/**
+ * 串行队列：用于历史净值加载，避免并发访问全局变量 Data_netWorthTrend 时的竞态条件。
+ * 东方财富的 pingzhongdata 脚本会将数据写入全局变量，并发加载会导致数据错乱。
+ */
+class SerialQueue {
+  private queue: (() => Promise<any>)[] = [];
+  private processing = false;
+
+  async add<T>(task: () => Promise<T>): Promise<T> {
+    return new Promise((resolve, reject) => {
+      this.queue.push(async () => {
+        try {
+          const result = await task();
+          resolve(result);
+        } catch (e) {
+          reject(e);
+        }
+      });
+      this.process();
+    });
+  }
+
+  private async process() {
+    if (this.processing || this.queue.length === 0) return;
+    this.processing = true;
+    while (this.queue.length > 0) {
+      const task = this.queue.shift();
+      if (task) {
+        try { await task(); } catch (e) {}
+      }
+    }
+    this.processing = false;
+  }
+}
+
+const historyLoadQueue = new SerialQueue();
+
 function normalizeHistoryTimestamp(input: unknown): number | null {
   // Accept numbers (ms or s), numeric strings, and common date string formats (YYYY-MM-DD or YYYYMMDD)
   try {
@@ -160,19 +197,35 @@ function toRawHistoryPoints(trendData: any[]): Array<Partial<HistoricalPoint>> {
 }
 
 function loadHistoryFromPingzhongData(code: string, url: string): Promise<HistoricalPoint[]> {
-  return new Promise((resolve, reject) => {
-    const script = document.createElement('script');
-    script.src = url;
-    script.onload = () => {
-      const trendData = (window as any).Data_netWorthTrend;
-      if (Array.isArray(trendData)) {
-        resolve(normalizeAndSyncHistory(code, toRawHistoryPoints(trendData)));
-        return;
-      }
-      resolve(syncHistoryCache(code, []));
-    };
-    script.onerror = () => reject();
-    document.head.appendChild(script);
+  // 使用串行队列避免并发访问全局变量 Data_netWorthTrend 时的竞态条件
+  return historyLoadQueue.add(() => {
+    return new Promise((resolve, reject) => {
+      const script = document.createElement('script');
+      script.src = url;
+
+      // 清理函数：移除脚本和全局变量
+      const cleanup = () => {
+        if (script.parentNode) script.parentNode.removeChild(script);
+        // 清理全局变量，避免下次加载时读取到旧数据
+        try { delete (window as any).Data_netWorthTrend; } catch (e) {}
+      };
+
+      script.onload = () => {
+        const trendData = (window as any).Data_netWorthTrend;
+        if (Array.isArray(trendData)) {
+          resolve(normalizeAndSyncHistory(code, toRawHistoryPoints(trendData)));
+          cleanup();
+          return;
+        }
+        resolve(syncHistoryCache(code, []));
+        cleanup();
+      };
+      script.onerror = () => {
+        cleanup();
+        reject();
+      };
+      document.head.appendChild(script);
+    });
   });
 }
 
