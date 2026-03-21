@@ -2,6 +2,7 @@ import React, { useMemo, useState } from 'react';
 import HistoryChart from './HistoryChart';
 import { PositionTrendSeries, PositionTrendPoint } from '../utils/positionTrend';
 import { HistoricalPoint } from '../types';
+import { formatDateDisplay } from '../utils/dateFormat';
 
 interface PositionTrendProps {
   data: PositionTrendSeries | null;
@@ -17,11 +18,6 @@ const formatCurrency = (v: number) => {
   } catch {
     return v.toFixed(2);
   }
-};
-
-const formatDateLocal = (dateStr: string) => {
-  // ensure YYYY-MM-DD
-  return dateStr;
 };
 
 // Helper: compress adjacent equal values — keep the first date of each run
@@ -98,7 +94,7 @@ export default function PositionTrendChart({ data, loading, height = 320 }: Posi
     const ticks = compressed.filter((_, i) => i % step === 0).map((d) => {
       const i = compressed.indexOf(d);
       const x = Math.round(padLeft + (i / Math.max(1, total - 1)) * chartW);
-      return { text: formatDateLocal(d.date), x };
+      return { text: formatDateDisplay(d.date), x };
     });
     return ticks;
   }, [compressed]);
@@ -158,13 +154,7 @@ export default function PositionTrendChart({ data, loading, height = 320 }: Posi
         />
       </div>
       <div aria-live="polite" style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 12px', borderTop: '1px solid #eee', minHeight: 40, alignItems: 'center', fontSize: '0.875rem' }}>
-        <div style={{ width: 200 }}>{bottomInfoPoint ? (() => {
-          const d = new Date(bottomInfoPoint.date);
-          const y = d.getFullYear();
-          const m = String(d.getMonth() + 1).padStart(2, '0');
-          const day = String(d.getDate()).padStart(2, '0');
-          return `${y}-${m}-${day}`;
-        })() : '—'}</div>
+        <div style={{ width: 200 }}>{bottomInfoPoint ? formatDateDisplay(new Date(bottomInfoPoint.date)) : '—'}</div>
         <div style={{ width: 140, textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{bottomInfoPoint ? formatCurrency(bottomInfoPoint.value) : '—'}</div>
       </div>
     </div>

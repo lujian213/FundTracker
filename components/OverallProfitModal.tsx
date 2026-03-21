@@ -309,7 +309,7 @@ const OverallProfitModal: React.FC<Props> = ({ symbols, onClose, onSelectFund })
                       chart.height ?? 160,
                     )}
                   >
-                    <div className="text-xs text-gray-500">{chart.points[hoverIndex].data.date}</div>
+                    <div className="text-xs text-gray-500">{formatDateDisplay(chart.points[hoverIndex].data.date)}</div>
                     <div className="text-sm">当日: {chart.points[hoverIndex].data.dailyProfit === 0 ? '-' : (chart.points[hoverIndex].data.dailyProfit > 0 ? '+' : '') + formatMoneyWithSeparators(chart.points[hoverIndex].data.dailyProfit)}</div>
                     <div className="text-sm">累计: {chart.points[hoverIndex].data.cumulativeProfit === 0 ? '-' : (chart.points[hoverIndex].data.cumulativeProfit > 0 ? '+' : '') + formatMoneyWithSeparators(chart.points[hoverIndex].data.cumulativeProfit)}</div>
                   </div>

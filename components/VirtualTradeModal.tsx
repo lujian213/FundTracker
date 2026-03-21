@@ -6,6 +6,7 @@ import { fetchFundHistory as defaultFetchFundHistory } from '../services/fundSer
 import { resolvePreferredPrice, toLocalDateKey } from '../utils/priceResolver';
 import SimpleTooltip from './SimpleTooltip';
 import { fmtNumber, fmtNav, parseFormattedNumber, formatMoneyWithSeparators } from '../utils/format';
+import { formatDateDisplay } from '../utils/dateFormat';
 import ThumbsUpIcon from './ThumbsUpIcon';
 import { getUnitsForDate } from '../utils/positionHelper';
 import { defaultVirtualCash } from '../services/strategyConfig';
@@ -680,7 +681,7 @@ export const VirtualTradeModal: React.FC<Props> = ({ symbol, fundName, history: 
                 <tbody>
                   {results[activeTab]!.timeline.map((r: any) => (
                     <tr key={r.date} className={`border-t hover:bg-gray-50 ${r.action === 'buy' ? 'border-l-4 border-green-400 shadow-sm' : r.action === 'sell' ? 'border-l-4 border-red-400 shadow-sm' : ''}`}>
-                      <td className="px-3 py-2 whitespace-nowrap w-[100px]">{r.date}</td>
+                      <td className="px-3 py-2 whitespace-nowrap w-[100px]">{formatDateDisplay(r.date)}</td>
                       <td className="px-3 py-2 whitespace-nowrap w-[60px]">
                         <SimpleTooltip content={r.reason ?? '无说明'}>
                           <span className={r.action === 'buy' ? 'text-green-600' : r.action === 'sell' ? 'text-red-600' : 'text-gray-600'}>

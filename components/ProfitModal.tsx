@@ -7,6 +7,7 @@ import { HistoricalPoint, ProfitPoint } from '../types';
 import { resolvePreferredPrice, toLocalDateKey } from '../utils/priceResolver';
 import { adjustProfitTimelineForDisplay } from '../utils/profitAdjustment';
 import { formatMoneyWithSeparators, fmtNav } from '../utils/format';
+import { formatDateDisplay } from '../utils/dateFormat';
 
 interface ProfitModalProps {
   symbol: string;
@@ -153,7 +154,7 @@ const ProfitModal: React.FC<ProfitModalProps> = ({ symbol, fundName, currentPric
     const getY = (v: number) => h - padBottom - ((v - min) / range) * (h - padTop - padBottom);
     const pts = displayedTimeline.map((p, i) => ({ x: getX(i), y: getY(p.cumulativeProfit || 0), data: p }));
     const d = pts.map((pt, i) => `${i === 0 ? 'M' : 'L'} ${pt.x} ${pt.y}`).join(' ');
-    const xTicks = [0, Math.floor((pts.length - 1) / 2), pts.length - 1].map(i => ({ x: pts[i].x, label: pts[i].data.date }));
+    const xTicks = [0, Math.floor((pts.length - 1) / 2), pts.length - 1].map(i => ({ x: pts[i].x, label: formatDateDisplay(pts[i].data.date) }));
     const yTicks = Array.from({ length: 5 }).map((_, i) => {
       const v = min + (i * range / 4);
       return { y: getY(v), label: (v >= 0 ? '+' : '') + formatMoneyWithSeparators(v) };
@@ -251,7 +252,7 @@ const ProfitModal: React.FC<ProfitModalProps> = ({ symbol, fundName, currentPric
                     </svg>
                     {hoverIndex !== null && chart.points[hoverIndex] && (
                       <div className="absolute z-20 bg-white p-2 rounded shadow" style={{ left: Math.max(8, Math.min((chart.width ?? 760) - 120, chart.points[hoverIndex].x - 40)), top: Math.max(8, chart.points[hoverIndex].y - 50), pointerEvents: 'none' }}>
-                        <div className="text-xs text-gray-500">{chart.points[hoverIndex].data.date}</div>
+                        <div className="text-xs text-gray-500">{formatDateDisplay(chart.points[hoverIndex].data.date)}</div>
                         <div className="text-sm">当日: {chart.points[hoverIndex].data.dailyProfit === 0 ? '-' : (chart.points[hoverIndex].data.dailyProfit > 0 ? '+' : '') + formatMoneyWithSeparators(chart.points[hoverIndex].data.dailyProfit)}</div>
                         <div className="text-sm">累计: {chart.points[hoverIndex].data.cumulativeProfit === 0 ? '-' : (chart.points[hoverIndex].data.cumulativeProfit > 0 ? '+' : '') + formatMoneyWithSeparators(chart.points[hoverIndex].data.cumulativeProfit)}</div>
                       </div>
@@ -279,7 +280,7 @@ const ProfitModal: React.FC<ProfitModalProps> = ({ symbol, fundName, currentPric
                         <tbody>
                           {displayedTimeline.map(row => (
                             <tr key={row.date} className="border-b border-gray-50 hover:bg-gray-50 transition-colors">
-                              <td className="px-3 py-2 text-left text-xs text-gray-700">{row.date}</td>
+                              <td className="px-3 py-2 text-left text-xs text-gray-700">{formatDateDisplay(row.date)}</td>
                               <td className="px-3 py-2 text-right text-xs text-gray-700">{(row.netValue !== undefined && row.netValue !== null) ? fmtNav(row.netValue) : '-'}</td>
                               <td className="px-3 py-2 text-right text-xs">{moneyCell(row.dailyProfit)}</td>
                               <td className="px-3 py-2 text-right text-xs">{moneyCell(row.cumulativeProfit)}</td>

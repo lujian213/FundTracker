@@ -7,6 +7,7 @@ import HistoryChart from './HistoryChart';
 import { computeMultipleSMAs, MA_COLORS } from '../utils/movingAverage';
 import { DEFAULT_VISIBLE_MAS, MA_WINDOWS } from '../utils/maConfig';
 import { toLocalDateKey } from '../utils/priceResolver';
+import { formatDateDisplay } from '../utils/dateFormat';
 
 interface IndexDetailsModalProps {
   data: MarketIndex;
@@ -225,7 +226,7 @@ export const IndexDetailsModal: React.FC<IndexDetailsModalProps> = ({ data, onCl
                         const idx = points.findIndex((p: any) => p.data === hp);
                         const v = (idx >= 0) ? points[idx].data.value : (points[points.length - 1].data.value);
                         const d = (idx >= 0) ? new Date(points[idx].data.date) : new Date(points[points.length - 1].data.date);
-                        dateLabel = toLocalDateKey(d);
+                        dateLabel = formatDateDisplay(d);
                         valueLabel = v.toFixed(4);
                         const prev = (idx > 0) ? points[idx - 1].data.value : null;
                         if (prev !== null && prev !== undefined) {
@@ -236,7 +237,7 @@ export const IndexDetailsModal: React.FC<IndexDetailsModalProps> = ({ data, onCl
                         }
                       } else if (points && points.length > 0) {
                         const last = points[points.length - 1];
-                        dateLabel = toLocalDateKey(new Date(last.data.date));
+                        dateLabel = formatDateDisplay(new Date(last.data.date));
                         valueLabel = last.data.value.toFixed(4);
                         changeText = '—';
                       }
