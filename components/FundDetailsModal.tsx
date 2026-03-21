@@ -18,6 +18,7 @@ import IntradayChart from './IntradayChart';
 import HistoryChart from './HistoryChart';
 import AISidePanel from './AISidePanel';
 import { queryAI, AIResponse, AIQueryContext } from '../services/aiService';
+import { formatMoneyWithSeparators, fmtNav, fmtNumber, formatPercent } from '../utils/format';
 import { getAIConfig, AIConfiguration } from '../services/aiConfigService';
 
 interface FundDetailsModalProps {
@@ -138,13 +139,9 @@ export const FundDetailsModal: React.FC<FundDetailsModalProps> = ({ data, onClos
     return first ? first.value : null;
   };
 
-  // formatting helpers
+  // formatting helper for currency with suffix
   const formatCurrency = (v: number, decimals = 2) => {
-    try {
-      return new Intl.NumberFormat('zh-CN', { minimumFractionDigits: decimals, maximumFractionDigits: decimals }).format(v) + ' 元';
-    } catch (e) {
-      return v.toFixed(decimals) + ' 元';
-    }
+    return formatMoneyWithSeparators(v, decimals) + ' 元';
   };
 
   // load persisted config on mount and when symbol changes
@@ -316,7 +313,7 @@ export const FundDetailsModal: React.FC<FundDetailsModalProps> = ({ data, onClos
     const yLabelsCount = 4;
     const yLabels = Array.from({ length: yLabelsCount }).map((_, i) => {
       const val = min + (i * range / (yLabelsCount - 1));
-      return { text: val.toFixed(4), y: getY(val) };
+      return { text: fmtNav(val), y: getY(val) };
     });
 
     const xLabelIndices = [0, Math.floor(displayData.length / 2), displayData.length - 1];
@@ -765,27 +762,27 @@ export const FundDetailsModal: React.FC<FundDetailsModalProps> = ({ data, onClos
              </div>
             <div className="flex items-baseline space-x-3">
               <span className={`text-2xl font-normal ${valuationData.changePercentage >= 0 ? 'text-red-600' : 'text-green-600'}`}>
-                {valuationData.currentPrice.toFixed(4)}
+                {fmtNav(valuationData.currentPrice)}
               </span>
               <span className={`text-sm font-medium ${valuationData.changePercentage >= 0 ? 'text-red-500' : 'text-green-500'}`}>
-                {valuationData.changePercentage >= 0 ? '+' : ''}{valuationData.changePercentage.toFixed(2)}%
+                {formatPercent(valuationData.changePercentage)}
               </span>
-              <span className="text-[10px] text-gray-400 font-medium">前值: {valuationData.previousPrice.toFixed(4)} ({formattedNetWorthDate})</span>
+              <span className="text-[10px] text-gray-400 font-medium">前值: {fmtNav(valuationData.previousPrice)} ({formattedNetWorthDate})</span>
             </div>
             {/* Position summary: show only when configured (fullCapacity > 0 or startDate present) */}
             {(fullCapacity > 0 || startDate || initialPrice !== null) && (
              <div className="mt-1 text-xs text-gray-600 flex items-baseline space-x-3 whitespace-nowrap overflow-visible">
                 {fullCapacity > 0 && (
-                  <span className="whitespace-nowrap">满仓份额：<span className="font-medium">{fullCapacity.toFixed(2)}份</span></span>
+                  <span className="whitespace-nowrap">满仓份额：<span className="font-medium">{fmtNumber(fullCapacity)}份</span></span>
                 )}
                 {initialPosition > 0 && (
-                  <span className="whitespace-nowrap">初始份额：<span className="font-medium">{initialPosition.toFixed(2)}份</span></span>
+                  <span className="whitespace-nowrap">初始份额：<span className="font-medium">{fmtNumber(initialPosition)}份</span></span>
                 )}
                 {startDate && (
                   <span className="whitespace-nowrap">起始日期：<span className="font-medium">{startDate}</span></span>
                 )}
                 {initialPrice !== null && (
-                 <span className="whitespace-nowrap">初始价格：<span className="font-medium">{initialPrice.toFixed(4)}</span></span>
+                 <span className="whitespace-nowrap">初始价格：<span className="font-medium">{fmtNav(initialPrice)}</span></span>
                 )}
               </div>
             )}
@@ -794,11 +791,11 @@ export const FundDetailsModal: React.FC<FundDetailsModalProps> = ({ data, onClos
            {fullCapacity && fullCapacity > 0 ? (
              <div className="mt-1 text-xs text-gray-600 flex items-baseline space-x-3 whitespace-nowrap">
                <span className="whitespace-nowrap">市值：<span className="font-medium">{(marketValue !== null && !isNaN(marketValue as any)) ? formatCurrency(marketValue as number, 2) : '—'}</span></span>
-               <span className="whitespace-nowrap">仓位：<span className="font-medium">{(typeof totalShares === 'number') ? `${totalShares.toFixed(2)} 份` : '—'}</span></span>
-               <span className="whitespace-nowrap">占比：<span className="font-medium">{(fullCapacity > 0) ? `${((totalShares / fullCapacity) * 100).toFixed(2)}%` : '—'}</span></span>
+               <span className="whitespace-nowrap">仓位：<span className="font-medium">{(typeof totalShares === 'number') ? `${fmtNumber(totalShares)} 份` : '—'}</span></span>
+               <span className="whitespace-nowrap">占比：<span className="font-medium">{(fullCapacity > 0) ? `${fmtNumber((totalShares / fullCapacity) * 100)}%` : '—'}</span></span>
                <span className="whitespace-nowrap">盈利：<span className={`font-medium ${typeof profit === 'number' ? (profit < 0 ? 'text-green-600' : profit > 0 ? 'text-red-600' : 'text-gray-600') : ''}`}>{(typeof profit === 'number') ? formatCurrency(profit, 2) : '—'}</span></span>
                {avgCostPrice !== null && (
-                 <span className="whitespace-nowrap">成本价：<span className="font-medium">{avgCostPrice.toFixed(4)}</span></span>
+                 <span className="whitespace-nowrap">成本价：<span className="font-medium">{fmtNav(avgCostPrice)}</span></span>
                )}
              </div>
            ) : null}

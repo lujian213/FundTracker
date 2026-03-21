@@ -654,7 +654,7 @@ const SyncConfirmationModal: React.FC<Props> = ({
         <div className="overflow-y-auto flex-grow" style={{ maxHeight: '40vh' }}>
           {filteredDifferences.length === 0 ? (
             <div className="p-8 text-center text-gray-500 text-sm">
-              {differences.length === 0 ? '正在获取交易数据...' : '没有找到符合条件的交易差异'}
+              {differences.length === 0 ? '本地交易记录与 Eggfund 一致，无需同步' : '没有找到符合条件的交易差异'}
             </div>
           ) : (
             filteredDifferences.map((diff, index) => {

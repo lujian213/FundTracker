@@ -4,6 +4,8 @@ import { computeOverallProfit } from '../services/fundService';
 import { OverallProfitSummary, OverallProfitPoint, OverallFundRow } from '../types';
 import { toLocalDateKey } from '../utils/priceResolver';
 import { OVERALL_PROFIT_DATE_PRESETS, getOverallProfitPresetRange, OverallProfitDatePresetKey } from '../utils/overallProfitDatePresets';
+import { formatMoney, formatMoneyWithSeparators } from '../utils/format';
+import { formatDateDisplay } from '../utils/dateFormat';
 
 interface Props {
   symbols?: string[];
@@ -23,20 +25,6 @@ const OverallProfitModal: React.FC<Props> = ({ symbols, onClose, onSelectFund })
 
   const chartWrapRef = useRef<HTMLDivElement | null>(null);
   const chartSvgRef = useRef<SVGSVGElement | null>(null);
-
-  // 千分位格式化数字（保留2位小数）
-  const formatNumber = (v: number): string => {
-    const fixed = v.toFixed(2);
-    const [int, dec] = fixed.split('.');
-    const intWithComma = int.replace(/\B(?=(\d{3})+(?!\d))/g, ',');
-    return dec ? `${intWithComma}.${dec}` : intWithComma;
-  };
-
-  // 格式化日期为 yyyy/MM/dd
-  const formatDateDisplay = (dateStr: string | null): string => {
-    if (!dateStr) return '';
-    return dateStr.replace(/-/g, '/');
-  };
 
   useEffect(() => {
     let mounted = true;
@@ -106,14 +94,14 @@ const OverallProfitModal: React.FC<Props> = ({ symbols, onClose, onSelectFund })
     const points = pts.map((p, i) => ({ x: getX(i), y: getY(p.cumulativeProfit || 0), data: p }));
     const d = points.map((pt, i) => `${i === 0 ? 'M' : 'L'} ${pt.x} ${pt.y}`).join(' ');
     const xTicks = [0, Math.floor((points.length - 1) / 2), points.length - 1].map(i => ({ x: points[i].x, label: formatDateDisplay(points[i].data.date) }));
-    const yTicks = Array.from({ length: 5 }).map((_, i) => { const v = min + (i * range / 4); return { y: getY(v), label: (v >= 0 ? '+' : '') + formatNumber(v) }; });
+    const yTicks = Array.from({ length: 5 }).map((_, i) => { const v = min + (i * range / 4); return { y: getY(v), label: (v >= 0 ? '+' : '') + formatMoneyWithSeparators(v) }; });
     return { path: d, points, xTicks, yTicks, padLeft, padRight, width: w, height: h };
   }, [chartTimeline]);
 
   const moneyCell = (v: number) => {
     if (v === 0) return <span className="text-black">-</span>;
-    if (v > 0) return <span className="text-red-600">+{formatNumber(v)}</span>;
-    return <span className="text-green-600">{formatNumber(v)}</span>;
+    if (v > 0) return <span className="text-red-600">+{formatMoneyWithSeparators(v)}</span>;
+    return <span className="text-green-600">{formatMoneyWithSeparators(v)}</span>;
   };
 
   const getTooltipStyle = useCallback((x: number, y: number, width = 760, height = 160) => {
@@ -322,8 +310,8 @@ const OverallProfitModal: React.FC<Props> = ({ symbols, onClose, onSelectFund })
                     )}
                   >
                     <div className="text-xs text-gray-500">{chart.points[hoverIndex].data.date}</div>
-                    <div className="text-sm">当日: {chart.points[hoverIndex].data.dailyProfit === 0 ? '-' : (chart.points[hoverIndex].data.dailyProfit > 0 ? '+' : '') + formatNumber(chart.points[hoverIndex].data.dailyProfit)}</div>
-                    <div className="text-sm">累计: {chart.points[hoverIndex].data.cumulativeProfit === 0 ? '-' : (chart.points[hoverIndex].data.cumulativeProfit > 0 ? '+' : '') + formatNumber(chart.points[hoverIndex].data.cumulativeProfit)}</div>
+                    <div className="text-sm">当日: {chart.points[hoverIndex].data.dailyProfit === 0 ? '-' : (chart.points[hoverIndex].data.dailyProfit > 0 ? '+' : '') + formatMoneyWithSeparators(chart.points[hoverIndex].data.dailyProfit)}</div>
+                    <div className="text-sm">累计: {chart.points[hoverIndex].data.cumulativeProfit === 0 ? '-' : (chart.points[hoverIndex].data.cumulativeProfit > 0 ? '+' : '') + formatMoneyWithSeparators(chart.points[hoverIndex].data.cumulativeProfit)}</div>
                   </div>
                 )}
               </div>
@@ -336,9 +324,9 @@ const OverallProfitModal: React.FC<Props> = ({ symbols, onClose, onSelectFund })
                     {chartPeriodTotal === 0 ? (
                       <span className="text-black">-</span>
                     ) : chartPeriodTotal > 0 ? (
-                      <span className="text-red-600">+{formatNumber(chartPeriodTotal)}</span>
+                      <span className="text-red-600">+{formatMoneyWithSeparators(chartPeriodTotal)}</span>
                     ) : (
-                      <span className="text-green-600">{formatNumber(chartPeriodTotal)}</span>
+                      <span className="text-green-600">{formatMoneyWithSeparators(chartPeriodTotal)}</span>
                     )}
                   </>
                 ) : (
@@ -418,8 +406,8 @@ const OverallProfitModal: React.FC<Props> = ({ symbols, onClose, onSelectFund })
                                 (p.name && p.name.trim()) ? `${p.name} (${String(p.symbol).padStart(6,'0')})` : `(${String(p.symbol).padStart(6,'0')})`
                               )}
                             </td>
-                            <td className="px-3 py-2 text-right text-xs">{(p.profitFrom||0)===0? <span className="text-black">-</span> : <span className={`${(p.profitFrom||0)>0? 'text-red-600':'text-green-600'}`}>{(p.profitFrom||0)>0?'+':''}{formatNumber(p.profitFrom||0)}</span>}</td>
-                            <td className="px-3 py-2 text-right text-xs">{(p.profitTo||0)===0? <span className="text-black">-</span> : <span className={`${(p.profitTo||0)>0? 'text-red-600':'text-green-600'}`}>{(p.profitTo||0)>0?'+':''}{formatNumber(p.profitTo||0)}</span>}</td>
+                            <td className="px-3 py-2 text-right text-xs">{(p.profitFrom||0)===0? <span className="text-black">-</span> : <span className={`${(p.profitFrom||0)>0? 'text-red-600':'text-green-600'}`}>{(p.profitFrom||0)>0?'+':''}{formatMoneyWithSeparators(p.profitFrom||0)}</span>}</td>
+                            <td className="px-3 py-2 text-right text-xs">{(p.profitTo||0)===0? <span className="text-black">-</span> : <span className={`${(p.profitTo||0)>0? 'text-red-600':'text-green-600'}`}>{(p.profitTo||0)>0?'+':''}{formatMoneyWithSeparators(p.profitTo||0)}</span>}</td>
                             <td className="px-3 py-2 text-right text-xs">{moneyCell(p.profitDiff||0)}</td>
                           </tr>
                         ))}
@@ -433,9 +421,9 @@ const OverallProfitModal: React.FC<Props> = ({ symbols, onClose, onSelectFund })
                           return (
                             <tr className="border-t border-gray-200">
                               <td className="px-3 py-2 text-left text-xs font-bold text-gray-700">总计：{rows.length}条记录</td>
-                              <td className="px-3 py-2 text-right text-xs font-bold">{totalFrom===0? <span className="text-black">-</span> : <span className={`${totalFrom>0? 'text-red-600':'text-green-600'}`}>{totalFrom>0?'+':''}{formatNumber(totalFrom)}</span>}</td>
-                              <td className="px-3 py-2 text-right text-xs font-bold">{totalTo===0? <span className="text-black">-</span> : <span className={`${totalTo>0? 'text-red-600':'text-green-600'}`}>{totalTo>0?'+':''}{formatNumber(totalTo)}</span>}</td>
-                              <td className="px-3 py-2 text-right text-xs font-bold">{totalDiff===0? <span className="text-black">-</span> : totalDiff>0? <span className="text-red-600">+{formatNumber(totalDiff)}</span> : <span className="text-green-600">{formatNumber(totalDiff)}</span>}</td>
+                              <td className="px-3 py-2 text-right text-xs font-bold">{totalFrom===0? <span className="text-black">-</span> : <span className={`${totalFrom>0? 'text-red-600':'text-green-600'}`}>{totalFrom>0?'+':''}{formatMoneyWithSeparators(totalFrom)}</span>}</td>
+                              <td className="px-3 py-2 text-right text-xs font-bold">{totalTo===0? <span className="text-black">-</span> : <span className={`${totalTo>0? 'text-red-600':'text-green-600'}`}>{totalTo>0?'+':''}{formatMoneyWithSeparators(totalTo)}</span>}</td>
+                              <td className="px-3 py-2 text-right text-xs font-bold">{totalDiff===0? <span className="text-black">-</span> : totalDiff>0? <span className="text-red-600">+{formatMoneyWithSeparators(totalDiff)}</span> : <span className="text-green-600">{formatMoneyWithSeparators(totalDiff)}</span>}</td>
                             </tr>
                           );
                         })()}
