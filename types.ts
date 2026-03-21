@@ -38,6 +38,8 @@ export interface MarketIndex {
   change: number;
   changePercent: number;
   lastUpdated: string;
+  tradeDate?: string; // 交易日期 YYYY-MM-DD
+  previousClose?: number; // 前收盘价
 }
 
 export interface HistoricalPoint {

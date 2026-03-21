@@ -502,7 +502,7 @@ export async function fetchSingleIndex(symbol: string): Promise<MarketIndex | nu
   };
 
   const ut = 'fa1a66105171779fbdd067425f38a7c2';
-  const fields = 'f1,f2,f3,f4,f12,f13,f14,f43,f57,f58,f60,f169,f170,f124';
+  const fields = 'f1,f2,f3,f4,f12,f13,f14,f43,f57,f58,f60,f80,f169,f170,f124';
   const secid = normalizeIndexSymbol(symbol);
 
   const url = `https://push2.eastmoney.com/api/qt/stock/get?ut=${ut}&fltt=2&invt=2&secid=${secid}&fields=${fields}&_=${Date.now()}`;
@@ -512,13 +512,34 @@ export async function fetchSingleIndex(symbol: string): Promise<MarketIndex | nu
     if (item) {
       const timestamp = item.f124 ? new Date(item.f124 * 1000) : new Date();
       const pad = (n: number) => n.toString().padStart(2, '0');
+
+      // 解析 f80 字段获取交易日期
+      let tradeDate: string | undefined;
+      if (item.f80 && typeof item.f80 === 'string') {
+        try {
+          // f80 格式: [{"b":202603210930,"e":202603211130},{"b":202603211300,"e":202603211500}]
+          const match = item.f80.match(/"b":(\d{12})/);
+          if (match) {
+            const dateNum = match[1]; // 202603210930
+            const year = dateNum.substring(0, 4);
+            const month = dateNum.substring(4, 6);
+            const day = dateNum.substring(6, 8);
+            tradeDate = `${year}-${month}-${day}`;
+          }
+        } catch (e) {
+          // 解析失败，忽略
+        }
+      }
+
       return {
         symbol: secid,
         name: item.f14 || item.f58 || "指数",
         current: parseFloat(item.f43) || 0,
         change: parseFloat(item.f169) || 0,
         changePercent: parseFloat(item.f170) || 0,
-        lastUpdated: `${pad(timestamp.getHours())}:${pad(timestamp.getMinutes())}:${pad(timestamp.getSeconds())}`
+        lastUpdated: `${pad(timestamp.getHours())}:${pad(timestamp.getMinutes())}:${pad(timestamp.getSeconds())}`,
+        tradeDate,
+        previousClose: parseFloat(item.f60) || undefined,
       };
     }
   } catch (e) {}
