@@ -213,8 +213,6 @@ async function fetchWithRetry(
 ): Promise<Response> {
   let lastError: Error | null = null;
 
-  console.log('[AI Debug] 发送请求到:', url);
-
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), timeout);
@@ -226,11 +224,6 @@ async function fetchWithRetry(
         signal: controller.signal
       });
       const elapsed = Date.now() - startTime;
-
-      console.log('[AI Debug] 响应收到:', {
-        status: response.status,
-        elapsed: elapsed + 'ms'
-      });
 
       if (!response.ok) {
         clearTimeout(timeoutId);
@@ -244,12 +237,6 @@ async function fetchWithRetry(
       clearTimeout(timeoutId);
       lastError = error;
 
-      console.error('[AI Debug] 请求失败:', {
-        attempt: attempt + 1,
-        errorName: error.name,
-        errorMessage: error.message
-      });
-
       const isRetryable =
         error.name === 'TypeError' ||
         error.name === 'AbortError' ||
@@ -258,7 +245,6 @@ async function fetchWithRetry(
         error.message?.includes('NetworkError');
 
       if (isRetryable && attempt < maxRetries) {
-        console.warn(`[AI Debug] 将在 ${retryDelay * (attempt + 1)}ms 后重试...`);
         await new Promise(resolve => setTimeout(resolve, retryDelay * (attempt + 1)));
         continue;
       }
@@ -329,9 +315,6 @@ export async function queryAI(
       stream: true  // 使用流式响应，避免 HTTP/2 长连接中断
     };
 
-    // DEBUG: 打印完整请求体，便于在控制台手动测试
-    console.log('[AI Debug] 请求体大小:', JSON.stringify(requestBody).length, '字节');
-
     // 使用流式响应
     const response = await fetchWithRetry(config.apiEndpoint, {
       method: 'POST',
@@ -384,7 +367,6 @@ export async function queryAI(
         }
       }
     } catch (streamError: any) {
-      console.error('[AI Debug] 流读取错误:', streamError);
       // 如果已有部分内容，返回它
       if (fullContent) {
         return {
@@ -394,8 +376,6 @@ export async function queryAI(
       }
       throw streamError;
     }
-
-    console.log('[AI Debug] 响应内容长度:', fullContent.length);
 
     if (fullContent) {
       return {
