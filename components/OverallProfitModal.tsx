@@ -24,6 +24,20 @@ const OverallProfitModal: React.FC<Props> = ({ symbols, onClose, onSelectFund })
   const chartWrapRef = useRef<HTMLDivElement | null>(null);
   const chartSvgRef = useRef<SVGSVGElement | null>(null);
 
+  // 千分位格式化数字（保留2位小数）
+  const formatNumber = (v: number): string => {
+    const fixed = v.toFixed(2);
+    const [int, dec] = fixed.split('.');
+    const intWithComma = int.replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+    return dec ? `${intWithComma}.${dec}` : intWithComma;
+  };
+
+  // 格式化日期为 yyyy/MM/dd
+  const formatDateDisplay = (dateStr: string | null): string => {
+    if (!dateStr) return '';
+    return dateStr.replace(/-/g, '/');
+  };
+
   useEffect(() => {
     let mounted = true;
     const init = async () => {
@@ -92,14 +106,14 @@ const OverallProfitModal: React.FC<Props> = ({ symbols, onClose, onSelectFund })
     const points = pts.map((p, i) => ({ x: getX(i), y: getY(p.cumulativeProfit || 0), data: p }));
     const d = points.map((pt, i) => `${i === 0 ? 'M' : 'L'} ${pt.x} ${pt.y}`).join(' ');
     const xTicks = [0, Math.floor((points.length - 1) / 2), points.length - 1].map(i => ({ x: points[i].x, label: points[i].data.date }));
-    const yTicks = Array.from({ length: 5 }).map((_, i) => { const v = min + (i * range / 4); return { y: getY(v), label: (v >= 0 ? '+' : '') + v.toFixed(2) }; });
+    const yTicks = Array.from({ length: 5 }).map((_, i) => { const v = min + (i * range / 4); return { y: getY(v), label: (v >= 0 ? '+' : '') + formatNumber(v) }; });
     return { path: d, points, xTicks, yTicks, padLeft, padRight, width: w, height: h };
   }, [chartTimeline]);
 
   const moneyCell = (v: number) => {
     if (v === 0) return <span className="text-black">-</span>;
-    if (v > 0) return <span className="text-red-600">+{v.toFixed(2)}</span>;
-    return <span className="text-green-600">{v.toFixed(2)}</span>;
+    if (v > 0) return <span className="text-red-600">+{formatNumber(v)}</span>;
+    return <span className="text-green-600">{formatNumber(v)}</span>;
   };
 
   const getTooltipStyle = useCallback((x: number, y: number, width = 760, height = 160) => {
@@ -162,12 +176,22 @@ const OverallProfitModal: React.FC<Props> = ({ symbols, onClose, onSelectFund })
     return summary.timeline[summary.timeline.length - 1].date;
   }, [summary]);
 
+  // 图表完整期间的累计盈利（从 chartFromDate 到 chartEndDate）
+  // 与日期选择器无关，固定显示图表起始到终止的总累计
+  const chartPeriodTotal = useMemo(() => {
+    if (!summary || !summary.timeline || summary.timeline.length === 0) return 0;
+    // 图表终止日期的累计盈利即为期间累计
+    const lastPoint = summary.timeline[summary.timeline.length - 1];
+    return lastPoint.cumulativeProfit || 0;
+  }, [summary]);
+
   const applyPreset = useCallback((preset: OverallProfitDatePresetKey) => {
     const range = getOverallProfitPresetRange(preset, { maxToDate: chartEndDate });
     setFromDate(range.fromDate || null);
     setToDate(range.toDate || null);
   }, [chartEndDate]);
 
+  // 表格期间累计：日期1到日期2之间的盈利差额
   const periodTotal = useMemo(() => {
     if (tableError || !fromDate || !toDate) return 0;
     const total = tableRows.reduce((sum, row) => sum + (row.profitDiff || 0), 0);
@@ -298,14 +322,29 @@ const OverallProfitModal: React.FC<Props> = ({ symbols, onClose, onSelectFund })
                     )}
                   >
                     <div className="text-xs text-gray-500">{chart.points[hoverIndex].data.date}</div>
-                    <div className="text-sm">当日: {chart.points[hoverIndex].data.dailyProfit === 0 ? '-' : (chart.points[hoverIndex].data.dailyProfit > 0 ? '+' : '') + chart.points[hoverIndex].data.dailyProfit.toFixed(2)}</div>
-                    <div className="text-sm">累计: {chart.points[hoverIndex].data.cumulativeProfit === 0 ? '-' : (chart.points[hoverIndex].data.cumulativeProfit > 0 ? '+' : '') + chart.points[hoverIndex].data.cumulativeProfit.toFixed(2)}</div>
+                    <div className="text-sm">当日: {chart.points[hoverIndex].data.dailyProfit === 0 ? '-' : (chart.points[hoverIndex].data.dailyProfit > 0 ? '+' : '') + formatNumber(chart.points[hoverIndex].data.dailyProfit)}</div>
+                    <div className="text-sm">累计: {chart.points[hoverIndex].data.cumulativeProfit === 0 ? '-' : (chart.points[hoverIndex].data.cumulativeProfit > 0 ? '+' : '') + formatNumber(chart.points[hoverIndex].data.cumulativeProfit)}</div>
                   </div>
                 )}
               </div>
 
-              {/* Table: header (fixed), scrollable body, totals (fixed) */}
-              <div data-testid="overall-period-total" className="text-xs mt-2">期间累计: {tableError ? <span className="text-red-600">{tableError}</span> : (periodTotal === 0 ? <span className="text-black">-</span> : (periodTotal > 0 ? <span className="text-red-600">+{periodTotal.toFixed(2)}</span> : <span className="text-green-600">{periodTotal.toFixed(2)}</span>))}</div>
+              {/* 图表完整期间累计：与日期选择器无关 */}
+              <div data-testid="overall-period-total" className="text-xs mt-2">
+                {chartFromDate && chartEndDate ? (
+                  <>
+                    期间累计（{formatDateDisplay(chartFromDate)} ~ {formatDateDisplay(chartEndDate)}）：
+                    {chartPeriodTotal === 0 ? (
+                      <span className="text-black">-</span>
+                    ) : chartPeriodTotal > 0 ? (
+                      <span className="text-red-600">+{formatNumber(chartPeriodTotal)}</span>
+                    ) : (
+                      <span className="text-green-600">{formatNumber(chartPeriodTotal)}</span>
+                    )}
+                  </>
+                ) : (
+                  <span className="text-gray-400">暂无数据</span>
+                )}
+              </div>
 
               {/* 日期选择器：位于表格上方 */}
               <div className="mt-3 flex flex-wrap items-center gap-3" style={{ position: 'relative', zIndex: 1400, background: '#ffffff', padding: '6px', borderRadius: '6px' }}>
@@ -345,8 +384,8 @@ const OverallProfitModal: React.FC<Props> = ({ symbols, onClose, onSelectFund })
                       <thead className="sticky top-0 z-10 bg-gray-50">
                         <tr className="border-b border-gray-200">
                           <th className="px-3 py-2 text-left text-xs font-semibold text-gray-500">基金名称（基金代码）</th>
-                          <th className="px-3 py-2 text-right text-xs font-semibold text-gray-500">日期1累计盈利</th>
-                          <th className="px-3 py-2 text-right text-xs font-semibold text-gray-500">日期2累计盈利</th>
+                          <th className="px-3 py-2 text-right text-xs font-semibold text-gray-500">{formatDateDisplay(fromDate)}累计盈利</th>
+                          <th className="px-3 py-2 text-right text-xs font-semibold text-gray-500">{formatDateDisplay(toDate)}累计盈利</th>
                           <th className="px-3 py-2 text-right text-xs font-semibold text-gray-500">
                             <button
                               className="inline-flex items-center gap-1 hover:text-gray-700 transition-colors select-none"
@@ -379,8 +418,8 @@ const OverallProfitModal: React.FC<Props> = ({ symbols, onClose, onSelectFund })
                                 (p.name && p.name.trim()) ? `${p.name} (${String(p.symbol).padStart(6,'0')})` : `(${String(p.symbol).padStart(6,'0')})`
                               )}
                             </td>
-                            <td className="px-3 py-2 text-right text-xs">{(p.profitFrom||0)===0? <span className="text-black">-</span> : <span className={`${(p.profitFrom||0)>0? 'text-red-600':'text-green-600'}`}>{(p.profitFrom||0).toFixed(2)}</span>}</td>
-                            <td className="px-3 py-2 text-right text-xs">{(p.profitTo||0)===0? <span className="text-black">-</span> : <span className={`${(p.profitTo||0)>0? 'text-red-600':'text-green-600'}`}>{(p.profitTo||0).toFixed(2)}</span>}</td>
+                            <td className="px-3 py-2 text-right text-xs">{(p.profitFrom||0)===0? <span className="text-black">-</span> : <span className={`${(p.profitFrom||0)>0? 'text-red-600':'text-green-600'}`}>{(p.profitFrom||0)>0?'+':''}{formatNumber(p.profitFrom||0)}</span>}</td>
+                            <td className="px-3 py-2 text-right text-xs">{(p.profitTo||0)===0? <span className="text-black">-</span> : <span className={`${(p.profitTo||0)>0? 'text-red-600':'text-green-600'}`}>{(p.profitTo||0)>0?'+':''}{formatNumber(p.profitTo||0)}</span>}</td>
                             <td className="px-3 py-2 text-right text-xs">{moneyCell(p.profitDiff||0)}</td>
                           </tr>
                         ))}
@@ -394,9 +433,9 @@ const OverallProfitModal: React.FC<Props> = ({ symbols, onClose, onSelectFund })
                           return (
                             <tr className="border-t border-gray-200">
                               <td className="px-3 py-2 text-left text-xs font-bold text-gray-700">总计：{rows.length}条记录</td>
-                              <td className="px-3 py-2 text-right text-xs font-bold">{totalFrom===0? <span className="text-black">-</span> : <span className={`${totalFrom>0? 'text-red-600':'text-green-600'}`}>{totalFrom.toFixed(2)}</span>}</td>
-                              <td className="px-3 py-2 text-right text-xs font-bold">{totalTo===0? <span className="text-black">-</span> : <span className={`${totalTo>0? 'text-red-600':'text-green-600'}`}>{totalTo.toFixed(2)}</span>}</td>
-                              <td className="px-3 py-2 text-right text-xs font-bold">{totalDiff===0? <span className="text-black">-</span> : totalDiff>0? <span className="text-red-600">+{totalDiff.toFixed(2)}</span> : <span className="text-green-600">{totalDiff.toFixed(2)}</span>}</td>
+                              <td className="px-3 py-2 text-right text-xs font-bold">{totalFrom===0? <span className="text-black">-</span> : <span className={`${totalFrom>0? 'text-red-600':'text-green-600'}`}>{totalFrom>0?'+':''}{formatNumber(totalFrom)}</span>}</td>
+                              <td className="px-3 py-2 text-right text-xs font-bold">{totalTo===0? <span className="text-black">-</span> : <span className={`${totalTo>0? 'text-red-600':'text-green-600'}`}>{totalTo>0?'+':''}{formatNumber(totalTo)}</span>}</td>
+                              <td className="px-3 py-2 text-right text-xs font-bold">{totalDiff===0? <span className="text-black">-</span> : totalDiff>0? <span className="text-red-600">+{formatNumber(totalDiff)}</span> : <span className="text-green-600">{formatNumber(totalDiff)}</span>}</td>
                             </tr>
                           );
                         })()}

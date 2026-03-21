@@ -68,7 +68,8 @@ describe('OverallProfitModal chart click sync', () => {
     await waitFor(() => expect(screen.getByText('Fund A (000001)')).toBeInTheDocument());
     const diffCell = document.querySelector('tbody tr td:nth-child(4)') as HTMLElement;
     expect(diffCell.textContent?.replace(/\s+/g, '')).toBe('+10.00');
-    expect(screen.getByTestId('overall-period-total').textContent?.replace(/\s+/g, '')).toContain('期间累计:+10.00');
+    // 期间累计显示图表完整期间的累计（从起始到终止），与日期选择器无关
+    expect(screen.getByTestId('overall-period-total').textContent?.replace(/\s+/g, '')).toContain('期间累计（2026/02/20~2026/02/22）：+8.00');
   });
 
   test('clicking the first point sets date1 to previous calendar day and keeps table valid', async () => {
@@ -90,7 +91,8 @@ describe('OverallProfitModal chart click sync', () => {
     expect(rows.length).toBe(1);
     // All values zero show as '-'
     expect(screen.getAllByText('-').length).toBeGreaterThan(0);
-    expect(screen.getByTestId('overall-period-total').textContent?.replace(/\s+/g, '')).toContain('期间累计:-');
+    // 期间累计显示图表完整期间的累计（从起始到终止），与日期选择器无关
+    expect(screen.getByTestId('overall-period-total').textContent?.replace(/\s+/g, '')).toContain('期间累计（2026/02/20~2026/02/22）：+8.00');
   });
 
   test('preset buttons update pickers and clip date2 to the available chart end date', async () => {
@@ -138,7 +140,10 @@ describe('OverallProfitModal chart click sync', () => {
 
     const diffCell = document.querySelector('tbody tr td:nth-child(4)') as HTMLElement;
     expect(diffCell.textContent?.replace(/\s+/g, '')).toBe('+8.00');
-    expect(screen.getByTestId('overall-period-total').textContent?.replace(/\s+/g, '')).toContain('期间累计:+8.00');
+    // 期间累计显示图表完整期间的累计，与日期选择器无关
+    const expectedStart = startDate.replace(/-/g, '/');
+    const expectedEnd = endDate.replace(/-/g, '/');
+    expect(screen.getByTestId('overall-period-total').textContent?.replace(/\s+/g, '')).toContain(`期间累计（${expectedStart}~${expectedEnd}）：+8.00`);
   });
 
   test('hover tooltip stays close to point and avoids covering it', async () => {
