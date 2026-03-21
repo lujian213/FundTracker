@@ -2,6 +2,7 @@ import React from 'react';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import ProfitModal from '../../components/ProfitModal';
 import { computeProfitTimeline } from '../../utils/profitCalculator';
+import { formatDateDisplay } from '../../utils/dateFormat';
 
 // Mock the required modules
 jest.mock('../../hooks/useTrades', () => ({
@@ -52,7 +53,7 @@ describe('ProfitModal Start Date Fix', () => {
     // Wait for the timeline to update
     await waitFor(() => {
       // Check that the first date is displayed in the table (find by matching cell with date content)
-      const dateCells = screen.getAllByText(/^2026-02-24$/);
+      const dateCells = screen.getAllByText(formatDateDisplay('2026-02-24'));
       // We expect it to appear in the table and possibly in the chart, but we need to find the table cell
       const tableDateCells = dateCells.filter(cell => cell.tagName === 'TD' || cell.closest('td'));
       expect(tableDateCells.length).toBeGreaterThan(0);
@@ -78,7 +79,7 @@ describe('ProfitModal Start Date Fix', () => {
     fireEvent.change(fromDateInput, { target: { value: '2026-02-25' } });
 
     await waitFor(() => {
-      const dateCells = screen.getAllByText(/^2026-02-25$/);
+      const dateCells = screen.getAllByText(formatDateDisplay('2026-02-25'));
       const tableDateCells = dateCells.filter(cell => cell.tagName === 'TD' || cell.closest('td'));
       expect(tableDateCells.length).toBeGreaterThan(0);
     });
@@ -87,7 +88,7 @@ describe('ProfitModal Start Date Fix', () => {
     fireEvent.change(fromDateInput, { target: { value: '2026-02-24' } });
 
     await waitFor(() => {
-      const dateCells = screen.getAllByText(/^2026-02-24$/);
+      const dateCells = screen.getAllByText(formatDateDisplay('2026-02-24'));
       const tableDateCells = dateCells.filter(cell => cell.tagName === 'TD' || cell.closest('td'));
       expect(tableDateCells.length).toBeGreaterThan(0);
     });

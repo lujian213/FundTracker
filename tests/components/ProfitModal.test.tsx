@@ -2,6 +2,7 @@ import React from 'react';
 import { render, screen, waitFor, fireEvent } from '@testing-library/react';
 import ProfitModal from '../../components/ProfitModal';
 import { computeProfitTimeline } from '../../utils/profitCalculator';
+import { formatDateDisplay } from '../../utils/dateFormat';
 
 // Mock fetchFundHistory in services and useTrades hook
 jest.mock('../../services/fundService', () => ({ fetchFundHistory: jest.fn() }));
@@ -52,13 +53,13 @@ describe('ProfitModal', () => {
     await waitFor(() => expect(document.querySelectorAll('tbody tr').length).toBe(2));
     const rows = Array.from(document.querySelectorAll('tbody tr'));
     const rowDates = rows.map(r => r.querySelector('td')?.textContent?.trim());
-    expect(rowDates).toContain('2026-02-21');
-    expect(rowDates).toContain('2026-02-22');
+    expect(rowDates).toContain(formatDateDisplay('2026-02-21'));
+    expect(rowDates).toContain(formatDateDisplay('2026-02-22'));
   });
 
   test('uses today confirmed NAV when valuation is missing', async () => {
     const d = new Date();
-    const today = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    const todayIso = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 
     render(
       <ProfitModal
@@ -68,13 +69,13 @@ describe('ProfitModal', () => {
         currentPrice={0}
         previousPrice={3}
         realtimeDate={'---'}
-        netWorthDate={today}
+        netWorthDate={todayIso}
         onClose={() => {}}
       />
     );
 
     await waitFor(() => expect(fetchFundHistory).toHaveBeenCalled());
-    await waitFor(() => expect(screen.getAllByText(today).length).toBeGreaterThan(0));
+    await waitFor(() => expect(screen.getAllByText(formatDateDisplay(todayIso)).length).toBeGreaterThan(0));
     expect(screen.getAllByText('3.0000').length).toBeGreaterThan(0);
   });
 });
