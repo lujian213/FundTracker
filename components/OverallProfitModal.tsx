@@ -105,7 +105,7 @@ const OverallProfitModal: React.FC<Props> = ({ symbols, onClose, onSelectFund })
     const getY = (v: number) => h - padBottom - ((v - min) / range) * (h - padTop - padBottom);
     const points = pts.map((p, i) => ({ x: getX(i), y: getY(p.cumulativeProfit || 0), data: p }));
     const d = points.map((pt, i) => `${i === 0 ? 'M' : 'L'} ${pt.x} ${pt.y}`).join(' ');
-    const xTicks = [0, Math.floor((points.length - 1) / 2), points.length - 1].map(i => ({ x: points[i].x, label: points[i].data.date }));
+    const xTicks = [0, Math.floor((points.length - 1) / 2), points.length - 1].map(i => ({ x: points[i].x, label: formatDateDisplay(points[i].data.date) }));
     const yTicks = Array.from({ length: 5 }).map((_, i) => { const v = min + (i * range / 4); return { y: getY(v), label: (v >= 0 ? '+' : '') + formatNumber(v) }; });
     return { path: d, points, xTicks, yTicks, padLeft, padRight, width: w, height: h };
   }, [chartTimeline]);
