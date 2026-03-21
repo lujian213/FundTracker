@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { HistoricalPoint, TradeRecord } from '../types';
 import { fetchFundHistory } from '../services/fundService';
 import { resolvePreferredPrice, toLocalDateKey } from '../utils/priceResolver';
+import { formatDateDisplay } from '../utils/dateFormat';
 import useTrades from '../hooks/useTrades';
 import { getMatcher, MatchedRecord } from '../utils/tradeMatcher';
 
@@ -352,11 +353,6 @@ export const TradeManager: React.FC<{
     return shares * (currentPrice - tradePrice);
   };
 
-  // 格式化日期 yyyy-MM-dd -> yyyy/MM/dd
-  const formatDate = (dateStr: string): string => {
-    return dateStr.replace(/-/g, '/');
-  };
-
   return (
     <div className="fixed inset-0 flex items-center justify-center p-4" style={{ zIndex }}>
       <div className="absolute inset-0 bg-black/60" onClick={onClose}></div>
@@ -579,7 +575,7 @@ export const TradeManager: React.FC<{
                       onMouseEnter={() => handleRowMouseEnter(t.id, index)}
                       onMouseUp={handleRowMouseUp}
                     >
-                      <div className="w-[12%] text-left text-xs truncate">{formatDate(t.date)}</div>
+                      <div className="w-[12%] text-left text-xs truncate">{formatDateDisplay(t.date)}</div>
                       <div className={`w-[8%] text-left text-xs ${isInitial ? 'text-blue-500' : 'text-gray-500'}`}>
                         {isInitial ? '建仓' : (t.type === 'buy' ? '买入' : '卖出')}
                       </div>

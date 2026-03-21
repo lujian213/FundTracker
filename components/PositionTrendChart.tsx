@@ -3,6 +3,7 @@ import HistoryChart from './HistoryChart';
 import { PositionTrendSeries, PositionTrendPoint } from '../utils/positionTrend';
 import { HistoricalPoint } from '../types';
 import { formatDateDisplay } from '../utils/dateFormat';
+import { formatMoneyWithSeparators } from '../utils/format';
 
 interface PositionTrendProps {
   data: PositionTrendSeries | null;
@@ -78,8 +79,8 @@ export default function PositionTrendChart({ data, loading, height = 320 }: Posi
     return [0, 1, 2, 3, 4].map(i => {
       const val = min + step * i;
       const y = Math.round(20 + chartH - (i / 4) * chartH);
-      // round to integer per requirement
-      return { text: String(Math.round(val)), y };
+      // round to integer with thousands separator
+      return { text: formatMoneyWithSeparators(Math.round(val), 0), y };
     });
   }, [compressed]);
 
