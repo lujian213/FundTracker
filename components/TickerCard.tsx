@@ -125,11 +125,11 @@ export const TickerCard: React.FC<TickerCardProps> = ({
   return (
     <div
       onClick={handleCardClick}
-      className={`bg-white rounded-2xl p-5 shadow-sm border transition-all relative overflow-visible animate-in fade-in slide-in-from-bottom-2 duration-300 ${isSelected ? 'border-blue-500 ring-4 ring-blue-500/10' : 'border-gray-100'} cursor-pointer hover:shadow-lg hover:border-gray-200 active:scale-[0.98]`}>
+      className={`bg-white rounded-2xl pt-4 pb-3 px-4 shadow-sm border transition-all relative overflow-visible animate-in fade-in slide-in-from-bottom-2 duration-300 ${isSelected ? 'border-blue-500 ring-4 ring-blue-500/10' : 'border-gray-100'} cursor-pointer hover:shadow-lg hover:border-gray-200 active:scale-[0.98]`}>
 
       {/* Status dot — top-left corner */}
       <div
-        className={`absolute top-3 left-3 w-2 h-2 rounded-full ${statusDotClass} z-10`}
+        className={`absolute top-2.5 left-2.5 w-1.5 h-1.5 rounded-full ${statusDotClass} z-10`}
         title={statusDotTitle}
         aria-label={`状态: ${statusDotTitle}`}
       />
@@ -137,12 +137,12 @@ export const TickerCard: React.FC<TickerCardProps> = ({
       {!isSelectionMode && (
         <div className="absolute top-0 right-0 flex items-center">
           {!isTodayData && hasData && data!.realtimeDate !== '---' && (
-            <div className="bg-amber-100 text-amber-700 text-[9px] font-bold px-2 py-1 rounded-bl-lg shadow-sm mr-[1px] animate-in slide-in-from-right-2 duration-300">
+            <div className="bg-amber-100 text-amber-700 text-[9px] font-bold px-2 py-0.5 rounded-bl-lg rounded-tr-2xl shadow-sm mr-[1px] animate-in slide-in-from-right-2 duration-300">
               <i className="fas fa-history mr-1 opacity-70"></i>
               历史:{formattedRealtimeDate}
             </div>
           )}
-          <div className={`${!hasData ? 'bg-gray-300' : isNoValuation ? 'bg-gray-400' : 'bg-red-600'} text-white text-[9px] font-bold px-3 py-1 rounded-bl-lg shadow-sm transition-colors`}>
+          <div className={`${!hasData ? 'bg-gray-300' : isNoValuation ? 'bg-gray-400' : 'bg-red-600'} text-white text-[9px] font-bold px-3 py-0.5 rounded-bl-lg rounded-tr-2xl shadow-sm transition-colors`}>
             {!hasData ? '加载中' : isNoValuation ? '收盘' : '估值'}
           </div>
         </div>
@@ -159,12 +159,12 @@ export const TickerCard: React.FC<TickerCardProps> = ({
         />
       )}
 
-      <div className="flex justify-between items-start mb-4">
-        <div className="flex-1 min-w-0 pl-3">
+      <div className="flex justify-between items-start mb-2">
+        <div className="flex-1 min-w-0 pl-2.5">
           <h3 title={data?.name || ticker.name || ticker.symbol} className={`font-bold truncate text-base transition-colors ${isSelected ? 'text-blue-700' : 'text-gray-800'}`}>
             {data?.name || ticker.name || ticker.symbol}
           </h3>
-          <p className="text-xs text-gray-400 mt-1 font-mono tracking-wider">{ticker.symbol}</p>
+          <p className="text-[11px] text-gray-400 mt-0.5 font-mono tracking-wider">{ticker.symbol}</p>
         </div>
 
         {!isSelectionMode && (
@@ -177,16 +177,16 @@ export const TickerCard: React.FC<TickerCardProps> = ({
       </div>
 
       <div className="flex justify-between items-end">
-        <div className="space-y-1">
-          <div className="flex items-baseline space-x-2">
-            <span className={`text-3xl font-normal leading-none tracking-tight ${getPriceColor()}`}>
+        <div className="space-y-0.5">
+          <div className="flex items-baseline space-x-2 -translate-y-2">
+            <span className={`text-xl font-normal leading-none tracking-tight ${getPriceColor()}`}>
               {displayPrice}
             </span>
             {hasData && (
               <span className="text-[10px] text-gray-400 font-medium">{isNoValuation ? '净值' : '实时估值'}</span>
             )}
           </div>
-          <div className="flex flex-col text-[11px] text-gray-400">
+          <div className="flex flex-col text-[10px] text-gray-400">
             <div className="flex items-center space-x-1">
               <span>确认净值:</span>
               <span className="font-mono font-medium text-gray-600">{displayPrevPrice}</span>
@@ -199,14 +199,14 @@ export const TickerCard: React.FC<TickerCardProps> = ({
 
         <div className="text-right">
           <div className="flex flex-col items-end">
-            <div className={`inline-flex items-center px-3 py-1.5 rounded-xl text-base transition-all duration-300 ${getChangeStyles()}`}>
+            <div className={`inline-flex items-center px-3 py-1 rounded-xl text-base transition-all duration-300 ${getChangeStyles()}`}>
               {hasData && !isNoValuation && change !== 0 && !isNaN(change) && (
                 <i className={`fas fa-caret-${isUp ? 'up' : 'down'} mr-1.5`} />
               )}
               {displayChange}
             </div>
             {hasData && (
-              <div className="text-[9px] text-gray-400 mt-2 font-medium bg-gray-50 px-2 py-0.5 rounded-full flex items-center">
+              <div className="text-[9px] text-gray-400 mt-1 font-medium bg-gray-50 px-2 py-0.5 rounded-full flex items-center">
                 <i className="far fa-clock mr-1" />
                 {data!.lastUpdated}
               </div>

@@ -596,16 +596,16 @@ const App: React.FC = () => {
       : '-';
 
     return (
-      <div key={idx.symbol} onClick={() => isSelectionMode ? toggleSelection(selectionKey) : setViewingIndex(idx)} className={`bg-white rounded-2xl p-4 shadow-sm border transition-all min-w-[180px] lg:min-w-0 relative group cursor-pointer hover:shadow-md ${isSelected ? 'border-blue-500 ring-4 ring-blue-500/10' : isSelectionMode ? 'border-blue-200 ring-2 ring-blue-50' : 'border-gray-100'} animate-in fade-in duration-300`}>
+      <div key={idx.symbol} onClick={() => isSelectionMode ? toggleSelection(selectionKey) : setViewingIndex(idx)} className={`bg-white rounded-2xl pt-3 pb-2 px-3 shadow-sm border transition-all min-w-[150px] lg:min-w-0 relative group cursor-pointer hover:shadow-md ${isSelected ? 'border-blue-500 ring-4 ring-blue-500/10' : isSelectionMode ? 'border-blue-200 ring-2 ring-blue-50' : 'border-gray-100'} animate-in fade-in duration-300`}>
         {/* Status dot — top-left corner */}
         <div
-          className={`absolute top-2.5 left-2.5 w-2 h-2 rounded-full ${statusDotClass} z-10`}
+          className={`absolute top-2 left-2 w-1.5 h-1.5 rounded-full ${statusDotClass} z-10`}
           title={statusDotTitle}
           aria-label={`状态: ${statusDotTitle}`}
         />
         {/* History label - top right */}
         {shouldShowHistoryLabel && !isPlaceholder && (
-          <div className="absolute top-0 right-0 bg-amber-100 text-amber-700 text-[9px] font-bold px-2 py-1 rounded-bl-lg shadow-sm animate-in slide-in-from-right-2 duration-300">
+          <div className="absolute top-0 right-0 bg-amber-100 text-amber-700 text-[9px] font-bold px-2 py-0.5 rounded-bl-lg rounded-tr-2xl shadow-sm animate-in slide-in-from-right-2 duration-300">
             <i className="fas fa-history mr-1 opacity-70"></i>
             历史:{formattedTradeDate}
           </div>
@@ -621,7 +621,7 @@ const App: React.FC = () => {
             }}
           />
         )}
-        <div className="mb-1 pl-3">
+        <div className="mb-0.5 pl-2.5">
           <div className="flex justify-between items-start">
             <div className="flex-1 min-w-0 pr-2">
               <h4 className={`text-[12px] font-bold truncate leading-none ${isSelected ? 'text-blue-700' : 'text-gray-800'}`}>{idx.name}</h4>
@@ -630,10 +630,10 @@ const App: React.FC = () => {
           </div>
         </div>
         {/* 指数数值与变化率 */}
-        <div className="flex justify-between items-end mt-1">
+        <div className="flex justify-between items-end">
           <div className="flex flex-col">
             <div className="flex items-baseline space-x-1">
-              <span className={`text-lg font-normal ${idx.changePercent >= 0 ? 'text-red-600' : 'text-green-600'}`}>
+              <span className={`text-base font-normal ${idx.changePercent >= 0 ? 'text-red-600' : 'text-green-600'}`}>
                 {isPlaceholder
                   ? '-'
                   : (idx.current || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
@@ -643,22 +643,22 @@ const App: React.FC = () => {
               )}
             </div>
             {/* 前值 */}
-            <div className="flex flex-col text-[10px] text-gray-400 mt-1">
+            <div className="flex flex-col text-[9px] text-gray-400 mt-0.5">
               <div className="flex items-center space-x-1">
                 <span>前值:</span>
                 <span className="font-mono font-medium text-gray-600">{formattedPreviousClose}</span>
               </div>
             </div>
           </div>
-          <div className="flex flex-col items-end mt-2">
-            <div className={`inline-flex items-center px-2 py-0.5 rounded-lg text-xs transition-all duration-300 ${isPlaceholder ? 'bg-gray-100 text-gray-500' : idx.changePercent > 0 ? 'bg-red-100 text-red-700' : idx.changePercent < 0 ? 'bg-green-100 text-green-700' : 'bg-gray-50 text-gray-500'}`}>
+          <div className="flex flex-col items-end">
+            <div className={`inline-flex items-center px-1.5 py-0.5 rounded-lg text-[12px] transition-all duration-300 ${isPlaceholder ? 'bg-gray-100 text-gray-500' : idx.changePercent > 0 ? 'bg-red-100 text-red-700' : idx.changePercent < 0 ? 'bg-green-100 text-green-700' : 'bg-gray-50 text-gray-500'}`}>
               {!isPlaceholder && idx.changePercent !== 0 && (
-                <i className={`fas fa-caret-${idx.changePercent > 0 ? 'up' : 'down'} mr-1`} />
+                <i className={`fas fa-caret-${idx.changePercent > 0 ? 'up' : 'down'} mr-0.5`} />
               )}
               {isPlaceholder ? '-' : `${idx.changePercent >= 0 ? '+' : ''}${idx.changePercent.toFixed(2)}%`}
             </div>
-            <div className="text-[9px] text-gray-400 mt-1.5 font-medium bg-gray-50 px-2 py-0.5 rounded-full flex items-center whitespace-nowrap">
-              <i className="far fa-clock mr-1 opacity-60"></i>
+            <div className="text-[8px] text-gray-400 mt-0.5 font-medium bg-gray-50 px-1.5 py-0.5 rounded-full flex items-center whitespace-nowrap">
+              <i className="far fa-clock mr-0.5 opacity-60"></i>
               <span>{formattedDateTime}</span>
             </div>
           </div>
@@ -670,7 +670,7 @@ const App: React.FC = () => {
   return (
     <div className={`min-h-screen pb-32 transition-colors duration-300 ${isSelectionMode ? 'bg-blue-50/50' : 'bg-gray-50'}`}>
       <header className="bg-white border-b sticky top-0 z-50 shadow-sm overflow-visible">
-        <div className="max-w-7xl mx-auto px-4 py-4 flex justify-between items-center">
+        <div className="max-w-6xl mx-auto px-4 py-4 flex justify-between items-center">
           <div className="flex items-center space-x-2">
             <div className={`p-2 rounded-lg shadow-inner transition-colors ${isSelectionMode ? 'bg-blue-600' : 'bg-red-600'}`}>
               <i className="fas fa-chart-line text-white text-xl"></i>
@@ -730,13 +730,13 @@ const App: React.FC = () => {
         {!isSelectionMode && <MarketNewsTicker />}
         {/* Column title bar — three-column grid matching the main content layout */}
         <div className={`border-t transition-colors duration-300 ${isSelectionMode ? 'bg-blue-50/80 border-blue-100' : 'bg-gray-50/80 border-gray-100'}`}>
-          <div className="max-w-7xl mx-auto px-4 grid grid-cols-1 lg:grid-cols-[224px_1fr_224px] gap-6">
+          <div className="max-w-6xl mx-auto px-4 grid grid-cols-1 lg:grid-cols-[200px_1fr_200px] gap-2.5">
             {/* 大盘看板 title */}
-            <div className="hidden lg:flex h-10 items-center px-1">
+            <div className="hidden lg:flex h-10 items-center">
               <h2 className="text-[10px] font-bold text-gray-400 uppercase tracking-widest leading-none m-0">大盘看板</h2>
             </div>
             {/* 中间：自选基金标题 + 操作按钮 */}
-            <div className="h-10 px-1">
+            <div className="h-10">
               {!isSelectionMode ? (
                 <div className="h-full flex justify-between items-center gap-3">
                   <h2 className="text-[10px] font-bold text-gray-400 uppercase tracking-widest leading-none m-0 flex items-center shrink-0">
@@ -774,7 +774,7 @@ const App: React.FC = () => {
               )}
             </div>
             {/* 全球市场 title */}
-            <div className="hidden lg:flex h-10 items-center px-1">
+            <div className="hidden lg:flex h-10 items-center">
               <h2 className="text-[10px] font-bold text-gray-400 uppercase tracking-widest leading-none m-0">全球市场</h2>
             </div>
           </div>
@@ -783,15 +783,15 @@ const App: React.FC = () => {
 
       <input type="file" ref={fileInputRef} onChange={handleImport} accept=".json" className="hidden" />
 
-      <div className="max-w-7xl mx-auto px-4 py-6 grid grid-cols-1 lg:grid-cols-[224px_1fr_224px] gap-6 items-start">
-        <aside className="space-y-3">
-          <div className="flex lg:flex-col overflow-x-auto lg:overflow-visible gap-3 pb-2 no-scrollbar">
+      <div className="max-w-6xl mx-auto px-4 py-6 grid grid-cols-1 lg:grid-cols-[200px_1fr_200px] gap-2.5 items-start">
+        <aside className="space-y-1.5">
+          <div className="flex lg:flex-col overflow-x-auto lg:overflow-visible gap-1.5 pb-2 no-scrollbar">
             {displayDomesticIndices.map(idx => renderIndexCard(idx, 'index', indexStatuses[normalizeIndexSymbol(idx.symbol)] ?? 'unknown'))}
           </div>
         </aside>
 
         <main>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-1 xl:grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-1 xl:grid-cols-2 gap-2">
             {sortedPortfolio.map(ticker => {
               const selectionKey = createManageSelectionKey('fund', ticker.id);
               return (
@@ -810,8 +810,8 @@ const App: React.FC = () => {
           </div>
         </main>
 
-        <aside className="space-y-3">
-          <div className="flex lg:flex-col overflow-x-auto lg:overflow-visible gap-3 pb-2 no-scrollbar">
+        <aside className="space-y-1.5">
+          <div className="flex lg:flex-col overflow-x-auto lg:overflow-visible gap-1.5 pb-2 no-scrollbar">
             {displayGlobalIndices.map(idx => renderIndexCard(idx, 'global_index', indexStatuses[normalizeIndexSymbol(idx.symbol)] ?? 'unknown'))}
           </div>
         </aside>
