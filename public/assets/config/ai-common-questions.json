@@ -1,0 +1,24 @@
+{
+  "questions": [
+    {
+      "id": "info-summary",
+      "name": "信息汇总",
+      "template": "请列出最新的和本基金相关的国内外信息，及其影响，以表格形式展示。"
+    },
+    {
+      "id": "profit-loss-analysis",
+      "name": "盈亏分析",
+      "template": "请分析一下这个基金的盈亏情况，主要是哪些因素导致的盈亏。"
+    },
+    {
+      "id": "opportunity-analysis",
+      "name": "机会分析",
+      "template": "请分析一下这个基金未来的机会，主要是哪些因素导致的机会。"
+    },
+    {
+      "id": "risk-analysis",
+      "name": "风险分析",
+      "template": "请分析一下这个基金未来的风险，主要是哪些因素导致的风险。"
+    }
+  ]
+}

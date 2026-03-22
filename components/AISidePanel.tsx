@@ -8,6 +8,8 @@ import { AIAssistantMessage, AIAssistantState } from '../types/aiAssistantTypes'
 import { ContextCompressionService } from '../services/ContextCompressionService';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import { getCommonQuestions, applyTemplateVariables } from '../services/commonQuestionsService';
+import { CommonQuestion } from '../types/commonQuestionsTypes';
 
 interface AISidePanelProps {
   isVisible: boolean;
@@ -52,6 +54,8 @@ const AISidePanel: React.FC<AISidePanelProps> = ({
   avgCostPrice
 }) => {
   const [messages, setMessages] = useState<Message[]>([]);
+  const [showQuestionsMenu, setShowQuestionsMenu] = useState(false);
+  const [commonQuestions, setCommonQuestions] = useState<CommonQuestion[]>([]);
   const [hasBeenInitialized, setHasBeenInitialized] = useState<boolean>(false);
   const [contextLength, setContextLength] = useState<number>(0);
   const [compressionStatus, setCompressionStatus] = useState<string>('Ready');
@@ -500,6 +504,15 @@ const AISidePanel: React.FC<AISidePanelProps> = ({
     scrollToBottom();
   }, [messages]);
 
+  // 加载常用问题列表
+  useEffect(() => {
+    if (isVisible) {
+      getCommonQuestions().then(questions => {
+        setCommonQuestions(questions);
+      });
+    }
+  }, [isVisible]);
+
   // 检查当前是否在底部附近
   const checkIsAtBottom = useCallback(() => {
     const container = messagesContainerRef.current;
@@ -549,6 +562,24 @@ const AISidePanel: React.FC<AISidePanelProps> = ({
       container.removeEventListener('scroll', handleScroll);
     };
   }, [checkIsAtBottom]);
+
+  // 点击外部关闭菜单
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      const target = event.target as HTMLElement;
+      if (showQuestionsMenu && !target.closest('[data-questions-menu]')) {
+        setShowQuestionsMenu(false);
+      }
+    };
+
+    if (showQuestionsMenu) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [showQuestionsMenu]);
 
   const handleSend = async () => {
     if (!inputValue.trim() || !isValidConfig || !config) {
@@ -756,6 +787,183 @@ const AISidePanel: React.FC<AISidePanelProps> = ({
     }
   };
 
+  // 处理常用问题选择
+  const handleCommonQuestionSelect = async (question: CommonQuestion) => {
+    if (!isValidConfig || !config) {
+      return;
+    }
+
+    // 关闭菜单
+    setShowQuestionsMenu(false);
+
+    // 构造上下文
+    const context: AIQueryContext = {
+      fundName: propsRef.current.fundName,
+      fundSymbol: propsRef.current.fundSymbol,
+      valuationData: propsRef.current.valuationData,
+      tradeHistory: propsRef.current.tradeHistory,
+      fullCapacity: propsRef.current.fullCapacity,
+      initialCapacity: propsRef.current.initialCapacity,
+      initialDate: propsRef.current.initialDate,
+      initialPrice: propsRef.current.initialPrice,
+      marketValue: propsRef.current.marketValue ?? undefined,
+      position: propsRef.current.position ?? undefined,
+      positionRate: propsRef.current.positionRate ?? undefined,
+      profit: propsRef.current.profit ?? undefined,
+      avgCostPrice: propsRef.current.avgCostPrice ?? undefined,
+    };
+
+    // 替换模板变量得到实际内容
+    const actualPrompt = applyTemplateVariables(question.template, context);
+
+    // 设置用户消息（显示问题名称）
+    const userMessage: Message = {
+      id: Date.now().toString(),
+      content: question.name,
+      role: 'user',
+      timestamp: new Date()
+    };
+
+    // 设置计数器跳过状态同步
+    skipMessagesEffectCountRef.current = 2;
+
+    setMessages(prev => [...prev, userMessage]);
+    setIsLoading(true);
+
+    try {
+      // 获取当前状态构建上下文
+      const currentState = aiAssistantStateManager.getState(fundSymbol);
+      let aiContext: string;
+
+      if (currentState) {
+        aiContext = compressionService.getContextForAI(currentState);
+      } else {
+        aiContext = `[USER] ${question.name}`;
+      }
+
+      // 构建完整提示
+      const fullPrompt = `上下文信息:\n${aiContext}\n\n用户查询: ${actualPrompt}`;
+
+      // 创建AI消息占位符
+      const aiMessageId = `ai-${Date.now()}`;
+      const aiMessage: Message = {
+        id: aiMessageId,
+        content: '',
+        role: 'assistant',
+        timestamp: new Date()
+      };
+
+      setMessages(prev => [...prev, aiMessage]);
+
+      // 流式回调
+      const handleStreamChunk: StreamCallback = (chunk, fullContent) => {
+        setMessages(prev => prev.map(msg =>
+          msg.id === aiMessageId
+            ? { ...msg, content: fullContent }
+            : msg
+        ));
+      };
+
+      const response: AIResponse = await queryAI(config, fullPrompt, context, handleStreamChunk);
+
+      // 更新AI消息
+      const finalAiMessage: Message = {
+        id: aiMessageId,
+        content: response.content,
+        role: 'assistant',
+        timestamp: new Date()
+      };
+
+      setMessages(prev => prev.map(msg =>
+        msg.id === aiMessageId ? finalAiMessage : msg
+      ));
+
+      // 更新全局状态
+      const updatedState = aiAssistantStateManager.getState(fundSymbol);
+      let newHistoryContent = updatedState?.historyContent || [];
+      let newNewContent = [...(updatedState?.newContent || [])];
+
+      if (!newNewContent.some(msg => msg.id === userMessage.id)) {
+        newNewContent.push(userMessage as AIAssistantMessage);
+      }
+      if (!newNewContent.some(msg => msg.id === finalAiMessage.id)) {
+        newNewContent.push(finalAiMessage as AIAssistantMessage);
+      }
+
+      const newState: AIAssistantState = {
+        historyContent: newHistoryContent,
+        newContent: newNewContent,
+        summaryContent: updatedState?.summaryContent || '',
+        hasBeenInitialized: true,
+        lastAccessed: new Date(),
+        initializationDate: updatedState?.initializationDate || new Date()
+      };
+
+      aiAssistantStateManager.setState(fundSymbol, newState);
+
+      // 检查压缩
+      if (compressionService.needsCompression(newState)) {
+        setCompressionStatus('Compressing...');
+        isCompressingRef.current = true;
+
+        const compressionResult = await compressionService.compressContext(newState, config);
+
+        if (compressionResult.success && compressionResult.summary) {
+          const updatedHistoryContent = [...newState.historyContent, ...newState.newContent];
+
+          const finalState: AIAssistantState = {
+            historyContent: updatedHistoryContent,
+            newContent: [],
+            summaryContent: compressionResult.summary,
+            hasBeenInitialized: newState.hasBeenInitialized,
+            lastAccessed: new Date(),
+            initializationDate: newState.initializationDate
+          };
+
+          aiAssistantStateManager.setState(fundSymbol, finalState);
+          skipMessagesEffectCountRef.current = 1;
+
+          const finalMessages = compressionService.getMessagesForDisplay(finalState);
+          setMessages(finalMessages);
+
+          const contextLengthAfterCompression = compressionService.getContextLength(finalState);
+          setContextLength(contextLengthAfterCompression);
+          setCompressionStatus('Compressed');
+
+          setTimeout(() => {
+            isCompressingRef.current = false;
+            setCompressionStatus('OK');
+          }, 3000);
+        } else {
+          console.error('压缩失败:', compressionResult.error);
+          setCompressionStatus('Compression Failed');
+
+          // 压缩失败时仍更新上下文长度和状态
+          const contextLength = compressionService.getContextLength(newState);
+          setContextLength(contextLength);
+          setCompressionStatus(compressionService.needsCompression(newState) ? 'Needs Compression' : 'OK');
+
+          // 确保失败后也重置压缩标志
+          isCompressingRef.current = false;
+        }
+      } else {
+        const contextLength = compressionService.getContextLength(newState);
+        setContextLength(contextLength);
+        setCompressionStatus(compressionService.needsCompression(newState) ? 'Needs Compression' : 'OK');
+      }
+    } catch (error: any) {
+      const errorMessage: Message = {
+        id: `error-${Date.now()}`,
+        content: `AI服务错误: ${error.message || '请求失败'}`,
+        role: 'assistant',
+        timestamp: new Date()
+      };
+      setMessages(prev => [...prev, errorMessage]);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   const handleSaveConfig = () => {
     const newConfig: AIConfiguration = {
       apiEndpoint,
@@ -871,13 +1079,51 @@ const AISidePanel: React.FC<AISidePanelProps> = ({
             <h3 className="text-lg font-bold text-gray-800">AI 投资助手</h3>
             <p className="text-xs text-gray-500 truncate">{fundName} ({fundSymbol})</p>
           </div>
-          <button
-            onClick={closePanel}
-            className="p-1.5 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-full"
-            aria-label="关闭"
-          >
-            <i className="fas fa-times"></i>
-          </button>
+          <div className="flex flex-col items-end space-y-1">
+            {/* 关闭按钮 */}
+            <button
+              onClick={closePanel}
+              className="p-1.5 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-full"
+              aria-label="关闭"
+            >
+              <i className="fas fa-times"></i>
+            </button>
+            {/* 常用问题按钮 */}
+            {commonQuestions.length > 0 && (
+              <div className="relative">
+                <button
+                  onClick={() => setShowQuestionsMenu(!showQuestionsMenu)}
+                  disabled={!isValidConfig}
+                  className={`text-xs px-2 py-1 rounded flex items-center ${
+                    isValidConfig
+                      ? 'text-gray-500 hover:text-gray-700 hover:bg-gray-100'
+                      : 'text-gray-300 cursor-not-allowed'
+                  }`}
+                  aria-label="常用问题"
+                  title={isValidConfig ? '常用问题' : '请先配置AI'}
+                >
+                  常用问题
+                  <i className="fas fa-caret-down ml-1 text-gray-800"></i>
+                </button>
+                {/* 下拉菜单 */}
+                {showQuestionsMenu && (
+                  <div data-questions-menu className="absolute right-0 mt-1 w-48 bg-white rounded-lg shadow-lg border border-gray-200 z-10 max-h-64 overflow-y-auto">
+                    <div className="py-1 divide-y divide-gray-100">
+                      {commonQuestions.map((question) => (
+                        <button
+                          key={question.id}
+                          onClick={() => handleCommonQuestionSelect(question)}
+                          className="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
+                        >
+                          {question.name}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
         </div>
       </div>
 

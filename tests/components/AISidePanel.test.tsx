@@ -37,6 +37,14 @@ jest.mock('../../services/aiService', () => ({
   AIQueryContext: {},
 }));
 
+jest.mock('../../services/commonQuestionsService', () => ({
+  getCommonQuestions: jest.fn().mockResolvedValue([
+    { id: 'test-1', name: '测试问题1', template: '这是测试问题1的模板' },
+    { id: 'test-2', name: '测试问题2', template: '这是测试问题2的模板' },
+  ]),
+  applyTemplateVariables: jest.fn((template) => template),
+}));
+
 describe('AISidePanel', () => {
   const mockOnClose = jest.fn();
   const defaultProps = {
@@ -240,6 +248,43 @@ describe('AISidePanel', () => {
         // Key check: should NOT have summary=0 and newContent=large
         expect(!(summaryLength === 0 && newContentLength > 1000)).toBeTruthy();
       }
+    });
+  });
+
+  // === 常用问题功能测试 ===
+  describe('Common Questions Feature', () => {
+    test('should show common questions button when questions are loaded', async () => {
+      render(<AISidePanel {...defaultProps} valuationData={mockValuationData} />);
+
+      await waitFor(() => {
+        expect(screen.getByLabelText('常用问题')).toBeInTheDocument();
+      }, { timeout: 1000 });
+    });
+
+    test('should show dropdown menu when button is clicked', async () => {
+      render(<AISidePanel {...defaultProps} valuationData={mockValuationData} />);
+
+      await waitFor(() => {
+        expect(screen.getByLabelText('常用问题')).toBeInTheDocument();
+      }, { timeout: 1000 });
+
+      fireEvent.click(screen.getByLabelText('常用问题'));
+
+      await waitFor(() => {
+        expect(screen.getByText('测试问题1')).toBeInTheDocument();
+        expect(screen.getByText('测试问题2')).toBeInTheDocument();
+      });
+    });
+
+    test('should disable button when AI is not configured', async () => {
+      require('../../services/aiConfigService').hasUsableAIConfig.mockReturnValue(false);
+
+      render(<AISidePanel {...defaultProps} valuationData={mockValuationData} />);
+
+      await waitFor(() => {
+        const button = screen.getByLabelText('常用问题');
+        expect(button).toBeDisabled();
+      }, { timeout: 1000 });
     });
   });
 });
