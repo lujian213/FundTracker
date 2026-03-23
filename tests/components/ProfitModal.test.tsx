@@ -5,7 +5,14 @@ import { computeProfitTimeline } from '../../utils/profitCalculator';
 import { formatDateDisplay } from '../../utils/dateFormat';
 
 // Mock fetchFundHistory in services and useTrades hook
-jest.mock('../../services/fundService', () => ({ fetchFundHistory: jest.fn() }));
+// Keep the original implementation for prepareHistoryForProfitCalculation
+jest.mock('../../services/fundService', () => {
+  const original = jest.requireActual('../../services/fundService');
+  return {
+    ...original,
+    fetchFundHistory: jest.fn(),
+  };
+});
 jest.mock('../../hooks/useTrades', () => ({ __esModule: true, default: (symbol: string) => ({ trades: [] }) }));
 
 import { fetchFundHistory } from '../../services/fundService';
@@ -25,8 +32,8 @@ describe('ProfitModal', () => {
   test('renders and shows three-column table rows', async () => {
     render(<ProfitModal symbol="000001" initialPosition={100} initialPrice={9} onClose={() => {}} />);
     await waitFor(() => expect(fetchFundHistory).toHaveBeenCalled());
-    // wait for rows to be rendered
-    await waitFor(() => expect(document.querySelectorAll('tbody tr').length).toBe(3));
+    // wait for rows to be rendered (历史数据 3 行 + 今天日期 1 行 = 4 行)
+    await waitFor(() => expect(document.querySelectorAll('tbody tr').length).toBe(4));
     // header should have three columns (flexible check)
     const headers = document.querySelectorAll('thead th');
     expect(headers.length).toBeGreaterThanOrEqual(2);
@@ -44,13 +51,13 @@ describe('ProfitModal', () => {
   test('changing dates and clicking 清除 should clear table rows', async () => {
     render(<ProfitModal symbol="000001" initialPosition={100} initialPrice={9} onClose={() => {}} />);
     await waitFor(() => expect(fetchFundHistory).toHaveBeenCalled());
-    // wait for initial rows exist
-    await waitFor(() => expect(document.querySelectorAll('tbody tr').length).toBe(3));
+    // wait for initial rows exist (历史数据 3 行 + 今天日期 1 行 = 4 行)
+    await waitFor(() => expect(document.querySelectorAll('tbody tr').length).toBe(4));
     // change temp start date to trigger confirm dialog
     const inputs = document.querySelectorAll('input[type="date"]');
     fireEvent.change(inputs[0], { target: { value: '2026-02-21' } });
-    // dates apply immediately; table should be filtered to 2 rows (21 and 22)
-    await waitFor(() => expect(document.querySelectorAll('tbody tr').length).toBe(2));
+    // dates apply immediately; table should be filtered to 3 rows (21, 22 and today)
+    await waitFor(() => expect(document.querySelectorAll('tbody tr').length).toBe(3));
     const rows = Array.from(document.querySelectorAll('tbody tr'));
     const rowDates = rows.map(r => r.querySelector('td')?.textContent?.trim());
     expect(rowDates).toContain(formatDateDisplay('2026-02-21'));

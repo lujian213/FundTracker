@@ -1,8 +1,80 @@
 import { ValuationData, MarketIndex, HistoricalPoint, OverallProfitSummary, OverallFundRow, ProfitPoint } from "../types";
 import { computeProfitTimeline } from '../utils/profitCalculator';
-import { toLocalDateKey, resolvePreferredPrice } from '../utils/priceResolver';
+import { toLocalDateKey, resolvePreferredPrice, ResolvedPrice } from '../utils/priceResolver';
 import { getTradesForSymbol } from '../hooks/useTrades';
 import * as cacheService from './cacheService';
+
+/**
+ * 准备用于盈亏计算的历史数据
+ * - 使用优选价格（估值/确认净值）覆盖同日期的历史点
+ * - 去重同日期的数据点
+ * - 确保目标日期有数据点
+ *
+ * 此函数被 ProfitModal 和 computeOverallProfit 共同使用，确保两者计算一致。
+ *
+ * @param history 原始历史数据
+ * @param targetDate 目标日期（通常是今天或用户选择的结束日期）
+ * @param todayDate 今天的本地日期
+ * @param currentPrice 估值价格
+ * @param realtimeDate 估值日期
+ * @param previousPrice 确认净值
+ * @param netWorthDate 净值日期
+ * @returns 处理后的历史数据，可直接用于 computeProfitTimeline
+ */
+export function prepareHistoryForProfitCalculation(params: {
+  history: HistoricalPoint[];
+  targetDate: string;
+  todayDate: string;
+  currentPrice?: number | null;
+  realtimeDate?: string | null;
+  previousPrice?: number | null;
+  netWorthDate?: string | null;
+}): HistoricalPoint[] {
+  const { history, targetDate, todayDate, currentPrice, realtimeDate, previousPrice, netWorthDate } = params;
+
+  if (!history || history.length === 0) return [];
+
+  // 排序历史数据
+  const sorted = history.slice().sort((a, b) => (a.date as number) - (b.date as number));
+
+  // 获取优选价格
+  const preferred = resolvePreferredPrice({
+    targetDate,
+    todayDate,
+    history: sorted,
+    currentPrice,
+    realtimeDate,
+    previousPrice,
+    netWorthDate,
+  });
+
+  // 按本地日期去重，并用优选价格覆盖
+  const byDate = new Map<string, HistoricalPoint>();
+  for (const p of sorted) {
+    const localDate = toLocalDateKey(p.date);
+    // 如果已有同日期的点，保留时间戳更高的
+    if (!byDate.has(localDate) || p.date > (byDate.get(localDate)?.date || 0)) {
+      byDate.set(localDate, p);
+    }
+  }
+
+  // 用优选价格覆盖同日期的历史点
+  if (preferred) {
+    const preferredTs = new Date(`${preferred.date} 15:00`).getTime();
+    byDate.set(preferred.date, { date: preferredTs, value: preferred.price, equityReturn: 0 });
+  }
+
+  // 确保目标日期有数据点
+  const hasTargetDate = byDate.has(targetDate);
+  if (!hasTargetDate && sorted.length > 0) {
+    // 使用历史数据中最后一个值作为目标日期的值
+    const lastValue = sorted[sorted.length - 1].value;
+    const targetTs = new Date(`${targetDate} 15:00`).getTime();
+    byDate.set(targetDate, { date: targetTs, value: lastValue, equityReturn: 0 });
+  }
+
+  return Array.from(byDate.values()).sort((a, b) => a.date - b.date);
+}
 
 /**
  * Dependency seam used by computeOverallProfit.
@@ -855,90 +927,42 @@ export async function computeOverallProfit(opts: { symbols?: string[]; fromDate?
       // filter inclusion: only include funds whose startDate is within [fromDate, toDate] if fromDate/toDate provided
       if (toDate && fundStartDate > toDate) continue;
 
-      // Ensure history contains a point at the desired end date so overall aggregation can extend to that date.
       // Desired end date: user-specified toDate, otherwise today's date (local YYYY-MM-DD).
       const desiredEndDate = toDate ?? todayLocal;
-      const hasPointOnDate = (hist: HistoricalPoint[], isoDate: string) => {
-        return hist.some(h => toLocalDateKey(h.date) === isoDate);
-      };
 
-      let historyToUse = history.slice();
+      // 获取估值数据
+      let fd: ValuationData | null = null;
       try {
-        // 补充到目标日期的优选价格点：本地今天估值优先，其次确认净值，再回退最近可用值。
-        try {
-          const fd = cacheService.getValuation(sym.padStart(6, '0'))
-                  ?? cacheService.getValuation(sym)
-                  ?? await _deps.fetchFundData(sym);
-          const preferred = resolvePreferredPrice({
-            targetDate: desiredEndDate,
-            todayDate: todayLocal,
-            history: historyToUse,
-            currentPrice: fd?.currentPrice,
-            realtimeDate: fd?.realtimeDate,
-            previousPrice: fd?.previousPrice,
-            netWorthDate: fd?.netWorthDate,
-          });
-          if (preferred && preferred.date >= earliestHistoryDate && preferred.date <= desiredEndDate && !hasPointOnDate(historyToUse, preferred.date)) {
-            const ts = new Date(`${preferred.date} 15:00`).getTime();
-            const lastTs = historyToUse.length > 0 ? historyToUse[historyToUse.length - 1].date : 0;
-            if (ts >= lastTs) historyToUse = [...historyToUse, { date: ts, value: preferred.price, equityReturn: 0 }];
-          }
-        } catch (e) {
-          // ignore fetch errors
-        }
-
-        // Finally, ensure desiredEndDate is represented (existing behavior)
-        if (!hasPointOnDate(historyToUse, desiredEndDate)) {
-          if (historyToUse && historyToUse.length > 0) {
-            const resolved = resolvePreferredPrice({
-              targetDate: desiredEndDate,
-              todayDate: todayLocal,
-              history: historyToUse,
-            });
-            const chosenValue = resolved ? resolved.price : (historyToUse[historyToUse.length - 1].value || 0);
-            const d = new Date(`${desiredEndDate} 15:00`);
-            const chosenTs = d.getTime();
-            const lastTs = historyToUse.length > 0 ? historyToUse[historyToUse.length - 1].date : 0;
-            if (chosenTs >= lastTs) historyToUse = [...historyToUse, { date: chosenTs, value: chosenValue, equityReturn: 0 }];
-          }
-        }
+        fd = cacheService.getValuation(sym.padStart(6, '0'))
+            ?? cacheService.getValuation(sym)
+            ?? await _deps.fetchFundData(sym);
       } catch (e) {
-        // ignore any unexpected errors
+        // ignore fetch errors
       }
 
-      // compute timeline for this fund scoped to requested range (computeProfitTimeline will crop by from/to)
-      // First deduplicate historyToUse by local date: keep only the last (highest-timestamp) point per date.
-      // This prevents a synthetic candidate point sharing the same local date as an existing history point
-      // from causing trades to be applied twice inside computeProfitTimeline.
-      const deduplicatedHistory = (() => {
-        const sorted = [...historyToUse].sort((a, b) => (a.date as number) - (b.date as number));
-        const seen = new Map<string, typeof sorted[0]>();
-        for (const h of sorted) {
-          const hd = new Date(h.date as number);
-          const iso = `${hd.getFullYear()}-${String(hd.getMonth()+1).padStart(2,'0')}-${String(hd.getDate()).padStart(2,'0')}`;
-          seen.set(iso, h); // last writer wins (highest timestamp = most authoritative)
-        }
-        return Array.from(seen.values()).sort((a, b) => (a.date as number) - (b.date as number));
-      })();
-      const timeline = computeProfitTimeline({ history: deduplicatedHistory, trades, initialPosition: initialPosition || 0, initialPrice: initialPrice ?? null, fromDate: fromDate ?? null, toDate: toDate ?? null });
+      // 使用公共函数准备历史数据（与 ProfitModal 一致）
+      const preparedHistory = prepareHistoryForProfitCalculation({
+        history,
+        targetDate: desiredEndDate,
+        todayDate: todayLocal,
+        currentPrice: fd?.currentPrice,
+        realtimeDate: fd?.realtimeDate,
+        previousPrice: fd?.previousPrice,
+        netWorthDate: fd?.netWorthDate,
+      });
+
+      const timeline = computeProfitTimeline({ history: preparedHistory, trades, initialPosition: initialPosition || 0, initialPrice: initialPrice ?? null, fromDate: fromDate ?? null, toDate: toDate ?? null });
      if (!timeline || timeline.length === 0) continue;
 
       includedFundTimelines[sym] = timeline;
 
       // Determine effective fromDate used by this timeline (computeProfitTimeline may have cropped it)
       const effectiveFrom = fromDate ?? timeline[0].date;
-      // Compute the baseline: raw cumulativeProfit on startDate (the last timeline point whose date <= startDate).
-      // All values shown in perFundTimelines are offset by this baseline so that startDate contributes 0
-      // and subsequent days show the correct incremental profit.
-      let startDateBaseline = 0;
-      if (startDateFromStorage) {
-        for (const pt of timeline) {
-          if (pt.date <= startDateFromStorage) startDateBaseline = pt.cumulativeProfit || 0;
-          else break;
-        }
-      }
-      let profitFrom = (timeline[0].cumulativeProfit || 0) - startDateBaseline;
-      const profitTo = (timeline[timeline.length - 1].cumulativeProfit || 0) - startDateBaseline;
+
+      // 累计盈利直接使用 computeProfitTimeline 的计算结果，与单个基金的累计盈利一致
+      let profitFrom = timeline[0].cumulativeProfit || 0;
+      const profitTo = timeline[timeline.length - 1].cumulativeProfit || 0;
+
       // If the fund has a configured startDate (from storage) and it is later than effectiveFrom,
       // then its cumulative profit at effectiveFrom (date1) should be considered 0 per requirement.
       // Per latest rule: if startDate >= effectiveFrom (including equal), the cumulative at effectiveFrom is 0.
@@ -957,14 +981,10 @@ export async function computeOverallProfit(opts: { symbols?: string[]; fromDate?
   }
 
   // Build per-fund date->cumulative and date->daily maps, collect all dates.
-  // Also track per-fund configured start dates.
   const perFundMaps: Record<string, Record<string, number>> = {};
   const perFundDailyMaps: Record<string, Record<string, number>> = {};
   const allDatesSet = new Set<string>();
-  const fundStartDates: Record<string, string | null> = {};
-  for (const pf of perFundRows) {
-    fundStartDates[pf.symbol] = pf.startDate || null;
-  }
+
   for (const sym of Object.keys(includedFundTimelines)) {
     const t = includedFundTimelines[sym];
     const cumMap: Record<string, number> = {};
@@ -981,56 +1001,27 @@ export async function computeOverallProfit(opts: { symbols?: string[]; fromDate?
   const dates = Array.from(allDatesSet).sort();
 
   // build perFundTimelines: ordered arrays of {date, cumulativeProfit} for each fund.
-  // Reuse the fee-deferral-corrected dailyProfit from computeProfitTimeline (same logic
-  // as ProfitModal) rather than re-deriving daily from cumulativeProfit differences.
-  // For dates <= startDate the contribution is 0 (fund not yet started).
-  // For dates in the fund's timeline: use dailyProfit directly.
-  // For dates missing from the fund's timeline (gaps / forward-fill): daily = 0, cumulative carries forward.
+  // 使用 cumMap 直接取值（与单个基金的累计盈利一致）
+  // 对于 gap dates（该基金没有数据的日期），使用最近可用的 cumulativeProfit（forward-fill）
+  // 不进行 startDate 零基调整（与单个基金的累计盈亏一致）
   const perFundTimelines: Record<string, { date: string; cumulativeProfit: number }[]> = {};
   for (const sym of Object.keys(perFundMaps)) {
     const cumMap = perFundMaps[sym] || {};
-    const dailyMap = perFundDailyMaps[sym] || {};
-    const start = fundStartDates[sym];
 
-    // Determine baseline cumulativeProfit on startDate so we can zero it out.
-    // Walk the sorted dates up to start to find the last known raw cumulative.
-    let baseline = 0;
-    if (start) {
-      let lastKnown: number | null = null;
-      for (const dateKey of dates) {
-        if (dateKey > start) break;
-        if (cumMap[dateKey] !== undefined) lastKnown = cumMap[dateKey];
-      }
-      if (lastKnown !== null) baseline = lastKnown;
-    }
-
-    // Build output using dailyProfit to accumulate cumulative, preserving fee-deferral correction.
     const arr: { date: string; cumulativeProfit: number }[] = [];
-    let runningCum = 0;
-    let started = false;
+    let lastCum = 0;
+    let foundFirstData = false;
     for (const d of dates) {
-      if (start && d <= start) {
-        // Before or on startDate: contribution is 0.
-        arr.push({ date: d, cumulativeProfit: 0 });
-      } else {
-        if (!started) {
-          // First date after startDate. Use fee-deferral-corrected dailyProfit when available.
-          // Fall back to raw cumulative minus baseline only for gap dates not in the fund timeline.
-          if (dailyMap[d] !== undefined) {
-            runningCum = Number((runningCum + dailyMap[d]).toFixed(4));
-          } else if (cumMap[d] !== undefined) {
-            runningCum = Number((cumMap[d] - baseline).toFixed(4));
-          } else {
-            runningCum = 0;
-          }
-          started = true;
-        } else if (dailyMap[d] !== undefined) {
-          // Date is in the fund's timeline: advance by the fee-deferral-corrected daily.
-          runningCum = Number((runningCum + dailyMap[d]).toFixed(4));
-        }
-        // else: gap date not in fund timeline → carry forward (runningCum unchanged, daily = 0)
-        arr.push({ date: d, cumulativeProfit: runningCum });
+      if (cumMap[d] !== undefined) {
+        // 该日期有数据，使用原始 cumulativeProfit
+        lastCum = cumMap[d];
+        foundFirstData = true;
+      } else if (!foundFirstData) {
+        // gap date before first data: use 0
+        lastCum = 0;
       }
+      // gap date after first data: 使用最近可用的 cumulativeProfit（forward-fill）
+      arr.push({ date: d, cumulativeProfit: lastCum });
     }
     perFundTimelines[sym] = arr;
   }

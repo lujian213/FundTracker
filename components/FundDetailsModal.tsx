@@ -43,7 +43,7 @@ export const FundDetailsModal: React.FC<FundDetailsModalProps> = ({ data, onClos
   // 满仓额度与初始仓位（单位：份）
   const [fullCapacity, setFullCapacity] = useState<number>(0);
   const [initialPosition, setInitialPosition] = useState<number>(0);
-  // 起始日期（YYYY-MM-DD）与初始价格（只读，从历史取）
+  // 起始日期（YYYY-MM-DD）与初始价格（可编辑，默认为起始日期净值）
   const [startDate, setStartDate] = useState<string | null>(null);
   const [initialPrice, setInitialPrice] = useState<number | null>(null);
   // 配置弹窗控制与临时输入
@@ -51,6 +51,7 @@ export const FundDetailsModal: React.FC<FundDetailsModalProps> = ({ data, onClos
   const [tmpFull, setTmpFull] = useState<string>('0');
   const [tmpInitial, setTmpInitial] = useState<string>('0');
   const [tmpStartDate, setTmpStartDate] = useState<string>('');
+  const [tmpInitialPrice, setTmpInitialPrice] = useState<string>('');
   const [showTrade, setShowTrade] = useState(false);
   const [showProfit, setShowProfit] = useState(false);
   const [showVirtual, setShowVirtual] = useState(false);
@@ -374,6 +375,8 @@ export const FundDetailsModal: React.FC<FundDetailsModalProps> = ({ data, onClos
     setTmpFull(fullCapacity.toString());
     setTmpInitial(initialPosition.toString());
     setTmpStartDate(startDate ?? (valuationData.realtimeDate && valuationData.realtimeDate !== '---' ? valuationData.realtimeDate : ''));
+    // 初始化初始价格输入框：使用已保存的值，或者留空让用户手动输入
+    setTmpInitialPrice(initialPrice !== null ? initialPrice.toFixed(4) : '');
     // clear previous errors when opening
     setTmpFullError(null);
     setTmpInitialError(null);
@@ -430,8 +433,19 @@ export const FundDetailsModal: React.FC<FundDetailsModalProps> = ({ data, onClos
     if (c > f) c = f;
     setFullCapacity(f);
     setInitialPosition(c);
-    // compute initial price from history for the start date (if provided)
-    if (s) {
+
+    // 处理初始价格：优先使用用户输入的值，否则使用起始日期的净值作为默认值
+    let finalInitialPrice: number | null = null;
+    const ipRaw = tmpInitialPrice.trim();
+    if (ipRaw !== '') {
+      const ipNum = Number(ipRaw);
+      if (!Number.isNaN(ipNum) && isFinite(ipNum) && ipNum >= 0) {
+        finalInitialPrice = ipNum;
+      }
+    }
+
+    // 如果用户没有输入初始价格，但有起始日期，则使用起始日期的净值作为默认值
+    if (finalInitialPrice === null && s) {
       // if history not loaded, try to fetch it now to compute initial price
       if (!history || history.length === 0) {
         try {
@@ -441,11 +455,17 @@ export const FundDetailsModal: React.FC<FundDetailsModalProps> = ({ data, onClos
           // ignore
         }
       }
-      const price = getPriceForISODate(s);
+      const priceFromHistory = getPriceForISODate(s);
+      if (priceFromHistory !== null) {
+        finalInitialPrice = priceFromHistory;
+      }
+    }
+
+    if (s) {
       setStartDate(s);
-      setInitialPrice(price);
+      setInitialPrice(finalInitialPrice);
       try {
-        localStorage.setItem(storageKey, JSON.stringify({ fullCapacity: f, initialPosition: c, startDate: s || null, initialPrice: price !== null ? price : null }));
+        localStorage.setItem(storageKey, JSON.stringify({ fullCapacity: f, initialPosition: c, startDate: s || null, initialPrice: finalInitialPrice }));
       } catch (e) {
         // ignore storage errors
       }
@@ -568,8 +588,8 @@ export const FundDetailsModal: React.FC<FundDetailsModalProps> = ({ data, onClos
 
   const isFormValid = useMemo(() => validateTmp(false), [tmpFull, tmpInitial, tmpStartDate]);
 
-  // temporary initial price computed from tmpStartDate (or persisted startDate) and history
-  const tmpInitialPrice = useMemo(() => {
+  // initial price computed from tmpStartDate (or persisted startDate) and history - used as hint/display
+  const computedInitialPriceFromStartDate = useMemo(() => {
     const s = (tmpStartDate && tmpStartDate.trim()) || startDate;
     if (!s) return null;
     return getPriceForISODate(s);
@@ -1112,16 +1132,22 @@ export const FundDetailsModal: React.FC<FundDetailsModalProps> = ({ data, onClos
                        </div>
                        <div className="flex items-center justify-between">
                          <label className="text-sm text-gray-600">初始价格</label>
-                         <input
-                           aria-label="modal-initial-price"
-                           type="text"
-                           readOnly
-                           className="w-44 px-2 py-1 border rounded text-right bg-gray-50"
-                           value={
-                             // during editing, prefer the temporary computed price for the tmpStartDate; fallback to persisted initialPrice
-                            (tmpStartDate && tmpStartDate.trim()) ? (tmpInitialPrice !== null ? tmpInitialPrice.toFixed(4) : '—') : (initialPrice !== null ? initialPrice.toFixed(4) : '—')
-                           }
-                         />
+                         <div className="flex flex-col items-end">
+                           <input
+                             aria-label="modal-initial-price"
+                             type="text"
+                             inputMode="decimal"
+                             placeholder={computedInitialPriceFromStartDate !== null ? computedInitialPriceFromStartDate.toFixed(4) : '可选'}
+                             className="w-36 px-2 py-1 border rounded text-right"
+                             value={tmpInitialPrice}
+                             onChange={e => { setTmpInitialPrice(e.target.value); }}
+                           />
+                           {computedInitialPriceFromStartDate !== null && (
+                             <span className="text-[10px] text-gray-400 mt-0.5">
+                               提示: {computedInitialPriceFromStartDate.toFixed(4)} (起始日期净值)
+                             </span>
+                           )}
+                         </div>
                        </div>
                        <div className="mt-3 flex items-center justify-end space-x-2">
                          <button className="px-3 py-1 rounded bg-gray-100 whitespace-nowrap" onClick={() => setShowConfig(false)}>取消</button>

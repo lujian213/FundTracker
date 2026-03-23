@@ -9,13 +9,18 @@ jest.mock('../../hooks/useTrades', () => ({
   default: jest.fn(() => ({ trades: [] }))
 }));
 
-jest.mock('../../services/fundService', () => ({
-  fetchFundHistory: jest.fn(() => Promise.resolve([
-    { date: new Date('2026-02-24T00:00:00Z').getTime(), value: 1.0 },
-    { date: new Date('2026-02-25T00:00:00Z').getTime(), value: 1.05 },
-    { date: new Date('2026-02-26T00:00:00Z').getTime(), value: 1.1 },
-  ]))
-}));
+// Keep the original implementation for prepareHistoryForProfitCalculation
+jest.mock('../../services/fundService', () => {
+  const original = jest.requireActual('../../services/fundService');
+  return {
+    ...original,
+    fetchFundHistory: jest.fn(() => Promise.resolve([
+      { date: new Date('2026-02-24T00:00:00Z').getTime(), value: 1.0 },
+      { date: new Date('2026-02-25T00:00:00Z').getTime(), value: 1.05 },
+      { date: new Date('2026-02-26T00:00:00Z').getTime(), value: 1.1 },
+    ]))
+  };
+});
 
 jest.mock('../../utils/profitCalculator', () => ({
   computeProfitTimeline: jest.fn(() => [

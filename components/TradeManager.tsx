@@ -556,9 +556,9 @@ export const TradeManager: React.FC<{
                     ? t.price * displayShares - displayFee
                     : t.price * displayShares + displayFee;
 
-                  // 盈亏计算：买入用剩余份额，卖出和建仓显示"-"
-                  const profitRate = (isInitial || isSell) ? 0 : calcProfitRate(t.price);
-                  const profitAmount = (isInitial || isSell) ? 0 : displayShares * (currentPrice - t.price);
+                  // 盈亏计算：买入和建仓计算盈亏，卖出显示"-"
+                  const profitRate = isSell ? 0 : calcProfitRate(t.price);
+                  const profitAmount = isSell ? 0 : displayShares * (currentPrice - t.price);
 
                   return (
                     <div

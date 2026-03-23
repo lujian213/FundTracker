@@ -118,7 +118,7 @@ describe('position config persistence and UI', () => {
     expect(localStorage.getItem(key)).toBeNull();
   });
 
-  test('start date uses date picker and initial price updates with date change', async () => {
+  test('start date uses date picker and initial price shows hint', async () => {
     render(<FundDetailsModal data={data as any} onClose={() => {}} />);
     await waitFor(() => expect(fetchFundHistory).toHaveBeenCalled());
 
@@ -129,7 +129,7 @@ describe('position config persistence and UI', () => {
     const startInput = await screen.findByLabelText('modal-start-date') as HTMLInputElement;
     const initialPriceInput = await screen.findByLabelText('modal-initial-price') as HTMLInputElement;
 
-    // initially tmpStartDate should be set to realtimeDate, which is in SAMPLE_HISTORY (use first entry date as ISO)
+    // initially tmpStartDate should be set to realtimeDate
     // Convert SAMPLE_HISTORY[0].date to YYYY-MM-DD
     const sampleDate = new Date(SAMPLE_HISTORY[0].date);
     const iso = `${sampleDate.getFullYear()}-${String(sampleDate.getMonth() + 1).padStart(2, '0')}-${String(sampleDate.getDate()).padStart(2, '0')}`;
@@ -137,8 +137,85 @@ describe('position config persistence and UI', () => {
     // change the date picker to the sampleDate
     fireEvent.change(startInput, { target: { value: iso } });
 
-    // the modal initial price should reflect SAMPLE_HISTORY[0].value (1.0)
-    expect(await screen.findByDisplayValue('1.0000')).toBeTruthy();
+    // 初始价格输入框应该是可编辑的，显示提示而不是自动填充
+    // the modal initial price input should be empty (user-editable)
+    expect(initialPriceInput.value).toBe('');
+
+    // 应该显示提示信息（起始日期对应的净值）
+    // should show a hint with the date's NAV value
+    expect(await screen.findByText(/提示: 1.0000/)).toBeTruthy();
+  });
+
+  test('initial price defaults to start date NAV when user does not input', async () => {
+    render(<FundDetailsModal data={data as any} onClose={() => {}} />);
+    await waitFor(() => expect(fetchFundHistory).toHaveBeenCalled());
+
+    // open modal
+    const gear = screen.getByLabelText(/配置仓位/);
+    fireEvent.click(gear);
+
+    const fullInput = await screen.findByLabelText('modal-full') as HTMLInputElement;
+    const initialInput = await screen.findByLabelText('modal-initial') as HTMLInputElement;
+    const startInput = await screen.findByLabelText('modal-start-date') as HTMLInputElement;
+    // 不输入初始价格，让它使用默认值
+
+    // 设置满仓额度和初始仓位
+    fireEvent.change(fullInput, { target: { value: '100' } });
+    fireEvent.change(initialInput, { target: { value: '50' } });
+
+    // 设置起始日期
+    const sampleDate = new Date(SAMPLE_HISTORY[0].date);
+    const iso = `${sampleDate.getFullYear()}-${String(sampleDate.getMonth() + 1).padStart(2, '0')}-${String(sampleDate.getDate()).padStart(2, '0')}`;
+    fireEvent.change(startInput, { target: { value: iso } });
+
+    // 保存
+    fireEvent.click(screen.getByText('保存'));
+
+    // 验证 localStorage 中保存的初始价格是起始日期的净值
+    await waitFor(() => expect(screen.getByText(/初始价格/)).toBeTruthy());
+    const key = `fund_position_${data.symbol}`;
+    const raw = localStorage.getItem(key);
+    expect(raw).toBeTruthy();
+    const obj = JSON.parse(raw as string);
+    // 初始价格应该是 SAMPLE_HISTORY 中该日期对应的值 (1.0)
+    expect(obj.initialPrice).toBe(1.0);
+  });
+
+  test('user can input custom initial price', async () => {
+    render(<FundDetailsModal data={data as any} onClose={() => {}} />);
+    await waitFor(() => expect(fetchFundHistory).toHaveBeenCalled());
+
+    // open modal
+    const gear = screen.getByLabelText(/配置仓位/);
+    fireEvent.click(gear);
+
+    const fullInput = await screen.findByLabelText('modal-full') as HTMLInputElement;
+    const initialInput = await screen.findByLabelText('modal-initial') as HTMLInputElement;
+    const startInput = await screen.findByLabelText('modal-start-date') as HTMLInputElement;
+    const initialPriceInput = await screen.findByLabelText('modal-initial-price') as HTMLInputElement;
+
+    // 设置满仓额度和初始仓位
+    fireEvent.change(fullInput, { target: { value: '100' } });
+    fireEvent.change(initialInput, { target: { value: '50' } });
+
+    // 设置起始日期
+    const sampleDate = new Date(SAMPLE_HISTORY[0].date);
+    const iso = `${sampleDate.getFullYear()}-${String(sampleDate.getMonth() + 1).padStart(2, '0')}-${String(sampleDate.getDate()).padStart(2, '0')}`;
+    fireEvent.change(startInput, { target: { value: iso } });
+
+    // 用户输入自定义初始价格
+    fireEvent.change(initialPriceInput, { target: { value: '0.9500' } });
+
+    // 保存
+    fireEvent.click(screen.getByText('保存'));
+
+    // 验证 localStorage 中保存的是用户输入的值
+    await waitFor(() => expect(screen.getByText(/初始价格/)).toBeTruthy());
+    const key = `fund_position_${data.symbol}`;
+    const raw = localStorage.getItem(key);
+    expect(raw).toBeTruthy();
+    const obj = JSON.parse(raw as string);
+    expect(obj.initialPrice).toBe(0.95);
   });
 
   test('trade manager disabled and market row hidden until fullCapacity configured', async () => {

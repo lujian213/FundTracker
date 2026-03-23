@@ -1,10 +1,10 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { fetchFundHistory as defaultFetchFundHistory } from '../services/fundService';
+import { fetchFundHistory as defaultFetchFundHistory, prepareHistoryForProfitCalculation } from '../services/fundService';
 import useTrades from '../hooks/useTrades';
 import { computeProfitTimeline } from '../utils/profitCalculator';
 import { HistoricalPoint, ProfitPoint } from '../types';
-import { resolvePreferredPrice, toLocalDateKey } from '../utils/priceResolver';
+import { toLocalDateKey } from '../utils/priceResolver';
 import { adjustProfitTimelineForDisplay } from '../utils/profitAdjustment';
 import { formatMoneyWithSeparators, fmtNav } from '../utils/format';
 import { formatDateDisplay } from '../utils/dateFormat';
@@ -64,27 +64,18 @@ const ProfitModal: React.FC<ProfitModalProps> = ({ symbol, fundName, currentPric
       try {
         let pts = await fetchFn(symbol);
         if (!mounted) return;
-        const sorted = (pts || []).slice().sort((a, b) => (a.date as number) - (b.date as number));
-        const preferred = resolvePreferredPrice({
+
+        // 使用公共函数准备历史数据（与 computeOverallProfit 一致）
+        pts = prepareHistoryForProfitCalculation({
+          history: pts || [],
           targetDate: todayLocal,
           todayDate: todayLocal,
-          history: sorted,
           currentPrice,
           realtimeDate,
           previousPrice,
           netWorthDate,
         });
-        if (preferred) {
-          const preferredTs = new Date(`${preferred.date} 15:00`).getTime();
-          const byDate = new Map<string, HistoricalPoint>();
-          for (const p of sorted) {
-            byDate.set(toLocalDateKey(p.date), p);
-          }
-          byDate.set(preferred.date, { date: preferredTs, value: preferred.price, equityReturn: 0 });
-          pts = Array.from(byDate.values()).sort((a, b) => (a.date as number) - (b.date as number));
-        } else {
-          pts = sorted;
-        }
+
         setHistory(pts);
         if (pts.length > 0) {
           const first = toLocalDateKey(pts[0].date);
@@ -148,17 +139,44 @@ const ProfitModal: React.FC<ProfitModalProps> = ({ symbol, fundName, currentPric
     const w = 760; const h = 160;
     const padLeft = 56; const padRight = 24; const padTop = 16; const padBottom = 28;
     const vals = displayedTimeline.map(p => p.cumulativeProfit || 0);
-    const min = Math.min(...vals); const max = Math.max(...vals);
-    const range = max - min || 1;
+    const dataMin = Math.min(...vals);
+    const dataMax = Math.max(...vals);
+
+    // Y轴范围必须包含0，且边界对齐到1000的倍数
+    const yAxisMin = dataMin >= 0 ? 0 : Math.floor(dataMin / 1000) * 1000;
+    const yAxisMax = dataMax <= 0 ? 0 : Math.ceil(dataMax / 1000) * 1000;
+
+    // 确保有足够的范围（至少2000，避免只有0刻度的情况）
+    const finalMin = yAxisMax === 0 ? Math.min(yAxisMin, -1000) : yAxisMin;
+    const finalMax = yAxisMin === 0 ? Math.max(yAxisMax, 1000) : yAxisMax;
+
+    const range = finalMax - finalMin || 1;
+
+    // 根据范围选择合适的间隔（1000的倍数），使刻度数量在3-6个之间
+    const targetTicks = 5;
+    let tickInterval = 1000;
+    const possibleIntervals = [1000, 2000, 5000, 10000, 20000, 50000, 100000];
+    for (const interval of possibleIntervals) {
+      const tickCount = Math.ceil(range / interval) + 1;
+      if (tickCount <= targetTicks) {
+        tickInterval = interval;
+        break;
+      }
+    }
+
     const getX = (i: number) => padLeft + (i * (w - padLeft - padRight) / (displayedTimeline.length - 1));
-    const getY = (v: number) => h - padBottom - ((v - min) / range) * (h - padTop - padBottom);
+    const getY = (v: number) => h - padBottom - ((v - finalMin) / range) * (h - padTop - padBottom);
     const pts = displayedTimeline.map((p, i) => ({ x: getX(i), y: getY(p.cumulativeProfit || 0), data: p }));
     const d = pts.map((pt, i) => `${i === 0 ? 'M' : 'L'} ${pt.x} ${pt.y}`).join(' ');
     const xTicks = [0, Math.floor((pts.length - 1) / 2), pts.length - 1].map(i => ({ x: pts[i].x, label: formatDateDisplay(pts[i].data.date) }));
-    const yTicks = Array.from({ length: 5 }).map((_, i) => {
-      const v = min + (i * range / 4);
-      return { y: getY(v), label: (v >= 0 ? '+' : '') + formatMoneyWithSeparators(v) };
-    });
+
+    // Y轴刻度：从finalMin到finalMax，步长为tickInterval（1000的倍数）
+    const yTicks: { y: number; label: string }[] = [];
+    const firstTick = Math.ceil(finalMin / tickInterval) * tickInterval;
+    for (let v = firstTick; v <= finalMax; v += tickInterval) {
+      yTicks.push({ y: getY(v), label: (v >= 0 ? '+' : '') + formatMoneyWithSeparators(v) });
+    }
+
     return { path: d, points: pts, xTicks, yTicks, padLeft, padRight, padTop, padBottom, width: w, height: h };
   }, [displayedTimeline]);
 
@@ -180,16 +198,13 @@ const ProfitModal: React.FC<ProfitModalProps> = ({ symbol, fundName, currentPric
 
   const titleText = fundName ? `${fundName} (${symbol})` : symbol;
 
-
   const content = (
     <div className="fixed inset-0 flex items-center justify-center p-4" style={{ zIndex }}>
       <div className="absolute inset-0 bg-black/40" onClick={onClose} />
       <div className="relative bg-white rounded-2xl w-full max-w-4xl shadow-2xl animate-in zoom-in-95 duration-200 flex flex-col" style={{ maxWidth: '64rem', maxHeight: '90vh' }} role="dialog" aria-modal="true">
         <div className="px-6 py-4 border-b border-gray-100 flex justify-between items-center flex-shrink-0">
           <h3 className="text-lg font-bold">{titleText} — 持仓盈亏</h3>
-          <div className="flex items-center gap-2">
-            <button aria-label="关闭盈亏窗口" className="w-8 h-8 rounded-full bg-gray-50 flex items-center justify-center text-gray-400 hover:bg-gray-100" onClick={onClose}><i className="fas fa-times"></i></button>
-          </div>
+          <button aria-label="关闭盈亏窗口" className="w-8 h-8 rounded-full bg-gray-50 flex items-center justify-center text-gray-400 hover:bg-gray-100" onClick={onClose}><i className="fas fa-times"></i></button>
         </div>
         <div className="p-6 overflow-y-auto flex-1 min-h-0">
           {loading ? (
@@ -223,7 +238,6 @@ const ProfitModal: React.FC<ProfitModalProps> = ({ symbol, fundName, currentPric
                     重置
                   </button>
                 </div>
-                <div className="text-xs text-gray-500">&nbsp;</div>
               </div>
               {validationError ? (
                 <div className="text-sm text-red-600">{validationError}</div>

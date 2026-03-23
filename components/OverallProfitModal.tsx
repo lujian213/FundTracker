@@ -86,16 +86,48 @@ const OverallProfitModal: React.FC<Props> = ({ symbols, onClose, onSelectFund })
   const chart = useMemo(() => {
     const pts = chartTimeline;
     if (!pts || pts.length === 0) return { path: '', points: [], xTicks: [], yTicks: [], width: 760, height: 160, padLeft: 56, padRight: 24 };
-    const w = 760; const h = 160; const padLeft = 56; const padRight = 24; const padTop = 16; const padBottom = 28;
+    const w = 760; const h = 160;
+    const padLeft = 56; const padRight = 24; const padTop = 16; const padBottom = 28;
     const vals = pts.map(p => p.cumulativeProfit || 0);
-    const min = Math.min(...vals); const max = Math.max(...vals); const range = max - min || 1;
+    const dataMin = Math.min(...vals);
+    const dataMax = Math.max(...vals);
+
+    // Y轴范围必须包含0，且边界对齐到1000的倍数
+    const yAxisMin = dataMin >= 0 ? 0 : Math.floor(dataMin / 1000) * 1000;
+    const yAxisMax = dataMax <= 0 ? 0 : Math.ceil(dataMax / 1000) * 1000;
+
+    // 确保有足够的范围（至少2000，避免只有0刻度的情况）
+    const finalMin = yAxisMax === 0 ? Math.min(yAxisMin, -1000) : yAxisMin;
+    const finalMax = yAxisMin === 0 ? Math.max(yAxisMax, 1000) : yAxisMax;
+
+    const range = finalMax - finalMin || 1;
+
+    // 根据范围选择合适的间隔（1000的倍数），使刻度数量在3-6个之间
+    const targetTicks = 5;
+    let tickInterval = 1000;
+    const possibleIntervals = [1000, 2000, 5000, 10000, 20000, 50000, 100000];
+    for (const interval of possibleIntervals) {
+      const tickCount = Math.ceil(range / interval) + 1;
+      if (tickCount <= targetTicks) {
+        tickInterval = interval;
+        break;
+      }
+    }
+
     const getX = (i: number) => padLeft + (i * (w - padLeft - padRight) / (pts.length - 1));
-    const getY = (v: number) => h - padBottom - ((v - min) / range) * (h - padTop - padBottom);
+    const getY = (v: number) => h - padBottom - ((v - finalMin) / range) * (h - padTop - padBottom);
     const points = pts.map((p, i) => ({ x: getX(i), y: getY(p.cumulativeProfit || 0), data: p }));
     const d = points.map((pt, i) => `${i === 0 ? 'M' : 'L'} ${pt.x} ${pt.y}`).join(' ');
     const xTicks = [0, Math.floor((points.length - 1) / 2), points.length - 1].map(i => ({ x: points[i].x, label: formatDateDisplay(points[i].data.date) }));
-    const yTicks = Array.from({ length: 5 }).map((_, i) => { const v = min + (i * range / 4); return { y: getY(v), label: (v >= 0 ? '+' : '') + formatMoneyWithSeparators(v) }; });
-    return { path: d, points, xTicks, yTicks, padLeft, padRight, width: w, height: h };
+
+    // Y轴刻度：从finalMin到finalMax，步长为tickInterval（1000的倍数）
+    const yTicks: { y: number; label: string }[] = [];
+    const firstTick = Math.ceil(finalMin / tickInterval) * tickInterval;
+    for (let v = firstTick; v <= finalMax; v += tickInterval) {
+      yTicks.push({ y: getY(v), label: (v >= 0 ? '+' : '') + formatMoneyWithSeparators(v) });
+    }
+
+    return { path: d, points, xTicks, yTicks, padLeft, padRight, padTop, padBottom, width: w, height: h };
   }, [chartTimeline]);
 
   const moneyCell = (v: number) => {
