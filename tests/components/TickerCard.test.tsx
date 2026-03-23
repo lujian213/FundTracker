@@ -235,7 +235,8 @@ describe('TickerCard', () => {
 
     const badge = await screen.findByLabelText(/风险评级/);
     const reservedSlot = screen.getByTestId('rating-badge-slot');
-    expect(reservedSlot).toHaveClass('w-[72px]');
+    // slot uses flex layout with gap for rating badge and optional alert icon
+    expect(reservedSlot).toHaveClass('flex');
     expect(reservedSlot).toHaveClass('justify-start');
     expect(reservedSlot).toHaveClass('items-start');
     expect(reservedSlot).toHaveClass('pt-0.5');

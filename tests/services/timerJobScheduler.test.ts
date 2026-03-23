@@ -127,3 +127,189 @@ describe('TimerJobScheduler - error handling', () => {
     expect(typeof scheduler.onError).toBe('function');
   });
 });
+
+describe('_triggerJob', () => {
+  let scheduler: ReturnType<typeof getTimerJobScheduler>;
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    jest.useFakeTimers();
+    scheduler = getTimerJobScheduler();
+    scheduler.stop();
+    scheduler._reset?.();
+  });
+
+  afterEach(() => {
+    scheduler.stop();
+    scheduler._reset?.();
+    jest.useRealTimers();
+  });
+
+  test('triggers specific job by id', async () => {
+    const mockConfig = {
+      jobs: [
+        { id: 'holiday-info-refresh', name: '节假日信息刷新', cron: '0 */6 * * *', enabled: true }
+      ]
+    };
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: () => Promise.resolve(mockConfig)
+    });
+
+    await scheduler.loadConfig();
+
+    const handler = jest.fn().mockResolvedValue(undefined);
+    scheduler.registerHandler('holiday-info-refresh', handler);
+
+    // 调用 _triggerJob 触发指定任务
+    scheduler._triggerJob?.('holiday-info-refresh');
+
+    // 等待异步执行
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(handler).toHaveBeenCalled();
+  });
+
+  test('does nothing for unregistered job id', async () => {
+    const mockConfig = {
+      jobs: [
+        { id: 'test-job', name: 'Test Job', cron: '*/5 * * * *', enabled: true }
+      ]
+    };
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: () => Promise.resolve(mockConfig)
+    });
+
+    await scheduler.loadConfig();
+
+    // 不应该抛出错误
+    expect(() => scheduler._triggerJob?.('non-existent-job')).not.toThrow();
+  });
+
+  test('does nothing for disabled job', async () => {
+    const mockConfig = {
+      jobs: [
+        { id: 'disabled-job', name: 'Disabled Job', cron: '*/5 * * * *', enabled: false }
+      ]
+    };
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: () => Promise.resolve(mockConfig)
+    });
+
+    await scheduler.loadConfig();
+
+    const handler = jest.fn().mockResolvedValue(undefined);
+    scheduler.registerHandler('disabled-job', handler);
+
+    // 调用 _triggerJob 触发禁用的任务
+    scheduler._triggerJob?.('disabled-job');
+
+    // 等待异步执行
+    await Promise.resolve();
+
+    // 禁用的任务不应该被触发
+    expect(handler).not.toHaveBeenCalled();
+  });
+});
+
+describe('background job scheduling', () => {
+  let scheduler: ReturnType<typeof getTimerJobScheduler>;
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    jest.useFakeTimers();
+    scheduler = getTimerJobScheduler();
+    scheduler.stop();
+    scheduler._reset?.();
+  });
+
+  afterEach(() => {
+    scheduler.stop();
+    scheduler._reset?.();
+    jest.useRealTimers();
+  });
+
+  test('holiday-info-refresh job config exists', async () => {
+    const mockConfig = {
+      jobs: [
+        { id: 'holiday-info-refresh', name: '节假日信息刷新', cron: '0 */6 * * *', enabled: true }
+      ]
+    };
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: () => Promise.resolve(mockConfig)
+    });
+
+    await scheduler.loadConfig();
+
+    const handler = jest.fn().mockResolvedValue(undefined);
+    scheduler.registerHandler('holiday-info-refresh', handler);
+
+    // 使用 _triggerJob 手动触发
+    scheduler._triggerJob?.('holiday-info-refresh');
+
+    // 等待异步执行
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(handler).toHaveBeenCalled();
+  });
+
+  test('delivery-info-refresh job config exists', async () => {
+    const mockConfig = {
+      jobs: [
+        { id: 'delivery-info-refresh', name: '交割日信息刷新', cron: '0 */6 * * *', enabled: true }
+      ]
+    };
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: () => Promise.resolve(mockConfig)
+    });
+
+    await scheduler.loadConfig();
+
+    const handler = jest.fn().mockResolvedValue(undefined);
+    scheduler.registerHandler('delivery-info-refresh', handler);
+
+    scheduler._triggerJob?.('delivery-info-refresh');
+
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(handler).toHaveBeenCalled();
+  });
+
+  test('both background jobs can be registered and triggered together', async () => {
+    const mockConfig = {
+      jobs: [
+        { id: 'holiday-info-refresh', name: '节假日信息刷新', cron: '0 */6 * * *', enabled: true },
+        { id: 'delivery-info-refresh', name: '交割日信息刷新', cron: '0 */6 * * *', enabled: true }
+      ]
+    };
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: () => Promise.resolve(mockConfig)
+    });
+
+    await scheduler.loadConfig();
+
+    const holidayHandler = jest.fn().mockResolvedValue(undefined);
+    const deliveryHandler = jest.fn().mockResolvedValue(undefined);
+
+    scheduler.registerHandler('holiday-info-refresh', holidayHandler);
+    scheduler.registerHandler('delivery-info-refresh', deliveryHandler);
+
+    // 触发两个任务
+    scheduler._triggerJob?.('holiday-info-refresh');
+    scheduler._triggerJob?.('delivery-info-refresh');
+
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(holidayHandler).toHaveBeenCalled();
+    expect(deliveryHandler).toHaveBeenCalled();
+  });
+});

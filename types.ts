@@ -9,11 +9,19 @@ export type CardStatus = 'ok' | 'error' | 'unknown';
 export type ManageItemType = 'fund' | 'index' | 'global_index';
 export type ManageSelectionKey = `${ManageItemType}:${string}`;
 
+// TickerAlert - 基金提示信息
+export interface TickerAlert {
+  type: 'holiday' | 'delivery';  // 信息类型
+  date: string;                   // 生效日期 (yyyy/MM/dd)
+  content: string;                // 信息内容
+}
+
 export interface Ticker {
   id: string;
   symbol: string;
   name: string;
   market: MarketType;
+  alert_list?: TickerAlert[];     // 提示信息列表
 }
 
 export interface ValuationData {

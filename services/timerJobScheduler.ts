@@ -14,6 +14,8 @@ const DEFAULT_JOBS: TimerJobConfig[] = [
   { id: 'history-refresh', name: '历史净值刷新', cron: '*/20 * * * *', enabled: true },
   { id: 'market-index-refresh', name: '市场指数刷新', cron: '*/2 * * * *', enabled: true },
   { id: 'news-refresh', name: '市场热点刷新', cron: '*/3 * * * *', enabled: true },
+  { id: 'holiday-info-refresh', name: '节假日信息刷新', cron: '0 */6 * * *', enabled: true },
+  { id: 'delivery-info-refresh', name: '交割日信息刷新', cron: '0 */6 * * *', enabled: true },
 ];
 
 interface TimerJobScheduler {
@@ -25,6 +27,7 @@ interface TimerJobScheduler {
   loadConfig(): Promise<void>;
   _setTimeSource?(now: () => Date): void;
   _triggerCheck?(): void;
+  _triggerJob?(jobId: string): void;
   _reset?(): void;
 }
 
@@ -119,6 +122,13 @@ class TimerJobSchedulerImpl implements TimerJobScheduler {
 
   _triggerCheck(): void {
     this.checkAndExecute();
+  }
+
+  _triggerJob(jobId: string): void {
+    const job = this.jobs.find(j => j.id === jobId);
+    if (job && job.enabled) {
+      this.executeJob(job);
+    }
   }
 
   _reset(): void {

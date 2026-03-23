@@ -31,6 +31,7 @@ import { applySyncUpdates } from './services/syncService';
 import { TimerJobErrorProvider, useTimerJobErrors } from './contexts/TimerJobErrorContext';
 import { NewsProvider, useNews } from './contexts/NewsContext';
 import { getTimerJobScheduler } from './services/timerJobScheduler';
+import { refreshTickerAlerts } from './services/backgroundJobService';
 
 type SortOrder = 'asc' | 'desc';
 
@@ -408,6 +409,9 @@ const AppContent: React.FC = () => {
   const { addError } = useTimerJobErrors();
   const { reload: reloadNews } = useNews();
 
+  // 用于跟踪是否已触发过初始后台任务
+  const initialJobTriggeredRef = useRef(false);
+
   useEffect(() => {
     const scheduler = getTimerJobScheduler();
 
@@ -437,11 +441,30 @@ const AppContent: React.FC = () => {
       reloadNews();
     });
 
+    // 注册后台任务处理器
+    scheduler.registerHandler('holiday-info-refresh', async () => {
+      await refreshTickerAlerts('holiday', () => portfolio, setPortfolio);
+    });
+
+    scheduler.registerHandler('delivery-info-refresh', async () => {
+      await refreshTickerAlerts('delivery', () => portfolio, setPortfolio);
+    });
+
     // Set context with current portfolio
     scheduler.setContext({ portfolio });
 
     // Start the scheduler
     scheduler.start();
+
+    // 页面加载时触发一次后台任务（延迟执行，避免阻塞首屏渲染）
+    // 使用 ref 确保只触发一次，避免 portfolio 变化时重复触发
+    if (portfolio.length > 0 && !initialJobTriggeredRef.current) {
+      initialJobTriggeredRef.current = true;
+      setTimeout(() => {
+        scheduler._triggerJob?.('holiday-info-refresh');
+        scheduler._triggerJob?.('delivery-info-refresh');
+      }, 5000);
+    }
 
     return () => scheduler.stop();
   }, [portfolio, runBatchUpdate, runBatchHistoryUpdate, refreshMarketIndicesAsync, addError, reloadNews]);
