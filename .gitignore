@@ -5,6 +5,5 @@ dist/
 backup/
 __tests__/
 .claude/
-features/
 debug/
 docs/
