@@ -1,0 +1,28 @@
+{
+  "jobs": [
+    {
+      "id": "fund-valuation-refresh",
+      "name": "基金估值刷新",
+      "cron": "*/3 * * * *",
+      "enabled": true
+    },
+    {
+      "id": "history-refresh",
+      "name": "历史净值刷新",
+      "cron": "*/20 * * * *",
+      "enabled": true
+    },
+    {
+      "id": "market-index-refresh",
+      "name": "市场指数刷新",
+      "cron": "*/2 * * * *",
+      "enabled": true
+    },
+    {
+      "id": "news-refresh",
+      "name": "市场热点刷新",
+      "cron": "*/3 * * * *",
+      "enabled": true
+    }
+  ]
+}

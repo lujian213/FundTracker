@@ -92,20 +92,20 @@ const OverallProfitModal: React.FC<Props> = ({ symbols, onClose, onSelectFund })
     const dataMin = Math.min(...vals);
     const dataMax = Math.max(...vals);
 
-    // Y轴范围必须包含0，且边界对齐到1000的倍数
-    const yAxisMin = dataMin >= 0 ? 0 : Math.floor(dataMin / 1000) * 1000;
-    const yAxisMax = dataMax <= 0 ? 0 : Math.ceil(dataMax / 1000) * 1000;
+    // Y轴范围必须包含0，且边界对齐到10000的倍数
+    const yAxisMin = dataMin >= 0 ? 0 : Math.floor(dataMin / 10000) * 10000;
+    const yAxisMax = dataMax <= 0 ? 0 : Math.ceil(dataMax / 10000) * 10000;
 
-    // 确保有足够的范围（至少2000，避免只有0刻度的情况）
-    const finalMin = yAxisMax === 0 ? Math.min(yAxisMin, -1000) : yAxisMin;
-    const finalMax = yAxisMin === 0 ? Math.max(yAxisMax, 1000) : yAxisMax;
+    // 确保有足够的范围（至少20000，避免只有0刻度的情况）
+    const finalMin = yAxisMax === 0 ? Math.min(yAxisMin, -10000) : yAxisMin;
+    const finalMax = yAxisMin === 0 ? Math.max(yAxisMax, 10000) : yAxisMax;
 
     const range = finalMax - finalMin || 1;
 
-    // 根据范围选择合适的间隔（1000的倍数），使刻度数量在3-6个之间
+    // 根据范围选择合适的间隔（10000的倍数），使刻度数量在3-6个之间
     const targetTicks = 5;
-    let tickInterval = 1000;
-    const possibleIntervals = [1000, 2000, 5000, 10000, 20000, 50000, 100000];
+    let tickInterval = 10000;
+    const possibleIntervals = [10000, 20000, 50000, 100000, 200000, 500000];
     for (const interval of possibleIntervals) {
       const tickCount = Math.ceil(range / interval) + 1;
       if (tickCount <= targetTicks) {

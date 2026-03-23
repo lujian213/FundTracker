@@ -28,6 +28,9 @@ import {
 import { VERSION } from './version';
 import ManageSelectButton from './components/ManageSelectButton';
 import { applySyncUpdates } from './services/syncService';
+import { TimerJobErrorProvider, useTimerJobErrors } from './contexts/TimerJobErrorContext';
+import { NewsProvider, useNews } from './contexts/NewsContext';
+import { getTimerJobScheduler } from './services/timerJobScheduler';
 
 type SortOrder = 'asc' | 'desc';
 
@@ -86,7 +89,7 @@ const mergeIndicesForDisplay = (
 
 const createManageSelectionKey = (type: ManageItemType, value: string): ManageSelectionKey => `${type}:${value}`;
 
-const App: React.FC = () => {
+const AppContent: React.FC = () => {
   const [portfolio, setPortfolio] = useState<Ticker[]>(() => {
     try {
       const saved = localStorage.getItem('fund_portfolio');
@@ -401,23 +404,47 @@ const App: React.FC = () => {
 
   useEffect(() => { refreshMarketIndicesAsync(); }, [indicesConfig, globalIndicesConfig]);
 
-  // 实时估值：每 3 分钟刷新一次
-  useEffect(() => {
-    const fundInterval = setInterval(() => runBatchUpdate(portfolio), 180000);
-    return () => clearInterval(fundInterval);
-  }, [portfolio, runBatchUpdate]);
+  // Timer Job Scheduler: handles fund valuation, history, and market index refresh
+  const { addError } = useTimerJobErrors();
+  const { reload: reloadNews } = useNews();
 
-  // 历史净值：每 20 分钟强制刷新一次
   useEffect(() => {
-    const histInterval = setInterval(() => runBatchHistoryUpdate(portfolio), 20 * 60 * 1000);
-    return () => clearInterval(histInterval);
-  }, [portfolio, runBatchHistoryUpdate]);
+    const scheduler = getTimerJobScheduler();
 
-  // 市场指数：每 2 分钟刷新一次
-  useEffect(() => {
-    const indexInterval = setInterval(() => refreshMarketIndicesAsync(), 120000);
-    return () => clearInterval(indexInterval);
-  }, [refreshMarketIndicesAsync]);
+    // Register error callback
+    scheduler.onError((jobId, jobName, error) => {
+      console.error(`[TimerJob] ${jobName} (${jobId}) failed:`, error);
+      addError({
+        jobName,
+        message: error.message || 'Unknown error',
+      });
+    });
+
+    // Register job handlers
+    scheduler.registerHandler('fund-valuation-refresh', async () => {
+      await runBatchUpdate(portfolio);
+    });
+
+    scheduler.registerHandler('history-refresh', async () => {
+      await runBatchHistoryUpdate(portfolio);
+    });
+
+    scheduler.registerHandler('market-index-refresh', async () => {
+      await refreshMarketIndicesAsync();
+    });
+
+    scheduler.registerHandler('news-refresh', async () => {
+      reloadNews();
+    });
+
+    // Set context with current portfolio
+    scheduler.setContext({ portfolio });
+
+    // Start the scheduler
+    scheduler.start();
+
+    return () => scheduler.stop();
+  }, [portfolio, runBatchUpdate, runBatchHistoryUpdate, refreshMarketIndicesAsync, addError, reloadNews]);
 
   // 自动导出定时器
   useEffect(() => {
@@ -948,6 +975,16 @@ const App: React.FC = () => {
         </div>
       )}
     </div>
+  );
+};
+
+const App: React.FC = () => {
+  return (
+    <TimerJobErrorProvider>
+      <NewsProvider>
+        <AppContent />
+      </NewsProvider>
+    </TimerJobErrorProvider>
   );
 };
 

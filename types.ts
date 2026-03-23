@@ -260,3 +260,18 @@ export interface VirtualStrategy {
   // return object may include optional `reason` explaining the decision (used for hover tooltips)
   decide: (ctx: VirtualStrategyContext) => { action: VirtualTradeAction; shares: number; reason?: StrategyReason };
 }
+
+// Timer Job Scheduler types
+export interface TimerJobConfig {
+  id: string;
+  name: string;
+  cron: string;
+  enabled: boolean;
+}
+
+export interface TimerJobError {
+  id: string;
+  jobName: string;
+  message: string;
+  time: Date;
+}
