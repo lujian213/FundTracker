@@ -20,6 +20,8 @@ export default defineConfig({
           'markdown': ['react-markdown', 'remark-gfm'],
           // UI 组件
           'ui': ['react-day-picker', 'dompurify'],
+          // 定时任务解析器
+          'cron-parser': ['cron-parser'],
         },
       },
     },
