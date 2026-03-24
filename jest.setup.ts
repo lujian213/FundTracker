@@ -28,7 +28,13 @@ console.error = (...args: unknown[]) => {
         message.includes('Error getting trades') ||
         message.includes('Error communicating with AI') ||
         message.includes('Failed to load templates') ||
-        message.includes('was not wrapped in act')) {
+        message.includes('was not wrapped in act') ||
+        message.includes('[BackgroundJob] Failed to parse AI response') ||
+        message.includes('[BackgroundJob] Error loading prompts') ||
+        message.includes('[StrategyRecommendation] Failed to parse AI response') ||
+        message.includes('Check the render method of `VirtualTradeModal`') ||
+        message.includes('See https://reactjs.org/link/warning-keys') ||
+        message.includes('Failed to load portfolio templates')) {
       return;
     }
   }
@@ -40,7 +46,11 @@ console.warn = (...args: unknown[]) => {
   if (typeof message === 'string') {
     if (message.includes('punycode') ||
         message.includes('restoreAIConfigBackup') ||
-        message.includes('Invalid backup data')) {
+        message.includes('Invalid backup data') ||
+        message.includes('[TimerJob] Failed to load config') ||
+        message.includes('加载常用问题配置失败') ||
+        message.includes('[BackgroundJob] AI response is not an array') ||
+        message.includes('[StrategyRecommendation] AI response is not an array')) {
       return;
     }
   }
