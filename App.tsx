@@ -843,7 +843,7 @@ const AppContent: React.FC = () => {
 
       <input type="file" ref={fileInputRef} onChange={handleImport} accept=".json" className="hidden" />
 
-      <div className="max-w-6xl mx-auto px-4 py-6 grid grid-cols-1 lg:grid-cols-[200px_1fr_200px] gap-2.5 items-start">
+      <div className="max-w-6xl mx-auto px-4 py-3 grid grid-cols-1 lg:grid-cols-[200px_1fr_200px] gap-2.5 items-start">
         <aside className="space-y-1.5">
           <div className="flex lg:flex-col overflow-x-auto lg:overflow-visible gap-1.5 pb-2 no-scrollbar">
             {displayDomesticIndices.map(idx => renderIndexCard(idx, 'index', indexStatuses[normalizeIndexSymbol(idx.symbol)] ?? 'unknown'))}
