@@ -134,8 +134,6 @@ describe('buildBackupData', () => {
     expect(result.portfolio[0].symbol).toBe('000001');
     expect(result.indices).toEqual([{ symbol: '1.000001', name: undefined, current: undefined, change: undefined, changePercent: undefined, lastUpdated: undefined }]);
     expect(result.globalIndices).toEqual([{ symbol: '100.NDX', name: undefined, current: undefined, change: undefined, changePercent: undefined, lastUpdated: undefined }]);
-    // 检查aiConfig是否存在（即使为空）
-    expect(result).toHaveProperty('aiConfig');
   });
 
   test('fills optional valuation fields from cacheService when available', async () => {

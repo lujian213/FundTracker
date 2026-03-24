@@ -11,7 +11,6 @@ import {
 } from '../types';
 import * as cacheService from '../services/cacheService';
 import { readAll as readAllTrades } from '../hooks/useTrades';
-import { createAIConfigBackup, restoreAIConfigBackup } from '../services/aiConfigService';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 const BACKUP_CONFIG_KEY = 'fund_backup_config';
@@ -97,16 +96,6 @@ export async function buildBackupData(
   try {
     valuations = (cacheService as any).getAllValuations();
   } catch { /* ignore */ }
-
-  // 获取AI配置备份
-  let aiConfig: any = {};
-  try {
-    if (typeof createAIConfigBackup === 'function') {
-      aiConfig = createAIConfigBackup();
-    }
-  } catch (error) {
-    console.warn('Could not create AI config backup:', error);
-  }
 
   // 1. portfolio → BackupFund[]
   const backupPortfolio: BackupFund[] = portfolio.map((t: any) => {
@@ -195,7 +184,6 @@ export async function buildBackupData(
     positions,
     trades,
     config,
-    aiConfig,  // 添加AI配置到备份数据
   };
 }
 
@@ -263,20 +251,6 @@ export async function applyBackupData(imported: BackupData): Promise<AppliedData
   }));
 
   const newSymbolSet = new Set(newPortfolio.map((t: any) => t.symbol));
-
-  // ── Restore AI Configuration ────────────────────────────────────────────────
-  if (imported.aiConfig) {
-    try {
-      if (typeof restoreAIConfigBackup === 'function') {
-        const result = restoreAIConfigBackup(imported.aiConfig);
-        console.log('AI config restore result:', result);
-      }
-    } catch (error) {
-      console.error('Could not restore AI config from backup:', error);
-    }
-  } else {
-    console.log('No aiConfig found in imported backup');
-  }
 
   // ── 2. Evict valuations that no longer belong to the portfolio ─────────────
   try {

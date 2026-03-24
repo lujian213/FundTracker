@@ -598,7 +598,6 @@ const AppContent: React.FC = () => {
           positions: imported.positions || {},
           trades: imported.trades || {},
           config: imported.config || { autoExportTime: '16:00' },
-          aiConfig: imported.aiConfig,
         };
         setPendingImportData(normalized);
       } catch { /* ignore parse errors */ }
