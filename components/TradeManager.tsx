@@ -5,6 +5,7 @@ import { resolvePreferredPrice, toLocalDateKey } from '../utils/priceResolver';
 import { formatDateDisplay } from '../utils/dateFormat';
 import useTrades from '../hooks/useTrades';
 import { getMatcher, MatchedRecord } from '../utils/tradeMatcher';
+import { SymbolBadge } from './SymbolBadge';
 
 type TradeType = 'buy' | 'sell';
 type ViewMode = 'normal' | 'fifo' | 'lifo';
@@ -361,7 +362,7 @@ export const TradeManager: React.FC<{
           <div>
             <div className="flex items-center space-x-2">
               <h3 className="text-lg font-bold">{name || symbol}</h3>
-              <span className="px-2 py-0.5 bg-gray-100 text-gray-500 rounded text-[10px] font-mono">{symbol}</span>
+              <SymbolBadge symbol={symbol} />
               <span className="text-gray-400">—</span>
               <span className="text-gray-600">交易管理</span>
             </div>

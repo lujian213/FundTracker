@@ -13,6 +13,7 @@ import { defaultVirtualCash } from '../services/strategyConfig';
 import { computeProfitTimeline } from '../utils/profitCalculator';
 import useTrades from '../hooks/useTrades';
 import { adjustProfitTimelineForDisplay } from '../utils/profitAdjustment';
+import { SymbolBadge } from './SymbolBadge';
 import { calculateRealProfit, calculateRealProfitSync, getStoredPosition, getTradesForFund } from '../utils/realProfitCalculator';
 
 // Import all strategies dynamically through a centralized function
@@ -576,7 +577,7 @@ export const VirtualTradeModal: React.FC<Props> = ({ symbol, fundName, history: 
         <div className="flex justify-between items-start mb-4">
           <div className="flex items-center space-x-2">
             <h3 className="text-lg font-bold">{fundName || symbol}</h3>
-            <span className="px-2 py-0.5 bg-gray-100 text-gray-500 rounded text-[10px] font-mono">{symbol}</span>
+            <SymbolBadge symbol={symbol} />
             <span className="text-gray-400">—</span>
             <span className="text-gray-600">虚拟交易</span>
           </div>

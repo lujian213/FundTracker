@@ -8,6 +8,9 @@ import { toLocalDateKey } from '../utils/priceResolver';
 import { adjustProfitTimelineForDisplay } from '../utils/profitAdjustment';
 import { formatMoneyWithSeparators, fmtNav } from '../utils/format';
 import { formatDateDisplay } from '../utils/dateFormat';
+import { buildSmoothPath, CHART_DIMENSIONS } from '../utils/chartUtils';
+import { MoneyCell } from './MoneyCell';
+import { SymbolBadge } from './SymbolBadge';
 
 interface ProfitModalProps {
   symbol: string;
@@ -135,9 +138,8 @@ const ProfitModal: React.FC<ProfitModalProps> = ({ symbol, fundName, currentPric
   const periodTotal = useMemo(() => (displayedTimeline || []).reduce((s, p) => s + (p.dailyProfit || 0), 0), [displayedTimeline]);
 
   const chart = useMemo(() => {
-    if (!displayedTimeline || displayedTimeline.length === 0) return { path: '', areaPath: '', points: [], xTicks: [], yTicks: [], width: 760, height: 200, padLeft: 60, padRight: 24, zeroY: 100 };
-    const w = 760; const h = 200;
-    const padLeft = 60; const padRight = 24; const padTop = 20; const padBottom = 32;
+    if (!displayedTimeline || displayedTimeline.length === 0) return { path: '', areaPath: '', points: [], xTicks: [], yTicks: [], width: CHART_DIMENSIONS.width, height: CHART_DIMENSIONS.height, padLeft: CHART_DIMENSIONS.padLeft, padRight: CHART_DIMENSIONS.padRight, zeroY: 100 };
+    const { width: w, height: h, padLeft, padRight, padTop, padBottom } = CHART_DIMENSIONS;
     const vals = displayedTimeline.map(p => p.cumulativeProfit || 0);
     const dataMin = Math.min(...vals);
     const dataMax = Math.max(...vals);
@@ -169,30 +171,8 @@ const ProfitModal: React.FC<ProfitModalProps> = ({ symbol, fundName, currentPric
     const zeroY = getY(0);
     const pts = displayedTimeline.map((p, i) => ({ x: getX(i), y: getY(p.cumulativeProfit || 0), data: p }));
 
-    // 使用贝塞尔曲线平滑路径
-    const buildSmoothPath = (pts: { x: number; y: number }[], closePath = false) => {
-      if (pts.length < 2) return '';
-      let d = `M ${pts[0].x} ${pts[0].y}`;
-      for (let i = 0; i < pts.length - 1; i++) {
-        const p0 = pts[Math.max(0, i - 1)];
-        const p1 = pts[i];
-        const p2 = pts[i + 1];
-        const p3 = pts[Math.min(pts.length - 1, i + 2)];
-        const cp1x = p1.x + (p2.x - p0.x) / 6;
-        const cp1y = p1.y + (p2.y - p0.y) / 6;
-        const cp2x = p2.x - (p3.x - p1.x) / 6;
-        const cp2y = p2.y - (p3.y - p1.y) / 6;
-        d += ` C ${cp1x} ${cp1y} ${cp2x} ${cp2y} ${p2.x} ${p2.y}`;
-      }
-      if (closePath) {
-        d += ` L ${pts[pts.length - 1].x} ${h - padBottom}`;
-        d += ` L ${pts[0].x} ${h - padBottom} Z`;
-      }
-      return d;
-    };
-
-    const path = buildSmoothPath(pts);
-    const areaPath = buildSmoothPath(pts, true);
+    const path = buildSmoothPath(pts, { chartHeight: h, paddingBottom: padBottom });
+    const areaPath = buildSmoothPath(pts, { closePath: true, chartHeight: h, paddingBottom: padBottom });
     const xTicks = [0, Math.floor((pts.length - 1) / 2), pts.length - 1].map(i => ({ x: pts[i].x, label: formatDateDisplay(pts[i].data.date) }));
 
     // Y轴刻度：从finalMin到finalMax，步长为tickInterval
@@ -215,12 +195,6 @@ const ProfitModal: React.FC<ProfitModalProps> = ({ symbol, fundName, currentPric
     }
   }, [displayedTimeline]);
 
-  const moneyCell = (v: number) => {
-    if (v === 0) return <span className="text-black">-</span>;
-    if (v > 0) return <span className="text-red-600">+{formatMoneyWithSeparators(v)}</span>;
-    return <span className="text-green-600">{formatMoneyWithSeparators(v)}</span>;
-  };
-
   const content = (
     <div className="fixed inset-0 flex items-center justify-center p-4" style={{ zIndex }}>
       <div className="absolute inset-0 bg-black/40" onClick={onClose} />
@@ -228,7 +202,7 @@ const ProfitModal: React.FC<ProfitModalProps> = ({ symbol, fundName, currentPric
         <div className="px-6 py-4 border-b border-gray-100 flex justify-between items-center flex-shrink-0">
           <div className="flex items-center space-x-2">
             <h3 className="text-lg font-bold">{fundName || symbol}</h3>
-            <span className="px-2 py-0.5 bg-gray-100 text-gray-500 rounded text-[10px] font-mono">{symbol}</span>
+            <SymbolBadge symbol={symbol} />
             <span className="text-gray-400">—</span>
             <span className="text-gray-600">持仓盈亏</span>
           </div>
@@ -421,8 +395,8 @@ const ProfitModal: React.FC<ProfitModalProps> = ({ symbol, fundName, currentPric
                             <tr key={row.date} className="border-b border-gray-50 hover:bg-gray-50 transition-colors">
                               <td className="px-3 py-2 text-left text-xs text-gray-700">{formatDateDisplay(row.date)}</td>
                               <td className="px-3 py-2 text-right text-xs text-gray-700">{(row.netValue !== undefined && row.netValue !== null) ? fmtNav(row.netValue) : '-'}</td>
-                              <td className="px-3 py-2 text-right text-xs">{moneyCell(row.dailyProfit)}</td>
-                              <td className="px-3 py-2 text-right text-xs">{moneyCell(row.cumulativeProfit)}</td>
+                              <td className="px-3 py-2 text-right text-xs"><MoneyCell value={row.dailyProfit} /></td>
+                              <td className="px-3 py-2 text-right text-xs"><MoneyCell value={row.cumulativeProfit} /></td>
                             </tr>
                           ))}
                         </tbody>

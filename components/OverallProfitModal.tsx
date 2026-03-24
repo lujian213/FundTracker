@@ -6,6 +6,8 @@ import { toLocalDateKey } from '../utils/priceResolver';
 import { OVERALL_PROFIT_DATE_PRESETS, getOverallProfitPresetRange, OverallProfitDatePresetKey } from '../utils/overallProfitDatePresets';
 import { formatMoney, formatMoneyWithSeparators } from '../utils/format';
 import { formatDateDisplay } from '../utils/dateFormat';
+import { buildSmoothPath, CHART_DIMENSIONS } from '../utils/chartUtils';
+import { MoneyCell } from './MoneyCell';
 
 interface Props {
   symbols?: string[];
@@ -85,9 +87,8 @@ const OverallProfitModal: React.FC<Props> = ({ symbols, onClose, onSelectFund })
 
   const chart = useMemo(() => {
     const pts = chartTimeline;
-    if (!pts || pts.length === 0) return { path: '', areaPath: '', points: [], xTicks: [], yTicks: [], width: 760, height: 200, padLeft: 60, padRight: 24, zeroY: 100 };
-    const w = 760; const h = 200;
-    const padLeft = 60; const padRight = 24; const padTop = 20; const padBottom = 32;
+    if (!pts || pts.length === 0) return { path: '', areaPath: '', points: [], xTicks: [], yTicks: [], width: CHART_DIMENSIONS.width, height: CHART_DIMENSIONS.height, padLeft: CHART_DIMENSIONS.padLeft, padRight: CHART_DIMENSIONS.padRight, zeroY: 100 };
+    const { width: w, height: h, padLeft, padRight, padTop, padBottom } = CHART_DIMENSIONS;
     const vals = pts.map(p => p.cumulativeProfit || 0);
     const dataMin = Math.min(...vals);
     const dataMax = Math.max(...vals);
@@ -119,30 +120,8 @@ const OverallProfitModal: React.FC<Props> = ({ symbols, onClose, onSelectFund })
     const zeroY = getY(0);
     const points = pts.map((p, i) => ({ x: getX(i), y: getY(p.cumulativeProfit || 0), data: p }));
 
-    // 使用贝塞尔曲线平滑路径
-    const buildSmoothPath = (pts: { x: number; y: number }[], closePath = false) => {
-      if (pts.length < 2) return '';
-      let d = `M ${pts[0].x} ${pts[0].y}`;
-      for (let i = 0; i < pts.length - 1; i++) {
-        const p0 = pts[Math.max(0, i - 1)];
-        const p1 = pts[i];
-        const p2 = pts[i + 1];
-        const p3 = pts[Math.min(pts.length - 1, i + 2)];
-        const cp1x = p1.x + (p2.x - p0.x) / 6;
-        const cp1y = p1.y + (p2.y - p0.y) / 6;
-        const cp2x = p2.x - (p3.x - p1.x) / 6;
-        const cp2y = p2.y - (p3.y - p1.y) / 6;
-        d += ` C ${cp1x} ${cp1y} ${cp2x} ${cp2y} ${p2.x} ${p2.y}`;
-      }
-      if (closePath) {
-        d += ` L ${pts[pts.length - 1].x} ${h - padBottom}`;
-        d += ` L ${pts[0].x} ${h - padBottom} Z`;
-      }
-      return d;
-    };
-
-    const path = buildSmoothPath(points);
-    const areaPath = buildSmoothPath(points, true);
+    const path = buildSmoothPath(points, { chartHeight: h, paddingBottom: padBottom });
+    const areaPath = buildSmoothPath(points, { closePath: true, chartHeight: h, paddingBottom: padBottom });
     const xTicks = [0, Math.floor((points.length - 1) / 2), points.length - 1].map(i => ({ x: points[i].x, label: formatDateDisplay(points[i].data.date) }));
 
     // Y轴刻度：从finalMin到finalMax，步长为tickInterval
@@ -155,13 +134,7 @@ const OverallProfitModal: React.FC<Props> = ({ symbols, onClose, onSelectFund })
     return { path, areaPath, points, xTicks, yTicks, padLeft, padRight, padTop, padBottom, width: w, height: h, zeroY };
   }, [chartTimeline]);
 
-  const moneyCell = (v: number) => {
-    if (v === 0) return <span className="text-black">-</span>;
-    if (v > 0) return <span className="text-red-600">+{formatMoneyWithSeparators(v)}</span>;
-    return <span className="text-green-600">{formatMoneyWithSeparators(v)}</span>;
-  };
-
-  const getTooltipStyle = useCallback((x: number, y: number, width = 760, height = 200) => {
+  const getTooltipStyle = useCallback((x: number, y: number, width = CHART_DIMENSIONS.width, height = CHART_DIMENSIONS.height) => {
     const tooltipWidth = 170;
     const tooltipHeight = 72;
     const margin = 8;
@@ -559,7 +532,7 @@ const OverallProfitModal: React.FC<Props> = ({ symbols, onClose, onSelectFund })
                             </td>
                             <td className="px-3 py-2 text-right text-xs">{(p.profitFrom||0)===0? <span className="text-black">-</span> : <span className={`${(p.profitFrom||0)>0? 'text-red-600':'text-green-600'}`}>{(p.profitFrom||0)>0?'+':''}{formatMoneyWithSeparators(p.profitFrom||0)}</span>}</td>
                             <td className="px-3 py-2 text-right text-xs">{(p.profitTo||0)===0? <span className="text-black">-</span> : <span className={`${(p.profitTo||0)>0? 'text-red-600':'text-green-600'}`}>{(p.profitTo||0)>0?'+':''}{formatMoneyWithSeparators(p.profitTo||0)}</span>}</td>
-                            <td className="px-3 py-2 text-right text-xs">{moneyCell(p.profitDiff||0)}</td>
+                            <td className="px-3 py-2 text-right text-xs"><MoneyCell value={p.profitDiff||0} /></td>
                           </tr>
                         ))}
                       </tbody>
