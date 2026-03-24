@@ -344,7 +344,7 @@ const InvestmentDraftModal: React.FC<InvestmentDraftModalProps> = ({
     <div className="fixed inset-0 z-[130] flex items-center justify-center pointer-events-none">
       <div className="absolute inset-0 bg-black/40 pointer-events-auto" onClick={onClose} />
       <div
-        className="relative bg-white w-full max-w-4xl shadow-2xl animate-in zoom-in-95 duration-200 flex flex-col pointer-events-auto h-[61.3vh] transition-transform duration-300 ease-in-out"
+        className="relative bg-white w-full max-w-4xl shadow-2xl animate-in zoom-in-95 duration-200 flex flex-col pointer-events-auto h-[61.95vh] transition-transform duration-300 ease-in-out"
         style={{ transform: sideBySide ? 'translateX(calc(-50vw + 28rem + 32px))' : 'translateX(0)' }}
       >
         <div className="px-6 pt-3 pb-1 border-b border-gray-100 flex justify-between items-center flex-shrink-0">

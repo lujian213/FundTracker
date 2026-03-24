@@ -359,7 +359,12 @@ export const TradeManager: React.FC<{
       <div className="relative bg-white rounded-2xl w-full max-w-3xl p-6 z-40">
         <div className="flex justify-between items-start mb-4">
           <div>
-            <h3 className="text-lg font-bold">{name ? `${name}（${symbol}）` : `${symbol} 交易管理`}</h3>
+            <div className="flex items-center space-x-2">
+              <h3 className="text-lg font-bold">{name || symbol}</h3>
+              <span className="px-2 py-0.5 bg-gray-100 text-gray-500 rounded text-[10px] font-mono">{symbol}</span>
+              <span className="text-gray-400">—</span>
+              <span className="text-gray-600">交易管理</span>
+            </div>
             <p className="text-xs text-gray-400">当前估值：{currentPrice.toFixed(4)}</p>
           </div>
           <button onClick={onClose} className="w-9 h-9 rounded-full bg-gray-50 flex items-center justify-center"><i className="fas fa-times text-gray-400"></i></button>

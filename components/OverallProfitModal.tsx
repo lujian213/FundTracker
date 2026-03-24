@@ -85,9 +85,9 @@ const OverallProfitModal: React.FC<Props> = ({ symbols, onClose, onSelectFund })
 
   const chart = useMemo(() => {
     const pts = chartTimeline;
-    if (!pts || pts.length === 0) return { path: '', points: [], xTicks: [], yTicks: [], width: 760, height: 160, padLeft: 56, padRight: 24 };
-    const w = 760; const h = 160;
-    const padLeft = 56; const padRight = 24; const padTop = 16; const padBottom = 28;
+    if (!pts || pts.length === 0) return { path: '', areaPath: '', points: [], xTicks: [], yTicks: [], width: 760, height: 200, padLeft: 60, padRight: 24, zeroY: 100 };
+    const w = 760; const h = 200;
+    const padLeft = 60; const padRight = 24; const padTop = 20; const padBottom = 32;
     const vals = pts.map(p => p.cumulativeProfit || 0);
     const dataMin = Math.min(...vals);
     const dataMax = Math.max(...vals);
@@ -116,18 +116,43 @@ const OverallProfitModal: React.FC<Props> = ({ symbols, onClose, onSelectFund })
 
     const getX = (i: number) => padLeft + (i * (w - padLeft - padRight) / (pts.length - 1));
     const getY = (v: number) => h - padBottom - ((v - finalMin) / range) * (h - padTop - padBottom);
+    const zeroY = getY(0);
     const points = pts.map((p, i) => ({ x: getX(i), y: getY(p.cumulativeProfit || 0), data: p }));
-    const d = points.map((pt, i) => `${i === 0 ? 'M' : 'L'} ${pt.x} ${pt.y}`).join(' ');
+
+    // 使用贝塞尔曲线平滑路径
+    const buildSmoothPath = (pts: { x: number; y: number }[], closePath = false) => {
+      if (pts.length < 2) return '';
+      let d = `M ${pts[0].x} ${pts[0].y}`;
+      for (let i = 0; i < pts.length - 1; i++) {
+        const p0 = pts[Math.max(0, i - 1)];
+        const p1 = pts[i];
+        const p2 = pts[i + 1];
+        const p3 = pts[Math.min(pts.length - 1, i + 2)];
+        const cp1x = p1.x + (p2.x - p0.x) / 6;
+        const cp1y = p1.y + (p2.y - p0.y) / 6;
+        const cp2x = p2.x - (p3.x - p1.x) / 6;
+        const cp2y = p2.y - (p3.y - p1.y) / 6;
+        d += ` C ${cp1x} ${cp1y} ${cp2x} ${cp2y} ${p2.x} ${p2.y}`;
+      }
+      if (closePath) {
+        d += ` L ${pts[pts.length - 1].x} ${h - padBottom}`;
+        d += ` L ${pts[0].x} ${h - padBottom} Z`;
+      }
+      return d;
+    };
+
+    const path = buildSmoothPath(points);
+    const areaPath = buildSmoothPath(points, true);
     const xTicks = [0, Math.floor((points.length - 1) / 2), points.length - 1].map(i => ({ x: points[i].x, label: formatDateDisplay(points[i].data.date) }));
 
-    // Y轴刻度：从finalMin到finalMax，步长为tickInterval（1000的倍数）
-    const yTicks: { y: number; label: string }[] = [];
+    // Y轴刻度：从finalMin到finalMax，步长为tickInterval
+    const yTicks: { y: number; label: string; isZero: boolean }[] = [];
     const firstTick = Math.ceil(finalMin / tickInterval) * tickInterval;
     for (let v = firstTick; v <= finalMax; v += tickInterval) {
-      yTicks.push({ y: getY(v), label: (v >= 0 ? '+' : '') + formatMoneyWithSeparators(v) });
+      yTicks.push({ y: getY(v), label: (v >= 0 ? '+' : '') + v, isZero: v === 0 });
     }
 
-    return { path: d, points, xTicks, yTicks, padLeft, padRight, padTop, padBottom, width: w, height: h };
+    return { path, areaPath, points, xTicks, yTicks, padLeft, padRight, padTop, padBottom, width: w, height: h, zeroY };
   }, [chartTimeline]);
 
   const moneyCell = (v: number) => {
@@ -136,9 +161,9 @@ const OverallProfitModal: React.FC<Props> = ({ symbols, onClose, onSelectFund })
     return <span className="text-green-600">{formatMoneyWithSeparators(v)}</span>;
   };
 
-  const getTooltipStyle = useCallback((x: number, y: number, width = 760, height = 160) => {
+  const getTooltipStyle = useCallback((x: number, y: number, width = 760, height = 200) => {
     const tooltipWidth = 170;
-    const tooltipHeight = 64;
+    const tooltipHeight = 72;
     const margin = 8;
     const gap = 12;
 
@@ -310,40 +335,134 @@ const OverallProfitModal: React.FC<Props> = ({ symbols, onClose, onSelectFund })
             </div>
           ) : (
             <div className="space-y-4">
-              <div ref={chartWrapRef} className="bg-gray-50 rounded p-3 relative">
-                <svg ref={chartSvgRef} className="w-full h-40" viewBox={`0 0 ${chart.width ?? 760} ${chart.height ?? 160}`} preserveAspectRatio="none" style={{ overflow: 'visible' }}>
-                  <rect x={0} y={0} width={760} height={160} fill="#fff" />
+              <div ref={chartWrapRef} className="bg-gradient-to-b from-gray-50 to-white rounded-xl p-4 relative shadow-inner">
+                <svg ref={chartSvgRef} className="w-full h-52" viewBox={`0 0 ${chart.width ?? 760} ${chart.height ?? 200}`} preserveAspectRatio="none" style={{ overflow: 'visible' }}>
+                  {/* 背景渐变定义 */}
+                  <defs>
+                    <linearGradient id="areaGradient" x1="0%" y1="0%" x2="0%" y2="100%">
+                      <stop offset="0%" stopColor="#ef4444" stopOpacity="0.3" />
+                      <stop offset="100%" stopColor="#ef4444" stopOpacity="0.02" />
+                    </linearGradient>
+                    <linearGradient id="areaGradientGreen" x1="0%" y1="100%" x2="0%" y2="0%">
+                      <stop offset="0%" stopColor="#22c55e" stopOpacity="0.3" />
+                      <stop offset="100%" stopColor="#22c55e" stopOpacity="0.02" />
+                    </linearGradient>
+                    <filter id="glow" x="-20%" y="-20%" width="140%" height="140%">
+                      <feGaussianBlur stdDeviation="2" result="coloredBlur"/>
+                      <feMerge>
+                        <feMergeNode in="coloredBlur"/>
+                        <feMergeNode in="SourceGraphic"/>
+                      </feMerge>
+                    </filter>
+                  </defs>
+
+                  {/* 背景 */}
+                  <rect x={0} y={0} width={chart.width ?? 760} height={chart.height ?? 200} fill="transparent" />
+
+                  {/* Y轴网格线 */}
                   {chart.yTicks && chart.yTicks.map((t: any, i: number) => (
                     <g key={'y'+i}>
-                      <line x1={chart.padLeft ? chart.padLeft - 20 : 30} x2={760 - (chart.padRight ?? 24)} y1={t.y} y2={t.y} stroke="#eef2f7" />
-                      <text x={(chart.padLeft ? chart.padLeft - 12 : 44)} y={t.y} textAnchor="end" alignmentBaseline="middle" style={{ fontSize: '10px', fill: '#9ca3af', fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, "Roboto Mono", "Helvetica Neue", monospace' }}>{t.label}</text>
+                      <line
+                        x1={chart.padLeft ? chart.padLeft - 8 : 52}
+                        x2={(chart.width ?? 760) - (chart.padRight ?? 24)}
+                        y1={t.y}
+                        y2={t.y}
+                        stroke={t.isZero ? "#94a3b8" : "#e5e7eb"}
+                        strokeWidth={t.isZero ? 1.5 : 1}
+                        strokeDasharray={t.isZero ? "none" : "4,4"}
+                      />
+                      <text
+                        x={(chart.padLeft ? chart.padLeft - 14 : 46)}
+                        y={t.y}
+                        textAnchor="end"
+                        alignmentBaseline="middle"
+                        style={{
+                          fontSize: '11px',
+                          fill: t.isZero ? '#64748b' : '#9ca3af',
+                          fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, monospace',
+                          fontWeight: t.isZero ? '600' : '400'
+                        }}
+                      >
+                        {t.label}
+                      </text>
                     </g>
                   ))}
+
+                  {/* X轴刻度 */}
                   {chart.xTicks && chart.xTicks.map((t: any, i: number) => (
-                    <text key={'x'+i} x={t.x} y={150} textAnchor="middle" style={{ fontSize: '10px', fill: '#9ca3af' }}>{t.label}</text>
+                    <text
+                      key={'x'+i}
+                      x={t.x}
+                      y={(chart.height ?? 200) - 8}
+                      textAnchor="middle"
+                      style={{ fontSize: '11px', fill: '#9ca3af', fontFamily: 'ui-monospace, monospace' }}
+                    >
+                      {t.label}
+                    </text>
                   ))}
-                  <path d={chart.path} fill="none" stroke="#ef4444" strokeWidth={2} strokeLinecap="round" style={{ pointerEvents: 'none' }} />
+
+                  {/* 填充区域 */}
+                  {chart.areaPath && (
+                    <path
+                      d={chart.areaPath}
+                      fill="url(#areaGradient)"
+                      style={{ pointerEvents: 'none' }}
+                    />
+                  )}
+
+                  {/* 主折线 */}
+                  <path
+                    d={chart.path}
+                    fill="none"
+                    stroke="#ef4444"
+                    strokeWidth={2.5}
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    filter="url(#glow)"
+                    style={{ pointerEvents: 'none' }}
+                  />
+
+                  {/* 数据点 */}
                   {chart.points.map((pt: any, i: number) => (
                     <g key={i} onMouseEnter={() => setHoverIndex(i)} onMouseLeave={() => setHoverIndex(null)} onFocus={() => setHoverIndex(i)} onBlur={() => setHoverIndex(null)} onClick={() => handlePointClick(i)} data-testid={`overall-profit-point-${i}`}>
-                      <circle cx={pt.x} cy={pt.y} r={18} fill="rgba(0,0,0,0)" style={{ pointerEvents: 'all' }} />
-                      <circle cx={pt.x} cy={pt.y} r={5} fill={hoverIndex === i ? '#ef4444' : '#fff'} stroke="#ef4444" strokeWidth={2} />
+                      <circle cx={pt.x} cy={pt.y} r={16} fill="rgba(0,0,0,0)" style={{ pointerEvents: 'all', cursor: 'pointer' }} />
+                      {hoverIndex === i && (
+                        <circle cx={pt.x} cy={pt.y} r={8} fill="#ef4444" opacity={0.3} style={{ pointerEvents: 'none' }} />
+                      )}
+                      <circle
+                        cx={pt.x}
+                        cy={pt.y}
+                        r={hoverIndex === i ? 5 : 3.5}
+                        fill={hoverIndex === i ? '#ef4444' : '#fff'}
+                        stroke="#ef4444"
+                        strokeWidth={hoverIndex === i ? 2.5 : 2}
+                        style={{ pointerEvents: 'none', transition: 'r 0.15s, fill 0.15s' }}
+                      />
                     </g>
                   ))}
                 </svg>
                 {hoverIndex !== null && chart.points[hoverIndex] && (
                   <div
                     data-testid="overall-profit-tooltip"
-                    className="absolute z-20 bg-white p-2 rounded shadow"
+                    className="absolute z-20 bg-white/95 backdrop-blur-sm px-3 py-2 rounded-lg shadow-lg border border-gray-100"
                     style={getTooltipStyle(
                       chart.points[hoverIndex].x,
                       chart.points[hoverIndex].y,
                       chart.width ?? 760,
-                      chart.height ?? 160,
+                      chart.height ?? 200,
                     )}
                   >
-                    <div className="text-xs text-gray-500">{formatDateDisplay(chart.points[hoverIndex].data.date)}</div>
-                    <div className="text-sm">当日: {chart.points[hoverIndex].data.dailyProfit === 0 ? '-' : (chart.points[hoverIndex].data.dailyProfit > 0 ? '+' : '') + formatMoneyWithSeparators(chart.points[hoverIndex].data.dailyProfit)}</div>
-                    <div className="text-sm">累计: {chart.points[hoverIndex].data.cumulativeProfit === 0 ? '-' : (chart.points[hoverIndex].data.cumulativeProfit > 0 ? '+' : '') + formatMoneyWithSeparators(chart.points[hoverIndex].data.cumulativeProfit)}</div>
+                    <div className="text-xs text-gray-500 font-medium mb-1">{formatDateDisplay(chart.points[hoverIndex].data.date)}</div>
+                    <div className="text-sm flex justify-between gap-4">
+                      <span className="text-gray-500">当日：</span>
+                      <span className="font-medium">{chart.points[hoverIndex].data.dailyProfit === 0 ? '-' : (chart.points[hoverIndex].data.dailyProfit > 0 ? '+' : '') + formatMoneyWithSeparators(chart.points[hoverIndex].data.dailyProfit)}</span>
+                    </div>
+                    <div className="text-sm flex justify-between gap-4">
+                      <span className="text-gray-500">累计：</span>
+                      <span className={`font-semibold ${chart.points[hoverIndex].data.cumulativeProfit > 0 ? 'text-red-600' : chart.points[hoverIndex].data.cumulativeProfit < 0 ? 'text-green-600' : ''}`}>
+                        {chart.points[hoverIndex].data.cumulativeProfit === 0 ? '-' : (chart.points[hoverIndex].data.cumulativeProfit > 0 ? '+' : '') + formatMoneyWithSeparators(chart.points[hoverIndex].data.cumulativeProfit)}
+                      </span>
+                    </div>
                   </div>
                 )}
               </div>

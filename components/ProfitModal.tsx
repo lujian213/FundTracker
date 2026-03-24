@@ -135,9 +135,9 @@ const ProfitModal: React.FC<ProfitModalProps> = ({ symbol, fundName, currentPric
   const periodTotal = useMemo(() => (displayedTimeline || []).reduce((s, p) => s + (p.dailyProfit || 0), 0), [displayedTimeline]);
 
   const chart = useMemo(() => {
-    if (!displayedTimeline || displayedTimeline.length === 0) return { path: '', points: [], xTicks: [], yTicks: [], width: 760, height: 160, padLeft: 56, padRight: 24 };
-    const w = 760; const h = 160;
-    const padLeft = 56; const padRight = 24; const padTop = 16; const padBottom = 28;
+    if (!displayedTimeline || displayedTimeline.length === 0) return { path: '', areaPath: '', points: [], xTicks: [], yTicks: [], width: 760, height: 200, padLeft: 60, padRight: 24, zeroY: 100 };
+    const w = 760; const h = 200;
+    const padLeft = 60; const padRight = 24; const padTop = 20; const padBottom = 32;
     const vals = displayedTimeline.map(p => p.cumulativeProfit || 0);
     const dataMin = Math.min(...vals);
     const dataMax = Math.max(...vals);
@@ -166,18 +166,43 @@ const ProfitModal: React.FC<ProfitModalProps> = ({ symbol, fundName, currentPric
 
     const getX = (i: number) => padLeft + (i * (w - padLeft - padRight) / (displayedTimeline.length - 1));
     const getY = (v: number) => h - padBottom - ((v - finalMin) / range) * (h - padTop - padBottom);
+    const zeroY = getY(0);
     const pts = displayedTimeline.map((p, i) => ({ x: getX(i), y: getY(p.cumulativeProfit || 0), data: p }));
-    const d = pts.map((pt, i) => `${i === 0 ? 'M' : 'L'} ${pt.x} ${pt.y}`).join(' ');
+
+    // 使用贝塞尔曲线平滑路径
+    const buildSmoothPath = (pts: { x: number; y: number }[], closePath = false) => {
+      if (pts.length < 2) return '';
+      let d = `M ${pts[0].x} ${pts[0].y}`;
+      for (let i = 0; i < pts.length - 1; i++) {
+        const p0 = pts[Math.max(0, i - 1)];
+        const p1 = pts[i];
+        const p2 = pts[i + 1];
+        const p3 = pts[Math.min(pts.length - 1, i + 2)];
+        const cp1x = p1.x + (p2.x - p0.x) / 6;
+        const cp1y = p1.y + (p2.y - p0.y) / 6;
+        const cp2x = p2.x - (p3.x - p1.x) / 6;
+        const cp2y = p2.y - (p3.y - p1.y) / 6;
+        d += ` C ${cp1x} ${cp1y} ${cp2x} ${cp2y} ${p2.x} ${p2.y}`;
+      }
+      if (closePath) {
+        d += ` L ${pts[pts.length - 1].x} ${h - padBottom}`;
+        d += ` L ${pts[0].x} ${h - padBottom} Z`;
+      }
+      return d;
+    };
+
+    const path = buildSmoothPath(pts);
+    const areaPath = buildSmoothPath(pts, true);
     const xTicks = [0, Math.floor((pts.length - 1) / 2), pts.length - 1].map(i => ({ x: pts[i].x, label: formatDateDisplay(pts[i].data.date) }));
 
-    // Y轴刻度：从finalMin到finalMax，步长为tickInterval（1000的倍数）
-    const yTicks: { y: number; label: string }[] = [];
+    // Y轴刻度：从finalMin到finalMax，步长为tickInterval
+    const yTicks: { y: number; label: string; isZero: boolean }[] = [];
     const firstTick = Math.ceil(finalMin / tickInterval) * tickInterval;
     for (let v = firstTick; v <= finalMax; v += tickInterval) {
-      yTicks.push({ y: getY(v), label: (v >= 0 ? '+' : '') + formatMoneyWithSeparators(v) });
+      yTicks.push({ y: getY(v), label: (v >= 0 ? '+' : '') + v, isZero: v === 0 });
     }
 
-    return { path: d, points: pts, xTicks, yTicks, padLeft, padRight, padTop, padBottom, width: w, height: h };
+    return { path, areaPath, points: pts, xTicks, yTicks, padLeft, padRight, padTop, padBottom, width: w, height: h, zeroY };
   }, [displayedTimeline]);
 
   const handlePointEnter = (i: number) => { setHoverIndex(i); };
@@ -196,14 +221,17 @@ const ProfitModal: React.FC<ProfitModalProps> = ({ symbol, fundName, currentPric
     return <span className="text-green-600">{formatMoneyWithSeparators(v)}</span>;
   };
 
-  const titleText = fundName ? `${fundName} (${symbol})` : symbol;
-
   const content = (
     <div className="fixed inset-0 flex items-center justify-center p-4" style={{ zIndex }}>
       <div className="absolute inset-0 bg-black/40" onClick={onClose} />
       <div className="relative bg-white rounded-2xl w-full max-w-4xl shadow-2xl animate-in zoom-in-95 duration-200 flex flex-col" style={{ maxWidth: '64rem', maxHeight: '90vh' }} role="dialog" aria-modal="true">
         <div className="px-6 py-4 border-b border-gray-100 flex justify-between items-center flex-shrink-0">
-          <h3 className="text-lg font-bold">{titleText} — 持仓盈亏</h3>
+          <div className="flex items-center space-x-2">
+            <h3 className="text-lg font-bold">{fundName || symbol}</h3>
+            <span className="px-2 py-0.5 bg-gray-100 text-gray-500 rounded text-[10px] font-mono">{symbol}</span>
+            <span className="text-gray-400">—</span>
+            <span className="text-gray-600">持仓盈亏</span>
+          </div>
           <button aria-label="关闭盈亏窗口" className="w-8 h-8 rounded-full bg-gray-50 flex items-center justify-center text-gray-400 hover:bg-gray-100" onClick={onClose}><i className="fas fa-times"></i></button>
         </div>
         <div className="p-6 overflow-y-auto flex-1 min-h-0">
@@ -244,31 +272,128 @@ const ProfitModal: React.FC<ProfitModalProps> = ({ symbol, fundName, currentPric
               ) : (
                 <>
                   {/* Chart */}
-                  <div className="bg-gray-50 rounded p-3 relative">
-                    <svg className="w-full h-40" viewBox={`0 0 ${chart.width ?? 760} ${chart.height ?? 160}`} preserveAspectRatio="none" style={{ overflow: 'visible' }}>
-                      <rect x={0} y={0} width={760} height={160} fill="#fff" />
+                  <div className="bg-gradient-to-b from-gray-50 to-white rounded-xl p-4 relative shadow-inner">
+                    <svg className="w-full h-52" viewBox={`0 0 ${chart.width ?? 760} ${chart.height ?? 200}`} preserveAspectRatio="none" style={{ overflow: 'visible' }}>
+                      {/* 背景渐变定义 */}
+                      <defs>
+                        <linearGradient id="profitAreaGradient" x1="0%" y1="0%" x2="0%" y2="100%">
+                          <stop offset="0%" stopColor="#ef4444" stopOpacity="0.3" />
+                          <stop offset="100%" stopColor="#ef4444" stopOpacity="0.02" />
+                        </linearGradient>
+                        <filter id="profitGlow" x="-20%" y="-20%" width="140%" height="140%">
+                          <feGaussianBlur stdDeviation="2" result="coloredBlur"/>
+                          <feMerge>
+                            <feMergeNode in="coloredBlur"/>
+                            <feMergeNode in="SourceGraphic"/>
+                          </feMerge>
+                        </filter>
+                      </defs>
+
+                      {/* 背景 */}
+                      <rect x={0} y={0} width={chart.width ?? 760} height={chart.height ?? 200} fill="transparent" />
+
+                      {/* Y轴网格线 */}
                       {chart.yTicks && chart.yTicks.map((t, i) => (
                         <g key={'y'+i}>
-                          <line x1={chart.padLeft ? chart.padLeft - 20 : 30} x2={760 - (chart.padRight ?? 24)} y1={t.y} y2={t.y} stroke="#eef2f7" />
-                          <text x={(chart.padLeft ? chart.padLeft - 12 : 44)} y={t.y} textAnchor="end" alignmentBaseline="middle" style={{ fontSize: '10px', fill: '#9ca3af', fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, "Roboto Mono", "Helvetica Neue", monospace' }}>{t.label}</text>
+                          <line
+                            x1={chart.padLeft ? chart.padLeft - 8 : 52}
+                            x2={(chart.width ?? 760) - (chart.padRight ?? 24)}
+                            y1={t.y}
+                            y2={t.y}
+                            stroke={t.isZero ? "#94a3b8" : "#e5e7eb"}
+                            strokeWidth={t.isZero ? 1.5 : 1}
+                            strokeDasharray={t.isZero ? "none" : "4,4"}
+                          />
+                          <text
+                            x={(chart.padLeft ? chart.padLeft - 14 : 46)}
+                            y={t.y}
+                            textAnchor="end"
+                            alignmentBaseline="middle"
+                            style={{
+                              fontSize: '11px',
+                              fill: t.isZero ? '#64748b' : '#9ca3af',
+                              fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, monospace',
+                              fontWeight: t.isZero ? '600' : '400'
+                            }}
+                          >
+                            {t.label}
+                          </text>
                         </g>
                       ))}
+
+                      {/* X轴刻度 */}
                       {chart.xTicks && chart.xTicks.map((t, i) => (
-                        <text key={'x'+i} x={t.x} y={150} textAnchor="middle" style={{ fontSize: '10px', fill: '#9ca3af' }}>{t.label}</text>
+                        <text
+                          key={'x'+i}
+                          x={t.x}
+                          y={(chart.height ?? 200) - 8}
+                          textAnchor="middle"
+                          style={{ fontSize: '11px', fill: '#9ca3af', fontFamily: 'ui-monospace, monospace' }}
+                        >
+                          {t.label}
+                        </text>
                       ))}
-                      <path d={chart.path} fill="none" stroke="#ef4444" strokeWidth={2} strokeLinecap="round" style={{ pointerEvents: 'none' }} />
+
+                      {/* 填充区域 */}
+                      {chart.areaPath && (
+                        <path
+                          d={chart.areaPath}
+                          fill="url(#profitAreaGradient)"
+                          style={{ pointerEvents: 'none' }}
+                        />
+                      )}
+
+                      {/* 主折线 */}
+                      <path
+                        d={chart.path}
+                        fill="none"
+                        stroke="#ef4444"
+                        strokeWidth={2.5}
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        filter="url(#profitGlow)"
+                        style={{ pointerEvents: 'none' }}
+                      />
+
+                      {/* 数据点 */}
                       {chart.points.map((pt, i) => (
                         <g key={i} onMouseEnter={() => handlePointEnter(i)} onMouseLeave={() => handlePointLeave()} onFocus={() => handlePointEnter(i)} onBlur={() => handlePointLeave()}>
-                          <circle cx={pt.x} cy={pt.y} r={18} fill="rgba(0,0,0,0)" style={{ pointerEvents: 'all' }} />
-                          <circle cx={pt.x} cy={pt.y} r={5} fill={hoverIndex === i ? '#ef4444' : '#fff'} stroke="#ef4444" strokeWidth={2} />
+                          <circle cx={pt.x} cy={pt.y} r={16} fill="rgba(0,0,0,0)" style={{ pointerEvents: 'all', cursor: 'pointer' }} />
+                          {hoverIndex === i && (
+                            <circle cx={pt.x} cy={pt.y} r={8} fill="#ef4444" opacity={0.3} style={{ pointerEvents: 'none' }} />
+                          )}
+                          <circle
+                            cx={pt.x}
+                            cy={pt.y}
+                            r={hoverIndex === i ? 5 : 3.5}
+                            fill={hoverIndex === i ? '#ef4444' : '#fff'}
+                            stroke="#ef4444"
+                            strokeWidth={hoverIndex === i ? 2.5 : 2}
+                            style={{ pointerEvents: 'none', transition: 'r 0.15s, fill 0.15s' }}
+                          />
                         </g>
                       ))}
                     </svg>
                     {hoverIndex !== null && chart.points[hoverIndex] && (
-                      <div className="absolute z-20 bg-white p-2 rounded shadow" style={{ left: Math.max(8, Math.min((chart.width ?? 760) - 120, chart.points[hoverIndex].x - 40)), top: Math.max(8, chart.points[hoverIndex].y - 50), pointerEvents: 'none' }}>
-                        <div className="text-xs text-gray-500">{formatDateDisplay(chart.points[hoverIndex].data.date)}</div>
-                        <div className="text-sm">当日: {chart.points[hoverIndex].data.dailyProfit === 0 ? '-' : (chart.points[hoverIndex].data.dailyProfit > 0 ? '+' : '') + formatMoneyWithSeparators(chart.points[hoverIndex].data.dailyProfit)}</div>
-                        <div className="text-sm">累计: {chart.points[hoverIndex].data.cumulativeProfit === 0 ? '-' : (chart.points[hoverIndex].data.cumulativeProfit > 0 ? '+' : '') + formatMoneyWithSeparators(chart.points[hoverIndex].data.cumulativeProfit)}</div>
+                      <div
+                        className="absolute z-20 bg-white/95 backdrop-blur-sm px-3 py-2 rounded-lg shadow-lg border border-gray-100"
+                        style={{
+                          left: Math.max(8, Math.min((chart.width ?? 760) - 140, chart.points[hoverIndex].x - 60)),
+                          top: Math.max(8, chart.points[hoverIndex].y - 60),
+                          pointerEvents: 'none'
+                        }}
+                      >
+                        <div className="text-xs text-gray-500 font-medium mb-1">{formatDateDisplay(chart.points[hoverIndex].data.date)}</div>
+                        <div className="text-sm flex justify-between gap-4">
+                          <span className="text-gray-500">当日：</span>
+                          <span className="font-medium">{chart.points[hoverIndex].data.dailyProfit === 0 ? '-' : (chart.points[hoverIndex].data.dailyProfit > 0 ? '+' : '') + formatMoneyWithSeparators(chart.points[hoverIndex].data.dailyProfit)}</span>
+                        </div>
+                        <div className="text-sm flex justify-between gap-4">
+                          <span className="text-gray-500">累计：</span>
+                          <span className={`font-semibold ${chart.points[hoverIndex].data.cumulativeProfit > 0 ? 'text-red-600' : chart.points[hoverIndex].data.cumulativeProfit < 0 ? 'text-green-600' : ''}`}>
+                            {chart.points[hoverIndex].data.cumulativeProfit === 0 ? '-' : (chart.points[hoverIndex].data.cumulativeProfit > 0 ? '+' : '') + formatMoneyWithSeparators(chart.points[hoverIndex].data.cumulativeProfit)}
+                          </span>
+                        </div>
                       </div>
                     )}
                   </div>

@@ -574,7 +574,12 @@ export const VirtualTradeModal: React.FC<Props> = ({ symbol, fundName, history: 
       <div className="absolute inset-0 bg-black/40" onClick={onClose} />
       <div className="relative bg-white rounded-lg shadow-lg w-full max-w-6xl p-6 z-30 max-h-[90vh] overflow-auto">
         <div className="flex justify-between items-start mb-4">
-          <h3 className="text-lg font-bold">虚拟交易 - {fundName || symbol}</h3>
+          <div className="flex items-center space-x-2">
+            <h3 className="text-lg font-bold">{fundName || symbol}</h3>
+            <span className="px-2 py-0.5 bg-gray-100 text-gray-500 rounded text-[10px] font-mono">{symbol}</span>
+            <span className="text-gray-400">—</span>
+            <span className="text-gray-600">虚拟交易</span>
+          </div>
           <div className="flex items-center gap-2">
             <button onClick={onClose} className="w-9 h-9 rounded-full bg-gray-50 flex items-center justify-center"><i className="fas fa-times text-gray-400"></i></button>
           </div>
