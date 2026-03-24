@@ -79,7 +79,7 @@ describe('TimerJobScheduler', () => {
       });
 
       await scheduler.loadConfig();
-      expect(mockFetch).toHaveBeenCalledWith('/assets/config/timer-jobs.json');
+      expect(mockFetch).toHaveBeenCalledWith('./assets/config/timer-jobs.json');
     });
 
     test('uses default config when file not found', async () => {
