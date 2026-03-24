@@ -16,6 +16,7 @@ const DEFAULT_JOBS: TimerJobConfig[] = [
   { id: 'news-refresh', name: '市场热点刷新', cron: '*/3 * * * *', enabled: true },
   { id: 'holiday-info-refresh', name: '节假日信息刷新', cron: '0 */6 * * *', enabled: true },
   { id: 'delivery-info-refresh', name: '交割日信息刷新', cron: '0 */6 * * *', enabled: true },
+  { id: 'strategy-recommendation-refresh', name: '推荐交易策略刷新', cron: '0 */6 * * *', enabled: true },
 ];
 
 interface TimerJobScheduler {

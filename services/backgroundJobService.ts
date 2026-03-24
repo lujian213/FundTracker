@@ -6,7 +6,7 @@ import { formatDateDisplay } from '../utils/dateFormat';
 export interface BackgroundJobPrompt {
   id: string;
   name: string;
-  type: 'holiday' | 'delivery';
+  type: 'holiday' | 'delivery' | 'strategy';
   template: string;
 }
 

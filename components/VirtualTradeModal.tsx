@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { HistoricalPoint, ValuationData, VirtualTradeResult } from '../types';
+import { HistoricalPoint, ValuationData, VirtualTradeResult, RecommendedStrategy } from '../types';
 import { runVirtualTrade } from '../services/virtualTradeEngine';
 import { fetchFundHistory as defaultFetchFundHistory } from '../services/fundService';
 import { resolvePreferredPrice, toLocalDateKey } from '../utils/priceResolver';
@@ -23,12 +23,13 @@ interface Props {
   fundName?: string;
   history?: HistoricalPoint[];
   valuation?: ValuationData | null;
+  recommendedStrategy?: RecommendedStrategy | null;  // AI 推荐策略
   onClose: () => void;
   fetchHistory?: (symbol: string) => Promise<HistoricalPoint[]>;
   zIndex?: number;
 }
 
-export const VirtualTradeModal: React.FC<Props> = ({ symbol, fundName, history: initialHistory, valuation, onClose, fetchHistory, zIndex = 120 }) => {
+export const VirtualTradeModal: React.FC<Props> = ({ symbol, fundName, history: initialHistory, valuation, recommendedStrategy, onClose, fetchHistory, zIndex = 120 }) => {
   const [history, setHistory] = useState<HistoricalPoint[] | null>(initialHistory ?? null);
   const fetchFn = fetchHistory ?? defaultFetchFundHistory;
 
@@ -622,22 +623,33 @@ export const VirtualTradeModal: React.FC<Props> = ({ symbol, fundName, history: 
 
         <div className="mb-3">
           <div className="flex items-center space-x-2">
-            {!strategiesLoading && strategiesMetadata.map((s, i) => (
-              <SimpleTooltip key={s.name} content={s.description}>
-                <button
-                  onClick={() => setActiveTab(i)}
-                  className={`px-3 py-1 rounded inline-flex items-center gap-2 whitespace-nowrap ${activeTab === i ? 'bg-white border' : 'bg-transparent text-gray-500'}`}
-                  aria-pressed={activeTab === i}
-                  aria-label={`${s.name} 策略`}
-                >
-                  <span className="text-sm">{s.name}</span>
-                  {bestStrategyIndex === i && (
-                    // thumbs-up: show when this strategy is the best per rules
-                    <ThumbsUpIcon className="ml-2 text-amber-500" title="当前收益最高" />
+            {!strategiesLoading && strategiesMetadata.map((s, i) => {
+              const isRecommended = recommendedStrategy &&
+                recommendedStrategy.strategy_id === s.key;
+
+              return (
+                <div key={s.key} className="flex items-center">
+                  <SimpleTooltip content={s.description}>
+                    <button
+                      onClick={() => setActiveTab(i)}
+                      className={`px-3 py-1 rounded inline-flex items-center gap-2 whitespace-nowrap ${activeTab === i ? 'bg-white border' : 'bg-transparent text-gray-500'}`}
+                      aria-pressed={activeTab === i}
+                      aria-label={`${s.name} 策略`}
+                    >
+                      <span className="text-sm">{s.name}</span>
+                      {bestStrategyIndex === i && (
+                        <ThumbsUpIcon className="text-amber-500" title="当前收益最高" />
+                      )}
+                    </button>
+                  </SimpleTooltip>
+                  {isRecommended && (
+                    <SimpleTooltip content={recommendedStrategy!.reason}>
+                      <i className="fas fa-star text-amber-500 ml-1 cursor-help" title="AI 推荐策略" />
+                    </SimpleTooltip>
                   )}
-                </button>
-              </SimpleTooltip>
-            ))}
+                </div>
+              );
+            })}
             {strategiesLoading && (
               <div className="text-sm text-gray-500">加载策略中...</div>
             )}

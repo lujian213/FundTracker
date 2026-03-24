@@ -16,12 +16,19 @@ export interface TickerAlert {
   content: string;                // 信息内容
 }
 
+// RecommendedStrategy - 推荐交易策略
+export interface RecommendedStrategy {
+  strategy_id: string;    // 推荐策略的 key（如 'trendFollowing', 'meanReversion'）
+  reason: string;         // 推荐理由
+}
+
 export interface Ticker {
   id: string;
   symbol: string;
   name: string;
   market: MarketType;
   alert_list?: TickerAlert[];     // 提示信息列表
+  recommended_strategy?: RecommendedStrategy;  // 推荐交易策略
 }
 
 export interface ValuationData {

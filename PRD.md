@@ -1,6 +1,6 @@
 # FundTracker — 产品需求文档 (PRD)
 
-版本：1.28
+版本：1.29
 最后更新：2026-03-24
 
 ---
@@ -15,17 +15,31 @@
 后台任务功能主要是在后台进行一些AI相关的操作，能够定时获取基金相关的信息，并将这些信息存储到localStorage中，以便在界面上展示给用户。比如，基金相关市场的节假日提醒，交割日提醒等。
 
 ### 信息存储
+
+#### alert_list字段
 在基金Ticker中增加一个字段，叫做`alert_list`，存储基金相关的信息列表。这个字段是一个列表，其中每一项都是一个对象，包含以下内容：
 * `type`：信息的类型，比如节假日信息（holiday），交割日信息（delivery）等。
 * `date`：信息的生效日期，比如节假日的日期，交割日的日期等。
 * `content`：信息的内容，比如节假日的名字，交割日的相关说明等。
 
-后台任务会定时更新这个字段里的信息。
+#### recommended_strategy字段 (v1.29)
+在基金Ticker中增加一个字段，叫做`recommended_strategy`，存储系统推荐的交易策略。对应到目前已有的一个虚拟交易策略。包含以下内容：
+* `strategy_id`：交易策略的唯一标识符，可以用来在系统内查找这个策略的具体内容。
+* `reason`：推荐这个交易策略的理由，可以是一些简短的文本说明。
+
+后台任务会定时更新这些字段里的信息。
 
 ### 界面显示
+
+#### Alert显示
 如果基金的`alert_list`字段里有信息，在这些信息中找出生效日期在当前日期之后的3天以内的信息。如果有这样的信息，就在基金card上显示一个小图标，提示用户有相关的信息需要注意。图标位于基金card的右上角，位置在风险评级图标的右边。用户将鼠标悬停在这个图标上时，会显示一个tooltip，里面列出这些相关的信息的内容和生效日期。信息按照生效日期进行排序，最近的日期排在最前面。用bullet point的形式来展示这些信息。
 
 后台任务对基金的`alert_list`字段进行更新时，会触发这个检查，并对基金card上的图标进行更新。比如，如果之前没有相关的信息，基金card上没有这个图标，当后台任务更新了`alert_list`字段，并且有相关的信息时，就会在基金card上显示这个图标。反之，如果之前有相关的信息，基金card上有这个图标，当后台任务更新了`alert_list`字段，并且没有相关的信息时，就会在基金card上隐藏这个图标。
+
+#### 推荐交易策略显示 (v1.29)
+如果基金的`recommended_strategy`字段里有信息：
+* 在基金的虚拟交易窗口中，对应的交易策略的tab上显示一个推荐图标（星形），提示用户有推荐的交易策略。用户将鼠标悬停在这个图标上时，会显示一个tooltip，里面显示推荐这个交易策略的理由。
+* 在投顾窗口的表格里，每个策略列后面单独增加一个图标列（无列名），用来显示可能的两个图标：推荐策略图标（星形）和最佳策略图标（大拇指）。推荐策略图标支持tooltip显示推荐理由。两个图标均采用上对齐方式显示。
 
 ### 后台任务
 后台任务和目前系统中其他定时任务一样，由统一的调度器来管理。后台任务会定时调用AI功能，获取系统内所有基金的相关信息，并将这些信息更新到基金的`alert_list`字段中。更新按照信息的类型来进行增加、修改或删除。简单来说就是以信息的类型为key来更新。每个后台任务都对应一个信息类型x。
@@ -48,12 +62,25 @@
   * `date`: AI获取到的最近的交割日（delivery_date）
   * `content`: AI获取到的交割日的相关说明（explanation）
 
+#### 推荐交易策略信息 (v1.29)
+* 后台任务信息类型：`strategy`
+* 执行频率：每6个小时执行一次。页面刷新时也会触发一次。
+* 信息对象填充：直接将AI获取到的推荐交易策略的唯一标识符填充到`recommended_strategy`字段的`strategy_id`中，将推荐理由填充到`reason`中。
+* 错误处理：如果后台任务出错或未配置AI或没有API-Key，保留已有的推荐策略信息，不进行更新。错误信息在市场热点区域显示。
+
 ### 实现细节
-* 提示词模板放在一个配置文件中（`public/assets/config/background-job-prompts.json`），方便将来的修改和扩展。模板中可以使用一些预定义好的变量：如基金代码列表（code_list）、当前日期（current_date）等。
+* 提示词模板放在一个配置文件中（`public/assets/config/background-job-prompts.json`），方便将来的修改和扩展。模板中可以使用一些预定义好的变量：如基金代码列表（code_list）、当前日期（current_date）、交易策略列表（strategy_list）等。
+  * strategy_list中的每个交易策略应该包含策略id、策略名称、策略描述等信息，以便在提示词中使用。
 * 如果后台任务出错或未配置AI或没有API-Key，也要像其他定时任务一样在市场热点区域显示错误，并打印出错信息到console。
-* 类型定义：`TickerAlert { type: 'holiday' | 'delivery'; date: string; content: string }`
-* 组件：`AlertTooltip` - 显示alert图标的tooltip
-* 服务：`services/backgroundJobService.ts` - 后台任务服务，包含`refreshTickerAlerts`函数
+* 类型定义：
+  * `TickerAlert { type: 'holiday' | 'delivery'; date: string; content: string }`
+  * `RecommendedStrategy { strategy_id: string; reason: string }`
+* 组件：
+  * `AlertTooltip` - 显示alert图标的tooltip
+  * `SimpleTooltip` - 显示推荐策略理由的tooltip
+* 服务：
+  * `services/backgroundJobService.ts` - 后台任务服务，包含`refreshTickerAlerts`函数
+  * `services/strategyRecommendationService.ts` - 推荐策略服务，包含`refreshStrategyRecommendations`函数
 - `ALERT_VISIBILITY_DAYS = 3`：alert显示的日期范围（天）
 
 ---

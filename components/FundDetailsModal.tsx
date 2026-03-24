@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { createPortal } from 'react-dom';
-import { ValuationData, HistoricalPoint, IntradayPoint, TradeRecord } from '../types';
+import { ValuationData, HistoricalPoint, IntradayPoint, TradeRecord, RecommendedStrategy } from '../types';
 import { fetchFundHistory as defaultFetchFundHistory } from '../services/fundService';
 import * as cacheService from '../services/cacheService';
 import { computeMultipleSMAs, MA_COLORS } from '../utils/movingAverage';
@@ -28,9 +28,10 @@ interface FundDetailsModalProps {
   position?: 'center' | 'right';  // 定位模式：居中或右侧
   animateSlide?: boolean;  // 是否启用滑入滑出动画（从草稿窗口打开时）
   skipExitAnimation?: boolean;  // 是否跳过退出动画（草稿窗口关闭时）
+  recommendedStrategy?: RecommendedStrategy | null;  // AI 推荐策略
 }
 
-export const FundDetailsModal: React.FC<FundDetailsModalProps> = ({ data, onClose, fetchHistory, position = 'center', animateSlide = false, skipExitAnimation = false }) => {
+export const FundDetailsModal: React.FC<FundDetailsModalProps> = ({ data, onClose, fetchHistory, position = 'center', animateSlide = false, skipExitAnimation = false, recommendedStrategy }) => {
   const [history, setHistory] = useState<HistoricalPoint[]>([]);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<'intraday' | 'history'>('intraday');
@@ -1171,9 +1172,9 @@ export const FundDetailsModal: React.FC<FundDetailsModalProps> = ({ data, onClos
                  document.body
                ) : <TradeManager name={valuationData.name} symbol={data.symbol} currentPrice={valuationData.currentPrice} previousPrice={valuationData.previousPrice} realtimeDate={valuationData.realtimeDate} netWorthDate={valuationData.netWorthDate} onClose={() => setShowTrade(false)} zIndex={SUBMODAL_Z_INDEX} />)}
                {showVirtual && (typeof document !== 'undefined' && document.body ? createPortal(
-                 <VirtualTradeModal symbol={data.symbol} fundName={valuationData.name} history={history} valuation={valuationData} onClose={() => setShowVirtual(false)} zIndex={SUBMODAL_Z_INDEX} />,
+                 <VirtualTradeModal symbol={data.symbol} fundName={valuationData.name} history={history} valuation={valuationData} recommendedStrategy={recommendedStrategy} onClose={() => setShowVirtual(false)} zIndex={SUBMODAL_Z_INDEX} />,
                  document.body
-               ) : <VirtualTradeModal symbol={data.symbol} fundName={valuationData.name} history={history} valuation={valuationData} onClose={() => setShowVirtual(false)} zIndex={SUBMODAL_Z_INDEX} />)}
+               ) : <VirtualTradeModal symbol={data.symbol} fundName={valuationData.name} history={history} valuation={valuationData} recommendedStrategy={recommendedStrategy} onClose={() => setShowVirtual(false)} zIndex={SUBMODAL_Z_INDEX} />)}
                {showProfit && (typeof document !== 'undefined' && document.body ? createPortal(
                  <ProfitModal symbol={data.symbol} fundName={valuationData.name} currentPrice={valuationData.currentPrice} previousPrice={valuationData.previousPrice} realtimeDate={valuationData.realtimeDate} netWorthDate={valuationData.netWorthDate} initialPosition={initialPosition} initialPrice={initialPrice} initialStartDate={startDate} onClose={() => setShowProfit(false)} zIndex={SUBMODAL_Z_INDEX} />,
                  document.body

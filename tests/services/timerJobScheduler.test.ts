@@ -215,6 +215,103 @@ describe('_triggerJob', () => {
   });
 });
 
+describe('strategy-recommendation-refresh job', () => {
+  let scheduler: ReturnType<typeof getTimerJobScheduler>;
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    jest.useFakeTimers();
+    scheduler = getTimerJobScheduler();
+    scheduler.stop();
+    scheduler._reset?.();
+  });
+
+  afterEach(() => {
+    scheduler.stop();
+    scheduler._reset?.();
+    jest.useRealTimers();
+  });
+
+  test('job config exists and can be triggered', async () => {
+    const mockConfig = {
+      jobs: [
+        { id: 'strategy-recommendation-refresh', name: '推荐交易策略刷新', cron: '0 */6 * * *', enabled: true }
+      ]
+    };
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: () => Promise.resolve(mockConfig)
+    });
+
+    await scheduler.loadConfig();
+
+    const handler = jest.fn().mockResolvedValue(undefined);
+    scheduler.registerHandler('strategy-recommendation-refresh', handler);
+
+    // 使用 _triggerJob 手动触发
+    scheduler._triggerJob?.('strategy-recommendation-refresh');
+
+    // 等待异步执行
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(handler).toHaveBeenCalled();
+  });
+
+  test('handler can be triggered multiple times', async () => {
+    const mockConfig = {
+      jobs: [
+        { id: 'strategy-recommendation-refresh', name: '推荐交易策略刷新', cron: '0 */6 * * *', enabled: true }
+      ]
+    };
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: () => Promise.resolve(mockConfig)
+    });
+
+    await scheduler.loadConfig();
+
+    const handler = jest.fn().mockResolvedValue(undefined);
+    scheduler.registerHandler('strategy-recommendation-refresh', handler);
+
+    // 触发多次
+    scheduler._triggerJob?.('strategy-recommendation-refresh');
+    await Promise.resolve();
+    await Promise.resolve();
+
+    scheduler._triggerJob?.('strategy-recommendation-refresh');
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(handler).toHaveBeenCalledTimes(2);
+  });
+
+  test('disabled job does not trigger handler', async () => {
+    const mockConfig = {
+      jobs: [
+        { id: 'strategy-recommendation-refresh', name: '推荐交易策略刷新', cron: '0 */6 * * *', enabled: false }
+      ]
+    };
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: () => Promise.resolve(mockConfig)
+    });
+
+    await scheduler.loadConfig();
+
+    const handler = jest.fn().mockResolvedValue(undefined);
+    scheduler.registerHandler('strategy-recommendation-refresh', handler);
+
+    scheduler._triggerJob?.('strategy-recommendation-refresh');
+
+    await Promise.resolve();
+    await Promise.resolve();
+
+    // 禁用的任务不应该被触发
+    expect(handler).not.toHaveBeenCalled();
+  });
+});
+
 describe('background job scheduling', () => {
   let scheduler: ReturnType<typeof getTimerJobScheduler>;
 

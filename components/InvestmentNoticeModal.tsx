@@ -1,10 +1,11 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, Fragment } from 'react';
 import { createPortal } from 'react-dom';
 import { Ticker, VirtualTradeResult, HistoricalPoint, ValuationData } from '../types';
 import { fetchFundHistory } from '../services/fundService';
 import { runVirtualTrade } from '../services/virtualTradeEngine';
 import { defaultVirtualCash, strategyConfig } from '../services/strategyConfig';
 import ThumbsUpIcon from './ThumbsUpIcon';
+import { SimpleTooltip } from './SimpleTooltip';
 import { computeMultipleSMAs } from '../utils/movingAverage';
 import { toLocalDateKey } from '../utils/priceResolver';
 import { getUnitsForDate } from '../utils/positionHelper';
@@ -482,21 +483,40 @@ const InvestmentNoticeModal: React.FC<InvestmentNoticeModalProps> = ({
     fundName: string,
     strategy: StrategyType,
     isBest: boolean,
-    strategyProfit: number // Add this parameter
+    strategyProfit: number,
+    recommendation?: { strategy_id: string; reason: string }  // 新增参数
   ) => {
-    const cellContent = renderRecommendationCell(tip, fundSymbol, fundName, strategy, strategyProfit);
+    const isRecommendedForThisStrategy =
+      recommendation &&
+      recommendation.strategy_id === strategy &&
+      availableStrategyKeys.includes(recommendation.strategy_id);
 
-    // Show thumbs up for the strategy with the highest profit among all strategies
-    if (isBest) {
+    // 如果有图标要显示，返回图标列内容；否则返回 null
+    if (isRecommendedForThisStrategy || isBest) {
       return (
-        <div className="flex items-start justify-start">
-          {cellContent}
-          <ThumbsUpIcon className="ml-1 text-amber-500 flex-shrink-0" title="当前收益最高" />
+        <div className="flex flex-col items-start gap-1">
+          {isRecommendedForThisStrategy && (
+            <SimpleTooltip content={recommendation!.reason}>
+              <i className="fas fa-star text-amber-500 cursor-help" title="AI 推荐策略" />
+            </SimpleTooltip>
+          )}
+          {isBest && (
+            <ThumbsUpIcon className="text-amber-500" title="当前收益最高" />
+          )}
         </div>
       );
     }
+    return null;
+  };
 
-    return cellContent;
+  const renderRecommendationCellOnly = (
+    tip: VirtualTradeResult['todayTip'],
+    fundSymbol: string,
+    fundName: string,
+    strategy: StrategyType,
+    strategyProfit: number
+  ) => {
+    return renderRecommendationCell(tip, fundSymbol, fundName, strategy, strategyProfit);
   };
 
   const renderRealProfitCell = (realProfit: number | null) => {
@@ -546,8 +566,11 @@ const InvestmentNoticeModal: React.FC<InvestmentNoticeModalProps> = ({
                   <table className="w-full text-sm table-fixed border-collapse">
                     <colgroup>
                       <col style={{ width: '15%' }} />
-                      {availableStrategyKeys.map(() => (
-                        <col key={`col-${Math.random()}`} style={{ width: `${65 / availableStrategyKeys.length}%` }} />
+                      {availableStrategyKeys.map((strategyKey, idx) => (
+                        <Fragment key={`col-group-${strategyKey}`}>
+                          <col style={{ width: `${60 / availableStrategyKeys.length}%` }} />
+                          <col style={{ width: '3%' }} />
+                        </Fragment>
                       ))}
                       <col style={{ width: '15%' }} />
                     </colgroup>
@@ -559,9 +582,12 @@ const InvestmentNoticeModal: React.FC<InvestmentNoticeModalProps> = ({
                           const strategyMeta = strategyConfig[strategyKey];
                           const displayName = strategyMeta?.name || strategyKey;
                           return (
-                            <th key={`header-${strategyKey}`} className="px-3 py-2 text-left text-xs font-semibold text-gray-500">
-                              {displayName}
-                            </th>
+                            <Fragment key={`header-group-${strategyKey}`}>
+                              <th className="px-3 py-2 text-left text-xs font-semibold text-gray-500">
+                                {displayName}
+                              </th>
+                              <th className="px-1 py-2 text-left text-xs font-semibold text-gray-500"></th>
+                            </Fragment>
                           );
                         })}
                         <th className="px-3 py-2 text-left text-xs font-semibold text-gray-500">实盘盈亏</th>
@@ -590,19 +616,30 @@ const InvestmentNoticeModal: React.FC<InvestmentNoticeModalProps> = ({
                               strategyProfit > (rec.realProfit ?? -Infinity);
 
                             return (
-                              <td
-                                key={`cell-${rec.fund.symbol}-${strategyKey}`}
-                                className={`px-3 py-2 text-left text-xs ${shouldHighlight ? 'border-2 border-amber-400 bg-amber-50' : ''}`}
-                              >
-                                {renderCellWithThumbsUp(
-                                  strategyTip,
-                                  rec.fund.symbol,
-                                  rec.fund.name || rec.fund.symbol,
-                                  strategyKey,
-                                  isBestStrategy,
-                                  strategyProfit // Pass the profit value
-                                )}
-                              </td>
+                              <Fragment key={`cell-group-${rec.fund.symbol}-${strategyKey}`}>
+                                <td
+                                  className={`px-3 py-2 text-left text-xs ${shouldHighlight ? 'border-2 border-amber-400 bg-amber-50' : ''}`}
+                                >
+                                  {renderRecommendationCellOnly(
+                                    strategyTip,
+                                    rec.fund.symbol,
+                                    rec.fund.name || rec.fund.symbol,
+                                    strategyKey,
+                                    strategyProfit
+                                  )}
+                                </td>
+                                <td className="px-1 py-2 text-left text-xs align-top">
+                                  {renderCellWithThumbsUp(
+                                    strategyTip,
+                                    rec.fund.symbol,
+                                    rec.fund.name || rec.fund.symbol,
+                                    strategyKey,
+                                    isBestStrategy,
+                                    strategyProfit,
+                                    rec.fund.recommended_strategy
+                                  )}
+                                </td>
+                              </Fragment>
                             );
                           })}
                           <td className="px-3 py-2 text-left text-xs align-top">
@@ -613,7 +650,7 @@ const InvestmentNoticeModal: React.FC<InvestmentNoticeModalProps> = ({
                     </tbody>
                     <tfoot className="sticky bottom-0 z-10 bg-gray-50">
                       <tr className="border-t border-gray-200">
-                        <td colSpan={2 + availableStrategyKeys.length} className="px-3 py-2 text-left text-xs font-bold text-gray-700">
+                        <td colSpan={2 + availableStrategyKeys.length * 2} className="px-3 py-2 text-left text-xs font-bold text-gray-700">
                           总计：{recommendationsWithBest.length}条记录
                         </td>
                       </tr>

@@ -188,41 +188,28 @@ describe('computeOverallProfit', () => {
     const entry0303 = ft.find((r: any) => r.date === '2026-03-03');
     expect(entry0303).toBeDefined();
 
-    // Expected cumulative (sell applied ONCE):
-    // shares after sell = 13831.32 - 7000 = 6831.32
-    // sellAmount = 1.66 * 7000 - 11.62 = 11608.38
-    // initCost   = 13831.32 * 1.3737 = (baseline, zeroed by startDate logic)
-    // The perFundTimeline uses cumulativeProfit from computeProfitTimeline directly.
-    // We verify that the trade is applied exactly once by checking the cumulative values.
+    // 新逻辑：交易不影响当天的份额和累计盈利
+    // 因此 2026-03-03 的份额仍为初始份额，交易会在下一天生效
     const entry0302 = ft.find((r: any) => r.date === '2026-03-02');
     expect(entry0302).toBeDefined();
 
-    // Calculate expected cumulative values (trade applied exactly once)
+    // Calculate expected cumulative values (trade NOT applied on same day)
     const sharesBefore = 13831.32;
-    const sharesAfter = 13831.32 - 7000;
     const initCost = 13831.32 * 1.3737;
-    const sellAmt = 1.66 * 7000 - 11.62;
 
     // Expected cumulative on 2026-03-02 (before trade)
     const expectedCum0302 = sharesBefore * 1.5956 - initCost;
     expect(entry0302!.cumulativeProfit).toBeCloseTo(expectedCum0302, 1);
 
-    // Expected cumulative on 2026-03-03 (after trade, applied once)
-    const expectedCum0303 = sharesAfter * 1.66 - initCost + sellAmt;
+    // Expected cumulative on 2026-03-03 (trade NOT applied on same day)
+    // 份额仍为初始份额，累计盈利不含交易收益
+    const expectedCum0303 = sharesBefore * 1.66 - initCost;
     expect(entry0303!.cumulativeProfit).toBeCloseTo(expectedCum0303, 1);
 
-    // Verify trade is not double-counted: difference should match single application
+    // 验证交易没有在同一天应用：日盈亏应该只来自净值变化
     const daily0303 = (entry0303!.cumulativeProfit) - (entry0302!.cumulativeProfit);
-    const expectedDailyNoFeeDeferral = expectedCum0303 - expectedCum0302;
-    expect(daily0303).toBeCloseTo(expectedDailyNoFeeDeferral, 1);
-
-    // Note: The derived daily from cumulative difference does NOT include fee-deferral.
-    // Fee-deferral is only applied in computeProfitTimeline's dailyProfit calculation.
-    // If we wanted fee-deferral in the derived daily, we would need to add the fee back.
-    const fee = 11.62;
-    expect(daily0303).toBeCloseTo(expectedDailyNoFeeDeferral, 1);
-    // Confirm fee-deferral would add the fee back to daily
-    expect(daily0303 + fee).toBeCloseTo(expectedDailyNoFeeDeferral + fee, 1);
+    const expectedDaily = sharesBefore * (1.66 - 1.5956);
+    expect(daily0303).toBeCloseTo(expectedDaily, 1);
   });
 
   test('today synthetic point prefers valuation over confirmed when same date', async () => {

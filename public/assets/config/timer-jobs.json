@@ -35,6 +35,12 @@
       "name": "交割日信息刷新",
       "cron": "0 */6 * * *",
       "enabled": true
+    },
+    {
+      "id": "strategy-recommendation-refresh",
+      "name": "推荐交易策略刷新",
+      "cron": "0 */6 * * *",
+      "enabled": true
     }
   ]
 }

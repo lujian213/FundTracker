@@ -32,6 +32,7 @@ import { TimerJobErrorProvider, useTimerJobErrors } from './contexts/TimerJobErr
 import { NewsProvider, useNews } from './contexts/NewsContext';
 import { getTimerJobScheduler } from './services/timerJobScheduler';
 import { refreshTickerAlerts } from './services/backgroundJobService';
+import { refreshStrategyRecommendations } from './services/strategyRecommendationService';
 
 type SortOrder = 'asc' | 'desc';
 
@@ -450,6 +451,11 @@ const AppContent: React.FC = () => {
       await refreshTickerAlerts('delivery', () => portfolio, setPortfolio);
     });
 
+    // 注册策略推荐任务处理器
+    scheduler.registerHandler('strategy-recommendation-refresh', async () => {
+      await refreshStrategyRecommendations(() => portfolio, setPortfolio);
+    });
+
     // Set context with current portfolio
     scheduler.setContext({ portfolio });
 
@@ -464,6 +470,11 @@ const AppContent: React.FC = () => {
         scheduler._triggerJob?.('holiday-info-refresh');
         scheduler._triggerJob?.('delivery-info-refresh');
       }, 5000);
+
+      // 策略推荐任务延迟 6 秒执行
+      setTimeout(() => {
+        scheduler._triggerJob?.('strategy-recommendation-refresh');
+      }, 6000);
     }
 
     return () => scheduler.stop();
@@ -897,15 +908,30 @@ const AppContent: React.FC = () => {
         setViewingSymbol(sym);
         setViewingFromDraft(true);
       }} marketData={marketData} sideBySide={viewingFromDraft} />}
-      {viewingSymbol && marketData[viewingSymbol] && <FundDetailsModal data={marketData[viewingSymbol]} onClose={() => { setViewingSymbol(null); setViewingFromDraft(false); }} position={viewingFromDraft ? 'right' : 'center'} animateSlide={viewingFromDraft} />}
-      {virtualTradeModalFund && portfolio.some(f => f.symbol === virtualTradeModalFund) && (
-        <VirtualTradeModal
-          symbol={virtualTradeModalFund}
-          fundName={portfolio.find(f => f.symbol === virtualTradeModalFund)?.name}
-          onClose={() => setVirtualTradeModalFund(null)}
-          valuation={marketData[virtualTradeModalFund]}
-        />
-      )}
+      {viewingSymbol && marketData[viewingSymbol] && (() => {
+          const fund = portfolio.find(f => f.symbol === viewingSymbol);
+          return (
+            <FundDetailsModal
+              data={marketData[viewingSymbol]}
+              recommendedStrategy={fund?.recommended_strategy}
+              onClose={() => { setViewingSymbol(null); setViewingFromDraft(false); }}
+              position={viewingFromDraft ? 'right' : 'center'}
+              animateSlide={viewingFromDraft}
+            />
+          );
+        })()}
+      {virtualTradeModalFund && portfolio.some(f => f.symbol === virtualTradeModalFund) && (() => {
+          const fund = portfolio.find(f => f.symbol === virtualTradeModalFund);
+          return (
+            <VirtualTradeModal
+              symbol={virtualTradeModalFund}
+              fundName={fund?.name}
+              onClose={() => setVirtualTradeModalFund(null)}
+              valuation={marketData[virtualTradeModalFund]}
+              recommendedStrategy={fund?.recommended_strategy}
+            />
+          );
+        })()}
       {viewingIndex && <IndexDetailsModal data={viewingIndex} onClose={() => setViewingIndex(null)} />}
       <ConfirmDialog
         isOpen={!!pendingImportData}
