@@ -1,7 +1,7 @@
 # FundTracker — 产品需求文档 (PRD)
 
-版本：1.27
-最后更新：2026-03-23
+版本：1.28
+最后更新：2026-03-24
 
 ---
 
@@ -1148,19 +1148,15 @@ export type CardStatus = 'ok' | 'error' | 'unknown';
   - 正数红色，负数绿色，0值用黑色"-"表示。
   - 用户选择不同日期范围时，盈亏数字动态更新。
 - 盈亏计算逻辑（实现于 `utils/profitCalculator.ts` — `computeProfitTimeline`）：
-  - **原始累计盈利**（rawCumulative）：`x日份额 × x日净值 − 初始份额×初始价格 − 截止x日所有买入总额 + 截止x日所有卖出总额`
-    - 买入总额 = Σ(price × shares + fee)
-    - 卖出总额 = Σ(price × shares − fee)
-  - x日份额 = 初始份额 + 截止到 x 日的所有买入份额和 − 截止到 x 日的所有卖出份额。
-  - **手续费延迟规范（Fee-Deferral Convention）**：每日当日盈利采用"调整累计值"计算，使手续费损失体现在**下一个交易日**而非当日，与中国基金平台标准保持一致：
-    - `adjustedCumulative_D = rawCumulative_D + todayFee_D`（todayFee 为当日所有买卖手续费之和）
-    - `dailyProfit_D = adjustedCumulative_D − adjustedCumulative_{D-1}`
-    - `cumulativeProfit_D`（对外输出）= rawCumulative_D（不含延迟偏移）
-    - `cumulativePrevious`（下一日基准）= adjustedCumulative_D
-  - 无交易日：todayFee = 0，daily 即为纯净值变化产生的损益，与原始公式等价。
+  - **核心原则**：当天的交易（买入/卖出）不影响当天的份额和累计盈利，在次日才生效。
+  - **当日份额** = 初始份额 + 截止到前一日的累计买入份额 - 截止到前一日的累计卖出份额
+  - **当日累计盈利** = 当日份额 × 当日净值 − 初始成本 − 截止到前一日的累计买入金额 + 截止到前一日的累计卖出金额
+    - 初始成本 = 初始份额 × 初始价格
+    - 累计买入金额 = Σ(买入价格 × 买入份额 + 手续费)
+    - 累计卖出金额 = Σ(卖出价格 × 卖出份额 − 手续费)
+  - **当日盈利** = 当日累计盈利 − 前一日累计盈利（直接相减，不使用调整值）
 - 基线调整（显示层，`ProfitModal` 的 `displayedTimeline`）：
   - 当显示起始日期（fromDate）等于持仓起始日期（initialStartDate）时，第0日 dailyProfit 强制置0，后续各日 cumulativeProfit 由 dailyProfit 依次累加重建。
-  - **必须保留 `computeProfitTimeline` 已修正的 dailyProfit**，不得从 cumulativeProfit 差分重算（否则会绕过手续费延迟修正）。
 - 日期选择规则：
   - 开始日期必须早于结束日期（默认结束为当天）。
   - 开始日期不得早于持仓开始日期（默认即持仓开始日期）。
@@ -1209,8 +1205,8 @@ export type CardStatus = 'ok' | 'error' | 'unknown';
 - 计算机制（实现于 `services/fundService.ts` — `computeOverallProfit`）：
   - 整体累计盈利趋势图的数据集为所有基金（排除无起始日期的基金）在时间窗口内每日累计盈利的加总。
   - 表格数据为趋势图数据集的子集，通过日期1和日期2过滤。
-  - **单个基金每日盈利直接复用 `computeProfitTimeline` 返回的 `dailyProfit`（已含手续费延迟规范），与单基金盈利窗口的数值完全一致。**
-  - `perFundTimelines` 构建规则：对 startDate 之后的每个日期，优先使用 `dailyProfit` 累加，不得从 cumulativeProfit 差分重算；startDate 当日及之前贡献为0；在 timeline 中不存在的 gap 日期 daily=0、cumulative 保持不变（前向填充）。
+  - **单个基金每日盈利直接复用 `computeProfitTimeline` 返回的 `dailyProfit`，与单基金盈利窗口的数值完全一致。**
+  - `perFundTimelines` 构建规则：对 startDate 之后的每个日期，使用 `dailyProfit` 累加；startDate 当日及之前贡献为0；在 timeline 中不存在的 gap 日期 daily=0、cumulative 保持不变（前向填充）。
   - 若某基金在x日无净值或估值，则累计盈利按前推最近可用净值/估值计算。
 
 

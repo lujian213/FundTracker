@@ -41,26 +41,37 @@ export function computeProfitTimeline(params: {
 
   // iterate history points and only include those within [start, end]
   const timeline: ProfitPoint[] = [];
-  let cumulativeBuyAmount = 0; // sum of (price*shares + fee) for buys up to current day
-  let cumulativeSellAmount = 0; // sum of (price*shares - fee) for sells up to current day
+  let cumulativeBuyAmount = 0; // sum of (price*shares + fee) for buys up to yesterday
+  let cumulativeSellAmount = 0; // sum of (price*shares - fee) for sells up to yesterday
   let cumulativePrevious = 0;
   let runningBuyShares = 0;
   let runningSellShares = 0;
   // Track which dates have already had their trades applied to avoid double-counting
   // when history contains multiple points with the same local date (e.g. original + synthetic).
   const tradesAppliedForDate = new Set<string>();
+  // 用于记录"截止到昨天的累计值"，确保同一天所有历史点使用相同的数据
+  let lastProcessedDate = '';
+  let buySharesBeforeToday = 0;
+  let sellSharesBeforeToday = 0;
+  let buyAmountBeforeToday = 0;
+  let sellAmountBeforeToday = 0;
 
   for (const p of sortedHistory) {
     const dateKey = tsToISODate(p.date);
     if (dateKey < start) {
-      // still need to accumulate trades that occur before start because they affect holdings
-      let preStartFee = 0;
+      // 先计算该日期的累计盈利（使用"截止到昨天的累计"）
+      const shares = initialPosition + buySharesBeforeToday - sellSharesBeforeToday;
+      const netValueBeforeStart = p.value || 0;
+      const initCostBeforeStart = (initialPrice !== null && initialPrice !== undefined) ? (initialPosition * initialPrice) : 0;
+      const cumulative = (shares * netValueBeforeStart) - initCostBeforeStart - buyAmountBeforeToday + sellAmountBeforeToday;
+      cumulativePrevious = cumulative;
+
+      // 然后累加该日期的交易
       if (!tradesAppliedForDate.has(dateKey)) {
         tradesAppliedForDate.add(dateKey);
         const dayTrades = tradesByDate[dateKey] || [];
         for (const t of dayTrades) {
           const fee = t.fee || 0;
-          preStartFee += fee;
           if (t.type === 'buy') {
             runningBuyShares += t.shares;
             cumulativeBuyAmount += (t.price || 0) * (t.shares || 0) + fee;
@@ -70,53 +81,55 @@ export function computeProfitTimeline(params: {
           }
         }
       }
-      // update cumulativePrevious so that the first displayed day's dailyProfit reflects
-      // only the change on that day, not the full cumulative from history start.
-      // Apply fee-deferral: add back today's fees so the next day's daily correctly
-      // excludes the current day's fee impact.
-      const sharesBeforeStart = initialPosition + runningBuyShares - runningSellShares;
-      const netValueBeforeStart = p.value || 0;
-      const initCostBeforeStart = (initialPrice !== null && initialPrice !== undefined) ? (initialPosition * initialPrice) : 0;
-      const cumBeforeStart = (sharesBeforeStart * netValueBeforeStart) - initCostBeforeStart - cumulativeBuyAmount + cumulativeSellAmount;
-      cumulativePrevious = cumBeforeStart + preStartFee;
+
+      // 更新"截止到今天"的累计值
+      lastProcessedDate = dateKey;
+      buySharesBeforeToday = runningBuyShares;
+      sellSharesBeforeToday = runningSellShares;
+      buyAmountBeforeToday = cumulativeBuyAmount;
+      sellAmountBeforeToday = cumulativeSellAmount;
       continue;
     }
     if (dateKey > end) break;
 
-    // process trades for this date only on first encounter of this dateKey
-    let todayFee = 0;
-    if (!tradesAppliedForDate.has(dateKey)) {
-      tradesAppliedForDate.add(dateKey);
-      const dayTrades = tradesByDate[dateKey] || [];
-      for (const t of dayTrades) {
-        const fee = t.fee || 0;
-        todayFee += fee;
-        if (t.type === 'buy') {
-          runningBuyShares += t.shares;
-          cumulativeBuyAmount += (t.price || 0) * (t.shares || 0) + fee;
-        } else {
-          runningSellShares += t.shares;
-          cumulativeSellAmount += (t.price || 0) * (t.shares || 0) - fee;
+    // 当日期变化时，更新"截止到昨天的累计值"
+    if (lastProcessedDate !== dateKey) {
+      // 累加上一天的交易
+      if (lastProcessedDate && !tradesAppliedForDate.has(lastProcessedDate)) {
+        tradesAppliedForDate.add(lastProcessedDate);
+        const prevDayTrades = tradesByDate[lastProcessedDate] || [];
+        for (const t of prevDayTrades) {
+          const fee = t.fee || 0;
+          if (t.type === 'buy') {
+            runningBuyShares += t.shares;
+            cumulativeBuyAmount += (t.price || 0) * (t.shares || 0) + fee;
+          } else {
+            runningSellShares += t.shares;
+            cumulativeSellAmount += (t.price || 0) * (t.shares || 0) - fee;
+          }
         }
       }
+      // 更新"截止到昨天的累计值"
+      buySharesBeforeToday = runningBuyShares;
+      sellSharesBeforeToday = runningSellShares;
+      buyAmountBeforeToday = cumulativeBuyAmount;
+      sellAmountBeforeToday = cumulativeSellAmount;
+      lastProcessedDate = dateKey;
     }
 
-    const shares = initialPosition + runningBuyShares - runningSellShares;
+    // 使用"截止到昨天的累计值"计算当日份额和累计盈利
+    const shares = initialPosition + buySharesBeforeToday - sellSharesBeforeToday;
     const netValue = p.value || 0;
     const initCost = (initialPrice !== null && initialPrice !== undefined) ? (initialPosition * initialPrice) : 0;
-    const cumulative = (shares * netValue) - initCost - cumulativeBuyAmount + cumulativeSellAmount;
-    // daily profit = change in (cumulative + todayFee) from the prior day's same adjusted basis.
-    // Adding todayFee back into the "adjusted cumulative" used for the next day's baseline means
-    // each day's dailyProfit reflects only the NAV price-change effect on the current position,
-    // while the fee cost is recognised in the *following* day's dailyProfit — matching the
-    // standard reference convention used by Chinese fund platforms.
-    const adjustedCumulative = cumulative + todayFee;
-    const daily = Number((adjustedCumulative - cumulativePrevious).toFixed(4));
+    const cumulative = (shares * netValue) - initCost - buyAmountBeforeToday + sellAmountBeforeToday;
+
+    // 当日盈利 = 当日累计盈利 - 前一日累计盈利
+    const daily = Number((cumulative - cumulativePrevious).toFixed(4));
     const cumRounded = Number(cumulative.toFixed(4));
 
     timeline.push({ date: dateKey, netValue: Number(netValue.toFixed(4)), shares, cumulativeProfit: cumRounded, dailyProfit: daily });
 
-    cumulativePrevious = adjustedCumulative;
+    cumulativePrevious = cumulative;
   }
 
   return timeline;
