@@ -1077,7 +1077,9 @@ const AISidePanel: React.FC<AISidePanelProps> = ({
         <div className="flex justify-between items-center">
           <div>
             <h3 className="text-lg font-bold text-gray-800">AI 投资助手</h3>
-            <p className="text-xs text-gray-500 truncate">{fundName} ({fundSymbol})</p>
+            <p className="text-xs text-gray-500 truncate">
+              {fundName} <span className="px-1.5 py-0.5 bg-gray-100 text-gray-500 rounded text-[10px] font-mono ml-1">{fundSymbol}</span>
+            </p>
           </div>
           <div className="flex flex-col items-end space-y-1">
             {/* 关闭按钮 */}
