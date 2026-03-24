@@ -21,7 +21,7 @@ export interface BackgroundJobResult {
  */
 export async function loadBackgroundJobPrompts(): Promise<BackgroundJobPrompt[]> {
   try {
-    const response = await fetch('/assets/config/background-job-prompts.json');
+    const response = await fetch('./assets/config/background-job-prompts.json');
     if (!response.ok) {
       console.error('[BackgroundJob] Failed to load prompts config');
       return [];

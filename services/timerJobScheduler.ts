@@ -45,7 +45,7 @@ class TimerJobSchedulerImpl implements TimerJobScheduler {
 
   async loadConfig(): Promise<void> {
     try {
-      const response = await fetch('/assets/config/timer-jobs.json');
+      const response = await fetch('./assets/config/timer-jobs.json');
       if (!response.ok) throw new Error('Config file not found');
       const config = await response.json();
       this.jobs = this.validateJobs(config.jobs || []);
