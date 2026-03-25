@@ -1,6 +1,8 @@
-import { queryAI, AIResponse, AIQueryContext, fillTemplateVariables } from '../../services/aiService';
+import { queryAI, AIResponse, AIQueryContext } from '../../services/aiService';
+import { fillTemplateVariables } from '../../services/promptTemplateService';
 import { getAIConfig, AIConfiguration, saveAIConfig, validateAIConfig, hasValidAIConfig } from '../../services/aiConfigService';
 import { AIConfigProfile } from '../../types/aiConfigTypes';
+import { FundAIQueryContext } from '../../types/aiServiceTypes';
 
 describe('AI Services', () => {
   describe('aiConfigService', () => {
@@ -245,7 +247,10 @@ describe('AI Services', () => {
   describe('fillTemplateVariables', () => {
     test('should fill currentPrice variable from valuationData', () => {
       const template = '当前价格：{currentPrice}';
-      const context: AIQueryContext = {
+      const context: FundAIQueryContext = {
+        marketType: 'fund',
+        fundName: 'Test Fund',
+        fundSymbol: 'TEST',
         valuationData: {
           symbol: 'TEST',
           name: 'Test Fund',
@@ -266,7 +271,10 @@ describe('AI Services', () => {
 
     test('should fill currentDate variable from valuationData.realtimeDate', () => {
       const template = '估值日期：{currentDate}';
-      const context: AIQueryContext = {
+      const context: FundAIQueryContext = {
+        marketType: 'fund',
+        fundName: 'Test Fund',
+        fundSymbol: 'TEST',
         valuationData: {
           symbol: 'TEST',
           name: 'Test Fund',
@@ -287,7 +295,10 @@ describe('AI Services', () => {
 
     test('should fill previousPrice variable from valuationData', () => {
       const template = '前值：{previousPrice}';
-      const context: AIQueryContext = {
+      const context: FundAIQueryContext = {
+        marketType: 'fund',
+        fundName: 'Test Fund',
+        fundSymbol: 'TEST',
         valuationData: {
           symbol: 'TEST',
           name: 'Test Fund',
@@ -308,7 +319,10 @@ describe('AI Services', () => {
 
     test('should fill previousDate variable from valuationData.netWorthDate', () => {
       const template = '前值日期：{previousDate}';
-      const context: AIQueryContext = {
+      const context: FundAIQueryContext = {
+        marketType: 'fund',
+        fundName: 'Test Fund',
+        fundSymbol: 'TEST',
         valuationData: {
           symbol: 'TEST',
           name: 'Test Fund',
@@ -329,7 +343,10 @@ describe('AI Services', () => {
 
     test('should fill rate variable with sign from valuationData.changePercentage', () => {
       const template = '涨跌幅：{rate}';
-      const context: AIQueryContext = {
+      const context: FundAIQueryContext = {
+        marketType: 'fund',
+        fundName: 'Test Fund',
+        fundSymbol: 'TEST',
         valuationData: {
           symbol: 'TEST',
           name: 'Test Fund',
@@ -350,7 +367,10 @@ describe('AI Services', () => {
 
     test('should show negative sign for negative rate', () => {
       const template = '涨跌幅：{rate}';
-      const context: AIQueryContext = {
+      const context: FundAIQueryContext = {
+        marketType: 'fund',
+        fundName: 'Test Fund',
+        fundSymbol: 'TEST',
         valuationData: {
           symbol: 'TEST',
           name: 'Test Fund',
@@ -371,7 +391,11 @@ describe('AI Services', () => {
 
     test('should show "未设置" when valuationData is missing', () => {
       const template = '当前价格：{currentPrice}，前值：{previousPrice}，涨跌幅：{rate}';
-      const context: AIQueryContext = {};
+      const context: FundAIQueryContext = {
+        marketType: 'fund',
+        fundName: 'Test Fund',
+        fundSymbol: 'TEST'
+      };
 
       const result = fillTemplateVariables(template, context);
       expect(result).toBe('当前价格：未设置，前值：未设置，涨跌幅：未设置');
@@ -379,7 +403,10 @@ describe('AI Services', () => {
 
     test('should fill all five new variables together', () => {
       const template = '当前价格：{currentPrice}（{currentDate}），前值：{previousPrice}（{previousDate}），涨跌幅：{rate}';
-      const context: AIQueryContext = {
+      const context: FundAIQueryContext = {
+        marketType: 'fund',
+        fundName: 'Test Fund',
+        fundSymbol: 'TEST',
         valuationData: {
           symbol: 'TEST',
           name: 'Test Fund',
@@ -400,7 +427,10 @@ describe('AI Services', () => {
 
     test('should fill marketValue variable', () => {
       const template = '市场价值：{marketValue}';
-      const context: AIQueryContext = {
+      const context: FundAIQueryContext = {
+        marketType: 'fund',
+        fundName: 'Test Fund',
+        fundSymbol: 'TEST',
         marketValue: 12345.67
       };
 
@@ -410,7 +440,11 @@ describe('AI Services', () => {
 
     test('should show "未设置" when marketValue is missing', () => {
       const template = '市场价值：{marketValue}';
-      const context: AIQueryContext = {};
+      const context: FundAIQueryContext = {
+        marketType: 'fund',
+        fundName: 'Test Fund',
+        fundSymbol: 'TEST'
+      };
 
       const result = fillTemplateVariables(template, context);
       expect(result).toBe('市场价值：未设置');
@@ -418,7 +452,10 @@ describe('AI Services', () => {
 
     test('should fill position variable', () => {
       const template = '当前仓位：{position} 份';
-      const context: AIQueryContext = {
+      const context: FundAIQueryContext = {
+        marketType: 'fund',
+        fundName: 'Test Fund',
+        fundSymbol: 'TEST',
         position: 5000.50
       };
 
@@ -428,7 +465,11 @@ describe('AI Services', () => {
 
     test('should show "未设置" when position is missing', () => {
       const template = '当前仓位：{position}';
-      const context: AIQueryContext = {};
+      const context: FundAIQueryContext = {
+        marketType: 'fund',
+        fundName: 'Test Fund',
+        fundSymbol: 'TEST'
+      };
 
       const result = fillTemplateVariables(template, context);
       expect(result).toBe('当前仓位：未设置');
@@ -436,7 +477,10 @@ describe('AI Services', () => {
 
     test('should fill positionRate variable', () => {
       const template = '仓位占比：{positionRate}';
-      const context: AIQueryContext = {
+      const context: FundAIQueryContext = {
+        marketType: 'fund',
+        fundName: 'Test Fund',
+        fundSymbol: 'TEST',
         positionRate: 50.55
       };
 
@@ -446,7 +490,11 @@ describe('AI Services', () => {
 
     test('should show "未设置" when positionRate is missing', () => {
       const template = '仓位占比：{positionRate}';
-      const context: AIQueryContext = {};
+      const context: FundAIQueryContext = {
+        marketType: 'fund',
+        fundName: 'Test Fund',
+        fundSymbol: 'TEST'
+      };
 
       const result = fillTemplateVariables(template, context);
       expect(result).toBe('仓位占比：未设置');
@@ -454,7 +502,10 @@ describe('AI Services', () => {
 
     test('should fill profit variable with positive sign', () => {
       const template = '整体盈利：{profit}';
-      const context: AIQueryContext = {
+      const context: FundAIQueryContext = {
+        marketType: 'fund',
+        fundName: 'Test Fund',
+        fundSymbol: 'TEST',
         profit: 1234.56
       };
 
@@ -464,7 +515,10 @@ describe('AI Services', () => {
 
     test('should fill profit variable with negative sign', () => {
       const template = '整体盈利：{profit}';
-      const context: AIQueryContext = {
+      const context: FundAIQueryContext = {
+        marketType: 'fund',
+        fundName: 'Test Fund',
+        fundSymbol: 'TEST',
         profit: -567.89
       };
 
@@ -474,7 +528,11 @@ describe('AI Services', () => {
 
     test('should show "未设置" when profit is missing', () => {
       const template = '整体盈利：{profit}';
-      const context: AIQueryContext = {};
+      const context: FundAIQueryContext = {
+        marketType: 'fund',
+        fundName: 'Test Fund',
+        fundSymbol: 'TEST'
+      };
 
       const result = fillTemplateVariables(template, context);
       expect(result).toBe('整体盈利：未设置');
@@ -482,7 +540,10 @@ describe('AI Services', () => {
 
     test('should fill all four new holding variables together', () => {
       const template = '市场价值：{marketValue}，仓位：{position} 份，仓位占比：{positionRate}，盈利：{profit}';
-      const context: AIQueryContext = {
+      const context: FundAIQueryContext = {
+        marketType: 'fund',
+        fundName: 'Test Fund',
+        fundSymbol: 'TEST',
         marketValue: 6172.50,
         position: 5000.00,
         positionRate: 50.00,

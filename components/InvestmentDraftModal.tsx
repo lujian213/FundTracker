@@ -17,6 +17,7 @@ interface DraftEntry {
   fundSymbol: string;
   operation: '买入' | '卖出' | '不操作';
   amount: string;
+  note: string;  // 注释
 }
 
 const InvestmentDraftModal: React.FC<InvestmentDraftModalProps> = ({
@@ -62,7 +63,8 @@ const InvestmentDraftModal: React.FC<InvestmentDraftModalProps> = ({
         initialDraftData[fund.symbol] = existingData[fund.symbol] || {
           fundSymbol: fund.symbol,
           operation: '不操作',
-          amount: ''
+          amount: '',
+          note: ''
         };
       });
 
@@ -143,12 +145,40 @@ const InvestmentDraftModal: React.FC<InvestmentDraftModalProps> = ({
     }
   };
 
+  const handleNoteChange = (fundSymbol: string, note: string) => {
+    setDraftData(prev => ({
+      ...prev,
+      [fundSymbol]: {
+        ...prev[fundSymbol],
+        note
+      }
+    }));
+  };
+
+  const handleAddValuationToNote = (fundSymbol: string) => {
+    const enhancedValuation = cacheService.getValuation(fundSymbol);
+    const valuation = enhancedValuation || marketData[fundSymbol];
+
+    if (valuation && typeof valuation.changePercentage === 'number') {
+      const changePercent = valuation.changePercentage;
+      const sign = changePercent >= 0 ? '+' : '';
+      setDraftData(prev => ({
+        ...prev,
+        [fundSymbol]: {
+          ...prev[fundSymbol],
+          note: `${sign}${changePercent.toFixed(2)}%`
+        }
+      }));
+    }
+  };
+
   const handleReset = (fundSymbol: string) => {
     setDraftData(prev => {
       const resetEntry: DraftEntry = {
         fundSymbol,
         operation: '不操作',
-        amount: ''
+        amount: '',
+        note: ''
       };
 
       const newData = {
@@ -397,11 +427,12 @@ const InvestmentDraftModal: React.FC<InvestmentDraftModalProps> = ({
                     <th className="px-2 py-1 text-left text-xs font-semibold text-gray-500 min-w-[140px] w-[140px]">基金名称</th>
                     <th className="px-2 py-1 text-left text-xs font-semibold text-gray-500 min-w-[90px] w-[90px]">实时估值</th>
                     <th className="px-2 py-1 text-left text-xs font-semibold text-gray-500 min-w-[90px] w-[90px]">前值</th>
-                    <th className="px-2 py-1 text-left text-xs font-semibold text-gray-500 min-w-[80px] w-[80px]">涨跌幅</th>
-                    <th className="px-2 py-1 text-left text-xs font-semibold text-gray-500 min-w-[100px] w-[100px]">操作</th>
-                    <th className="px-2 py-1 text-left text-xs font-semibold text-gray-500 min-w-[100px] w-[100px]">金额</th>
-                    <th className="px-2 py-1 text-left text-xs font-semibold text-gray-500 min-w-[100px] w-[100px]">份额</th>
-                    <th className="px-2 py-1 text-left text-xs font-semibold text-gray-500 min-w-[40px] w-[40px]"></th>
+                    <th className="px-2 py-1 text-left text-xs font-semibold text-gray-500 min-w-[60px] w-[60px]">涨跌幅</th>
+                    <th className="px-2 py-1 text-left text-xs font-semibold text-gray-500 min-w-[80px] w-[80px]">操作</th>
+                    <th className="px-2 py-1 text-left text-xs font-semibold text-gray-500 min-w-[80px] w-[80px]">金额</th>
+                    <th className="px-2 py-1 text-left text-xs font-semibold text-gray-500 min-w-[80px] w-[80px]">份额</th>
+                    <th className="px-2 py-1 text-left text-xs font-semibold text-gray-500 min-w-[100px] w-[100px]">注释</th>
+                    <th className="px-2 py-1 text-left text-xs font-semibold text-gray-500 min-w-[60px] w-[60px]"></th>
                   </tr>
                 </thead>
                 <tbody>
@@ -501,7 +532,7 @@ const InvestmentDraftModal: React.FC<InvestmentDraftModalProps> = ({
                           </td>
 
                           <td className={`px-2 py-1 text-left text-xs font-medium ${getGainLossColor(fund.symbol)}`}>
-                            <div className="truncate" style={{ maxWidth: '80px' }}>
+                            <div className="truncate" style={{ maxWidth: '60px' }}>
                               {getGainLoss(fund.symbol)}
                             </div>
                           </td>
@@ -510,7 +541,7 @@ const InvestmentDraftModal: React.FC<InvestmentDraftModalProps> = ({
                             <select
                               value={entry.operation}
                               onChange={(e) => handleOperationChange(fund.symbol, e.target.value as '买入' | '卖出' | '不操作')}
-                              className="w-[80px] p-1 text-xs border border-gray-200 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500 bg-white"
+                              className="w-[70px] p-1 text-xs border border-gray-200 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500 bg-white"
                             >
                               <option value="不操作">不操作</option>
                               <option value="买入">买入</option>
@@ -519,7 +550,7 @@ const InvestmentDraftModal: React.FC<InvestmentDraftModalProps> = ({
                           </td>
 
                           <td className="px-2 py-1 text-left text-xs">
-                            <div className="w-[80px] h-full flex items-center">
+                            <div className="w-[65px] h-full flex items-center">
                               {entry.operation === '不操作' ? (
                                 <span className="text-gray-400 text-xs">-</span>
                               ) : (
@@ -535,26 +566,45 @@ const InvestmentDraftModal: React.FC<InvestmentDraftModalProps> = ({
                           </td>
 
                           <td className="px-2 py-1 text-left text-xs">
-                            <div className="truncate" style={{ maxWidth: '80px' }}>
+                            <div className="truncate" style={{ maxWidth: '65px' }}>
                               {calculateShares(fund.symbol)}
                             </div>
                           </td>
 
-                          <td className="px-2 py-1 text-center text-xs">
-                            <button
-                              onClick={() => handleReset(fund.symbol)}
-                              className="w-6 h-6 flex items-center justify-center text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded transition-colors"
-                              title="重置"
-                            >
-                              <i className="fas fa-undo text-xs"></i>
-                            </button>
+                          <td className="px-2 py-1 text-left text-xs">
+                            <input
+                              type="text"
+                              value={entry.note || ''}
+                              onChange={(e) => handleNoteChange(fund.symbol, e.target.value)}
+                              placeholder="注释"
+                              className="w-full p-1 text-xs border border-gray-200 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500"
+                            />
+                          </td>
+
+                          <td className="px-1 py-1 text-center text-xs">
+                            <div className="flex flex-row items-center justify-center gap-1">
+                              <button
+                                onClick={() => handleAddValuationToNote(fund.symbol)}
+                                className="w-6 h-6 flex items-center justify-center text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded transition-colors"
+                                title="添加涨跌幅到注释"
+                              >
+                                <i className="fas fa-plus text-xs"></i>
+                              </button>
+                              <button
+                                onClick={() => handleReset(fund.symbol)}
+                                className="w-6 h-6 flex items-center justify-center text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded transition-colors"
+                                title="重置"
+                              >
+                                <i className="fas fa-undo text-xs"></i>
+                              </button>
+                            </div>
                           </td>
                         </tr>
                       );
                     })
                   ) : (
                     <tr>
-                      <td colSpan={9} className="px-4 py-2 text-center text-sm text-gray-500" style={{ height: '40px' }}>
+                      <td colSpan={10} className="px-4 py-2 text-center text-sm text-gray-500" style={{ height: '40px' }}>
                         没有配置仓位的基金
                       </td>
                     </tr>

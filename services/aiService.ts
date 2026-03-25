@@ -1,5 +1,7 @@
 import { ValuationData } from '../types';
 import { AIConfiguration, getAIConfig } from './aiConfigService';
+import { FundAIQueryContext, IndexAIQueryContext } from '../types/aiServiceTypes';
+import { fillTemplateVariables as fillMarketTemplateVariables } from './promptTemplateService';
 
 export interface AIQueryContext {
   fundName?: string;
@@ -31,79 +33,63 @@ export interface PromptTemplate {
   template: string;
 }
 
+// 模板配置文件路径映射
+const TEMPLATE_CONFIG_PATHS: Record<'fund' | 'index', string> = {
+  fund: './assets/config/ai-fund-prompt-templates.json',
+  index: './assets/config/ai-index-prompt-templates.json'
+};
+
+// 模板缓存
+const templateCache: Map<'fund' | 'index', PromptTemplate[]> = new Map();
+
 /**
- * 加载提示词模板
+ * 通用模板加载函数（带缓存）
+ * @param marketType 市场类型 ('fund' 或 'index')
  */
-export async function loadPromptTemplates(): Promise<PromptTemplate[]> {
+async function loadTemplatesByMarketType(marketType: 'fund' | 'index'): Promise<PromptTemplate[]> {
+  // 检查缓存
+  const cached = templateCache.get(marketType);
+  if (cached) {
+    return cached;
+  }
+
+  const configPath = TEMPLATE_CONFIG_PATHS[marketType];
+  const typeName = marketType === 'index' ? '指数' : '基金';
+
   try {
-    const response = await fetch('./assets/config/ai-fund-prompt-templates.json', { cache: 'no-store' });
+    const response = await fetch(configPath);
 
     if (!response.ok) {
-      console.error(`Failed to load templates: HTTP ${response.status} ${response.statusText}`);
+      console.error(`加载${typeName}模板失败: HTTP ${response.status} ${response.statusText}`);
       return [];
     }
 
     const data = await response.json();
 
     if (data && data.templates && Array.isArray(data.templates)) {
+      // 存入缓存
+      templateCache.set(marketType, data.templates);
       return data.templates;
     } else {
-      console.error('Invalid template data structure:', data);
+      console.error(`无效的${typeName}模板数据结构:`, data);
       return [];
     }
   } catch (error) {
-    console.error('Failed to load prompt templates:', error);
+    console.error(`加载${typeName}提示词模板失败:`, error);
     return [];
   }
 }
 
 /**
- * 根据ID获取启用的提示词模板
+ * 通用模板获取函数
+ * @param marketType 市场类型
+ * @param templateId 可选的模板ID
  */
-export async function getEnabledPromptTemplate(templateId?: string): Promise<PromptTemplate | null> {
-  const templates = await loadPromptTemplates();
-
-  if (templateId) {
-    // 查找特定ID的模板
-    const template = templates.find(t => t.id === templateId && t.enabled);
-    return template || null;
-  } else {
-    // 返回第一个启用的模板
-    return templates.find(t => t.enabled) || null;
-  }
-}
-
-/**
- * 加载指数提示词模板
- */
-export async function loadIndexPromptTemplates(): Promise<PromptTemplate[]> {
-  try {
-    const response = await fetch('./assets/config/ai-index-prompt-templates.json', { cache: 'no-store' });
-
-    if (!response.ok) {
-      console.error(`Failed to load index templates: HTTP ${response.status} ${response.statusText}`);
-      return [];
-    }
-
-    const data = await response.json();
-
-    if (data && data.templates && Array.isArray(data.templates)) {
-      return data.templates;
-    } else {
-      console.error('Invalid index template data structure:', data);
-      return [];
-    }
-  } catch (error) {
-    console.error('Failed to load index prompt templates:', error);
-    return [];
-  }
-}
-
-/**
- * 根据ID获取启用的指数提示词模板
- */
-export async function getEnabledIndexPromptTemplate(templateId?: string): Promise<PromptTemplate | null> {
-  const templates = await loadIndexPromptTemplates();
+export async function getEnabledTemplateByMarketType(
+  marketType: 'fund' | 'index',
+  templateId?: string
+): Promise<PromptTemplate | null> {
+  const templates = await loadTemplatesByMarketType(marketType);
 
   if (templateId) {
     const template = templates.find(t => t.id === templateId && t.enabled);
@@ -111,133 +97,6 @@ export async function getEnabledIndexPromptTemplate(templateId?: string): Promis
   } else {
     return templates.find(t => t.enabled) || null;
   }
-}
-
-/**
- * 填充提示词模板中的变量
- */
-export function fillTemplateVariables(template: string, context: AIQueryContext): string {
-  let filledTemplate = template;
-
-  if (context.fundName) {
-    filledTemplate = filledTemplate.replace(/\{name\}/g, context.fundName);
-  }
-
-  if (context.fundSymbol) {
-    filledTemplate = filledTemplate.replace(/\{code\}/g, context.fundSymbol);
-  }
-
-  if (context.tradeHistory) {
-    // 将交易历史转换为字符串
-    const historyString = JSON.stringify(context.tradeHistory, null, 2);
-    filledTemplate = filledTemplate.replace(/\{history\}/g, historyString);
-  } else {
-    // 如果没有交易历史，用空数组替换
-    filledTemplate = filledTemplate.replace(/\{history\}/g, "[]");
-  }
-
-  // 添加新的变量支持
-  // fullCapacity: 当值为 undefined 或 0 时显示"未设置"
-  if (context.fullCapacity !== undefined && context.fullCapacity > 0) {
-    filledTemplate = filledTemplate.replace(/\{fullCapacity\}/g, String(context.fullCapacity));
-  } else {
-    filledTemplate = filledTemplate.replace(/\{fullCapacity\}/g, "未设置");
-  }
-
-  // initialCapacity: 当值为 undefined 或 0 时显示"未设置"
-  if (context.initialCapacity !== undefined && context.initialCapacity > 0) {
-    filledTemplate = filledTemplate.replace(/\{initialCapacity\}/g, String(context.initialCapacity));
-  } else {
-    filledTemplate = filledTemplate.replace(/\{initialCapacity\}/g, "未设置");
-  }
-
-  // initialDate: 当值为 undefined、null 或空字符串时显示"未设置"
-  if (context.initialDate) {
-    filledTemplate = filledTemplate.replace(/\{initialDate\}/g, context.initialDate);
-  } else {
-    filledTemplate = filledTemplate.replace(/\{initialDate\}/g, "未设置");
-  }
-
-  // initialPrice: 当值为 undefined 或 null 时显示"未设置"
-  if (context.initialPrice !== undefined && context.initialPrice !== null) {
-    filledTemplate = filledTemplate.replace(/\{initialPrice\}/g, String(context.initialPrice));
-  } else {
-    filledTemplate = filledTemplate.replace(/\{initialPrice\}/g, "未设置");
-  }
-
-  // currentPrice: 当前估值/净值
-  if (context.valuationData?.currentPrice !== undefined && context.valuationData.currentPrice !== null) {
-    filledTemplate = filledTemplate.replace(/\{currentPrice\}/g, context.valuationData.currentPrice.toFixed(4));
-  } else {
-    filledTemplate = filledTemplate.replace(/\{currentPrice\}/g, "未设置");
-  }
-
-  // currentDate: 当前日期（估值日期）
-  if (context.valuationData?.realtimeDate) {
-    filledTemplate = filledTemplate.replace(/\{currentDate\}/g, context.valuationData.realtimeDate);
-  } else {
-    filledTemplate = filledTemplate.replace(/\{currentDate\}/g, "未设置");
-  }
-
-  // previousPrice: 前值（上一交易日净值）
-  if (context.valuationData?.previousPrice !== undefined && context.valuationData.previousPrice !== null) {
-    filledTemplate = filledTemplate.replace(/\{previousPrice\}/g, context.valuationData.previousPrice.toFixed(4));
-  } else {
-    filledTemplate = filledTemplate.replace(/\{previousPrice\}/g, "未设置");
-  }
-
-  // previousDate: 前值日期
-  if (context.valuationData?.netWorthDate) {
-    filledTemplate = filledTemplate.replace(/\{previousDate\}/g, context.valuationData.netWorthDate);
-  } else {
-    filledTemplate = filledTemplate.replace(/\{previousDate\}/g, "未设置");
-  }
-
-  // rate: 涨跌幅
-  if (context.valuationData?.changePercentage !== undefined && context.valuationData.changePercentage !== null) {
-    const rate = context.valuationData.changePercentage;
-    filledTemplate = filledTemplate.replace(/\{rate\}/g, `${rate >= 0 ? '+' : ''}${rate.toFixed(2)}%`);
-  } else {
-    filledTemplate = filledTemplate.replace(/\{rate\}/g, "未设置");
-  }
-
-  // marketValue: 当前基金的市场价值
-  if (context.marketValue !== undefined && context.marketValue !== null) {
-    filledTemplate = filledTemplate.replace(/\{marketValue\}/g, context.marketValue.toFixed(2));
-  } else {
-    filledTemplate = filledTemplate.replace(/\{marketValue\}/g, "未设置");
-  }
-
-  // position: 当前基金的仓位（份）
-  if (context.position !== undefined && context.position !== null) {
-    filledTemplate = filledTemplate.replace(/\{position\}/g, context.position.toFixed(2));
-  } else {
-    filledTemplate = filledTemplate.replace(/\{position\}/g, "未设置");
-  }
-
-  // positionRate: 当前基金的仓位占比（百分比）
-  if (context.positionRate !== undefined && context.positionRate !== null) {
-    filledTemplate = filledTemplate.replace(/\{positionRate\}/g, `${context.positionRate.toFixed(2)}%`);
-  } else {
-    filledTemplate = filledTemplate.replace(/\{positionRate\}/g, "未设置");
-  }
-
-  // profit: 当前基金的整体盈利
-  if (context.profit !== undefined && context.profit !== null) {
-    const profit = context.profit;
-    filledTemplate = filledTemplate.replace(/\{profit\}/g, `${profit >= 0 ? '+' : ''}${profit.toFixed(2)}`);
-  } else {
-    filledTemplate = filledTemplate.replace(/\{profit\}/g, "未设置");
-  }
-
-  // avgCostPrice: 当前基金的平均成本价
-  if (context.avgCostPrice !== undefined && context.avgCostPrice !== null) {
-    filledTemplate = filledTemplate.replace(/\{avgCostPrice\}/g, context.avgCostPrice.toFixed(4));
-  } else {
-    filledTemplate = filledTemplate.replace(/\{avgCostPrice\}/g, "未设置");
-  }
-
-  return filledTemplate;
 }
 
 /**
@@ -448,10 +307,10 @@ export async function queryAIWithTemplate(
   context?: AIQueryContext,
   onChunk?: StreamCallback
 ): Promise<AIResponse> {
-  const template = await getEnabledPromptTemplate(templateId);
+  const template = await getEnabledTemplateByMarketType('fund', templateId);
 
   if (!template) {
-    const templates = await loadPromptTemplates();
+    const templates = await loadTemplatesByMarketType('fund');
     const enabledCount = templates.filter(t => t.enabled).length;
     const errorMsg = templateId
       ? `模板 "${templateId}" 未找到或未启用`
@@ -464,7 +323,12 @@ export async function queryAIWithTemplate(
     };
   }
 
-  const filledPrompt = fillTemplateVariables(template.template, context || {});
+  const filledPrompt = fillMarketTemplateVariables(template.template, {
+    marketType: 'fund',
+    fundName: context?.fundName || '',
+    fundSymbol: context?.fundSymbol || '',
+    ...context
+  } as FundAIQueryContext);
 
   return queryAI(config, filledPrompt, context, onChunk);
 }
@@ -477,12 +341,10 @@ export async function queryAIWithTemplate(
 export async function queryAIWithMarketTemplate(
   config: AIConfiguration,
   marketType: 'fund' | 'index',
-  context?: any,
+  context?: FundAIQueryContext | IndexAIQueryContext,
   onChunk?: StreamCallback
 ): Promise<AIResponse> {
-  const template = marketType === 'index'
-    ? await getEnabledIndexPromptTemplate()
-    : await getEnabledPromptTemplate();
+  const template = await getEnabledTemplateByMarketType(marketType);
 
   if (!template) {
     const errorMsg = `没有启用的${marketType === 'index' ? '指数' : '基金'}模板`;
@@ -494,8 +356,12 @@ export async function queryAIWithMarketTemplate(
     };
   }
 
-  const { fillTemplateVariables } = await import('./promptTemplateService');
-  const filledPrompt = fillTemplateVariables(template.template, context || {});
+  // 如果没有提供 context，使用最小化的上下文
+  const effectiveContext = context || (marketType === 'fund'
+    ? { marketType: 'fund' as const, fundName: '', fundSymbol: '' }
+    : { marketType: 'index' as const, indexName: '', indexSymbol: '', datetime: '' });
 
-  return queryAI(config, filledPrompt, context, onChunk);
+  const filledPrompt = fillMarketTemplateVariables(template.template, effectiveContext);
+
+  return queryAI(config, filledPrompt, context as AIQueryContext, onChunk);
 }

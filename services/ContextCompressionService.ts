@@ -48,14 +48,6 @@ export class ContextCompressionService {
         }
       }
 
-      // 确保我们有一个有效的配置
-      if (!effectiveConfig) {
-        return {
-          success: false,
-          error: 'No AI configuration available for compression'
-        };
-      }
-
       // 合并当前上下文内容（摘要内容和新内容）
       const summaryPart = state.summaryContent ? `[摘要] ${state.summaryContent}\n\n` : '';
       const newContentPart = this.serializeMessages(state.newContent);
