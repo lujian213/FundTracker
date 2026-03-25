@@ -318,3 +318,163 @@ describe('FundDetailsModal position prop', () => {
     expect(modal).toHaveStyle({ justifyContent: 'center' });
   });
 });
+
+describe('chartData 估值与历史净值合并逻辑', () => {
+  // 创建一个包含足够数据点的历史数据（用于计算 MA）
+  const createHistory = (dates: string[], values: number[]) => {
+    return dates.map((d, i) => ({
+      date: new Date(`${d}T15:00:00`).getTime(),
+      value: values[i],
+      equityReturn: i > 0 ? ((values[i] - values[i-1]) / values[i-1]) * 100 : 0,
+    }));
+  };
+
+  const baseData: ValuationData = {
+    symbol: '000001',
+    name: 'Test Fund',
+    currentPrice: 1.1729,  // 估值
+    previousPrice: 1.1456,
+    changePercentage: 2.39,
+    lastUpdated: '2026-03-24 15:00',
+    realtimeDate: '2026-03-24',
+    netWorthDate: '2026-03-23',
+    valuationDate: '2026-03-24',
+    sourceUrl: 'https://example.com',
+  };
+
+  afterEach(() => jest.restoreAllMocks());
+
+  test('当 realtimeDate > netWorthDate 且 > 历史最后日期时，应追加估值点', async () => {
+    // 历史净值最后日期是 2026-03-23，netWorthDate 是 2026-03-22
+    // realtimeDate 是 2026-03-24，应追加估值点
+    const history = createHistory(
+      ['2026-03-20', '2026-03-21', '2026-03-22', '2026-03-23'],
+      [1.10, 1.11, 1.12, 1.13]
+    );
+    (fetchFundHistory as jest.Mock).mockResolvedValue(history);
+
+    const data = {
+      ...baseData,
+      realtimeDate: '2026-03-24',
+      netWorthDate: '2026-03-23',
+      currentPrice: 1.15,  // 估值不同于历史最后一条
+    };
+
+    render(<FundDetailsModal data={data} onClose={() => {}} />);
+    await screen.findByText('历史趋势图');
+    fireEvent.click(screen.getByText('历史趋势图'));
+
+    // 图表应显示估值点（追加了估值）
+    const shown = await screen.findByTestId('history-current-value');
+    // 因为追加了估值点，最后显示的应该是估值
+    expect(shown.textContent).toBe('1.1500');
+  });
+
+  test('当 realtimeDate <= netWorthDate 时，不应合并估值点', async () => {
+    // realtimeDate = netWorthDate = 2026-03-24，历史净值最后也是 2026-03-24
+    // 这种情况下估值是针对已确认净值的日期，不应替换
+    const history = createHistory(
+      ['2026-03-20', '2026-03-21', '2026-03-22', '2026-03-23', '2026-03-24'],
+      [1.10, 1.11, 1.12, 1.1456, 1.1722]  // 1.1722 是 2026-03-24 的确认净值
+    );
+    (fetchFundHistory as jest.Mock).mockResolvedValue(history);
+
+    const data = {
+      ...baseData,
+      realtimeDate: '2026-03-24',
+      netWorthDate: '2026-03-24',  // 与 realtimeDate 相同
+      currentPrice: 1.1729,  // 估值，不同于确认净值
+    };
+
+    render(<FundDetailsModal data={data} onClose={() => {}} />);
+    await screen.findByText('历史趋势图');
+    fireEvent.click(screen.getByText('历史趋势图'));
+
+    // 图表应显示历史净值最后一条（1.1722），而不是估值（1.1729）
+    const shown = await screen.findByTestId('history-current-value');
+    expect(shown.textContent).toBe('1.1722');
+  });
+
+  test('当历史净值最后一条日期 >= realtimeDate 时，不应合并估值点', async () => {
+    // 历史净值最后日期是 2026-03-25，realtimeDate 是 2026-03-24
+    // 说明历史数据比估值更新，不应替换
+    const history = createHistory(
+      ['2026-03-20', '2026-03-21', '2026-03-22', '2026-03-24', '2026-03-25'],
+      [1.10, 1.11, 1.12, 1.1456, 1.18]
+    );
+    (fetchFundHistory as jest.Mock).mockResolvedValue(history);
+
+    const data = {
+      ...baseData,
+      realtimeDate: '2026-03-24',
+      netWorthDate: '2026-03-25',
+      currentPrice: 1.1729,
+    };
+
+    render(<FundDetailsModal data={data} onClose={() => {}} />);
+    await screen.findByText('历史趋势图');
+    fireEvent.click(screen.getByText('历史趋势图'));
+
+    // 图表应显示历史净值最后一条（1.18），而不是估值
+    const shown = await screen.findByTestId('history-current-value');
+    expect(shown.textContent).toBe('1.1800');
+  });
+
+  test('当 netWorthDate 为 --- 时，仅比较日期判断是否合并', async () => {
+    // netWorthDate 为 '---'，此时不检查 netWorthDate，只比较历史最后日期和 realtimeDate
+    const history = createHistory(
+      ['2026-03-20', '2026-03-21', '2026-03-22', '2026-03-23'],
+      [1.10, 1.11, 1.12, 1.13]
+    );
+    (fetchFundHistory as jest.Mock).mockResolvedValue(history);
+
+    const data = {
+      ...baseData,
+      realtimeDate: '2026-03-24',
+      netWorthDate: '---',  // 无效的 netWorthDate
+      currentPrice: 1.15,
+    };
+
+    render(<FundDetailsModal data={data} onClose={() => {}} />);
+    await screen.findByText('历史趋势图');
+    fireEvent.click(screen.getByText('历史趋势图'));
+
+    // 历史最后日期 < realtimeDate，应追加估值点
+    const shown = await screen.findByTestId('history-current-value');
+    expect(shown.textContent).toBe('1.1500');
+  });
+
+  test('历史净值与估值同日但净值已确认时，保留历史净值不替换', async () => {
+    // 模拟真实场景：015283 基金
+    // 历史净值最后一条：2026-03-24, value: 1.1722
+    // 估值：realtimeDate: 2026-03-24, currentPrice: 1.1729
+    // netWorthDate: 2026-03-24（净值已确认）
+    // 应保留历史净值 1.1722，不替换为估值 1.1729
+    const history = createHistory(
+      ['2026-03-20', '2026-03-21', '2026-03-22', '2026-03-23', '2026-03-24'],
+      [1.1812, 1.2373, 1.2118, 1.1812, 1.1722]
+    );
+    (fetchFundHistory as jest.Mock).mockResolvedValue(history);
+
+    const data: ValuationData = {
+      symbol: '015283',
+      name: 'Test Fund 015283',
+      currentPrice: 1.1729,
+      previousPrice: 1.1812,
+      changePercentage: 2.39,
+      lastUpdated: '2026-03-24 15:00',
+      realtimeDate: '2026-03-24',
+      netWorthDate: '2026-03-24',  // 净值已确认
+      valuationDate: '2026-03-24',
+      sourceUrl: 'https://example.com',
+    };
+
+    render(<FundDetailsModal data={data} onClose={() => {}} />);
+    await screen.findByText('历史趋势图');
+    fireEvent.click(screen.getByText('历史趋势图'));
+
+    // 图表应显示历史净值（1.1722），不是估值（1.1729）
+    const shown = await screen.findByTestId('history-current-value');
+    expect(shown.textContent).toBe('1.1722');
+  });
+});

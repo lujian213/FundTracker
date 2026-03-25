@@ -249,6 +249,8 @@ export const FundDetailsModal: React.FC<FundDetailsModalProps> = ({ data, onClos
   }, [history, startDate, initialPrice, storageKey, fullCapacity, initialPosition]);
 
     // Merge realtime point carefully: only append/replace when realtimeDate is explicit and valid, preventing synthetic today points from distorting MA values.
+    // 重要规则：只有当 realtimeDate > netWorthDate 时才合并估值点（即估值是针对还未公布净值的日期）
+    // 如果 realtimeDate == netWorthDate 或历史净值最后一条日期 == realtimeDate，说明当天的净值已确认，不应替换
     const chartData = useMemo(() => {
     if (!history || history.length === 0) return [];
 
@@ -259,19 +261,30 @@ export const FundDetailsModal: React.FC<FundDetailsModalProps> = ({ data, onClos
     const valuationTs = new Date(`${valuationData.realtimeDate} 15:00`).getTime();
     if (!Number.isFinite(valuationTs)) return history;
 
-    // If lastHist.date is on same local day as valuationTs, replace it with realtime point to avoid duplicate days.
+    // 检查历史净值最后一条的日期
     const lastDayKey = localDateKey(lastHist.date);
     const valDayKey = localDateKey(valuationTs);
-    if (lastDayKey === valDayKey) {
-      return [...history.slice(0, history.length - 1), { date: valuationTs, value: valuationData.currentPrice, equityReturn: valuationData.changePercentage }];
+    const netWorthDate = valuationData.netWorthDate && valuationData.netWorthDate !== '---' ? valuationData.netWorthDate : null;
+
+    // 核心逻辑：只有当估值日期 > 最后确认净值日期时，才合并估值点
+    // 这意味着：
+    // 1. 如果 realtimeDate <= netWorthDate，估值是针对已确认净值的日期，不应替换历史净值
+    // 2. 如果历史净值最后一条日期 == realtimeDate，说明历史数据已包含当天净值，不应替换
+    if (netWorthDate && valDayKey <= netWorthDate) {
+      return history;
     }
 
-    // Only append when realtime point is strictly newer than the latest confirmed history point.
+    // 如果历史净值最后一条日期已经 >= 估值日期，说明历史数据更新，不需要合并估值
+    if (lastDayKey >= valDayKey) {
+      return history;
+    }
+
+    // 只有当估值日期严格晚于历史净值最后一条日期时，才追加估值点
     if (valuationTs > lastHist.date) {
       return [...history, { date: valuationTs, value: valuationData.currentPrice, equityReturn: valuationData.changePercentage }];
     }
     return history;
-    }, [history, valuationData.currentPrice, valuationData.changePercentage, valuationData.realtimeDate]);
+    }, [history, valuationData.currentPrice, valuationData.changePercentage, valuationData.realtimeDate, valuationData.netWorthDate]);
 
   const { path, area, points, viewBox, yLabels, xLabels, maPaths, maValues } = useMemo(() => {
     // Use a display window of the most recent 90 points for the chart drawing and MA lines
