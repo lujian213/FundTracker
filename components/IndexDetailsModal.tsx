@@ -1,13 +1,15 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { MarketIndex, HistoricalPoint } from '../types';
+import { MarketIndex, HistoricalPoint, VolumeData } from '../types';
 import { fetchIndexHistory } from '../services/fundService';
 import * as cacheService from '../services/cacheService';
 import IntradayChart from './IntradayChart';
 import HistoryChart from './HistoryChart';
-import { computeMultipleSMAs, MA_COLORS } from '../utils/movingAverage';
+import { MA_COLORS } from '../utils/movingAverage';
 import { DEFAULT_VISIBLE_MAS, MA_WINDOWS } from '../utils/maConfig';
 import { toLocalDateKey } from '../utils/priceResolver';
 import { formatDateDisplay } from '../utils/dateFormat';
+import { prepareChartData } from '../utils/chartDataHelper';
+import { formatVolume, formatAmount } from '../utils/format';
 
 interface IndexDetailsModalProps {
   data: MarketIndex;
@@ -26,6 +28,7 @@ export const IndexDetailsModal: React.FC<IndexDetailsModalProps> = ({ data, onCl
   // IntradayChart has paddingBottom=30, HistoryChart has paddingBottom=0 but x labels outside viewBox
   // Use consistent total height for both tabs
   const chartHeight = 200;
+  const volumeHeight = 60; // 成交量图表高度
 
   useEffect(() => {
     const load = async () => {
@@ -45,11 +48,15 @@ export const IndexDetailsModal: React.FC<IndexDetailsModalProps> = ({ data, onCl
     } catch (e) { setIntradayPoints([]); }
   }, [data.symbol, data.lastUpdated]);
 
-  const { path, area, points, viewBox, yLabels, xLabels, maPaths, maValues } = useMemo(() => {
-    // For chart display we intentionally show the most recent 90 points on the x-axis
-    // while the underlying cache/network still keeps up to 365 days.
-    const hist = (history || []).slice(-90);
-    if (hist.length < 2) return { path: '', area: '', points: [], viewBox: '0 0 100 100', yLabels: [], xLabels: [] };
+  const { path, area, points, viewBox, yLabels, xLabels, maPaths, maValues, volumeData } = useMemo(() => {
+    // 使用公共函数准备数据（包含MA计算和截取）
+    const { displayData, maValues: computedMaValues } = prepareChartData(history || [], {
+      displayCount: 90,
+      maLookback: 25,
+      maWindows: MA_WINDOWS
+    });
+
+    if (displayData.length < 2) return { path: '', area: '', points: [], viewBox: '0 0 100 100', yLabels: [], xLabels: [], maPaths: {} as Record<number, string>, maValues: {} as Record<number, (number | null)[]>, volumeData: [] };
 
     const width = 1000;
     const height = chartHeight;
@@ -58,7 +65,7 @@ export const IndexDetailsModal: React.FC<IndexDetailsModalProps> = ({ data, onCl
     const paddingTop = 0;
     const paddingBottom = 0;
 
-    const values = hist.map(p => p.value);
+    const values = displayData.map(p => p.value);
     const rawMin = Math.min(...values);
     const rawMax = Math.max(...values);
     const margin = (rawMax - rawMin) * 0.1 || 0.01;
@@ -66,10 +73,10 @@ export const IndexDetailsModal: React.FC<IndexDetailsModalProps> = ({ data, onCl
     const max = rawMax + margin;
     const range = max - min;
 
-    const getX = (idx: number) => paddingLeft + (idx * (width - paddingLeft - paddingRight) / (hist.length - 1));
+    const getX = (idx: number) => paddingLeft + (idx * (width - paddingLeft - paddingRight) / (displayData.length - 1));
     const getY = (val: number) => height - paddingBottom - ((val - min) / range * (height - paddingTop - paddingBottom));
 
-    const svgPoints = hist.map((p, i) => ({
+    const svgPoints = displayData.map((p, i) => ({
       x: getX(i),
       y: getY(p.value),
       data: p
@@ -88,14 +95,14 @@ export const IndexDetailsModal: React.FC<IndexDetailsModalProps> = ({ data, onCl
       return { text: val.toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 }), y: getY(val) };
     });
 
-    const xLabelIndices = [0, Math.floor(hist.length / 2), hist.length - 1];
+    const xLabelIndices = [0, Math.floor(displayData.length / 2), displayData.length - 1];
     const xLabels = xLabelIndices.map(idx => {
-      const d = new Date(hist[idx].date);
+      const d = new Date(displayData[idx].date);
       return { text: `${d.getMonth() + 1}/${d.getDate()}`, x: getX(idx) };
     });
 
-    // compute SMAs
-    const maValues = computeMultipleSMAs(values, MA_WINDOWS);
+    // 使用公共函数计算好的MA值
+    const maValues = computedMaValues;
     const maPaths: Record<number, string> = {};
     for (const w of MA_WINDOWS) {
       const sma = maValues[w];
@@ -112,7 +119,22 @@ export const IndexDetailsModal: React.FC<IndexDetailsModalProps> = ({ data, onCl
       }
     }
 
-    return { path: pathData, area: areaData, points: svgPoints, viewBox: `0 0 ${width} ${height}`, yLabels, xLabels, maPaths, maValues };
+    // 计算成交量数据
+    const volumeData: VolumeData[] = svgPoints.map((p, i) => {
+      const data = p.data;
+      const volume = data.volume || 0;
+      const amount = data.amount;
+      // 判断涨跌：使用 equityReturn 或与前一日比较
+      const isUp = data.equityReturn >= 0;
+      return {
+        x: p.x,
+        volume,
+        amount,
+        isUp
+      };
+    });
+
+    return { path: pathData, area: areaData, points: svgPoints, viewBox: `0 0 ${width} ${height}`, yLabels, xLabels, maPaths, maValues, volumeData };
   }, [history]);
 
   return (
@@ -155,7 +177,35 @@ export const IndexDetailsModal: React.FC<IndexDetailsModalProps> = ({ data, onCl
                   <button onClick={() => setActiveTab('history')} className={`px-3 py-1 rounded text-sm ${activeTab === 'history' ? 'bg-white border' : 'bg-transparent text-gray-500'}`}>历史趋势图</button>
                 </div>
                 {/* 固定高度的图表容器，确保tab切换时高度不变 */}
-                <div style={{ height: chartHeight + 12 }}>
+                <div className="relative" style={{ height: chartHeight + 12 }}>
+                  {/* 均线切换按钮 - 右上角绝对定位 */}
+                  {activeTab === 'history' && (
+                    <div className="absolute top-1 right-2 z-10 flex items-center space-x-1">
+                      {MA_WINDOWS.map(n => {
+                        const color = MA_COLORS[n] || '#2563eb';
+                        return (
+                          <button key={n} type="button" aria-label={`切换显示 MA${n}`} onClick={() => setVisibleMAs(v => ({ ...v, [n]: !v[n] }))}
+                            className="text-[10px] px-1.5 py-0.5 rounded border inline-flex items-center gap-1 transition-colors bg-white/80 backdrop-blur-sm" style={{ borderColor: color, color, backgroundColor: visibleMAs[n] ? `${color}20` : 'rgba(255,255,255,0.8)' }}>
+                            <span className="inline-block w-1.5 h-1.5 rounded-full" style={{ backgroundColor: color }} />
+                            <span className="font-medium">MA{n}</span>
+                          </button>
+                        );
+                      })}
+                      {/* 全选/全不选按钮 */}
+                      <button
+                        type="button"
+                        aria-label="全选/全不选均线"
+                        onClick={() => {
+                          const allSelected = MA_WINDOWS.every(n => visibleMAs[n]);
+                          setVisibleMAs(Object.fromEntries(MA_WINDOWS.map(n => [n, !allSelected])));
+                        }}
+                        className="text-[10px] px-1.5 py-0.5 rounded border border-gray-300 inline-flex items-center gap-1 transition-colors bg-white/80 backdrop-blur-sm text-gray-500 hover:text-gray-700 hover:border-gray-400"
+                      >
+                        <i className={`fas ${MA_WINDOWS.every(n => visibleMAs[n]) ? 'fa-check-square' : 'fa-square'} text-xs`}></i>
+                        <span className="font-medium">全选</span>
+                      </button>
+                    </div>
+                  )}
                   {activeTab === 'intraday' ? (
                     <IntradayChart points={intradayPoints} width={1000} height={chartHeight} stroke="#2563eb" onHover={p => setHoveredIntradayPoint(p)} />
                   ) : (
@@ -173,25 +223,13 @@ export const IndexDetailsModal: React.FC<IndexDetailsModalProps> = ({ data, onCl
                        setHoveredPoint={setHoveredPoint}
                        stroke="#2563eb"
                        height={chartHeight}
+                       volumeData={volumeData}
+                       volumeHeight={volumeHeight}
                      />
                   )}
                 </div>
                 {/* 固定高度的信息栏 */}
                 <div className="h-12 bg-white flex items-center justify-between px-4 border-t">
-                  {activeTab === 'history' && (
-                    <div className="flex items-center space-x-2">
-                      {[5,10,20].map(n => {
-                        const color = MA_COLORS[n] || '#2563eb';
-                        return (
-                          <button key={n} type="button" aria-label={`切换显示 MA${n}`} onClick={() => setVisibleMAs(v => ({ ...v, [n]: !v[n] }))}
-                            className="text-xs px-2 py-0.5 rounded border inline-flex items-center gap-1 transition-colors" style={{ borderColor: color, color, backgroundColor: visibleMAs[n] ? `${color}1a` : '#ffffff' }}>
-                            <span className="inline-block w-2 h-2 rounded-full" style={{ backgroundColor: color }} />
-                            <span className="font-medium">MA{n}</span>
-                          </button>
-                        );
-                      })}
-                    </div>
-                  )}
                   {(() => {
                     if (activeTab === 'intraday') {
                       const hp = hoveredIntradayPoint as any;
@@ -214,6 +252,14 @@ export const IndexDetailsModal: React.FC<IndexDetailsModalProps> = ({ data, onCl
                         const last = intradayPoints[intradayPoints.length - 1];
                         timeLabel = last.timestamp ? fmtTime(last.timestamp) : '—';
                         valueLabel = typeof last.value === 'number' ? last.value.toFixed(4) : '—';
+                        // 计算较上一日的变化
+                        const pct = last.equityReturn;
+                        if (typeof pct === 'number' && typeof last.value === 'number') {
+                          const prev = pct === -100 ? 0 : last.value / (1 + pct / 100);
+                          const abs = last.value - prev;
+                          changeText = `${abs.toFixed(2)} (${pct >= 0 ? '+' : ''}${pct.toFixed(2)}%)`;
+                          changeClass = pct >= 0 ? 'text-red-600' : 'text-green-600';
+                        }
                       }
                       return (<><div className="w-36 mr-6"><div className="text-[10px] text-gray-400">时间</div><div className="text-sm font-medium text-gray-800">{timeLabel}</div></div><div className="w-44 mr-6"><div className="text-[10px] text-gray-400">净值</div><div className="text-sm font-medium text-gray-800">{valueLabel}</div></div><div className="w-48"><div className="text-[10px] text-gray-400">较上一日</div><div className={`text-sm font-medium ${changeClass}`}>{changeText}</div></div></>);
                     } else {
@@ -222,30 +268,64 @@ export const IndexDetailsModal: React.FC<IndexDetailsModalProps> = ({ data, onCl
                       let valueLabel = '—';
                       let changeText = '—';
                       let changeClass = 'text-gray-700';
+                      let volumeLabel = '—';
+                      let amountLabel = '—';
                       if (hp && points && points.length > 0) {
                         const idx = points.findIndex((p: any) => p.data === hp);
                         const v = (idx >= 0) ? points[idx].data.value : (points[points.length - 1].data.value);
                         const d = (idx >= 0) ? new Date(points[idx].data.date) : new Date(points[points.length - 1].data.date);
                         dateLabel = formatDateDisplay(d);
                         valueLabel = v.toFixed(4);
-                        const prev = (idx > 0) ? points[idx - 1].data.value : null;
-                        if (prev !== null && prev !== undefined) {
+                        // 使用 equityReturn 字段计算涨跌（数据源已包含）
+                        const equityReturn = (idx >= 0) ? points[idx].data.equityReturn : (points[points.length - 1].data.equityReturn);
+                        if (typeof equityReturn === 'number') {
+                          const prev = equityReturn === -100 ? 0 : v / (1 + equityReturn / 100);
+                          const abs = v - prev;
+                          changeText = `${abs.toFixed(2)} (${equityReturn >= 0 ? '+' : ''}${equityReturn.toFixed(2)}%)`;
+                          changeClass = equityReturn >= 0 ? 'text-red-600' : 'text-green-600';
+                        } else if (idx > 0) {
+                          // fallback: 与前一日比较
+                          const prev = points[idx - 1].data.value;
                           const abs = v - prev;
                           const pct = prev !== 0 ? (abs / prev * 100) : 0;
-                          changeText = `${abs.toFixed(4)} (${pct >= 0 ? '+' : ''}${pct.toFixed(2)}%)`;
+                          changeText = `${abs.toFixed(2)} (${pct >= 0 ? '+' : ''}${pct.toFixed(2)}%)`;
                           changeClass = pct >= 0 ? 'text-red-600' : 'text-green-600';
+                        }
+                        // 成交量和成交额
+                        const dataPoint = (idx >= 0) ? points[idx].data : (points[points.length - 1].data);
+                        if (dataPoint.volume !== undefined && dataPoint.volume > 0) {
+                          volumeLabel = formatVolume(dataPoint.volume);
+                        }
+                        if (dataPoint.amount !== undefined && dataPoint.amount > 0) {
+                          amountLabel = formatAmount(dataPoint.amount);
                         }
                       } else if (points && points.length > 0) {
                         const last = points[points.length - 1];
                         dateLabel = formatDateDisplay(new Date(last.data.date));
                         valueLabel = last.data.value.toFixed(4);
-                        changeText = '—';
+                        // 使用 equityReturn 字段计算涨跌
+                        const equityReturn = last.data.equityReturn;
+                        if (typeof equityReturn === 'number') {
+                          const prev = equityReturn === -100 ? 0 : last.data.value / (1 + equityReturn / 100);
+                          const abs = last.data.value - prev;
+                          changeText = `${abs.toFixed(2)} (${equityReturn >= 0 ? '+' : ''}${equityReturn.toFixed(2)}%)`;
+                          changeClass = equityReturn >= 0 ? 'text-red-600' : 'text-green-600';
+                        }
+                        // 成交量和成交额
+                        if (last.data.volume !== undefined && last.data.volume > 0) {
+                          volumeLabel = formatVolume(last.data.volume);
+                        }
+                        if (last.data.amount !== undefined && last.data.amount > 0) {
+                          amountLabel = formatAmount(last.data.amount);
+                        }
                       }
                       return (
-                        <div className="flex items-center ml-auto">
-                          <div className="w-28 mr-4"><div className="text-[10px] text-gray-400">时间</div><div className="text-xs font-medium text-gray-800">{dateLabel}</div></div>
-                          <div className="w-28 mr-4"><div className="text-[10px] text-gray-400">净值</div><div className="text-xs font-medium text-gray-800">{valueLabel}</div></div>
-                          <div className="w-32"><div className="text-[10px] text-gray-400">涨跌</div><div className={`text-xs font-medium ${changeClass}`}>{changeText}</div></div>
+                        <div className="flex items-center">
+                          <div className="w-28 mr-3"><div className="text-[10px] text-gray-400">时间</div><div className="text-xs font-medium text-gray-800">{dateLabel}</div></div>
+                          <div className="w-28 mr-3"><div className="text-[10px] text-gray-400">净值</div><div className="text-xs font-medium text-gray-800">{valueLabel}</div></div>
+                          <div className="w-28 mr-3"><div className="text-[10px] text-gray-400">涨跌</div><div className={`text-xs font-medium ${changeClass}`}>{changeText}</div></div>
+                          <div className="w-24 mr-3"><div className="text-[10px] text-gray-400">成交量</div><div className="text-xs font-medium text-gray-800">{volumeLabel}</div></div>
+                          <div className="w-20"><div className="text-[10px] text-gray-400">成交额</div><div className="text-xs font-medium text-gray-800">{amountLabel}</div></div>
                         </div>
                       );
                     }

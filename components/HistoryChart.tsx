@@ -1,5 +1,5 @@
-import React from 'react';
-import { HistoricalPoint } from '../types';
+import React, { useMemo } from 'react';
+import { HistoricalPoint, VolumeData } from '../types';
 import { MA_COLORS } from '../utils/movingAverage';
 import { toLocalDateKey } from '../utils/priceResolver';
 
@@ -20,6 +20,9 @@ interface HistoryChartProps {
   height?: number;
   stroke?: string;
   markers?: { x: number; y: number; date: number; type?: 'buy' | 'sell' | string; shares?: number; amount?: number }[];
+  // 成交量相关（仅指数使用）
+  volumeData?: VolumeData[]; // 成交量柱状图数据
+  volumeHeight?: number; // 成交量图表高度，默认 60
 }
 
 const HistoryChart: React.FC<HistoryChartProps> = ({
@@ -38,7 +41,9 @@ const HistoryChart: React.FC<HistoryChartProps> = ({
   setHoveredPoint,
   height = 280,
   stroke = '#ef4444',
-  markers
+  markers,
+  volumeData,
+  volumeHeight = 60
 }) => {
   // find index of hovered point for MA lookup
   const hoveredIndex = hoveredPoint ? points.findIndex(p => p.data === hoveredPoint) : -1;
@@ -54,13 +59,50 @@ const HistoryChart: React.FC<HistoryChartProps> = ({
   const PADDING_TOP = 20; // increase top padding so the top hover label stays inside viewBox
   const PADDING_BOTTOM = 0;
 
+  // 是否显示成交量
+  const showVolume = volumeData && volumeData.length > 0;
+
+  // 计算总高度（价格图 + 成交量图）
+  const totalHeight = showVolume ? height + volumeHeight : height;
+
+  // 成交量图表参数
+  const volumeChartParams = useMemo(() => {
+    if (!showVolume || !volumeData || volumeData.length === 0) return null;
+
+    const volumes = volumeData.map(v => v.volume);
+    const maxVolume = Math.max(...volumes, 1); // 避免除零
+
+    return {
+      maxVolume,
+      chartY: height, // 成交量图从价格图底部开始
+      chartHeight: volumeHeight - 10, // 留出底部空间
+    };
+  }, [showVolume, volumeData, height, volumeHeight]);
+
+  // 计算 viewBox（如果显示成交量，需要扩展高度）
+  const actualViewBox = useMemo(() => {
+    if (!showVolume) return viewBox;
+    const vb = (viewBox || '0 0 1000 280').split(' ').map(Number);
+    const vbW = vb[2] || 1000;
+    return `0 0 ${vbW} ${totalHeight}`;
+  }, [showVolume, viewBox, totalHeight]);
+
   return (
     <>
-      <svg viewBox={viewBox} className={`w-full drop-shadow-sm`} style={{ height }} onMouseLeave={() => { setHoveredPoint(null); if (typeof (onMarkerHover) === 'function') onMarkerHover(null); }}>
+      <svg viewBox={actualViewBox} className={`w-full drop-shadow-sm`} style={{ height: totalHeight }} onMouseLeave={() => { setHoveredPoint(null); if (typeof (onMarkerHover) === 'function') onMarkerHover(null); }}>
         <defs>
           <linearGradient id="history-gradient" x1="0" y1="0" x2="0" y2="1">
             <stop offset="0%" stopColor={stroke} stopOpacity="0.2" />
             <stop offset="100%" stopColor={stroke} stopOpacity="0" />
+          </linearGradient>
+          {/* 成交量涨跌颜色 */}
+          <linearGradient id="volume-up-gradient" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="#ef4444" stopOpacity="0.8" />
+            <stop offset="100%" stopColor="#ef4444" stopOpacity="0.4" />
+          </linearGradient>
+          <linearGradient id="volume-down-gradient" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="#22c55e" stopOpacity="0.8" />
+            <stop offset="100%" stopColor="#22c55e" stopOpacity="0.4" />
           </linearGradient>
         </defs>
         {(() => {
@@ -82,9 +124,13 @@ const HistoryChart: React.FC<HistoryChartProps> = ({
                 </g>
               ))}
 
-              {xLabels.map((label, i) => (
-                <text key={`x-${i}`} x={label.x} y={chartY + chartH + 16} textAnchor="middle" className="text-[14px] fill-gray-400 font-medium">{label.text}</text>
-              ))}
+              {xLabels.map((label, i) => {
+              // 当显示成交量时，x轴标签应在成交量图表下方
+              const xLabelY = showVolume ? totalHeight - 4 : chartY + chartH + 16;
+              return (
+                <text key={`x-${i}`} x={label.x} y={xLabelY} textAnchor="middle" className="text-[14px] fill-gray-400 font-medium">{label.text}</text>
+              );
+            })}
             </>
           );
         })()}
@@ -100,9 +146,54 @@ const HistoryChart: React.FC<HistoryChartProps> = ({
 
         <circle cx={points[points.length - 1]?.x} cy={points[points.length - 1]?.y} r="6" fill={stroke} className="animate-pulse" />
 
+        {/* 成交量图表时显示所有数据点的小圆点（与日内趋势图样式一致） */}
+        {showVolume && points.map((p, i) => (
+          <circle key={`pt-${i}`} cx={p.x} cy={p.y} r="3" fill="#fff" stroke={stroke} strokeWidth="1" />
+        ))}
+
         {points.map((p, i) => (
           <rect key={i} x={p.x - 5} y={0} width="10" height={Math.max(1, height - 40)} fill="transparent" onMouseEnter={() => setHoveredPoint(p.data)} className="cursor-crosshair" />
         ))}
+
+        {/* 成交量柱状图（仅指数显示） */}
+        {showVolume && volumeChartParams && volumeData && (
+          <g className="volume-chart">
+            {/* 成交量区域背景线 */}
+            <line
+              x1={PADDING_LEFT}
+              y1={volumeChartParams.chartY + volumeChartParams.chartHeight}
+              x2={PADDING_LEFT + (points.length > 1 ? points[points.length - 1].x - points[0].x : 0) + 20}
+              y2={volumeChartParams.chartY + volumeChartParams.chartHeight}
+              stroke="#e2e8f0"
+              strokeWidth="1"
+            />
+            {/* 成交量柱状图 */}
+            {volumeData.map((v, i) => {
+              const barHeight = (v.volume / volumeChartParams.maxVolume) * volumeChartParams.chartHeight;
+              const barWidth = Math.max(3, (points.length > 1 ? (points[1].x - points[0].x) * 0.7 : 6));
+              return (
+                <rect
+                  key={`vol-${i}`}
+                  x={v.x - barWidth / 2}
+                  y={volumeChartParams.chartY + volumeChartParams.chartHeight - barHeight}
+                  width={barWidth}
+                  height={Math.max(1, barHeight)}
+                  fill={v.isUp ? 'url(#volume-up-gradient)' : 'url(#volume-down-gradient)'}
+                  className="transition-all duration-300"
+                />
+              );
+            })}
+            {/* 成交量标签 */}
+            <text
+              x={PADDING_LEFT - 12}
+              y={volumeChartParams.chartY + 12}
+              textAnchor="end"
+              className="text-[10px] fill-gray-400 font-mono"
+            >
+              VOL
+            </text>
+          </g>
+        )}
 
         {/* markers (e.g. trades) - render above overlays */}
         {(Array.isArray(markers) ? markers : []).map((m: any, idx: number) => (
@@ -180,7 +271,7 @@ const HistoryChart: React.FC<HistoryChartProps> = ({
           const vbW = vbParts[2] || 1000;
           const vbH = vbParts[3] || height;
           const chartTop = PADDING_TOP;
-          const chartBottom = vbH - PADDING_BOTTOM;
+          const chartBottom = showVolume ? totalHeight : (vbH - PADDING_BOTTOM);
           // compute label text and estimate its half width (approx) so we can clamp x precisely
           const labelText = formatLocalDate((hoveredPoint as any).date);
           const EST_CHAR_WIDTH = 7; // conservative per-char px width at font-size ~14

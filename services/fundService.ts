@@ -230,11 +230,17 @@ function normalizeHistoryPoints(points: Array<Partial<HistoricalPoint>> | undefi
       const value = Number((p as any)?.value ?? (p as any)?.y);
       if (!Number.isFinite(value)) return null;
       const equityReturn = Number((p as any)?.equityReturn ?? 0);
-      return {
+      const volume = Number((p as any)?.volume ?? 0);
+      const amount = Number((p as any)?.amount ?? 0);
+      const result: HistoricalPoint = {
         date: ts,
         value,
         equityReturn: Number.isFinite(equityReturn) ? equityReturn : 0,
-      } as HistoricalPoint;
+      };
+      // 只有指数数据才有成交量和成交额
+      if (Number.isFinite(volume) && volume > 0) result.volume = volume;
+      if (Number.isFinite(amount) && amount > 0) result.amount = amount;
+      return result;
     })
     .filter((p): p is HistoricalPoint => p !== null)
     .sort((a, b) => a.date - b.date);
@@ -668,13 +674,14 @@ export async function fetchIndexHistory(symbol: string): Promise<HistoricalPoint
    if (secid === 'NDX') secid = '100.NDX';
    if (secid === 'SPX') secid = '100.SPX';
    if (secid === 'HSI') secid = '100.HSI';
-   // fields2: date(f51), close price(f53), change percent(f59)
+   // fields2: date(f51), close price(f53), change percent(f59), volume(f56), amount(f57)
    // request last 365 points instead of 90 (expanded window)
-   const url = `https://push2his.eastmoney.com/api/qt/stock/kline/get?secid=${secid}&fields1=f1,f2,f3,f4,f5,f6&fields2=f51,f53,f59&klt=101&fqt=1&end=20500101&lmt=365`;
+   const url = `https://push2his.eastmoney.com/api/qt/stock/kline/get?secid=${secid}&fields1=f1,f2,f3,f4,f5,f6&fields2=f51,f53,f56,f57,f59&klt=101&fqt=1&end=20500101&lmt=365`;
    try {
      const response: any = await jsonp(url, 'cb');
      if (response?.data?.klines) {
       // Map raw klines into partial points and normalize (ensure timestamps in ms, sort, dedupe)
+      // kline format: 日期,收盘价,成交量,成交额,涨跌幅
       const raw: Array<Partial<HistoricalPoint>> = response.data.klines.map((line: string) => {
         const parts = line.split(',');
         // parts[0] may be a date string like '2026-02-20' or a numeric timestamp (s|ms)
@@ -682,7 +689,9 @@ export async function fetchIndexHistory(symbol: string): Promise<HistoricalPoint
         return ({
           date: parts[0],
           value: parseFloat(parts[1]) || 0,
-          equityReturn: parseFloat(parts[2]) || 0
+          volume: parseFloat(parts[2]) || 0,
+          amount: parseFloat(parts[3]) || 0,
+          equityReturn: parseFloat(parts[4]) || 0
         } as unknown) as Partial<HistoricalPoint>;
       });
       return normalizeHistoryPoints(raw as Array<Partial<HistoricalPoint>>);

@@ -61,6 +61,16 @@ export interface HistoricalPoint {
   date: number; // 时间戳
   value: number; // 净值
   equityReturn: number; // 当日涨跌
+  volume?: number; // 成交量（手），仅指数有效
+  amount?: number; // 成交额（元），仅指数有效
+}
+
+// 成交量数据点（用于图表渲染）
+export interface VolumeData {
+  x: number;           // SVG x 坐标
+  volume: number;      // 成交量（手）
+  amount?: number;     // 成交额（元）
+  isUp: boolean;       // 是否上涨（决定柱状图颜色）
 }
 
 // Profit calculator result type

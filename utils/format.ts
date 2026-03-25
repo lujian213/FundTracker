@@ -57,6 +57,33 @@ export function formatShares(v: number): string {
   return fmtNumber(v, 2);
 }
 
+/**
+ * 格式化成交量（手）
+ * @param volume 成交量（手）
+ */
+export function formatVolume(volume: number): string {
+  if (!Number.isFinite(volume) || volume <= 0) return '—';
+  if (volume >= 10000) {
+    return (volume / 10000).toFixed(2) + '万手';
+  }
+  return volume.toFixed(2) + '手';
+}
+
+/**
+ * 格式化成交额（元）
+ * @param amount 成交额（元）
+ */
+export function formatAmount(amount: number): string {
+  if (!Number.isFinite(amount) || amount <= 0) return '—';
+  if (amount >= 100000000) {
+    return (amount / 100000000).toFixed(2) + '亿';
+  }
+  if (amount >= 10000) {
+    return (amount / 10000).toFixed(2) + '万';
+  }
+  return amount.toFixed(2);
+}
+
 // Parse a user-provided formatted number string (may include thousands separators) into a number
 // Returns null when input is empty/invalid/negative
 export function parseFormattedNumber(s: string): number | null {
@@ -74,4 +101,4 @@ export function parseFormattedNumber(s: string): number | null {
   return Math.round(v * 100) / 100;
 }
 
-export default { fmtNumber, fmtNav, formatMoneyWithSeparators, formatMoney, formatPercent, formatShares, parseFormattedNumber };
+export default { fmtNumber, fmtNav, formatMoneyWithSeparators, formatMoney, formatPercent, formatShares, formatVolume, formatAmount, parseFormattedNumber };

@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom';
 import { ValuationData, HistoricalPoint, IntradayPoint, TradeRecord, RecommendedStrategy } from '../types';
 import { fetchFundHistory as defaultFetchFundHistory } from '../services/fundService';
 import * as cacheService from '../services/cacheService';
-import { computeMultipleSMAs, MA_COLORS } from '../utils/movingAverage';
+import { MA_COLORS } from '../utils/movingAverage';
 import { DEFAULT_VISIBLE_MAS, MA_WINDOWS } from '../utils/maConfig';
 import { computeRatingFromHistory } from '../utils/ratingHelper';
 import { computeAvgCostPrice } from '../utils/positionHelper';
@@ -20,6 +20,7 @@ import AISidePanel from './AISidePanel';
 import { queryAI, AIResponse, AIQueryContext } from '../services/aiService';
 import { formatMoneyWithSeparators, fmtNav, fmtNumber, formatPercent } from '../utils/format';
 import { getAIConfig, AIConfiguration } from '../services/aiConfigService';
+import { prepareChartData } from '../utils/chartDataHelper';
 
 interface FundDetailsModalProps {
   data: ValuationData;
@@ -287,9 +288,13 @@ export const FundDetailsModal: React.FC<FundDetailsModalProps> = ({ data, onClos
     }, [history, valuationData.currentPrice, valuationData.changePercentage, valuationData.realtimeDate, valuationData.netWorthDate]);
 
   const { path, area, points, viewBox, yLabels, xLabels, maPaths, maValues } = useMemo(() => {
-    // Use a display window of the most recent 90 points for the chart drawing and MA lines
-    const displayWindow = 90;
-    const displayData = chartData.length > displayWindow ? chartData.slice(-displayWindow) : chartData;
+    // 使用公共函数准备数据（包含MA计算和截取）
+    const { displayData, maValues: computedMaValues } = prepareChartData(chartData, {
+      displayCount: 90,
+      maLookback: 25,
+      maWindows: MA_WINDOWS
+    });
+
     if (displayData.length < 2) return { path: '', area: '', points: [], viewBox: '0 0 100 100', yLabels: [], xLabels: [], maPaths: {} as Record<number, string>, maValues: {} as Record<number, (number | null)[]> };
 
     const width = 1000;
@@ -337,8 +342,8 @@ export const FundDetailsModal: React.FC<FundDetailsModalProps> = ({ data, onClos
       return { x: getX(idx), text: `${d.getMonth() + 1}/${d.getDate()}` };
     });
 
-    // Calculate multiple SMAs (5,10,20) on the display window values
-    const maValues = computeMultipleSMAs(values, MA_WINDOWS);
+    // 使用公共函数计算好的MA值
+    const maValues = computedMaValues;
     const maPaths: Record<number, string> = {};
 
     for (const w of MA_WINDOWS) {
@@ -932,6 +937,12 @@ export const FundDetailsModal: React.FC<FundDetailsModalProps> = ({ data, onClos
                           const last = intradayPoints[intradayPoints.length - 1];
                           timeLabel = last.timestamp ? fmtTime(last.timestamp) : '—';
                           valueLabel = typeof last.value === 'number' ? last.value.toFixed(4) : '—';
+                          // 计算较上一日的变化
+                          const ch = computeChange(last.value, last.equityReturn);
+                          if (ch.abs !== null && ch.pct !== null) {
+                            changeText = `${ch.abs.toFixed(4)} (${ch.pct >= 0 ? '+' : ''}${ch.pct.toFixed(2)}%)`;
+                            changeClass = ch.pct >= 0 ? 'text-red-600' : 'text-green-600';
+                          }
                         }
                         return (
                           <>
@@ -947,8 +958,39 @@ export const FundDetailsModal: React.FC<FundDetailsModalProps> = ({ data, onClos
 
                 {activeTab === 'history' && (
                   <>
-                    <div className="flex items-center space-x-2 h-6">{/* Top placeholder */}</div>
-                    <div style={{ height: chartHeight }}>
+                    <div className="relative" style={{ height: chartHeight }}>
+                      {/* 均线切换按钮 - 右上角绝对定位 */}
+                      <div className="absolute top-1 right-2 z-10 flex items-center space-x-1">
+                        {MA_WINDOWS.map(n => {
+                          const color = MA_COLORS[n] || '#2563eb';
+                          return (
+                            <button
+                              key={n}
+                              type="button"
+                              aria-label={`切换显示 MA${n}`}
+                              onClick={() => setVisibleMAs(v => ({ ...v, [n]: !v[n] }))}
+                              className="text-[10px] px-1.5 py-0.5 rounded border inline-flex items-center gap-1 transition-colors bg-white/80 backdrop-blur-sm"
+                              style={{ borderColor: color, color, backgroundColor: visibleMAs[n] ? `${color}20` : 'rgba(255,255,255,0.8)' }}
+                            >
+                              <span data-testid={`ma-toggle-dot-${n}`} className="inline-block w-1.5 h-1.5 rounded-full" style={{ backgroundColor: color }} />
+                              <span className="font-medium">MA{n}</span>
+                            </button>
+                          );
+                        })}
+                        {/* 全选/全不选按钮 */}
+                        <button
+                          type="button"
+                          aria-label="全选/全不选均线"
+                          onClick={() => {
+                            const allSelected = MA_WINDOWS.every(n => visibleMAs[n]);
+                            setVisibleMAs(Object.fromEntries(MA_WINDOWS.map(n => [n, !allSelected])));
+                          }}
+                          className="text-[10px] px-1.5 py-0.5 rounded border border-gray-300 inline-flex items-center gap-1 transition-colors bg-white/80 backdrop-blur-sm text-gray-500 hover:text-gray-700 hover:border-gray-400"
+                        >
+                          <i className={`fas ${MA_WINDOWS.every(n => visibleMAs[n]) ? 'fa-check-square' : 'fa-square'} text-xs`}></i>
+                          <span className="font-medium">全选</span>
+                        </button>
+                      </div>
                       <HistoryChart
                          viewBox={viewBox}
                          path={path}
@@ -967,26 +1009,6 @@ export const FundDetailsModal: React.FC<FundDetailsModalProps> = ({ data, onClos
                          stroke="#ef4444"
                        />
                      </div>
-
-                    <div className="flex items-center space-x-2 h-6">
-                      <label className="text-xs text-gray-500 font-medium">均线：</label>
-                      {[5,10,20].map(n => {
-                        const color = MA_COLORS[n] || '#2563eb';
-                        return (
-                          <button
-                            key={n}
-                            type="button"
-                            aria-label={`切换显示 MA${n}`}
-                            onClick={() => setVisibleMAs(v => ({ ...v, [n]: !v[n] }))}
-                            className="text-xs px-2.5 py-1 rounded border inline-flex items-center gap-1.5 transition-colors"
-                            style={{ borderColor: color, color, backgroundColor: visibleMAs[n] ? `${color}1a` : '#ffffff' }}
-                          >
-                            <span data-testid={`ma-toggle-dot-${n}`} className="inline-block w-2 h-2 rounded-full" style={{ backgroundColor: color }} />
-                            <span className="font-medium">MA{n}</span>
-                          </button>
-                        );
-                      })}
-                    </div>
 
                     {/* Preallocated reserved info area under MA toggles to avoid layout jump when hover changes */}
                     <div className="h-12 bg-white flex items-center justify-start px-4 border-t">
@@ -1014,7 +1036,14 @@ export const FundDetailsModal: React.FC<FundDetailsModalProps> = ({ data, onClos
                           const last = chartData[chartData.length - 1];
                           dateLabel = toLocalDateKey(new Date(last.date));
                           valueLabel = last.value.toFixed(4);
-                          changeText = '—';
+                          // 计算涨跌
+                          if (chartData.length > 1) {
+                            const prevPoint = chartData[chartData.length - 2];
+                            const abs = last.value - prevPoint.value;
+                            const pct = prevPoint.value !== 0 ? (abs / prevPoint.value * 100) : 0;
+                            changeText = `${abs.toFixed(4)} (${pct >= 0 ? '+' : ''}${pct.toFixed(2)}%)`;
+                            changeClass = pct >= 0 ? 'text-red-600' : 'text-green-600';
+                          }
                         }
                         return (
                           <>
