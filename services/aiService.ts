@@ -36,7 +36,7 @@ export interface PromptTemplate {
  */
 export async function loadPromptTemplates(): Promise<PromptTemplate[]> {
   try {
-    const response = await fetch('./assets/config/ai-prompt-templates.json', { cache: 'no-store' });
+    const response = await fetch('./assets/config/ai-fund-prompt-templates.json', { cache: 'no-store' });
 
     if (!response.ok) {
       console.error(`Failed to load templates: HTTP ${response.status} ${response.statusText}`);
@@ -69,6 +69,46 @@ export async function getEnabledPromptTemplate(templateId?: string): Promise<Pro
     return template || null;
   } else {
     // 返回第一个启用的模板
+    return templates.find(t => t.enabled) || null;
+  }
+}
+
+/**
+ * 加载指数提示词模板
+ */
+export async function loadIndexPromptTemplates(): Promise<PromptTemplate[]> {
+  try {
+    const response = await fetch('./assets/config/ai-index-prompt-templates.json', { cache: 'no-store' });
+
+    if (!response.ok) {
+      console.error(`Failed to load index templates: HTTP ${response.status} ${response.statusText}`);
+      return [];
+    }
+
+    const data = await response.json();
+
+    if (data && data.templates && Array.isArray(data.templates)) {
+      return data.templates;
+    } else {
+      console.error('Invalid index template data structure:', data);
+      return [];
+    }
+  } catch (error) {
+    console.error('Failed to load index prompt templates:', error);
+    return [];
+  }
+}
+
+/**
+ * 根据ID获取启用的指数提示词模板
+ */
+export async function getEnabledIndexPromptTemplate(templateId?: string): Promise<PromptTemplate | null> {
+  const templates = await loadIndexPromptTemplates();
+
+  if (templateId) {
+    const template = templates.find(t => t.id === templateId && t.enabled);
+    return template || null;
+  } else {
     return templates.find(t => t.enabled) || null;
   }
 }
@@ -424,6 +464,37 @@ export async function queryAIWithTemplate(
     };
   }
 
+  const filledPrompt = fillTemplateVariables(template.template, context || {});
+
+  return queryAI(config, filledPrompt, context, onChunk);
+}
+
+/**
+ * 使用市场类型特定的模板发送AI查询
+ * @param marketType 市场类型 ('fund' 或 'index')
+ * @param onChunk 可选的流式回调
+ */
+export async function queryAIWithMarketTemplate(
+  config: AIConfiguration,
+  marketType: 'fund' | 'index',
+  context?: any,
+  onChunk?: StreamCallback
+): Promise<AIResponse> {
+  const template = marketType === 'index'
+    ? await getEnabledIndexPromptTemplate()
+    : await getEnabledPromptTemplate();
+
+  if (!template) {
+    const errorMsg = `没有启用的${marketType === 'index' ? '指数' : '基金'}模板`;
+    console.error(errorMsg);
+    return {
+      content: errorMsg,
+      success: false,
+      error: 'No template'
+    };
+  }
+
+  const { fillTemplateVariables } = await import('./promptTemplateService');
   const filledPrompt = fillTemplateVariables(template.template, context || {});
 
   return queryAI(config, filledPrompt, context, onChunk);

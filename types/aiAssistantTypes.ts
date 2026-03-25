@@ -2,7 +2,8 @@
 
 export interface AIAssistantMessage {
   id: string;
-  content: string;
+  content: string;           // 显示内容（常用问题的名称）
+  actualContent?: string;    // 实际内容（完整提示词，用于 AI 上下文）
   role: 'user' | 'assistant';
   timestamp: Date;
 }

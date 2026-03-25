@@ -1,5 +1,5 @@
 import { validateQuestions, applyTemplateVariables } from '../../services/commonQuestionsService';
-import { AIQueryContext } from '../../services/aiService';
+import { FundAIQueryContext } from '../../types/aiServiceTypes';
 
 describe('commonQuestionsService', () => {
   describe('validateQuestions', () => {
@@ -85,7 +85,8 @@ describe('commonQuestionsService', () => {
   describe('applyTemplateVariables', () => {
     test('should replace template variables with context values', () => {
       const template = '基金名称: {name}, 代码: {code}';
-      const context: AIQueryContext = {
+      const context: FundAIQueryContext = {
+        marketType: 'fund',
         fundName: '测试基金',
         fundSymbol: 'TEST001'
       };
@@ -96,7 +97,7 @@ describe('commonQuestionsService', () => {
 
     test('should replace "未设置" for missing fullCapacity and initialCapacity values', () => {
       const template = '满仓: {fullCapacity}, 初始份额: {initialCapacity}';
-      const context: AIQueryContext = {};
+      const context: FundAIQueryContext = { marketType: 'fund' };
 
       const result = applyTemplateVariables(template, context);
       expect(result).toBe('满仓: 未设置, 初始份额: 未设置');
@@ -104,7 +105,8 @@ describe('commonQuestionsService', () => {
 
     test('should replace fullCapacity with actual value when set', () => {
       const template = '满仓: {fullCapacity}';
-      const context: AIQueryContext = {
+      const context: FundAIQueryContext = {
+        marketType: 'fund',
         fullCapacity: 10000
       };
 
@@ -114,7 +116,8 @@ describe('commonQuestionsService', () => {
 
     test('should show "未设置" for fullCapacity when value is 0', () => {
       const template = '满仓: {fullCapacity}';
-      const context: AIQueryContext = {
+      const context: FundAIQueryContext = {
+        marketType: 'fund',
         fullCapacity: 0
       };
 
@@ -124,7 +127,8 @@ describe('commonQuestionsService', () => {
 
     test('should replace initialCapacity with actual value when set', () => {
       const template = '初始份额: {initialCapacity}';
-      const context: AIQueryContext = {
+      const context: FundAIQueryContext = {
+        marketType: 'fund',
         initialCapacity: 5000
       };
 
@@ -134,7 +138,8 @@ describe('commonQuestionsService', () => {
 
     test('should show "未设置" for initialCapacity when value is 0', () => {
       const template = '初始份额: {initialCapacity}';
-      const context: AIQueryContext = {
+      const context: FundAIQueryContext = {
+        marketType: 'fund',
         initialCapacity: 0
       };
 
@@ -144,7 +149,8 @@ describe('commonQuestionsService', () => {
 
     test('should handle trade history', () => {
       const template = '交易历史: {history}';
-      const context: AIQueryContext = {
+      const context: FundAIQueryContext = {
+        marketType: 'fund',
         tradeHistory: [{ date: '2023-01-01', amount: 100 }]
       };
 
@@ -155,7 +161,7 @@ describe('commonQuestionsService', () => {
 
     test('should show empty array for missing trade history', () => {
       const template = '交易历史: {history}';
-      const context: AIQueryContext = {};
+      const context: FundAIQueryContext = { marketType: 'fund' };
 
       const result = applyTemplateVariables(template, context);
       expect(result).toBe('交易历史: []');
@@ -163,7 +169,8 @@ describe('commonQuestionsService', () => {
 
     test('should replace initialDate with actual value', () => {
       const template = '初始日期: {initialDate}';
-      const context: AIQueryContext = {
+      const context: FundAIQueryContext = {
+        marketType: 'fund',
         initialDate: '2023-01-01'
       };
 
@@ -173,7 +180,7 @@ describe('commonQuestionsService', () => {
 
     test('should show "未设置" for missing initialDate', () => {
       const template = '初始日期: {initialDate}';
-      const context: AIQueryContext = {};
+      const context: FundAIQueryContext = { marketType: 'fund' };
 
       const result = applyTemplateVariables(template, context);
       expect(result).toBe('初始日期: 未设置');
@@ -181,7 +188,8 @@ describe('commonQuestionsService', () => {
 
     test('should show "未设置" for empty string initialDate', () => {
       const template = '初始日期: {initialDate}';
-      const context: AIQueryContext = {
+      const context: FundAIQueryContext = {
+        marketType: 'fund',
         initialDate: ''
       };
 
@@ -191,7 +199,8 @@ describe('commonQuestionsService', () => {
 
     test('should replace initialPrice with actual value', () => {
       const template = '初始价格: {initialPrice}';
-      const context: AIQueryContext = {
+      const context: FundAIQueryContext = {
+        marketType: 'fund',
         initialPrice: 1.2345
       };
 
@@ -201,7 +210,7 @@ describe('commonQuestionsService', () => {
 
     test('should show "未设置" for missing initialPrice', () => {
       const template = '初始价格: {initialPrice}';
-      const context: AIQueryContext = {};
+      const context: FundAIQueryContext = { marketType: 'fund' };
 
       const result = applyTemplateVariables(template, context);
       expect(result).toBe('初始价格: 未设置');
@@ -209,7 +218,8 @@ describe('commonQuestionsService', () => {
 
     test('should handle multiple template variables at once', () => {
       const template = '基金: {name} ({code}), 满仓: {fullCapacity}, 初始份额: {initialCapacity}';
-      const context: AIQueryContext = {
+      const context: FundAIQueryContext = {
+        marketType: 'fund',
         fundName: '测试基金',
         fundSymbol: 'TEST001',
         fullCapacity: 10000,
@@ -222,7 +232,7 @@ describe('commonQuestionsService', () => {
 
     test('should preserve template without variables', () => {
       const template = '这是一段普通文本，没有变量';
-      const context: AIQueryContext = {};
+      const context: FundAIQueryContext = { marketType: 'fund' };
 
       const result = applyTemplateVariables(template, context);
       expect(result).toBe('这是一段普通文本，没有变量');
@@ -230,7 +240,8 @@ describe('commonQuestionsService', () => {
 
     test('should handle repeated variables', () => {
       const template = '基金名称: {name}, 再次: {name}';
-      const context: AIQueryContext = {
+      const context: FundAIQueryContext = {
+        marketType: 'fund',
         fundName: '测试基金'
       };
 

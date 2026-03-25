@@ -1,6 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { ValuationData } from '../types';
-import { queryAI, queryAIWithTemplate, AIResponse, AIQueryContext, StreamCallback } from '../services/aiService';
+import { queryAI, queryAIWithMarketTemplate, AIResponse, StreamCallback } from '../services/aiService';
 import { getAIConfig, hasValidAIConfig, hasUsableAIConfig } from '../services/aiConfigService';
 import { AIConfiguration } from '../types/aiConfigTypes';
 import { aiAssistantStateManager } from '../services/aiAssistantStateManager';
@@ -10,48 +9,36 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { getCommonQuestions, applyTemplateVariables } from '../services/commonQuestionsService';
 import { CommonQuestion } from '../types/commonQuestionsTypes';
+import { FundAIQueryContext, IndexAIQueryContext } from '../types/aiServiceTypes';
 
-interface AISidePanelProps {
+export interface AISidePanelBaseProps {
   isVisible: boolean;
   onClose: () => void;
-  fundSymbol: string;
-  fundName: string;
-  valuationData?: ValuationData;
-  tradeHistory?: any[]; // 用户交易历史
-  fullCapacity?: number; // 基金满仓份额
-  initialCapacity?: number; // 用户投资该基金的初始份额
-  initialDate?: string; // 用户投资该基金的起始日期
-  initialPrice?: number; // 用户投资该基金的初始价格
-  marketValue?: number | null; // 当前基金的市场价值
-  position?: number | null; // 当前基金的仓位（份）
-  positionRate?: number | null; // 当前基金的仓位占比（百分比）
-  profit?: number | null; // 当前基金的整体盈利
-  avgCostPrice?: number | null; // 当前基金的平均成本价
+  stateKey: string;           // 状态管理key，如 'fund_000001' 或 'index_000001'
+  name: string;               // 显示名称
+  symbol: string;             // 代码
+  marketType: 'fund' | 'index';
+  getContextData: () => FundAIQueryContext | IndexAIQueryContext;  // 获取上下文数据的函数
+  modalId: string;            // 父模态框的id
 }
 
 interface Message {
   id: string;
-  content: string;
+  content: string;           // 显示内容（常用问题的名称）
+  actualContent?: string;    // 实际内容（完整提示词，用于 AI 上下文）
   role: 'user' | 'assistant';
   timestamp: Date;
 }
 
-const AISidePanel: React.FC<AISidePanelProps> = ({
+const AISidePanelBase: React.FC<AISidePanelBaseProps> = ({
   isVisible,
   onClose,
-  fundSymbol,
-  fundName,
-  valuationData,
-  tradeHistory,
-  fullCapacity,
-  initialCapacity,
-  initialDate,
-  initialPrice,
-  marketValue,
-  position,
-  positionRate,
-  profit,
-  avgCostPrice
+  stateKey,
+  name,
+  symbol,
+  marketType,
+  getContextData,
+  modalId
 }) => {
   const [messages, setMessages] = useState<Message[]>([]);
   const [showQuestionsMenu, setShowQuestionsMenu] = useState(false);
@@ -64,46 +51,34 @@ const AISidePanel: React.FC<AISidePanelProps> = ({
   const isCompressingRef = useRef(false);
   // 添加版本计数器来解决状态更新的竞争条件
   const stateVersionRef = useRef(0);
-  // 添加计数器来跳过压缩后/发送消息时的状态同步，防止历史消息被错误地添加到newContent
-  const skipMessagesEffectCountRef = useRef(0);
+  // 添加引用来标记是否正在发送消息，防止 useEffect 干扰状态同步
+  const isSendingMessageRef = useRef(false);
   // 添加引用来防止重复初始化
   const isInitializingRef = useRef(false);
+  // 添加引用来标记是否正在处理消息（用于队列判断，避免 React 状态异步问题）
+  const isProcessingRef = useRef(false);
+  // 添加消息队列，用于在 AI 处理时排队等待的请求
+  const pendingMessagesRef = useRef<Array<{
+    type: 'text' | 'commonQuestion';
+    content: string;
+    question?: CommonQuestion;
+  }>>([]);
 
   // 使用 ref 保存 props 的最新值，解决闭包问题
   const propsRef = useRef({
-    fundName,
-    fundSymbol,
-    valuationData,
-    tradeHistory,
-    fullCapacity,
-    initialCapacity,
-    initialDate,
-    initialPrice,
-    marketValue,
-    position,
-    positionRate,
-    profit,
-    avgCostPrice,
+    name,
+    symbol,
+    getContextData,
   });
 
   // 更新 ref 以保持最新值
   useEffect(() => {
     propsRef.current = {
-      fundName,
-      fundSymbol,
-      valuationData,
-      tradeHistory,
-      fullCapacity,
-      initialCapacity,
-      initialDate,
-      initialPrice,
-      marketValue,
-      position,
-      positionRate,
-      profit,
-      avgCostPrice,
+      name,
+      symbol,
+      getContextData,
     };
-  }, [fundName, fundSymbol, valuationData, tradeHistory, fullCapacity, initialCapacity, initialDate, initialPrice, marketValue, position, positionRate, profit, avgCostPrice]);
+  }, [name, symbol, getContextData]);
 
   // 初始化上下文压缩服务
   const compressionService = new ContextCompressionService();
@@ -139,15 +114,12 @@ const AISidePanel: React.FC<AISidePanelProps> = ({
   useEffect(() => {
     if (isVisible) {
       // Only load state from global manager when panel becomes visible, not on every render
-      const currentGlobalState = aiAssistantStateManager.getState(fundSymbol);
+      const currentGlobalState = aiAssistantStateManager.getState(stateKey);
 
       // 同步本地状态与全局状态
       if (currentGlobalState && currentGlobalState.hasBeenInitialized) {
         // 只有已成功初始化的状态才同步
         const messagesForDisplay = compressionService.getMessagesForDisplay(currentGlobalState);
-
-        // 设置跳过标志，防止 messages useEffect 覆盖状态
-        skipMessagesEffectCountRef.current = 1;
 
         setMessages(messagesForDisplay);
         setHasBeenInitialized(currentGlobalState.hasBeenInitialized);
@@ -161,10 +133,10 @@ const AISidePanel: React.FC<AISidePanelProps> = ({
         // 只有在不正在初始化时才执行初始化
         // 清除可能存在的失败状态
         if (currentGlobalState && !currentGlobalState.hasBeenInitialized) {
-          aiAssistantStateManager.clearState(fundSymbol);
+          aiAssistantStateManager.clearState(stateKey);
         }
 
-        const isInitializedToday = aiAssistantStateManager.isInitializedToday(fundSymbol);
+        const isInitializedToday = aiAssistantStateManager.isInitializedToday(stateKey);
         if (!isInitializedToday) {
           // 重置本地状态后初始化
           setMessages([]);
@@ -179,7 +151,7 @@ const AISidePanel: React.FC<AISidePanelProps> = ({
         }
       }
     }
-  }, [isVisible, fundSymbol]); // Only run when visibility or fund symbol changes
+  }, [isVisible, stateKey]); // Only run when visibility or stateKey changes
 
   // 更新全局状态管理器 - 只有当实际内容发生改变时才更新
   useEffect(() => {
@@ -193,21 +165,24 @@ const AISidePanel: React.FC<AISidePanelProps> = ({
       return;
     }
 
-    // 如果全局状态已经标记为已初始化，且本地 messages 为空或很少，直接跳过
-    // 这防止了在恢复状态时意外覆盖
-    const existingState = aiAssistantStateManager.getState(fundSymbol);
-    if (existingState && existingState.hasBeenInitialized && messages.length <= existingState.newContent.length) {
+    // 避免在发送消息过程中执行此副作用（handleSend 会手动更新状态）
+    if (isSendingMessageRef.current) {
       return;
     }
 
-    // 检查是否需要跳过这次状态同步（压缩后或发送消息时）
-    if (skipMessagesEffectCountRef.current > 0) {
-      skipMessagesEffectCountRef.current--;
-      return;
+    // 如果全局状态已经是最新的，跳过
+    // 这防止了在恢复状态时意外覆盖
+    const existingState = aiAssistantStateManager.getState(stateKey);
+    if (existingState && existingState.hasBeenInitialized) {
+      const globalMessageCount = (existingState.historyContent?.length || 0) +
+                                  (existingState.newContent?.length || 0);
+      if (messages.length <= globalMessageCount) {
+        return;
+      }
     }
 
     // 获取当前状态来决定初始化日期 - 如果已经有初始化日期则保持不变，否则使用当前日期
-    const currentState = aiAssistantStateManager.getState(fundSymbol);
+    const currentState = aiAssistantStateManager.getState(stateKey);
     const initializationDate = currentState?.initializationDate || new Date();
 
     // 重要：这里需要区分历史消息和新消息
@@ -278,7 +253,7 @@ const AISidePanel: React.FC<AISidePanelProps> = ({
     const currentVersion = ++stateVersionRef.current;
 
     // 额外检查：如果当前正在处于压缩后的稳定状态（压缩后的新消息数少于之前的总消息数），我们应更加谨慎
-    const previousState = aiAssistantStateManager.getState(fundSymbol);
+    const previousState = aiAssistantStateManager.getState(stateKey);
 
     // 比较关键状态 fields: 如果 summary 已经被设置且长度较大，这表明刚刚完成了压缩
     const justCompletedCompression = previousState &&
@@ -306,7 +281,7 @@ const AISidePanel: React.FC<AISidePanelProps> = ({
       previousState?.hasBeenInitialized !== finalState.hasBeenInitialized ||
       summaryChanged
     ) {
-      aiAssistantStateManager.setState(fundSymbol, finalState);
+      aiAssistantStateManager.setState(stateKey, finalState);
 
       // 更新上下文长度和压缩状态 - 确保使用正确的计算方法
       const contextLengthForAI = compressionService.getContextLength(finalState);
@@ -327,7 +302,7 @@ const AISidePanel: React.FC<AISidePanelProps> = ({
         setCompressionStatus(expectedStatus);
       }
     }
-  }, [messages, hasBeenInitialized, fundSymbol]); // 移除了compressionStatus依赖
+  }, [messages, hasBeenInitialized, stateKey]); // 移除了compressionStatus依赖
 
   const initializeChat = async () => {
     // 防止重复初始化
@@ -335,6 +310,7 @@ const AISidePanel: React.FC<AISidePanelProps> = ({
       return;
     }
     isInitializingRef.current = true;
+    isProcessingRef.current = true;  // 同时设置处理标志，防止并行请求
 
     const validConfig = hasUsableAIConfig();
 
@@ -343,13 +319,14 @@ const AISidePanel: React.FC<AISidePanelProps> = ({
     if (!validConfig) {
       const newMessage: Message = {
         id: 'welcome',
-        content: `欢迎使用AI投资助手！我可以为您提供关于${propsRef.current.fundName}(${propsRef.current.fundSymbol})的分析和投资建议。\n\n请先配置有效的AI服务才能开始使用。`,
+        content: `欢迎使用AI投资助手！我可以为您提供关于${propsRef.current.name}(${propsRef.current.symbol})的分析和投资建议。\n\n请先配置有效的AI服务才能开始使用。`,
         role: 'assistant',
         timestamp: new Date()
       };
 
       setMessages(prev => [...prev, newMessage]);
       isInitializingRef.current = false;
+      isProcessingRef.current = false;  // 重置处理标志
       return;
     }
 
@@ -361,6 +338,7 @@ const AISidePanel: React.FC<AISidePanelProps> = ({
     if (!currentConfig) {
       setIsLoading(false);
       isInitializingRef.current = false;
+      isProcessingRef.current = false;  // 重置处理标志
       const errorMessage: Message = {
         id: 'error-config',
         content: '无法加载AI配置，请检查您的设置',
@@ -373,21 +351,7 @@ const AISidePanel: React.FC<AISidePanelProps> = ({
     }
 
     try {
-      const context: AIQueryContext = {
-        fundName: propsRef.current.fundName,
-        fundSymbol: propsRef.current.fundSymbol,
-        valuationData: propsRef.current.valuationData,
-        tradeHistory: propsRef.current.tradeHistory,
-        fullCapacity: propsRef.current.fullCapacity,
-        initialCapacity: propsRef.current.initialCapacity,
-        initialDate: propsRef.current.initialDate,
-        initialPrice: propsRef.current.initialPrice,
-        marketValue: propsRef.current.marketValue ?? undefined,
-        position: propsRef.current.position ?? undefined,
-        positionRate: propsRef.current.positionRate ?? undefined,
-        profit: propsRef.current.profit ?? undefined,
-        avgCostPrice: propsRef.current.avgCostPrice ?? undefined,
-      };
+      const context = propsRef.current.getContextData();
 
       // 创建AI消息占位符
       const aiMessageId = `ai-${Date.now()}`;
@@ -399,7 +363,6 @@ const AISidePanel: React.FC<AISidePanelProps> = ({
       };
 
       // 显示空的AI消息
-      skipMessagesEffectCountRef.current = 1;
       setMessages([aiMessage]);
 
       // 流式回调
@@ -411,7 +374,8 @@ const AISidePanel: React.FC<AISidePanelProps> = ({
         ));
       };
 
-      const response: AIResponse = await queryAIWithTemplate(currentConfig, undefined, context, handleStreamChunk);
+      // 根据市场类型选择合适的模板
+      const response: AIResponse = await queryAIWithMarketTemplate(currentConfig, marketType, context, handleStreamChunk);
 
       if (response.success) {
         // 更新最终内容（流式回调已经更新了大部分内容，这里确保完整）
@@ -421,9 +385,6 @@ const AISidePanel: React.FC<AISidePanelProps> = ({
           role: 'assistant',
           timestamp: new Date()
         };
-
-        // 设置跳过标志，防止 messages useEffect 覆盖状态
-        skipMessagesEffectCountRef.current = 1;
 
         setMessages([finalAiMessage]);
 
@@ -439,7 +400,7 @@ const AISidePanel: React.FC<AISidePanelProps> = ({
           lastAccessed: new Date(),
           initializationDate: new Date()
         };
-        aiAssistantStateManager.setState(fundSymbol, newState);
+        aiAssistantStateManager.setState(stateKey, newState);
 
         // 更新上下文长度
         const contextLength = compressionService.getContextLength(newState);
@@ -473,6 +434,23 @@ const AISidePanel: React.FC<AISidePanelProps> = ({
     } finally {
       setIsLoading(false);
       isInitializingRef.current = false;
+      isProcessingRef.current = false;
+
+      // 检查是否有待处理的消息（初始化完成后处理队列）
+      if (pendingMessagesRef.current.length > 0) {
+        const nextMessage = pendingMessagesRef.current.shift();
+        if (nextMessage) {
+          // 先重新设置处理标志，防止竞态条件
+          isProcessingRef.current = true;
+
+          if (nextMessage.type === 'text') {
+            setTimeout(() => handleSend(nextMessage.content), 0);
+          } else if (nextMessage.type === 'commonQuestion' && nextMessage.question) {
+            const questionToProcess = nextMessage.question;
+            setTimeout(() => handleCommonQuestionSelect(questionToProcess, true), 0);
+          }
+        }
+      }
     }
   };
 
@@ -507,11 +485,11 @@ const AISidePanel: React.FC<AISidePanelProps> = ({
   // 加载常用问题列表
   useEffect(() => {
     if (isVisible) {
-      getCommonQuestions().then(questions => {
+      getCommonQuestions(marketType).then(questions => {
         setCommonQuestions(questions);
       });
     }
-  }, [isVisible]);
+  }, [isVisible, marketType]);
 
   // 检查当前是否在底部附近
   const checkIsAtBottom = useCallback(() => {
@@ -581,22 +559,37 @@ const AISidePanel: React.FC<AISidePanelProps> = ({
     };
   }, [showQuestionsMenu]);
 
-  const handleSend = async () => {
-    if (!inputValue.trim() || !isValidConfig || !config) {
+  const handleSend = async (queuedContent?: string) => {
+    // 使用传入的内容或当前输入框内容
+    const contentToSend = queuedContent ?? inputValue;
+
+    if (!contentToSend.trim() || !isValidConfig || !config) {
       return;
     }
 
+    // 如果正在处理且不是从队列处理函数调用的，将请求加入队列
+    // queuedContent 有值表示是从队列处理函数调用的，不需要再排队
+    if (isProcessingRef.current && !queuedContent) {
+      pendingMessagesRef.current.push({
+        type: 'text',
+        content: contentToSend
+      });
+      setInputValue('');  // 清空输入框
+      return;
+    }
+
+    // 标记正在处理
+    isProcessingRef.current = true;
+
     const userMessage: Message = {
       id: Date.now().toString(),
-      content: inputValue,
+      content: contentToSend,
       role: 'user',
       timestamp: new Date()
     };
 
-    // 设置计数器，跳过用户消息和AI响应触发的messages useEffect
-    // 用户消息会触发一次，AI响应会触发一次，共两次
-    // 因为我们会在handleSend中手动更新全局状态
-    skipMessagesEffectCountRef.current = 2;
+    // 设置锁，防止 useEffect 干扰状态同步
+    isSendingMessageRef.current = true;
 
     // 先添加用户消息到本地状态
     setMessages(prev => [...prev, userMessage]);
@@ -605,7 +598,7 @@ const AISidePanel: React.FC<AISidePanelProps> = ({
 
     try {
       // 获取当前状态以构建上下文
-      const currentState = aiAssistantStateManager.getState(fundSymbol);
+      const currentState = aiAssistantStateManager.getState(stateKey);
       let aiContext: string;
 
       if (currentState) {
@@ -613,28 +606,14 @@ const AISidePanel: React.FC<AISidePanelProps> = ({
         aiContext = compressionService.getContextForAI(currentState);
       } else {
         // 如果没有状态，只使用当前消息
-        aiContext = `[USER] ${inputValue}`;
+        aiContext = `[USER] ${contentToSend}`;
       }
 
-      // 准备上下文与基金信息
-      const context: AIQueryContext = {
-        fundName: propsRef.current.fundName,
-        fundSymbol: propsRef.current.fundSymbol,
-        valuationData: propsRef.current.valuationData,
-        tradeHistory: propsRef.current.tradeHistory,
-        fullCapacity: propsRef.current.fullCapacity,
-        initialCapacity: propsRef.current.initialCapacity,
-        initialDate: propsRef.current.initialDate,
-        initialPrice: propsRef.current.initialPrice,
-        marketValue: propsRef.current.marketValue ?? undefined,
-        position: propsRef.current.position ?? undefined,
-        positionRate: propsRef.current.positionRate ?? undefined,
-        profit: propsRef.current.profit ?? undefined,
-        avgCostPrice: propsRef.current.avgCostPrice ?? undefined,
-      };
+      // 准备上下文
+      const context = propsRef.current.getContextData();
 
       // 构建完整提示
-      const fullPrompt = `上下文信息:\n${aiContext}\n\n用户查询: ${inputValue}`;
+      const fullPrompt = `上下文信息:\n${aiContext}\n\n用户查询: ${contentToSend}`;
 
       // 创建AI消息占位符，立即显示
       const aiMessageId = `ai-${Date.now()}`;
@@ -657,7 +636,7 @@ const AISidePanel: React.FC<AISidePanelProps> = ({
         ));
       };
 
-      const response: AIResponse = await queryAI(config, fullPrompt, context, handleStreamChunk);
+      const response: AIResponse = await queryAI(config, fullPrompt, context as any, handleStreamChunk);
 
       // 更新AI消息的最终内容（确保使用完整响应）
       const finalAiMessage: Message = {
@@ -673,7 +652,7 @@ const AISidePanel: React.FC<AISidePanelProps> = ({
       ));
 
       // 更新全局状态管理器
-      const updatedState = aiAssistantStateManager.getState(fundSymbol);
+      const updatedState = aiAssistantStateManager.getState(stateKey);
 
       // 创建新的状态，包含本次交互的所有消息
       // 为了避免在压缩后重复添加消息，我们需要更智能地处理状态
@@ -698,7 +677,7 @@ const AISidePanel: React.FC<AISidePanelProps> = ({
       };
 
       // 首先更新全局状态
-      aiAssistantStateManager.setState(fundSymbol, newState);
+      aiAssistantStateManager.setState(stateKey, newState);
 
       // 检查是否需要压缩 - 注意：只有在AI回应之后才检查压缩，而不是用户提问后
       if (compressionService.needsCompression(newState)) {
@@ -726,11 +705,7 @@ const AISidePanel: React.FC<AISidePanelProps> = ({
           };
 
           // 更新全局状态 - 这必须在设置本地状态之前
-          aiAssistantStateManager.setState(fundSymbol, finalState);
-
-          // 设置计数器，跳过压缩完成后触发的messages useEffect
-          // 防止历史消息被错误地添加到 newContent
-          skipMessagesEffectCountRef.current = 1;
+          aiAssistantStateManager.setState(stateKey, finalState);
 
           // 更新本地状态 - 重要：重新计算所有显示内容
           const finalMessages = compressionService.getMessagesForDisplay(finalState);
@@ -784,55 +759,78 @@ const AISidePanel: React.FC<AISidePanelProps> = ({
       setMessages(prev => [...prev, errorMessage]);
     } finally {
       setIsLoading(false);
+      isSendingMessageRef.current = false;
+
+      // 检查是否有待处理的消息
+      if (pendingMessagesRef.current.length > 0) {
+        const nextMessage = pendingMessagesRef.current.shift();
+        if (nextMessage) {
+          // 先重新设置处理标志，防止在 setTimeout 执行前新请求不被排队
+          isProcessingRef.current = true;
+
+          // 直接调用处理函数
+          if (nextMessage.type === 'text') {
+            setTimeout(() => handleSend(nextMessage.content), 0);
+          } else if (nextMessage.type === 'commonQuestion' && nextMessage.question) {
+            const questionToProcess = nextMessage.question;
+            setTimeout(() => handleCommonQuestionSelect(questionToProcess, true), 0);
+          }
+        } else {
+          isProcessingRef.current = false;
+        }
+      } else {
+        isProcessingRef.current = false;
+      }
     }
   };
 
   // 处理常用问题选择
-  const handleCommonQuestionSelect = async (question: CommonQuestion) => {
+  const handleCommonQuestionSelect = async (question: CommonQuestion, fromQueue: boolean = false) => {
     if (!isValidConfig || !config) {
       return;
     }
+
+    // 如果正在处理且不是从队列处理函数调用的，将请求加入队列
+    if (isProcessingRef.current && !fromQueue) {
+      pendingMessagesRef.current.push({
+        type: 'commonQuestion',
+        content: question.name,
+        question
+      });
+      setShowQuestionsMenu(false);
+      return;
+    }
+
+    // 标记正在处理
+    isProcessingRef.current = true;
 
     // 关闭菜单
     setShowQuestionsMenu(false);
 
     // 构造上下文
-    const context: AIQueryContext = {
-      fundName: propsRef.current.fundName,
-      fundSymbol: propsRef.current.fundSymbol,
-      valuationData: propsRef.current.valuationData,
-      tradeHistory: propsRef.current.tradeHistory,
-      fullCapacity: propsRef.current.fullCapacity,
-      initialCapacity: propsRef.current.initialCapacity,
-      initialDate: propsRef.current.initialDate,
-      initialPrice: propsRef.current.initialPrice,
-      marketValue: propsRef.current.marketValue ?? undefined,
-      position: propsRef.current.position ?? undefined,
-      positionRate: propsRef.current.positionRate ?? undefined,
-      profit: propsRef.current.profit ?? undefined,
-      avgCostPrice: propsRef.current.avgCostPrice ?? undefined,
-    };
+    const context = propsRef.current.getContextData();
 
     // 替换模板变量得到实际内容
-    const actualPrompt = applyTemplateVariables(question.template, context);
+    const actualPrompt = applyTemplateVariables(question.template, context as any);
 
-    // 设置用户消息（显示问题名称）
+    // 设置用户消息（显示问题名称，但存储实际提示词）
     const userMessage: Message = {
       id: Date.now().toString(),
-      content: question.name,
+      content: question.name,           // 显示名称
+      actualContent: actualPrompt,      // 存储完整提示词，用于 AI 上下文
       role: 'user',
       timestamp: new Date()
     };
 
-    // 设置计数器跳过状态同步
-    skipMessagesEffectCountRef.current = 2;
+    // 设置锁，防止 useEffect 干扰状态同步
+    isSendingMessageRef.current = true;
 
     setMessages(prev => [...prev, userMessage]);
     setIsLoading(true);
 
     try {
       // 获取当前状态构建上下文
-      const currentState = aiAssistantStateManager.getState(fundSymbol);
+      const currentState = aiAssistantStateManager.getState(stateKey);
       let aiContext: string;
 
       if (currentState) {
@@ -864,7 +862,7 @@ const AISidePanel: React.FC<AISidePanelProps> = ({
         ));
       };
 
-      const response: AIResponse = await queryAI(config, fullPrompt, context, handleStreamChunk);
+      const response: AIResponse = await queryAI(config, fullPrompt, context as any, handleStreamChunk);
 
       // 更新AI消息
       const finalAiMessage: Message = {
@@ -879,7 +877,7 @@ const AISidePanel: React.FC<AISidePanelProps> = ({
       ));
 
       // 更新全局状态
-      const updatedState = aiAssistantStateManager.getState(fundSymbol);
+      const updatedState = aiAssistantStateManager.getState(stateKey);
       let newHistoryContent = updatedState?.historyContent || [];
       let newNewContent = [...(updatedState?.newContent || [])];
 
@@ -899,7 +897,7 @@ const AISidePanel: React.FC<AISidePanelProps> = ({
         initializationDate: updatedState?.initializationDate || new Date()
       };
 
-      aiAssistantStateManager.setState(fundSymbol, newState);
+      aiAssistantStateManager.setState(stateKey, newState);
 
       // 检查压缩
       if (compressionService.needsCompression(newState)) {
@@ -920,8 +918,7 @@ const AISidePanel: React.FC<AISidePanelProps> = ({
             initializationDate: newState.initializationDate
           };
 
-          aiAssistantStateManager.setState(fundSymbol, finalState);
-          skipMessagesEffectCountRef.current = 1;
+          aiAssistantStateManager.setState(stateKey, finalState);
 
           const finalMessages = compressionService.getMessagesForDisplay(finalState);
           setMessages(finalMessages);
@@ -961,6 +958,31 @@ const AISidePanel: React.FC<AISidePanelProps> = ({
       setMessages(prev => [...prev, errorMessage]);
     } finally {
       setIsLoading(false);
+      isSendingMessageRef.current = false;
+
+      // 检查是否有待处理的消息
+      if (pendingMessagesRef.current.length > 0) {
+        const nextMessage = pendingMessagesRef.current.shift();
+        if (nextMessage) {
+          // 先重新设置处理标志，防止在 setTimeout 执行前新请求不被排队
+          isProcessingRef.current = true;
+
+          // 直接调用处理函数
+          if (nextMessage.type === 'text') {
+            // 直接传递内容给 handleSend，不依赖 inputValue 状态
+            setTimeout(() => handleSend(nextMessage.content), 0);
+          } else if (nextMessage.type === 'commonQuestion' && nextMessage.question) {
+            const questionToProcess = nextMessage.question;
+            setTimeout(() => handleCommonQuestionSelect(questionToProcess), 0);
+          }
+        } else {
+          // 没有待处理消息，重置处理标志
+          isProcessingRef.current = false;
+        }
+      } else {
+        // 没有待处理消息，重置处理标志
+        isProcessingRef.current = false;
+      }
     }
   };
 
@@ -987,10 +1009,10 @@ const AISidePanel: React.FC<AISidePanelProps> = ({
     }
   };
 
-  // Calculate position based on the fund details modal
+  // Calculate position based on the parent modal
   const calculatePosition = () => {
-    // Find the fund details modal element to position relative to it using the specific ID
-    const modal = document.getElementById('fund-details-modal') as HTMLElement;
+    // Find the parent modal element to position relative to it using the specific ID
+    const modal = document.getElementById(modalId) as HTMLElement;
 
     if (modal) {
       const rect = modal.getBoundingClientRect();
@@ -1078,7 +1100,7 @@ const AISidePanel: React.FC<AISidePanelProps> = ({
           <div>
             <h3 className="text-lg font-bold text-gray-800">AI 投资助手</h3>
             <p className="text-xs text-gray-500 truncate">
-              {fundName} <span className="px-1.5 py-0.5 bg-gray-100 text-gray-500 rounded text-[10px] font-mono ml-1">{fundSymbol}</span>
+              {name} <span className="px-1.5 py-0.5 bg-gray-100 text-gray-500 rounded text-[10px] font-mono ml-1">{symbol}</span>
             </p>
           </div>
           <div className="flex flex-col items-end space-y-1">
@@ -1235,7 +1257,7 @@ const AISidePanel: React.FC<AISidePanelProps> = ({
               rows={2}
             />
             <button
-              onClick={handleSend}
+              onClick={() => handleSend()}
               disabled={isLoading || !inputValue.trim() || !isValidConfig}
               className={`w-12 h-12 flex items-center justify-center rounded-full ${
                 inputValue.trim() && isValidConfig
@@ -1286,4 +1308,4 @@ const AISidePanel: React.FC<AISidePanelProps> = ({
   );
 };
 
-export default AISidePanel;
+export default AISidePanelBase;

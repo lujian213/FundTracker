@@ -1,6 +1,6 @@
 import React from 'react';
 import { render, screen, waitFor, fireEvent } from '@testing-library/react';
-import AISidePanel from '../../components/AISidePanel';
+import FundAISidePanel from '../../components/FundAISidePanel';
 import { aiAssistantStateManager } from '../../services/aiAssistantStateManager';
 import { ContextCompressionService, COMPRESSION_THRESHOLD } from '../../services/ContextCompressionService';
 import { ValuationData } from '../../types';
@@ -45,7 +45,7 @@ jest.mock('../../services/commonQuestionsService', () => ({
   applyTemplateVariables: jest.fn((template) => template),
 }));
 
-describe('AISidePanel', () => {
+describe('FundAISidePanel', () => {
   const mockOnClose = jest.fn();
   const defaultProps = {
     isVisible: true,
@@ -69,27 +69,27 @@ describe('AISidePanel', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
-    aiAssistantStateManager.clearState('TEST001');
+    aiAssistantStateManager.clearState('fund_TEST001');
   });
 
   afterEach(() => {
-    aiAssistantStateManager.clearState('TEST001');
+    aiAssistantStateManager.clearState('fund_TEST001');
   });
 
   // === 基础 UI 测试 ===
   describe('UI Rendering', () => {
     test('renders correctly when visible', () => {
-      render(<AISidePanel {...defaultProps} valuationData={mockValuationData} />);
+      render(<FundAISidePanel {...defaultProps} valuationData={mockValuationData} />);
       expect(screen.getByText('AI 投资助手')).toBeInTheDocument();
     });
 
     test('does not render when not visible', () => {
-      const { container } = render(<AISidePanel {...defaultProps} isVisible={false} valuationData={mockValuationData} />);
+      const { container } = render(<FundAISidePanel {...defaultProps} isVisible={false} valuationData={mockValuationData} />);
       expect(container.firstChild).toBeNull();
     });
 
     test('calls onClose when close button is clicked', () => {
-      render(<AISidePanel {...defaultProps} valuationData={mockValuationData} />);
+      render(<FundAISidePanel {...defaultProps} valuationData={mockValuationData} />);
       fireEvent.click(screen.getByLabelText('关闭'));
       expect(mockOnClose).toHaveBeenCalledTimes(1);
     });
@@ -98,8 +98,8 @@ describe('AISidePanel', () => {
       require('../../services/aiConfigService').getAIConfig.mockReturnValue(null);
       require('../../services/aiConfigService').hasValidAIConfig.mockReturnValue(false);
 
-      const { rerender } = render(<AISidePanel {...defaultProps} valuationData={mockValuationData} />);
-      rerender(<AISidePanel {...defaultProps} valuationData={mockValuationData} />);
+      const { rerender } = render(<FundAISidePanel {...defaultProps} valuationData={mockValuationData} />);
+      rerender(<FundAISidePanel {...defaultProps} valuationData={mockValuationData} />);
 
       expect(screen.getByLabelText('发送')).toBeDisabled();
     });
@@ -113,7 +113,7 @@ describe('AISidePanel', () => {
         { id: '2', content: 'Initial message 2', role: 'assistant', timestamp: new Date() },
       ];
 
-      aiAssistantStateManager.setState('TEST001', {
+      aiAssistantStateManager.setState('fund_TEST001', {
         historyContent: [],
         newContent: initialMessages,
         summaryContent: '',
@@ -122,27 +122,27 @@ describe('AISidePanel', () => {
         initializationDate: new Date()
       });
 
-      const { rerender } = render(<AISidePanel {...defaultProps} />);
+      const { rerender } = render(<FundAISidePanel {...defaultProps} />);
 
       await waitFor(() => {
         expect(screen.getByText(/AI 投资助手/)).toBeInTheDocument();
       }, { timeout: 1000 });
 
       // Close and reopen
-      rerender(<AISidePanel {...defaultProps} isVisible={false} />);
-      rerender(<AISidePanel {...defaultProps} isVisible={true} />);
+      rerender(<FundAISidePanel {...defaultProps} isVisible={false} />);
+      rerender(<FundAISidePanel {...defaultProps} isVisible={true} />);
 
       await waitFor(() => {
         expect(screen.getByText(/AI 投资助手/)).toBeInTheDocument();
       }, { timeout: 1000 });
 
       // Verify state is preserved
-      const state = aiAssistantStateManager.getState('TEST001');
+      const state = aiAssistantStateManager.getState('fund_TEST001');
       expect(state?.newContent.length).toBe(2);
     });
 
     test('should not duplicate messages when panel is reopened', async () => {
-      const { rerender } = render(<AISidePanel {...defaultProps} />);
+      const { rerender } = render(<FundAISidePanel {...defaultProps} />);
 
       await waitFor(() => {
         expect(screen.getByText(/AI 投资助手/)).toBeInTheDocument();
@@ -151,8 +151,8 @@ describe('AISidePanel', () => {
       const initialCount = screen.getAllByText(/(AI 投资助手|Test response)/i).length;
 
       // Close and reopen
-      rerender(<AISidePanel {...defaultProps} isVisible={false} />);
-      rerender(<AISidePanel {...defaultProps} isVisible={true} />);
+      rerender(<FundAISidePanel {...defaultProps} isVisible={false} />);
+      rerender(<FundAISidePanel {...defaultProps} isVisible={true} />);
 
       await waitFor(() => {
         expect(screen.getByText(/AI 投资助手/)).toBeInTheDocument();
@@ -171,7 +171,7 @@ describe('AISidePanel', () => {
         timestamp: new Date()
       };
 
-      aiAssistantStateManager.setState('TEST001', {
+      aiAssistantStateManager.setState('fund_TEST001', {
         historyContent: [{ id: 'old', content: longContent, role: 'user', timestamp: new Date() }],
         newContent: [aiMessage],
         summaryContent: 'Previous summary',
@@ -180,7 +180,7 @@ describe('AISidePanel', () => {
         initializationDate: new Date()
       });
 
-      render(<AISidePanel {...defaultProps} />);
+      render(<FundAISidePanel {...defaultProps} />);
 
       await waitFor(() => {
         expect(screen.getByText(/AI 投资助手/)).toBeInTheDocument();
@@ -191,7 +191,7 @@ describe('AISidePanel', () => {
     });
 
     test('should maintain separate states for different funds', () => {
-      aiAssistantStateManager.setState('FUND_A', {
+      aiAssistantStateManager.setState('fund_FUND_A', {
         historyContent: [],
         newContent: [{ id: '1', content: 'Fund A message', role: 'user', timestamp: new Date() }],
         summaryContent: '',
@@ -200,7 +200,7 @@ describe('AISidePanel', () => {
         initializationDate: new Date()
       });
 
-      aiAssistantStateManager.setState('FUND_B', {
+      aiAssistantStateManager.setState('fund_FUND_B', {
         historyContent: [],
         newContent: [{ id: '1', content: 'Fund B message', role: 'user', timestamp: new Date() }],
         summaryContent: '',
@@ -209,15 +209,15 @@ describe('AISidePanel', () => {
         initializationDate: new Date()
       });
 
-      const stateA = aiAssistantStateManager.getState('FUND_A');
-      const stateB = aiAssistantStateManager.getState('FUND_B');
+      const stateA = aiAssistantStateManager.getState('fund_FUND_A');
+      const stateB = aiAssistantStateManager.getState('fund_FUND_B');
 
       expect(stateA?.newContent[0].content).toBe('Fund A message');
       expect(stateB?.newContent[0].content).toBe('Fund B message');
     });
 
     test('should not exhibit the summaryLength=0, newContentLength=large bug', async () => {
-      const { container } = render(<AISidePanel {...defaultProps} />);
+      const { container } = render(<FundAISidePanel {...defaultProps} />);
 
       await waitFor(() => {
         expect(screen.getByText(/AI 投资助手/)).toBeInTheDocument();
@@ -237,7 +237,7 @@ describe('AISidePanel', () => {
         await new Promise(resolve => setTimeout(resolve, 50));
       }
 
-      const finalState = aiAssistantStateManager.getState('TEST001');
+      const finalState = aiAssistantStateManager.getState('fund_TEST001');
       expect(finalState).not.toBeNull();
 
       if (finalState?.summaryContent && finalState.summaryContent.length > 0) {
@@ -254,7 +254,7 @@ describe('AISidePanel', () => {
   // === 常用问题功能测试 ===
   describe('Common Questions Feature', () => {
     test('should show common questions button when questions are loaded', async () => {
-      render(<AISidePanel {...defaultProps} valuationData={mockValuationData} />);
+      render(<FundAISidePanel {...defaultProps} valuationData={mockValuationData} />);
 
       await waitFor(() => {
         expect(screen.getByLabelText('常用问题')).toBeInTheDocument();
@@ -262,7 +262,7 @@ describe('AISidePanel', () => {
     });
 
     test('should show dropdown menu when button is clicked', async () => {
-      render(<AISidePanel {...defaultProps} valuationData={mockValuationData} />);
+      render(<FundAISidePanel {...defaultProps} valuationData={mockValuationData} />);
 
       await waitFor(() => {
         expect(screen.getByLabelText('常用问题')).toBeInTheDocument();
@@ -279,7 +279,7 @@ describe('AISidePanel', () => {
     test('should disable button when AI is not configured', async () => {
       require('../../services/aiConfigService').hasUsableAIConfig.mockReturnValue(false);
 
-      render(<AISidePanel {...defaultProps} valuationData={mockValuationData} />);
+      render(<FundAISidePanel {...defaultProps} valuationData={mockValuationData} />);
 
       await waitFor(() => {
         const button = screen.getByLabelText('常用问题');

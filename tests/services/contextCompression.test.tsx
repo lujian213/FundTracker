@@ -1,6 +1,6 @@
 import React from 'react';
 import { render, screen, waitFor, fireEvent } from '@testing-library/react';
-import AISidePanel from '../../components/AISidePanel';
+import FundAISidePanel from '../../components/FundAISidePanel';
 import { aiAssistantStateManager } from '../../services/aiAssistantStateManager';
 import { getAIConfig, hasValidAIConfig } from '../../services/aiConfigService';
 import { queryAI, queryAIWithTemplate } from '../../services/aiService';
@@ -87,7 +87,7 @@ jest.mock('../../services/aiAssistantStateManager', () => ({
   },
 }));
 
-describe('AISidePanel Context Compression Test', () => {
+describe('FundAISidePanel Context Compression Test', () => {
   const defaultProps = {
     isVisible: true,
     onClose: jest.fn(),
@@ -132,7 +132,7 @@ describe('AISidePanel Context Compression Test', () => {
 
     (aiAssistantStateManager.getState as jest.MockedFunction<any>).mockReturnValue(mockState);
 
-    render(<AISidePanel {...defaultProps} />);
+    render(<FundAISidePanel {...defaultProps} />);
 
     // 检查是否显示上下文长度和压缩状态
     await waitFor(() => {
@@ -165,7 +165,7 @@ describe('AISidePanel Context Compression Test', () => {
 
     (aiAssistantStateManager.getState as jest.MockedFunction<any>).mockReturnValue(mockState);
 
-    render(<AISidePanel {...defaultProps} />);
+    render(<FundAISidePanel {...defaultProps} />);
 
     // Wait for initial rendering and check current status
     await waitFor(() => {
@@ -210,7 +210,7 @@ describe('AISidePanel Context Compression Test', () => {
     // We'll test this differently - check if error handling occurs without specifically
     // checking for "Compression Failed" text
 
-    render(<AISidePanel {...defaultProps} />);
+    render(<FundAISidePanel {...defaultProps} />);
 
     // Wait a bit for initialization
     await waitFor(() => {

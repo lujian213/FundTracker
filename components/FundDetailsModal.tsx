@@ -16,7 +16,7 @@ import { resolvePreferredPrice, toLocalDateKey } from '../utils/priceResolver';
 import { localDateKey, AggregatedMarker, aggregateTradesByDate, generatePositionStartMarker } from '../utils/tradeAggregation';
 import IntradayChart from './IntradayChart';
 import HistoryChart from './HistoryChart';
-import AISidePanel from './AISidePanel';
+import FundAISidePanel from './FundAISidePanel';
 import { queryAI, AIResponse, AIQueryContext } from '../services/aiService';
 import { formatMoneyWithSeparators, fmtNav, fmtNumber, formatPercent } from '../utils/format';
 import { getAIConfig, AIConfiguration } from '../services/aiConfigService';
@@ -1223,7 +1223,7 @@ export const FundDetailsModal: React.FC<FundDetailsModalProps> = ({ data, onClos
                ) : <ProfitModal symbol={data.symbol} fundName={valuationData.name} currentPrice={valuationData.currentPrice} previousPrice={valuationData.previousPrice} realtimeDate={valuationData.realtimeDate} netWorthDate={valuationData.netWorthDate} initialPosition={initialPosition} initialPrice={initialPrice} initialStartDate={startDate} onClose={() => setShowProfit(false)} zIndex={SUBMODAL_Z_INDEX} />)}
                {/* AI Assistant panel - rendered with portal to avoid parent re-renders */}
                {showAI && aiFundDataRef.current && (typeof document !== 'undefined' && document.body ? createPortal(
-                 <AISidePanel
+                 <FundAISidePanel
                    isVisible={showAI}
                    onClose={() => setShowAI(false)}
                    fundSymbol={aiFundDataRef.current.symbol}
@@ -1241,7 +1241,7 @@ export const FundDetailsModal: React.FC<FundDetailsModalProps> = ({ data, onClos
                    avgCostPrice={aiFundDataRef.current.avgCostPrice}
                  />,
                  document.body
-               ) : <AISidePanel
+               ) : <FundAISidePanel
                  isVisible={showAI}
                  onClose={() => setShowAI(false)}
                  fundSymbol={aiFundDataRef.current.symbol}

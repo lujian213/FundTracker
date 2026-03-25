@@ -97,7 +97,11 @@ ${currentContextContent}
    */
   public serializeMessages(messages: AIAssistantMessage[]): string {
     return messages
-      .map(msg => `[${msg.role.toUpperCase()}] ${msg.content}`)
+      .map(msg => {
+        // 如果有 actualContent，使用它；否则使用 content
+        const contentToUse = msg.actualContent || msg.content;
+        return `[${msg.role.toUpperCase()}] ${contentToUse}`;
+      })
       .join('\n\n');
   }
 

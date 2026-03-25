@@ -2,9 +2,12 @@ import { HistoricalPoint } from '../types';
 import { computeMultipleSMAs } from './movingAverage';
 import { MA_WINDOWS } from './maConfig';
 
+// 默认的 MA lookback，取 MA_WINDOWS 最大值，确保第一个显示点有完整的 MA 值
+const DEFAULT_MA_LOOKBACK = Math.max(...MA_WINDOWS);
+
 export interface ChartDataPrepareOptions {
   displayCount?: number;   // 显示的数据点数量，默认90
-  maLookback?: number;     // MA计算需要的额外数据点，默认25
+  maLookback?: number;     // MA计算需要的额外数据点，默认取MA_WINDOWS最大值
   maWindows?: number[];    // MA窗口列表，默认 [5, 10, 20]
 }
 
@@ -27,7 +30,7 @@ export function prepareChartData(
 ): ChartDataPrepareResult {
   const {
     displayCount = 90,
-    maLookback = 25,
+    maLookback = DEFAULT_MA_LOOKBACK,
     maWindows = MA_WINDOWS
   } = options;
 

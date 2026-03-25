@@ -10,6 +10,7 @@ import { toLocalDateKey } from '../utils/priceResolver';
 import { formatDateDisplay } from '../utils/dateFormat';
 import { prepareChartData } from '../utils/chartDataHelper';
 import { formatVolume, formatAmount } from '../utils/format';
+import IndexAISidePanel from './IndexAISidePanel';
 
 interface IndexDetailsModalProps {
   data: MarketIndex;
@@ -24,6 +25,7 @@ export const IndexDetailsModal: React.FC<IndexDetailsModalProps> = ({ data, onCl
   const [intradayPoints, setIntradayPoints] = useState<any[]>([]);
   const [visibleMAs, setVisibleMAs] = useState<Record<number, boolean>>(() => Object.fromEntries(DEFAULT_VISIBLE_MAS.map(n => [n, true])));
   const [hoveredIntradayPoint, setHoveredIntradayPoint] = useState<any | null>(null);
+  const [showAI, setShowAI] = useState(false);
   // shared chart height to match FundDetailsModal
   // IntradayChart has paddingBottom=30, HistoryChart has paddingBottom=0 but x labels outside viewBox
   // Use consistent total height for both tabs
@@ -138,7 +140,7 @@ export const IndexDetailsModal: React.FC<IndexDetailsModalProps> = ({ data, onCl
   }, [history]);
 
   return (
-    <div className="fixed inset-0 z-[110] flex items-center justify-center p-4">
+    <div id="index-details-modal" className="fixed inset-0 z-[110] flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/60 backdrop-blur-md animate-in fade-in duration-300" onClick={onClose}></div>
 
       <div className="relative bg-white w-full max-w-2xl overflow-hidden shadow-2xl animate-in zoom-in-95 duration-300 flex flex-col max-h-[90vh] rounded-3xl">
@@ -158,9 +160,18 @@ export const IndexDetailsModal: React.FC<IndexDetailsModalProps> = ({ data, onCl
               </span>
             </div>
           </div>
-          <button onClick={onClose} className="w-10 h-10 rounded-full bg-gray-50 flex items-center justify-center text-gray-400 hover:bg-gray-100 transition-colors">
-            <i className="fas fa-times"></i>
-          </button>
+          <div className="flex items-center space-x-2">
+            <button
+              onClick={() => setShowAI(true)}
+              className="w-10 h-10 rounded-full bg-blue-50 flex items-center justify-center text-blue-500 hover:bg-blue-100 transition-colors"
+              title="AI助手"
+            >
+              <i className="fas fa-robot"></i>
+            </button>
+            <button onClick={onClose} className="w-10 h-10 rounded-full bg-gray-50 flex items-center justify-center text-gray-400 hover:bg-gray-100 transition-colors">
+              <i className="fas fa-times"></i>
+            </button>
+          </div>
         </div>
 
         <div className="flex-1 overflow-hidden p-1">
@@ -341,6 +352,16 @@ export const IndexDetailsModal: React.FC<IndexDetailsModalProps> = ({ data, onCl
           )}
         </div>
       </div>
+      <IndexAISidePanel
+        isVisible={showAI}
+        onClose={() => setShowAI(false)}
+        indexSymbol={data.symbol}
+        indexName={data.name}
+        history={history}
+        maValues={maValues}
+        volumeData={volumeData}
+        intradayPoints={intradayPoints}
+      />
     </div>
   );
 };
