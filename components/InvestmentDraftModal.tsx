@@ -30,6 +30,40 @@ const InvestmentDraftModal: React.FC<InvestmentDraftModalProps> = ({
   const [draftData, setDraftData] = useState<Record<string, DraftEntry>>({});
   const [copied, setCopied] = useState(false);
   const [selectedFunds, setSelectedFunds] = useState<Set<string>>(new Set()); // 选中的基金
+  const MODAL_HEIGHT_CACHE_KEY = 'draft_modal_matched_height';
+
+  const [modalHeight, setModalHeight] = useState<number | null>(() => {
+    // 初始化时从 localStorage 读取缓存的高度
+    try {
+      const cached = localStorage.getItem(MODAL_HEIGHT_CACHE_KEY);
+      return cached ? parseFloat(cached) : null;
+    } catch {
+      return null;
+    }
+  }); // 动态高度
+
+  // 监听详情窗口高度变化
+  useEffect(() => {
+    const checkHeight = () => {
+      const detailHeight = (window as any).__detailModalHeight;
+      if (detailHeight && Math.abs(detailHeight - (modalHeight || 0)) > 0.5) {
+        setModalHeight(detailHeight);
+        // 缓存高度到 localStorage（有差异时更新）
+        try {
+          localStorage.setItem(MODAL_HEIGHT_CACHE_KEY, String(detailHeight));
+        } catch {
+          // 忽略存储错误
+        }
+      }
+    };
+
+    // 初始检查
+    checkHeight();
+
+    // 定期检查（在详情窗口打开后）
+    const interval = setInterval(checkHeight, 100);
+    return () => clearInterval(interval);
+  }, [modalHeight]);
 
   // Initialize draft data from localStorage and filter for funds with fullCapacity
   useEffect(() => {
@@ -370,12 +404,27 @@ const InvestmentDraftModal: React.FC<InvestmentDraftModalProps> = ({
     return gainLoss >= 0 ? 'text-red-600' : 'text-green-600';
   };
 
+  useEffect(() => {
+    if (sideBySide) {
+      const modal = document.querySelector('.investment-draft-modal-content') as HTMLElement;
+      if (modal) {
+        const rect = modal.getBoundingClientRect();
+        // 将草稿窗口右边界存储到 window 对象，供基金详情窗口使用
+        (window as any).__draftModalRight = rect.right;
+      }
+    }
+  }, [sideBySide, modalHeight]);
+
   const content = (
     <div className="fixed inset-0 z-[130] flex items-center justify-center pointer-events-none">
       <div className="absolute inset-0 bg-black/40 pointer-events-auto" onClick={onClose} />
       <div
-        className="relative bg-white w-full max-w-4xl shadow-2xl animate-in zoom-in-95 duration-200 flex flex-col pointer-events-auto h-[61.95vh] transition-transform duration-300 ease-in-out"
-        style={{ transform: sideBySide ? 'translateX(calc(-50vw + 28rem + 32px))' : 'translateX(0)' }}
+        className="investment-draft-modal-content relative bg-white w-full max-w-[880px] shadow-2xl animate-in zoom-in-95 duration-200 flex flex-col pointer-events-auto transition-transform duration-300 ease-in-out"
+        style={{
+          transform: sideBySide ? 'translateX(calc(-50vw + 28rem + 32px))' : 'translateX(0)',
+          height: modalHeight ? `${modalHeight}px` : '90vh',
+          maxHeight: '90vh'
+        }}
       >
         <div className="px-6 pt-3 pb-1 border-b border-gray-100 flex justify-between items-center flex-shrink-0">
           <h3 className="text-lg font-bold">投资计划草稿</h3>
@@ -405,11 +454,11 @@ const InvestmentDraftModal: React.FC<InvestmentDraftModalProps> = ({
 
         <div className="px-6 flex-1 min-h-0 pb-1">
           <div className="border border-gray-100 rounded-xl overflow-hidden h-full flex flex-col">
-            <div className="overflow-x-auto flex-1" style={{ overflowY: 'auto' }}>
+            <div className="overflow-hidden flex-1" style={{ overflowY: 'auto' }}>
               <table className="w-full text-sm">
                 <thead className="sticky top-0 z-10 bg-gray-50">
                   <tr className="border-b border-gray-200" style={{ height: '35px' }}>
-                    <th className="px-2 py-1 text-center text-xs font-semibold text-gray-500 min-w-[28px] w-[28px]">
+                    <th className="px-2 py-1 text-center text-xs font-semibold text-gray-500 min-w-[20px] w-[20px]">
                       <input
                         type="checkbox"
                         checked={(() => {
@@ -427,12 +476,12 @@ const InvestmentDraftModal: React.FC<InvestmentDraftModalProps> = ({
                     <th className="px-2 py-1 text-left text-xs font-semibold text-gray-500 min-w-[140px] w-[140px]">基金名称</th>
                     <th className="px-2 py-1 text-left text-xs font-semibold text-gray-500 min-w-[90px] w-[90px]">实时估值</th>
                     <th className="px-2 py-1 text-left text-xs font-semibold text-gray-500 min-w-[90px] w-[90px]">前值</th>
-                    <th className="px-2 py-1 text-left text-xs font-semibold text-gray-500 min-w-[60px] w-[60px]">涨跌幅</th>
-                    <th className="px-2 py-1 text-left text-xs font-semibold text-gray-500 min-w-[80px] w-[80px]">操作</th>
-                    <th className="px-2 py-1 text-left text-xs font-semibold text-gray-500 min-w-[80px] w-[80px]">金额</th>
-                    <th className="px-2 py-1 text-left text-xs font-semibold text-gray-500 min-w-[80px] w-[80px]">份额</th>
-                    <th className="px-2 py-1 text-left text-xs font-semibold text-gray-500 min-w-[100px] w-[100px]">注释</th>
-                    <th className="px-2 py-1 text-left text-xs font-semibold text-gray-500 min-w-[60px] w-[60px]"></th>
+                    <th className="px-2 py-1 text-left text-xs font-semibold text-gray-500 min-w-[70px] w-[70px]">涨跌幅</th>
+                    <th className="px-2 py-1 text-left text-xs font-semibold text-gray-500 min-w-[70px] w-[70px]">操作</th>
+                    <th className="px-2 py-1 text-left text-xs font-semibold text-gray-500 min-w-[70px] w-[70px]">金额</th>
+                    <th className="px-2 py-1 text-left text-xs font-semibold text-gray-500 min-w-[70px] w-[70px]">份额</th>
+                    <th className="px-2 py-1 text-left text-xs font-semibold text-gray-500 min-w-[70px] w-[70px]">注释</th>
+                    <th className="px-1 py-1 text-left text-xs font-semibold text-gray-500 min-w-[56px] w-[56px]"></th>
                   </tr>
                 </thead>
                 <tbody>
@@ -532,7 +581,7 @@ const InvestmentDraftModal: React.FC<InvestmentDraftModalProps> = ({
                           </td>
 
                           <td className={`px-2 py-1 text-left text-xs font-medium ${getGainLossColor(fund.symbol)}`}>
-                            <div className="truncate" style={{ maxWidth: '60px' }}>
+                            <div className="truncate" style={{ maxWidth: '70px' }}>
                               {getGainLoss(fund.symbol)}
                             </div>
                           </td>
@@ -550,7 +599,7 @@ const InvestmentDraftModal: React.FC<InvestmentDraftModalProps> = ({
                           </td>
 
                           <td className="px-2 py-1 text-left text-xs">
-                            <div className="w-[65px] h-full flex items-center">
+                            <div className="w-[70px] h-full flex items-center">
                               {entry.operation === '不操作' ? (
                                 <span className="text-gray-400 text-xs">-</span>
                               ) : (
@@ -566,7 +615,7 @@ const InvestmentDraftModal: React.FC<InvestmentDraftModalProps> = ({
                           </td>
 
                           <td className="px-2 py-1 text-left text-xs">
-                            <div className="truncate" style={{ maxWidth: '65px' }}>
+                            <div className="truncate" style={{ maxWidth: '70px' }}>
                               {calculateShares(fund.symbol)}
                             </div>
                           </td>

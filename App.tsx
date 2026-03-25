@@ -157,8 +157,8 @@ const AppContent: React.FC = () => {
   const [fundStatuses, setFundStatuses] = useState<Record<string, CardStatus>>({});
   const [indexStatuses, setIndexStatuses] = useState<Record<string, CardStatus>>({});
 
-  const [viewingSymbol, setViewingSymbol] = useState<string | null>(null);
-  const [viewingFromDraft, setViewingFromDraft] = useState<boolean>(false);
+  // viewingSymbol 和 viewingFromDraft 合并为一个状态对象，确保同时更新
+  const [viewingFund, setViewingFund] = useState<{ symbol: string; fromDraft: boolean } | null>(null);
   const [virtualTradeModalFund, setVirtualTradeModalFund] = useState<string | null>(null);
   const [viewingIndex, setViewingIndex] = useState<MarketIndex | null>(null);
   const [pendingImportData, setPendingImportData] = useState<BackupData | null>(null);
@@ -860,7 +860,7 @@ const AppContent: React.FC = () => {
                   ticker={ticker}
                   data={marketData[ticker.symbol]}
                   status={fundStatuses[ticker.symbol] ?? 'unknown'}
-                  onClick={() => marketData[ticker.symbol] && setViewingSymbol(ticker.symbol)}
+                  onClick={() => marketData[ticker.symbol] && setViewingFund({ symbol: ticker.symbol, fromDraft: false })}
                   isSelectionMode={isSelectionMode}
                   isSelected={selectedItems.has(selectionKey)}
                   onSelect={() => toggleSelection(selectionKey)}
@@ -882,9 +882,9 @@ const AppContent: React.FC = () => {
       )}
 
       {isModalOpen && <AddTickerModal onClose={() => setIsModalOpen(false)} onAdd={async (symbols, type) => { if (type === MarketType.INDEX) { const isGlobal = (s: string) => /[A-Za-z]/.test(s) || /^(100|101|102)\./.test(s); const newDomestic = symbols.filter(s => !isGlobal(s) && !indicesConfig.includes(s)); const newGlobal = symbols.filter(s => isGlobal(s) && !globalIndicesConfig.includes(s)); if (newDomestic.length) setIndicesConfig(p => [...p, ...newDomestic]); if (newGlobal.length) setGlobalIndicesConfig(p => [...p, ...newGlobal]); } else { const existing = new Set(portfolio.map(p => p.symbol)); const news = symbols.filter(s => !existing.has(s)).map(s => ({ id: Math.random().toString(36).substr(2, 9), symbol: s, name: '', market: MarketType.FUND })); if (news.length) { setPortfolio(p => [...p, ...news]); runBatchUpdate(news); } } setIsModalOpen(false); }} isLoading={false} />}
-      {showOverallProfit && <OverallProfitModal onClose={() => setShowOverallProfit(false)} onSelectFund={(sym) => { setShowOverallProfit(false); setViewingSymbol(sym); }} />}
-      {showPositions && <PositionsModal portfolio={portfolio} marketData={marketData} onClose={() => setShowPositions(false)} onSelectFund={(sym) => { setShowPositions(false); setViewingSymbol(sym); }} />}
-      {showTransactions && <TransactionsModal portfolio={portfolio} marketData={marketData} onClose={() => setShowTransactions(false)} onSelectFund={(sym) => { setShowTransactions(false); setViewingSymbol(sym); }} />}
+      {showOverallProfit && <OverallProfitModal onClose={() => setShowOverallProfit(false)} onSelectFund={(sym) => { setShowOverallProfit(false); setViewingFund({ symbol: sym, fromDraft: false }); }} />}
+      {showPositions && <PositionsModal portfolio={portfolio} marketData={marketData} onClose={() => setShowPositions(false)} onSelectFund={(sym) => { setShowPositions(false); setViewingFund({ symbol: sym, fromDraft: false }); }} />}
+      {showTransactions && <TransactionsModal portfolio={portfolio} marketData={marketData} onClose={() => setShowTransactions(false)} onSelectFund={(sym) => { setShowTransactions(false); setViewingFund({ symbol: sym, fromDraft: false }); }} />}
       {isInvestmentNoticeModalOpen && <InvestmentNoticeModal portfolio={portfolio} onClose={() => setIsInvestmentNoticeModalOpen(false)} onSelectFund={(sym) => {
         setIsInvestmentNoticeModalOpen(false);
         // Check if sym contains query parameters for virtual trade
@@ -897,25 +897,26 @@ const AppContent: React.FC = () => {
           if (tab && getAvailableStrategyKeys().includes(tab)) {
             setVirtualTradeModalFund(fundSymbol);
           } else {
-            setViewingSymbol(fundSymbol);
+            setViewingFund({ symbol: fundSymbol, fromDraft: false });
           }
         } else {
-          setViewingSymbol(sym);
+          setViewingFund({ symbol: sym, fromDraft: false });
         }
       }} marketData={marketData} />}
-      {isInvestmentDraftModalOpen && <InvestmentDraftModal portfolio={portfolio} onClose={() => { setIsInvestmentDraftModalOpen(false); setViewingSymbol(null); setViewingFromDraft(false); }} onSelectFund={(sym) => {
-        setViewingSymbol(sym);
-        setViewingFromDraft(true);
-      }} marketData={marketData} sideBySide={viewingFromDraft} />}
-      {viewingSymbol && marketData[viewingSymbol] && (() => {
-          const fund = portfolio.find(f => f.symbol === viewingSymbol);
+      {isInvestmentDraftModalOpen && <InvestmentDraftModal portfolio={portfolio} onClose={() => { setIsInvestmentDraftModalOpen(false); setViewingFund(null); }} onSelectFund={(sym) => {
+        setViewingFund({ symbol: sym, fromDraft: true });
+      }} marketData={marketData} sideBySide={viewingFund?.fromDraft} />}
+      {viewingFund && marketData[viewingFund.symbol] && (() => {
+          const fund = portfolio.find(f => f.symbol === viewingFund.symbol);
           return (
             <FundDetailsModal
-              data={marketData[viewingSymbol]}
+              key={`${viewingFund.symbol}-${viewingFund.fromDraft}`}
+              data={marketData[viewingFund.symbol]}
               recommendedStrategy={fund?.recommended_strategy}
-              onClose={() => { setViewingSymbol(null); setViewingFromDraft(false); }}
-              position={viewingFromDraft ? 'right' : 'center'}
-              animateSlide={viewingFromDraft}
+              onClose={() => { setViewingFund(null); }}
+              position={viewingFund.fromDraft ? 'right' : 'center'}
+              animateSlide={viewingFund.fromDraft}
+              initialTab={viewingFund.fromDraft ? 'history' : 'intraday'}
             />
           );
         })()}

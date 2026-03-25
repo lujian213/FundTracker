@@ -30,12 +30,13 @@ interface FundDetailsModalProps {
   animateSlide?: boolean;  // 是否启用滑入滑出动画（从草稿窗口打开时）
   skipExitAnimation?: boolean;  // 是否跳过退出动画（草稿窗口关闭时）
   recommendedStrategy?: RecommendedStrategy | null;  // AI 推荐策略
+  initialTab?: 'intraday' | 'history';  // 初始显示的标签页
 }
 
-export const FundDetailsModal: React.FC<FundDetailsModalProps> = ({ data, onClose, fetchHistory, position = 'center', animateSlide = false, skipExitAnimation = false, recommendedStrategy }) => {
+export const FundDetailsModal: React.FC<FundDetailsModalProps> = ({ data, onClose, fetchHistory, position = 'center', animateSlide = false, skipExitAnimation = false, recommendedStrategy, initialTab = 'intraday' }) => {
   const [history, setHistory] = useState<HistoricalPoint[]>([]);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<'intraday' | 'history'>('intraday');
+  const [activeTab, setActiveTab] = useState<'intraday' | 'history'>(initialTab);
   const [intradayPoints, setIntradayPoints] = useState<any[]>([]);
   const [hoveredIntradayPoint, setHoveredIntradayPoint] = useState<IntradayPoint | null>(null);
   const [hoveredPoint, setHoveredPoint] = useState<HistoricalPoint | null>(null);
@@ -156,7 +157,7 @@ export const FundDetailsModal: React.FC<FundDetailsModalProps> = ({ data, onClos
     setInitialPrice(null);
 
     // 重置其他相关状态
-    setActiveTab('intraday');
+    setActiveTab(initialTab);
     setHoveredPoint(null);
     setHoveredIntradayPoint(null);
     setHoveredTrade(null);
@@ -764,20 +765,39 @@ export const FundDetailsModal: React.FC<FundDetailsModalProps> = ({ data, onClos
 
   // 根据 position 计算容器样式
   const containerStyle: React.CSSProperties = actualPosition === 'right'
-    ? { position: 'fixed', inset: 0, zIndex: MODAL_Z_INDEX, display: 'flex', alignItems: 'center', pointerEvents: 'none' }
+    ? { position: 'fixed', inset: 0, zIndex: MODAL_Z_INDEX, display: 'flex', alignItems: 'center', justifyContent: 'center', pointerEvents: 'none' }
     : { position: 'fixed', inset: 0, zIndex: MODAL_Z_INDEX, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem', pointerEvents: 'auto' };
+
+  // 将详情窗口高度传递给草稿窗口
+  useEffect(() => {
+    if (actualPosition === 'right') {
+      // 使用 requestAnimationFrame 确保 DOM 完全渲染后获取高度
+      requestAnimationFrame(() => {
+        setTimeout(() => {
+          const modal = document.getElementById('fund-details-modal')?.querySelector('.bg-white') as HTMLElement;
+          if (modal) {
+            const rect = modal.getBoundingClientRect();
+            (window as any).__detailModalHeight = rect.height;
+          }
+        }, 100);
+      });
+    }
+  }, [actualPosition, data.symbol]); // 添加 data.symbol 依赖，确保数据加载后重新获取
 
   const contentStyle: React.CSSProperties = (() => {
     const base: React.CSSProperties = { maxWidth: '46.3rem' };
     if (actualPosition === 'right') {
-      base.marginLeft = 'calc(16px + 56rem)';
+      // 动态获取草稿窗口右边界，加上4px间距
+      const draftRight = (window as any).__draftModalRight || 1294;
+      const targetLeft = draftRight + 4;
+      base.transform = `translateX(calc(${targetLeft}px - 50vw))`;
       // 滑入滑出动画
       if (animateSlide) {
         base.transition = 'transform 300ms ease-in-out';
         if (isEntering) {
-          base.transform = 'translateX(100%)'; // 初始位置：屏幕右侧外
+          base.transform = 'translateX(calc(100vw))'; // 初始位置：屏幕右侧外
         } else if (isClosing) {
-          base.transform = 'translateX(100%)'; // 滑出
+          base.transform = 'translateX(calc(100vw))'; // 滑出
         }
       }
     }
@@ -958,6 +978,10 @@ export const FundDetailsModal: React.FC<FundDetailsModalProps> = ({ data, onClos
 
                 {activeTab === 'history' && (
                   <>
+                    {/* 占位区域，保持与日内趋势图高度一致 */}
+                    <div className="flex items-center space-x-2 h-6" aria-hidden>
+                      <div className="text-xs text-transparent font-medium">占位</div>
+                    </div>
                     <div className="relative" style={{ height: chartHeight }}>
                       {/* 均线切换按钮 - 右上角绝对定位 */}
                       <div className="absolute top-1 right-2 z-10 flex items-center space-x-1">
@@ -1009,6 +1033,10 @@ export const FundDetailsModal: React.FC<FundDetailsModalProps> = ({ data, onClos
                          stroke="#ef4444"
                        />
                      </div>
+                    {/* 占位区域，保持与日内趋势图高度一致 */}
+                    <div className="flex items-center space-x-2 h-6" aria-hidden>
+                      <span className="text-xs text-transparent">均线：</span>
+                    </div>
 
                     {/* Preallocated reserved info area under MA toggles to avoid layout jump when hover changes */}
                     <div className="h-12 bg-white flex items-center justify-start px-4 border-t">
