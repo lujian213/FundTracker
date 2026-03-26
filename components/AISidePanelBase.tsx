@@ -1032,9 +1032,10 @@ const AISidePanelBase: React.FC<AISidePanelBaseProps> = ({
     const allElements = Array.from(document.querySelectorAll('*')) as HTMLElement[];
     fallbackModal = allElements.find(el => {
       const classes = el.className;
+      const classStr = typeof classes === 'string' ? classes : (classes as any).baseVal || '';
       const style = window.getComputedStyle(el);
-      return classes.includes('fixed') &&
-             classes.includes('inset-0') &&
+      return classStr.includes('fixed') &&
+             classStr.includes('inset-0') &&
              parseInt(style.zIndex) >= 100 &&
              style.display !== 'none';
     });

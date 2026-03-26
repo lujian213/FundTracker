@@ -5,6 +5,8 @@ import { computeRatingFromHistory } from '../utils/ratingHelper';
 import RatingTooltip from './RatingTooltip';
 import ManageSelectButton from './ManageSelectButton';
 import { AlertTooltip } from './AlertTooltip';
+import { getIntradayPoints } from '../services/cacheService';
+import { buildSparklinePath } from '../utils/sparklineUtils';
 
 // Alert 显示的日期范围（天）：仅当 alert 的生效日期在当前日期后 N 天内时才显示图标
 export const ALERT_VISIBILITY_DAYS = 3;
@@ -31,7 +33,6 @@ export const TickerCard: React.FC<TickerCardProps> = ({
   onSelect,
   fetchHistory
 }) => {
-  // local history for MA calculation (best-effort)
   const [history, setHistory] = useState<{ date: number; value: number; equityReturn: number }[]>([]);
   const [ratingTooltipOpen, setRatingTooltipOpen] = useState(false);
 
@@ -42,7 +43,6 @@ export const TickerCard: React.FC<TickerCardProps> = ({
     const load = async () => {
       try {
         const h = await fetchFn(ticker.symbol);
-        // Card-level short history window remains 90 points (UI display choice)
         if (mounted && Array.isArray(h)) setHistory(h.slice(-90));
       } catch (e) {
         // ignore
@@ -51,6 +51,9 @@ export const TickerCard: React.FC<TickerCardProps> = ({
     load();
     return () => { mounted = false; };
   }, [ticker.symbol, fetchFn]);
+
+  const intradayPoints = useMemo(() => getIntradayPoints(ticker.symbol), [ticker.symbol, data?.lastUpdated]);
+  const sparkline = useMemo(() => buildSparklinePath(intradayPoints), [intradayPoints]);
 
   const hasData = !!data;
   const isNoValuation = hasData && (data!.lastUpdated?.includes('无估值') || data!.lastUpdated?.includes('已休市'));
@@ -186,7 +189,14 @@ export const TickerCard: React.FC<TickerCardProps> = ({
           <h3 title={data?.name || ticker.name || ticker.symbol} className={`font-bold truncate text-base transition-colors ${isSelected ? 'text-blue-700' : 'text-gray-800'}`}>
             {data?.name || ticker.name || ticker.symbol}
           </h3>
-          <p className="text-[11px] text-gray-400 mt-0.5 font-mono tracking-wider">{ticker.symbol}</p>
+          <div className="flex items-center gap-2 mt-0.5">
+            <p className="text-[11px] text-gray-400 font-mono tracking-wider">{ticker.symbol}</p>
+            {sparkline && (
+              <svg viewBox="0 0 60 20" className="w-12 h-4 rounded-sm" aria-hidden="true" style={{ border: '1px solid #e5e7eb' }}>
+                <path d={sparkline.pathD} fill="none" stroke={sparkline.strokeColor} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+            )}
+          </div>
         </div>
 
         {!isSelectionMode && (
