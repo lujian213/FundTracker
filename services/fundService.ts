@@ -694,7 +694,10 @@ export async function fetchIndexHistory(symbol: string): Promise<HistoricalPoint
           equityReturn: parseFloat(parts[4]) || 0
         } as unknown) as Partial<HistoricalPoint>;
       });
-      return normalizeHistoryPoints(raw as Array<Partial<HistoricalPoint>>);
+      const normalized = normalizeHistoryPoints(raw as Array<Partial<HistoricalPoint>>);
+      // 写入缓存（使用 symbol 作为 key，与 FundDetailsModal 保持一致）
+      cacheService.setHistory(symbol, normalized);
+      return normalized;
      }
    } catch (e) {}
    return [];

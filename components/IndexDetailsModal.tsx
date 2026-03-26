@@ -33,13 +33,27 @@ export const IndexDetailsModal: React.FC<IndexDetailsModalProps> = ({ data, onCl
   const volumeHeight = 60; // 成交量图表高度
 
   useEffect(() => {
+    let mounted = true;
     const load = async () => {
+      // 先查缓存，命中则秒开无需网络请求
+      const cached = cacheService.getHistory(data.symbol);
+      if (cached && cached.length > 0) {
+        if (mounted) {
+          setHistory(cached.slice(-365));
+          setLoading(false);
+        }
+        return;
+      }
+      // 缓存未命中，走网络请求
       setLoading(true);
       const points = await fetchIndexHistory(data.symbol);
-      setHistory(points);
-      setLoading(false);
+      if (mounted) {
+        setHistory(points);
+        setLoading(false);
+      }
     };
     load();
+    return () => { mounted = false; };
   }, [data.symbol]);
 
   useEffect(() => {
