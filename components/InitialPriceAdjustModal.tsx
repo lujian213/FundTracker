@@ -1,6 +1,6 @@
 // components/InitialPriceAdjustModal.tsx
 import React, { useState, useMemo } from 'react';
-import { fmtNumber } from '../utils/format';
+import { fmtNumber, fmtNav } from '../utils/format';
 
 interface InitialPriceAdjustModalProps {
   symbol: string;
@@ -18,27 +18,27 @@ interface InitialPriceAdjustModalProps {
 }
 
 /**
- * 根据参考盈利反推初始价格
+ * 根据参考盈利和参考价格反推初始价格
  *
  * 公式：
  * 盈利 = (当前份额 × 当前价格) + 卖出总额 - 买入总额 - (初始份额 × 初始价格)
  *
  * 反推：
- * 初始价格 = ((当前份额 × 当前价格) + 卖出总额 - 买入总额 - 参考盈利) / 初始份额
+ * 初始价格 = ((当前份额 × 参考价格) + 卖出总额 - 买入总额 - 参考盈利) / 初始份额
  */
 function calculateSuggestedInitialPrice(params: {
   totalShares: number;
-  currentPrice: number;
+  referencePrice: number;
   sellAmount: number;
   buyAmount: number;
   initialPosition: number;
   referenceProfit: number;
 }): number | null {
-  const { totalShares, currentPrice, sellAmount, buyAmount, initialPosition, referenceProfit } = params;
+  const { totalShares, referencePrice, sellAmount, buyAmount, initialPosition, referenceProfit } = params;
 
   if (initialPosition <= 0) return null;
 
-  const numerator = (totalShares * currentPrice) + sellAmount - buyAmount - referenceProfit;
+  const numerator = (totalShares * referencePrice) + sellAmount - buyAmount - referenceProfit;
   const denominator = initialPosition;
 
   const result = numerator / denominator;
@@ -63,24 +63,26 @@ export const InitialPriceAdjustModal: React.FC<InitialPriceAdjustModalProps> = (
   zIndex = 150,
 }) => {
   const [referenceProfit, setReferenceProfit] = useState<string>(() => currentProfit.toFixed(2));
+  const [referencePrice, setReferencePrice] = useState<string>(() => currentPrice.toFixed(4));
 
   const suggestedPrice = useMemo(() => {
     const profitValue = parseFloat(referenceProfit);
-    if (isNaN(profitValue)) return null;
+    const priceValue = parseFloat(referencePrice);
+    if (isNaN(profitValue) || isNaN(priceValue)) return null;
 
     return calculateSuggestedInitialPrice({
       totalShares,
-      currentPrice,
+      referencePrice: priceValue,
       sellAmount,
       buyAmount,
       initialPosition,
       referenceProfit: profitValue,
     });
-  }, [referenceProfit, totalShares, currentPrice, sellAmount, buyAmount, initialPosition]);
+  }, [referenceProfit, referencePrice, totalShares, currentPrice, sellAmount, buyAmount, initialPosition]);
 
-  const formatNullableNumber = (value: number | null | undefined): string => {
+  const formatNullablePrice = (value: number | null | undefined): string => {
     if (value === null || value === undefined) return '-';
-    return fmtNumber(value, 2);
+    return fmtNav(value);
   };
 
   const handleSave = () => {
@@ -99,9 +101,9 @@ export const InitialPriceAdjustModal: React.FC<InitialPriceAdjustModalProps> = (
   return (
     <div className="fixed inset-0 flex items-center justify-center p-4" style={{ zIndex }}>
       <div className="absolute inset-0 bg-black/60" onClick={onClose}></div>
-      <div className="relative bg-white rounded-lg shadow-lg w-full max-w-md p-6 z-40">
+      <div className="relative bg-white rounded-lg shadow-lg w-full max-w-2xl p-6 z-40">
         {/* 标题 */}
-        <div className="flex justify-between items-center mb-3">
+        <div className="flex justify-between items-center mb-4">
           <h3 className="text-lg font-bold">调整初始价格</h3>
           <button
             onClick={onClose}
@@ -112,55 +114,75 @@ export const InitialPriceAdjustModal: React.FC<InitialPriceAdjustModalProps> = (
           </button>
         </div>
 
-        {/* 第1行：目前盈利 | 目前初始价格 */}
-        <div className="flex items-center py-2 border-b border-gray-100 whitespace-nowrap">
-          <div className="flex items-center w-44">
-            <span className="text-sm text-gray-500">目前盈利：</span>
+        {/* 第一排：目前盈利 | 当前价格 | 目前初始价格 */}
+        <div className="flex items-center py-2 border-b border-gray-100">
+          <div className="flex items-center flex-1 whitespace-nowrap">
+            <span className="text-sm text-gray-500 w-20">目前盈利：</span>
             <input
               type="text"
               readOnly
               value={currentProfit.toFixed(2)}
-              className={`w-28 px-2 py-1 border border-gray-200 rounded text-sm text-right bg-gray-50 ${currentProfit >= 0 ? 'text-red-600' : 'text-green-600'}`}
+              className={`w-24 px-2 py-1 border border-gray-200 rounded text-sm text-right bg-gray-50 ${currentProfit >= 0 ? 'text-red-600' : 'text-green-600'}`}
             />
           </div>
-          <div className="flex items-center ml-8">
+          <div className="flex items-center flex-1 whitespace-nowrap">
+            <span className="text-sm text-gray-500 w-20">当前价格：</span>
+            <input
+              type="text"
+              readOnly
+              value={currentPrice.toFixed(4)}
+              className="w-24 px-2 py-1 border border-gray-200 rounded text-sm text-right bg-gray-50 text-gray-800"
+            />
+          </div>
+          <div className="flex items-center flex-1 whitespace-nowrap">
             <span className="text-sm text-gray-500">目前初始价格：</span>
-            <span className="text-sm font-medium text-gray-800">
-              {formatNullableNumber(currentInitialPrice)}
+            <span className="text-sm font-medium text-gray-800 ml-2">
+              {formatNullablePrice(currentInitialPrice)}
             </span>
           </div>
         </div>
 
-        {/* 第2行：参考盈利 | 建议初始价格 */}
-        <div className="flex items-center py-2 whitespace-nowrap">
-          <div className="flex items-center w-44">
-            <span className="text-sm text-gray-500">参考盈利：</span>
+        {/* 第二排：参考盈利 | 参考价格 | 建议初始价格 */}
+        <div className="flex items-center py-2">
+          <div className="flex items-center flex-1 whitespace-nowrap">
+            <span className="text-sm text-gray-500 w-20">参考盈利：</span>
             <input
               type="text"
               inputMode="decimal"
               placeholder="请输入"
               value={referenceProfit}
               onChange={(e) => setReferenceProfit(e.target.value)}
-              className={`w-28 px-2 py-1 border border-gray-200 rounded text-sm text-right bg-gray-50 focus:outline-none focus:border-blue-500 ${referenceProfitColor}`}
+              className={`w-24 px-2 py-1 border border-gray-200 rounded text-sm text-right bg-gray-50 focus:outline-none focus:border-blue-500 ${referenceProfitColor}`}
             />
           </div>
-          <div className="flex items-center ml-8">
+          <div className="flex items-center flex-1 whitespace-nowrap">
+            <span className="text-sm text-gray-500 w-20">参考价格：</span>
+            <input
+              type="text"
+              inputMode="decimal"
+              placeholder="请输入"
+              value={referencePrice}
+              onChange={(e) => setReferencePrice(e.target.value)}
+              className="w-24 px-2 py-1 border border-gray-200 rounded text-sm text-right bg-gray-50 focus:outline-none focus:border-blue-500 text-gray-800"
+            />
+          </div>
+          <div className="flex items-center flex-1 whitespace-nowrap">
             <span className="text-sm text-gray-500">建议初始价格：</span>
             <span
               data-testid="suggested-price"
-              className="text-sm font-medium text-gray-800"
+              className="text-sm font-medium text-gray-800 ml-2"
             >
-              {formatNullableNumber(suggestedPrice)}
+              {formatNullablePrice(suggestedPrice)}
             </span>
           </div>
         </div>
 
         {/* 保存按钮 */}
-        <div className="flex justify-center mt-4">
+        <div className="flex justify-center mt-6">
           <button
             onClick={handleSave}
             disabled={!isValid}
-            className={`px-5 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+            className={`px-6 py-2 rounded-lg text-sm font-medium transition-colors ${
               isValid
                 ? 'bg-blue-600 text-white hover:bg-blue-700'
                 : 'bg-gray-200 text-gray-400 cursor-not-allowed'
