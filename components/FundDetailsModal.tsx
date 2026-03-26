@@ -21,6 +21,8 @@ import { queryAI, AIResponse, AIQueryContext } from '../services/aiService';
 import { formatMoneyWithSeparators, fmtNav, fmtNumber, formatPercent } from '../utils/format';
 import { getAIConfig, AIConfiguration } from '../services/aiConfigService';
 import { prepareChartData } from '../utils/chartDataHelper';
+import { isFeatureEnabled } from '../services/systemSettingsService';
+import InitialPriceAdjustModal from './InitialPriceAdjustModal';
 
 interface FundDetailsModalProps {
   data: ValuationData;
@@ -61,6 +63,8 @@ export const FundDetailsModal: React.FC<FundDetailsModalProps> = ({ data, onClos
   // AI Assistant panel control
   const [showAI, setShowAI] = useState(false);
   const [shouldResetAIChat, setShouldResetAIChat] = useState(false);
+  // 初始价格调整弹窗控制
+  const [showPriceAdjust, setShowPriceAdjust] = useState(false);
 
   // AI Assistant state variables
   interface Message {
@@ -117,6 +121,12 @@ export const FundDetailsModal: React.FC<FundDetailsModalProps> = ({ data, onClos
 
   // runtime dev flag: prefer NODE_ENV (works in Jest); Vite may replace this at build time
   const isDev = typeof process !== 'undefined' && process.env && process.env.NODE_ENV === 'development';
+
+  // Memoize feature flag check to avoid repeated localStorage reads on every render
+  const isInitialPriceAdjustmentEnabled = useMemo(
+    () => isFeatureEnabled('initialPriceAdjustmentEnabled'),
+    []
+  );
 
   // localStorage key per fund symbol
   const storageKey = `fund_position_${valuationData.symbol}`;
@@ -888,6 +898,17 @@ export const FundDetailsModal: React.FC<FundDetailsModalProps> = ({ data, onClos
              <button aria-label="配置仓位" title="配置仓位" onClick={openConfig} className="w-10 h-10 rounded-full bg-gray-50 flex items-center justify-center text-gray-500 hover:bg-gray-100 transition-colors">
                <i className="fas fa-cog"></i>
              </button>
+             {/* 调整初始价格按钮：仅当初始份额 > 0 且功能启用时显示 */}
+             {initialPosition > 0 && isInitialPriceAdjustmentEnabled && (
+               <button
+                 aria-label="调整初始价格"
+                 title="调整初始价格"
+                 onClick={() => setShowPriceAdjust(true)}
+                 className="w-10 h-10 rounded-full bg-gray-50 flex items-center justify-center text-gray-500 hover:bg-gray-100 transition-colors"
+               >
+                 <i className="fas fa-wrench"></i>
+               </button>
+             )}
              {/* 计算器按钮 */}
              <button aria-label="基金份额计算器" title="基金份额计算器" onClick={() => setShowCalculator(true)} className="w-10 h-10 rounded-full bg-gray-50 flex items-center justify-center text-gray-500 hover:bg-gray-100 transition-colors">
                <i className="fas fa-calculator"></i>
@@ -1273,6 +1294,33 @@ export const FundDetailsModal: React.FC<FundDetailsModalProps> = ({ data, onClos
                  <ProfitModal symbol={data.symbol} fundName={valuationData.name} currentPrice={valuationData.currentPrice} previousPrice={valuationData.previousPrice} realtimeDate={valuationData.realtimeDate} netWorthDate={valuationData.netWorthDate} initialPosition={initialPosition} initialPrice={initialPrice} initialStartDate={startDate} onClose={() => setShowProfit(false)} zIndex={SUBMODAL_Z_INDEX} />,
                  document.body
                ) : <ProfitModal symbol={data.symbol} fundName={valuationData.name} currentPrice={valuationData.currentPrice} previousPrice={valuationData.previousPrice} realtimeDate={valuationData.realtimeDate} netWorthDate={valuationData.netWorthDate} initialPosition={initialPosition} initialPrice={initialPrice} initialStartDate={startDate} onClose={() => setShowProfit(false)} zIndex={SUBMODAL_Z_INDEX} />)}
+               {/* 初始价格调整弹窗 */}
+               {showPriceAdjust && (
+                 <InitialPriceAdjustModal
+                   symbol={data.symbol}
+                   fundName={valuationData.name}
+                   currentProfit={profit ?? 0}
+                   currentInitialPrice={initialPrice}
+                   initialPosition={initialPosition}
+                   totalShares={totalShares}
+                   currentPrice={valuationData.currentPrice}
+                   sellAmount={sellAmount}
+                   buyAmount={buyAmount}
+                   onSave={(newPrice) => {
+                     setInitialPrice(newPrice);
+                     try {
+                       const stored = localStorage.getItem(storageKey);
+                       const config = stored ? JSON.parse(stored) : {};
+                       localStorage.setItem(storageKey, JSON.stringify({ ...config, initialPrice: newPrice }));
+                     } catch (e) {
+                       // ignore
+                     }
+                     setShowPriceAdjust(false);
+                   }}
+                   onClose={() => setShowPriceAdjust(false)}
+                   zIndex={SUBMODAL_Z_INDEX}
+                 />
+               )}
                {/* AI Assistant panel - rendered with portal to avoid parent re-renders */}
                {showAI && aiFundDataRef.current && (typeof document !== 'undefined' && document.body ? createPortal(
                  <FundAISidePanel

@@ -20,6 +20,7 @@ import SyncManagementModal from './components/SyncManagementModal';
 import SyncConfirmationModal from './components/SyncConfirmationModal';
 import AIMenuItem from './components/AIMenuItem';
 import AIConfigModal from './components/AIConfigModal';
+import SystemSettingsModal from './components/SystemSettingsModal';
 import { getAvailableStrategyKeys } from './services/strategyRegistry';
 import {
   buildBackupData, downloadBackupFile, applyBackupData,
@@ -165,6 +166,7 @@ const AppContent: React.FC = () => {
   const [showBackupSettings, setShowBackupSettings] = useState<boolean>(false);
   const [showSyncManagement, setShowSyncManagement] = useState<boolean>(false);
   const [showAIConfig, setShowAIConfig] = useState<boolean>(false);
+  const [showSystemSettings, setShowSystemSettings] = useState<boolean>(false);
   const [showSyncConfirmation, setShowSyncConfirmation] = useState<boolean>(false);
   const [syncErrorMessage, setSyncErrorMessage] = useState<string | null>(null);
   const [autoExportTime, setAutoExportTime] = useState<string>(() => readBackupConfig().autoExportTime);
@@ -772,6 +774,13 @@ const AppContent: React.FC = () => {
                   <button onClick={() => { setShowBackupSettings(true); setIsMenuOpen(false); }} className="w-full px-4 py-3 text-left text-sm hover:bg-gray-50 flex items-center space-x-3"><i className="fas fa-clock opacity-70"></i><span>备份设置</span></button>
                   <button onClick={() => { setShowSyncManagement(true); setIsMenuOpen(false); }} className="w-full px-4 py-3 text-left text-sm hover:bg-gray-50 flex items-center space-x-3"><i className="fas fa-sync-alt opacity-70"></i><span>同步配置</span></button>
                   <AIMenuItem onMenuClose={() => setIsMenuOpen(false)} onOpenConfig={() => setShowAIConfig(true)} />
+                  <button
+                    onClick={() => { setShowSystemSettings(true); setIsMenuOpen(false); }}
+                    className="w-full px-4 py-3 text-left text-sm hover:bg-gray-50 flex items-center space-x-3"
+                  >
+                    <i className="fas fa-toggle-on opacity-70"></i>
+                    <span>系统开关</span>
+                  </button>
                   <button onClick={handleDataSyncClick} className="w-full px-4 py-3 text-left text-sm hover:bg-gray-50 flex items-center space-x-3"><i className="fas fa-exchange-alt opacity-70"></i><span>数据同步</span></button>
                   <button onClick={() => fileInputRef.current?.click()} className="w-full px-4 py-3 text-left text-sm hover:bg-gray-50 flex items-center space-x-3"><i className="fas fa-file-import opacity-70"></i><span>导入备份</span></button>
                 </div>
@@ -971,6 +980,12 @@ const AppContent: React.FC = () => {
         <AIConfigModal
           isOpen={showAIConfig}
           onClose={() => setShowAIConfig(false)}
+        />
+      )}
+      {showSystemSettings && (
+        <SystemSettingsModal
+          isOpen={showSystemSettings}
+          onClose={() => setShowSystemSettings(false)}
         />
       )}
       {showSyncConfirmation && (
