@@ -1,30 +1,13 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { readBackupConfig, writeBackupConfig } from '../utils/backupService';
+import { secondsUntilNext, formatCountdown } from '../utils/dateTimeUtils';
 
 interface Props {
   autoExportTime: string;          // current "HH:mm" value from App state
   autoBackupEnabled: boolean;      // current auto backup enabled state
   onSave: (time: string, enabled: boolean) => void;  // notify App to update its state + reset timer
   onClose: () => void;
-}
-
-/** Compute seconds until the next occurrence of "HH:mm" in local time. */
-function secondsUntilNext(timeStr: string): number {
-  const [hh, mm] = timeStr.split(':').map(Number);
-  const now = new Date();
-  const target = new Date(now);
-  target.setHours(hh, mm, 0, 0);
-  if (target <= now) target.setDate(target.getDate() + 1);
-  return Math.round((target.getTime() - now.getTime()) / 1000);
-}
-
-function formatCountdown(seconds: number): string {
-  const h = Math.floor(seconds / 3600);
-  const m = Math.floor((seconds % 3600) / 60);
-  const s = seconds % 60;
-  const pad = (n: number) => String(n).padStart(2, '0');
-  return `${pad(h)}:${pad(m)}:${pad(s)}`;
 }
 
 const BackupSettingsModal: React.FC<Props> = ({ autoExportTime, autoBackupEnabled, onSave, onClose }) => {

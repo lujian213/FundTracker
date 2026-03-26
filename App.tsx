@@ -22,6 +22,7 @@ import SyncConfirmationModal from './components/SyncConfirmationModal';
 import AIMenuItem from './components/AIMenuItem';
 import AIConfigModal from './components/AIConfigModal';
 import SystemSettingsModal from './components/SystemSettingsModal';
+import SystemConfigModal from './components/SystemConfigModal';
 import { getAvailableStrategyKeys } from './services/strategyRegistry';
 import {
   buildBackupData, downloadBackupFile, applyBackupData,
@@ -167,6 +168,7 @@ const AppContent: React.FC = () => {
   const [showSyncManagement, setShowSyncManagement] = useState<boolean>(false);
   const [showAIConfig, setShowAIConfig] = useState<boolean>(false);
   const [showSystemSettings, setShowSystemSettings] = useState<boolean>(false);
+  const [showSystemConfig, setShowSystemConfig] = useState<boolean>(false);
   const [showSyncConfirmation, setShowSyncConfirmation] = useState<boolean>(false);
   const [syncErrorMessage, setSyncErrorMessage] = useState<string | null>(null);
   const [autoExportTime, setAutoExportTime] = useState<string>(() => readBackupConfig().autoExportTime);
@@ -200,6 +202,21 @@ const AppContent: React.FC = () => {
   }, [selectedItems, clearSelectionMode]);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // 监听从 SystemConfigModal 触发的备份导入事件
+  useEffect(() => {
+    const handleBackupImport = (event: Event) => {
+      const customEvent = event as CustomEvent;
+      if (customEvent.detail) {
+        setPendingImportData(customEvent.detail);
+      }
+    };
+
+    window.addEventListener('backup-import', handleBackupImport);
+    return () => {
+      window.removeEventListener('backup-import', handleBackupImport);
+    };
+  }, []);
 
   useEffect(() => { localStorage.setItem('fund_portfolio', JSON.stringify(portfolio)); }, [portfolio]);
   useEffect(() => { localStorage.setItem('fund_indices_config', JSON.stringify(indicesConfig)); }, [indicesConfig]);
@@ -681,6 +698,10 @@ const AppContent: React.FC = () => {
             <button data-testid="deep-refresh-button" onClick={deepRefreshAll} title="深度刷新历史（后台）" aria-label="深度刷新历史" className="p-2 w-10 h-10 rounded-full hover:bg-gray-100 text-gray-700 transition-all">
               <i className="fas fa-database"></i>
             </button>
+            {/* 系统配置按钮 */}
+            <button onClick={() => setShowSystemConfig(true)} title="系统配置" aria-label="系统配置" className="p-2 w-10 h-10 rounded-full hover:bg-gray-100 text-gray-400 transition-all">
+              <i className="fas fa-cog"></i>
+            </button>
             {/* 小型 toast 通知：在深度刷新开始/完成时短暂显示 */}
             {/** toast 位于 header 右上，短暂显示 */}
             {/** deepToast: { message: string, visible: boolean } */}
@@ -688,27 +709,6 @@ const AppContent: React.FC = () => {
               <div className="absolute right-12 top-2 z-40">
                 <div className="bg-black text-white text-xs px-3 py-1 rounded-md shadow-md">{deepToast.message}</div>
               </div>
-            )}
-            <button onClick={() => setIsMenuOpen(!isMenuOpen)} className="p-2 w-10 h-10 rounded-full hover:bg-gray-100 text-gray-400"><i className="fas fa-ellipsis-v"></i></button>
-            {isMenuOpen && (
-              <>
-                <div className="fixed inset-0 z-10" onClick={() => setIsMenuOpen(false)}></div>
-                <div className="absolute right-0 top-full mt-2 w-48 bg-white rounded-2xl shadow-2xl border py-1 z-20 animate-in fade-in zoom-in-95 duration-150 origin-top-right">
-                  <button onClick={handleExport} className="w-full px-4 py-3 text-left text-sm hover:bg-gray-50 flex items-center space-x-3"><i className="fas fa-file-export opacity-70"></i><span>导出备份</span></button>
-                  <button onClick={() => { setShowBackupSettings(true); setIsMenuOpen(false); }} className="w-full px-4 py-3 text-left text-sm hover:bg-gray-50 flex items-center space-x-3"><i className="fas fa-clock opacity-70"></i><span>备份设置</span></button>
-                  <button onClick={() => { setShowSyncManagement(true); setIsMenuOpen(false); }} className="w-full px-4 py-3 text-left text-sm hover:bg-gray-50 flex items-center space-x-3"><i className="fas fa-sync-alt opacity-70"></i><span>同步配置</span></button>
-                  <AIMenuItem onMenuClose={() => setIsMenuOpen(false)} onOpenConfig={() => setShowAIConfig(true)} />
-                  <button
-                    onClick={() => { setShowSystemSettings(true); setIsMenuOpen(false); }}
-                    className="w-full px-4 py-3 text-left text-sm hover:bg-gray-50 flex items-center space-x-3"
-                  >
-                    <i className="fas fa-toggle-on opacity-70"></i>
-                    <span>系统开关</span>
-                  </button>
-                  <button onClick={handleDataSyncClick} className="w-full px-4 py-3 text-left text-sm hover:bg-gray-50 flex items-center space-x-3"><i className="fas fa-exchange-alt opacity-70"></i><span>数据同步</span></button>
-                  <button onClick={() => fileInputRef.current?.click()} className="w-full px-4 py-3 text-left text-sm hover:bg-gray-50 flex items-center space-x-3"><i className="fas fa-file-import opacity-70"></i><span>导入备份</span></button>
-                </div>
-              </>
             )}
           </div>
         </div>
@@ -910,6 +910,24 @@ const AppContent: React.FC = () => {
         <SystemSettingsModal
           isOpen={showSystemSettings}
           onClose={() => setShowSystemSettings(false)}
+        />
+      )}
+      {showSystemConfig && (
+        <SystemConfigModal
+          isOpen={showSystemConfig}
+          onClose={() => setShowSystemConfig(false)}
+          onSyncNow={() => {
+            handleDataSyncClick();
+          }}
+          portfolio={portfolio}
+          indicesConfig={indicesConfig}
+          globalIndicesConfig={globalIndicesConfig}
+          marketIndices={marketIndices}
+          globalIndices={globalIndices}
+          onBackupSettingsChange={(time, enabled) => {
+            setAutoExportTime(time);
+            setAutoBackupEnabled(enabled);
+          }}
         />
       )}
       {showSyncConfirmation && (

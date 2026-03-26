@@ -57,7 +57,7 @@ jest.mock('../../services/fundService', () => ({
   forceFetchFundHistory: (...args: unknown[]) => forceFetchFundHistoryMock(...args),
 }));
 
-describe('App - 系统开关菜单', () => {
+describe('App - 系统配置', () => {
   beforeEach(() => {
     localStorage.clear();
     jest.clearAllMocks();
@@ -67,60 +67,90 @@ describe('App - 系统开关菜单', () => {
     fetchMarketIndicesMock.mockResolvedValue([]);
   });
 
-  // 辅助函数：找到菜单按钮（带有 fa-ellipsis-v 图标的按钮）
-  const findMenuButton = () => {
-    const buttons = screen.getAllByRole('button');
-    return buttons.find(btn => btn.querySelector('.fa-ellipsis-v'));
-  };
-
-  test('should show system settings menu item when menu is open', async () => {
+  test('应该显示系统配置按钮', async () => {
     render(<App />);
 
-    // 打开菜单 - 点击右上角的菜单按钮
-    const menuButton = findMenuButton();
-    expect(menuButton).toBeDefined();
-    fireEvent.click(menuButton!);
+    // 检查系统配置按钮是否存在（通过 aria-label）
+    const configButton = screen.getByLabelText('系统配置');
+    expect(configButton).toBeInTheDocument();
 
-    await waitFor(() => {
-      expect(screen.getByText('系统开关')).toBeInTheDocument();
-    });
+    // 检查按钮图标是否为齿轮
+    expect(configButton.querySelector('.fa-cog')).toBeInTheDocument();
   });
 
-  test('should open SystemSettingsModal when clicked', async () => {
+  test('点击系统配置按钮应该打开系统配置界面', async () => {
     render(<App />);
 
-    // 打开菜单
-    const menuButton = findMenuButton();
-    fireEvent.click(menuButton!);
+    // 点击系统配置按钮
+    const configButton = screen.getByLabelText('系统配置');
+    fireEvent.click(configButton);
 
-    // 点击系统开关
-    const systemSettingsButton = await screen.findByText('系统开关');
-    fireEvent.click(systemSettingsButton);
-
-    // 检查弹窗是否打开 - 应该显示系统开关标题和初始价格调整选项
+    // 检查系统配置界面是否打开
     await waitFor(() => {
-      const headings = screen.getAllByText('系统开关');
-      expect(headings.length).toBeGreaterThan(0);
+      expect(screen.getByText('系统配置')).toBeInTheDocument();
+    });
+
+    // 检查默认显示的导航项
+    expect(screen.getByText('备份管理')).toBeInTheDocument();
+  });
+
+  test('系统配置界面应该包含所有导航项', async () => {
+    render(<App />);
+
+    // 打开系统配置
+    const configButton = screen.getByLabelText('系统配置');
+    fireEvent.click(configButton);
+
+    await waitFor(() => {
+      expect(screen.getByText('系统配置')).toBeInTheDocument();
+    });
+
+    // 检查所有导航项是否存在
+    expect(screen.getByText('备份管理')).toBeInTheDocument();
+    expect(screen.getByText('同步管理')).toBeInTheDocument();
+    expect(screen.getByText('AI配置')).toBeInTheDocument();
+    expect(screen.getByText('系统开关')).toBeInTheDocument();
+  });
+
+  test('点击系统开关导航项应该显示系统开关内容', async () => {
+    render(<App />);
+
+    // 打开系统配置
+    const configButton = screen.getByLabelText('系统配置');
+    fireEvent.click(configButton);
+
+    await waitFor(() => {
+      expect(screen.getByText('系统配置')).toBeInTheDocument();
+    });
+
+    // 点击系统开关导航项
+    const systemSwitchNav = screen.getByText('系统开关');
+    fireEvent.click(systemSwitchNav);
+
+    // 检查是否显示系统开关内容（初始价格调整）
+    await waitFor(() => {
       expect(screen.getByText('初始价格调整')).toBeInTheDocument();
     });
   });
 
-  test('should close menu when system settings is clicked', async () => {
+  test('关闭系统配置界面应该返回主界面', async () => {
     render(<App />);
 
-    // 打开菜单
-    const menuButton = findMenuButton();
-    fireEvent.click(menuButton!);
+    // 打开系统配置
+    const configButton = screen.getByLabelText('系统配置');
+    fireEvent.click(configButton);
 
-    // 确认菜单已打开
-    await screen.findByText('系统开关');
-
-    // 点击系统开关
-    fireEvent.click(screen.getByText('系统开关'));
-
-    // 菜单应该关闭 - 导出备份按钮应该不在文档中
     await waitFor(() => {
-      expect(screen.queryByText('导出备份')).not.toBeInTheDocument();
+      expect(screen.getByText('系统配置')).toBeInTheDocument();
+    });
+
+    // 点击关闭按钮
+    const closeButton = screen.getByLabelText('关闭');
+    fireEvent.click(closeButton);
+
+    // 检查系统配置界面是否关闭
+    await waitFor(() => {
+      expect(screen.queryByText('系统配置')).not.toBeInTheDocument();
     });
   });
 });
