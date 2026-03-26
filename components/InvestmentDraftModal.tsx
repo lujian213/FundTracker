@@ -409,11 +409,37 @@ const InvestmentDraftModal: React.FC<InvestmentDraftModalProps> = ({
       const modal = document.querySelector('.investment-draft-modal-content') as HTMLElement;
       if (modal) {
         const rect = modal.getBoundingClientRect();
-        // 将草稿窗口右边界存储到 window 对象，供基金详情窗口使用
-        (window as any).__draftModalRight = rect.right;
+        // 将草稿窗口宽度存储到 window 对象，供基金详情窗口使用
+        (window as any).__draftModalWidth = rect.width;
       }
     }
   }, [sideBySide, modalHeight]);
+
+  // 动态计算并排显示时的偏移量
+  const [draftOffset, setDraftOffset] = useState<number>(0);
+
+  useEffect(() => {
+    if (sideBySide) {
+      const calculateOffset = () => {
+        const draftModal = document.querySelector('.investment-draft-modal-content') as HTMLElement;
+        const detailWidth = (window as any).__detailModalWidth;
+        if (draftModal && detailWidth) {
+          const draftWidth = draftModal.getBoundingClientRect().width;
+          // 草稿窗口需要向左偏移 detailWidth/2，使两个窗口整体居中
+          setDraftOffset(detailWidth / 2);
+        }
+      };
+
+      // 初始计算
+      calculateOffset();
+
+      // 监听详情窗口宽度变化
+      const interval = setInterval(calculateOffset, 100);
+      return () => clearInterval(interval);
+    } else {
+      setDraftOffset(0);
+    }
+  }, [sideBySide]);
 
   const content = (
     <div className="fixed inset-0 z-[130] flex items-center justify-center pointer-events-none">
@@ -421,7 +447,7 @@ const InvestmentDraftModal: React.FC<InvestmentDraftModalProps> = ({
       <div
         className="investment-draft-modal-content relative bg-white w-full max-w-[880px] shadow-2xl animate-in zoom-in-95 duration-200 flex flex-col pointer-events-auto transition-transform duration-300 ease-in-out"
         style={{
-          transform: sideBySide ? 'translateX(calc(-50vw + 28rem + 32px))' : 'translateX(0)',
+          transform: sideBySide ? `translateX(-${draftOffset}px)` : 'translateX(0)',
           height: modalHeight ? `${modalHeight}px` : '90vh',
           maxHeight: '90vh'
         }}

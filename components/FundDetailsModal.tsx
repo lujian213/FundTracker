@@ -768,36 +768,60 @@ export const FundDetailsModal: React.FC<FundDetailsModalProps> = ({ data, onClos
     ? { position: 'fixed', inset: 0, zIndex: MODAL_Z_INDEX, display: 'flex', alignItems: 'center', justifyContent: 'center', pointerEvents: 'none' }
     : { position: 'fixed', inset: 0, zIndex: MODAL_Z_INDEX, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem', pointerEvents: 'auto' };
 
-  // 将详情窗口高度传递给草稿窗口
+  // 将详情窗口高度和宽度传递给草稿窗口
   useEffect(() => {
     if (actualPosition === 'right') {
-      // 使用 requestAnimationFrame 确保 DOM 完全渲染后获取高度
+      // 使用 requestAnimationFrame 确保 DOM 完全渲染后获取尺寸
       requestAnimationFrame(() => {
         setTimeout(() => {
           const modal = document.getElementById('fund-details-modal')?.querySelector('.bg-white') as HTMLElement;
           if (modal) {
             const rect = modal.getBoundingClientRect();
             (window as any).__detailModalHeight = rect.height;
+            (window as any).__detailModalWidth = rect.width;
           }
         }, 100);
       });
     }
-  }, [actualPosition, data.symbol]); // 添加 data.symbol 依赖，确保数据加载后重新获取
+  }, [actualPosition, data.symbol]);
+
+  // 动态计算偏移量，使两个窗口整体居中
+  const [detailOffset, setDetailOffset] = useState<number>(0);
+
+  useEffect(() => {
+    if (actualPosition === 'right') {
+      const calculateOffset = () => {
+        const draftWidth = (window as any).__draftModalWidth;
+        if (draftWidth) {
+          // 详情窗口需要向右偏移 draftWidth/2，使两个窗口整体居中
+          setDetailOffset(draftWidth / 2);
+        }
+      };
+
+      // 初始计算
+      calculateOffset();
+
+      // 监听草稿窗口宽度变化
+      const interval = setInterval(calculateOffset, 100);
+      return () => clearInterval(interval);
+    } else {
+      setDetailOffset(0);
+    }
+  }, [actualPosition]);
 
   const contentStyle: React.CSSProperties = (() => {
     const base: React.CSSProperties = { maxWidth: '46.3rem' };
     if (actualPosition === 'right') {
-      // 动态获取草稿窗口右边界，加上4px间距
-      const draftRight = (window as any).__draftModalRight || 1294;
-      const targetLeft = draftRight + 4;
-      base.transform = `translateX(calc(${targetLeft}px - 50vw))`;
+      // 向右偏移，使两个窗口整体居中并紧密贴合
+      base.transform = `translateX(${detailOffset}px)`;
       // 滑入滑出动画
       if (animateSlide) {
         base.transition = 'transform 300ms ease-in-out';
         if (isEntering) {
-          base.transform = 'translateX(calc(100vw))'; // 初始位置：屏幕右侧外
+          // 初始位置：从屏幕右侧外滑入到目标位置
+          base.transform = `translateX(calc(50vw + ${detailOffset}px))`;
         } else if (isClosing) {
-          base.transform = 'translateX(calc(100vw))'; // 滑出
+          base.transform = `translateX(calc(50vw + ${detailOffset}px))`; // 滑出
         }
       }
     }
