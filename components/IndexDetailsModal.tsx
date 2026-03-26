@@ -50,9 +50,48 @@ export const IndexDetailsModal: React.FC<IndexDetailsModalProps> = ({ data, onCl
     } catch (e) { setIntradayPoints([]); }
   }, [data.symbol, data.lastUpdated]);
 
+  // 合并当前点到历史数据
+  const chartData = useMemo(() => {
+    if (!history || history.length === 0) return history;
+
+    // 检查是否有有效的交易日期和当前值
+    if (!data.tradeDate || data.current == null) return history;
+
+    // 解析交易日期为时间戳
+    const tradeTs = new Date(`${data.tradeDate} 15:00`).getTime();
+    if (!Number.isFinite(tradeTs)) return history;
+
+    // 检查历史数据最后一条的日期
+    const lastHist = history[history.length - 1];
+    const lastDayKey = toLocalDateKey(lastHist.date);
+    const tradeDayKey = toLocalDateKey(tradeTs);
+
+    // 当交易日期晚于历史数据最后日期时，追加当前点
+    if (tradeDayKey > lastDayKey) {
+      return [...history, {
+        date: tradeTs,
+        value: data.current,
+        equityReturn: data.changePercent || 0
+      }];
+    }
+
+    // 当交易日期等于历史数据最后日期时，更新最后一个点的价格和涨跌幅（保留交易量/额）
+    if (tradeDayKey === lastDayKey) {
+      const updated = [...history];
+      updated[updated.length - 1] = {
+        ...lastHist,
+        value: data.current,
+        equityReturn: data.changePercent || 0
+      };
+      return updated;
+    }
+
+    return history;
+  }, [history, data.tradeDate, data.current, data.changePercent]);
+
   const { path, area, points, viewBox, yLabels, xLabels, maPaths, maValues, volumeData } = useMemo(() => {
     // 使用公共函数准备数据（包含MA计算和截取）
-    const { displayData, maValues: computedMaValues } = prepareChartData(history || [], {
+    const { displayData, maValues: computedMaValues } = prepareChartData(chartData || [], {
       displayCount: 90,
       maLookback: 25,
       maWindows: MA_WINDOWS
@@ -357,7 +396,7 @@ export const IndexDetailsModal: React.FC<IndexDetailsModalProps> = ({ data, onCl
         onClose={() => setShowAI(false)}
         indexSymbol={data.symbol}
         indexName={data.name}
-        history={history}
+        history={chartData}
         maValues={maValues}
         volumeData={volumeData}
         intradayPoints={intradayPoints}

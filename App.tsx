@@ -161,7 +161,7 @@ const AppContent: React.FC = () => {
   // viewingSymbol 和 viewingFromDraft 合并为一个状态对象，确保同时更新
   const [viewingFund, setViewingFund] = useState<{ symbol: string; fromDraft: boolean } | null>(null);
   const [virtualTradeModalFund, setVirtualTradeModalFund] = useState<string | null>(null);
-  const [viewingIndex, setViewingIndex] = useState<MarketIndex | null>(null);
+  const [viewingIndexSymbol, setViewingIndexSymbol] = useState<string | null>(null);
   const [pendingImportData, setPendingImportData] = useState<BackupData | null>(null);
   const [showBackupSettings, setShowBackupSettings] = useState<boolean>(false);
   const [showSyncManagement, setShowSyncManagement] = useState<boolean>(false);
@@ -640,11 +640,18 @@ const AppContent: React.FC = () => {
         isSelectionMode={isSelectionMode}
         isSelected={isSelected}
         onSelect={toggleSelection}
-        onClick={() => setViewingIndex(idx)}
+        onClick={() => setViewingIndexSymbol(normalizeIndexSymbol(idx.symbol))}
         selectionKey={selectionKey}
       />
     );
   };
+
+  // 从 indices 中查找当前查看的指数（确保使用最新数据）
+  const viewingIndex = useMemo(() => {
+    if (!viewingIndexSymbol) return null;
+    const allIndices = [...displayDomesticIndices, ...displayGlobalIndices];
+    return allIndices.find(idx => normalizeIndexSymbol(idx.symbol) === viewingIndexSymbol) || null;
+  }, [viewingIndexSymbol, displayDomesticIndices, displayGlobalIndices]);
 
   return (
     <div className={`min-h-screen pb-32 transition-colors duration-300 ${isSelectionMode ? 'bg-blue-50/50' : 'bg-gray-50'}`}>
@@ -858,7 +865,7 @@ const AppContent: React.FC = () => {
             />
           );
         })()}
-      {viewingIndex && <IndexDetailsModal data={viewingIndex} onClose={() => setViewingIndex(null)} />}
+      {viewingIndex && <IndexDetailsModal data={viewingIndex} onClose={() => setViewingIndexSymbol(null)} />}
       <ConfirmDialog
         isOpen={!!pendingImportData}
         title="导入确认"
