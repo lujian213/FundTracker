@@ -725,7 +725,7 @@ export const FundDetailsModal: React.FC<FundDetailsModalProps> = ({ data, onClos
     // 计算平均成本价
     const avgCostPrice = useMemo(() => {
       return computeAvgCostPrice(data.symbol, tradeList);
-    }, [data.symbol, tradeList]);
+    }, [data.symbol, tradeList, initialPrice]);
 
     // 计算仓位占比
     const holdingsPositionRate = (fullCapacity > 0 && typeof totalShares === 'number')

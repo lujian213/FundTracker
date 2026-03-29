@@ -43,7 +43,7 @@ function calculateSuggestedInitialPrice(params: {
 
   const result = numerator / denominator;
 
-  if (!Number.isFinite(result) || result < 0) return null;
+  if (!Number.isFinite(result)) return null;
 
   return result;
 }
