@@ -8,12 +8,15 @@
 export interface SystemSettings {
   /** 初始价格调整功能是否启用，默认 false */
   initialPriceAdjustmentEnabled: boolean;
+  /** 后台任务日志功能是否启用，默认 false */
+  jobLogEnabled: boolean;
 }
 
 const STORAGE_KEY = 'fund_system_settings';
 
 const DEFAULT_SETTINGS: SystemSettings = {
   initialPriceAdjustmentEnabled: false,
+  jobLogEnabled: false,
 };
 
 /**

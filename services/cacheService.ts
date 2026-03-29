@@ -12,7 +12,7 @@
  * 注意：历史净值不纳入导入/导出备份，这与现有 handleExport/handleImport 行为一致。
  */
 
-import { ValuationData, HistoricalPoint, IntradayPoint } from '../types';
+import { ValuationData, HistoricalPoint, IntradayPoint, MarketIndex } from '../types';
 import { toLocalDateKey } from '../utils/priceResolver';
 
 export interface NewsItem {
@@ -27,11 +27,13 @@ export interface NewsItem {
 const VALUATION_STORAGE_KEY = 'fund_market_data';
 const historyStorageKey = (symbol: string) => `fund_history_${symbol}`;
 const intradayStorageKey = (symbol: string) => `fund_intraday_${symbol}`;
+const INDEX_STORAGE_KEY = 'fund_index_market_data';
 
 // ─── In-memory stores ─────────────────────────────────────────────────────────
 const valuationMap = new Map<string, ValuationData>();
 const historyMap   = new Map<string, HistoricalPoint[]>();
 const intradayMap  = new Map<string, IntradayPoint[]>();
+const indexMap     = new Map<string, MarketIndex>(); // 指数实时数据缓存
 let   newsCache: NewsItem[] = [];
 
 // Helper: floor timestamp to minute (ms)
@@ -121,6 +123,15 @@ function init() {
         } catch {/* ignore per-key errors */}
       });
   } catch {/* ignore top-level */}
+
+  // 4. Index market data (stored as a single JSON object)
+  try {
+    const raw = localStorage.getItem(INDEX_STORAGE_KEY);
+    if (raw) {
+      const obj: Record<string, MarketIndex> = JSON.parse(raw);
+      Object.entries(obj).forEach(([sym, data]) => indexMap.set(sym, data));
+    }
+  } catch {/* ignore */}
 }
 
 init();
@@ -258,6 +269,27 @@ export function setHistoryIfAbsent(symbol: string, points: HistoricalPoint[]): v
 
 export function getAllHistories(): Map<string, HistoricalPoint[]> {
   return historyMap;
+}
+
+// ─── Index Market Data (real-time index data) ─────────────────────────────────
+export function getIndexMarketData(symbol: string): MarketIndex | undefined {
+  return indexMap.get(symbol);
+}
+
+export function setIndexMarketData(symbol: string, data: MarketIndex): void {
+  indexMap.set(symbol, data);
+  // Persist entire index map as a single JSON blob
+  try {
+    const obj: Record<string, MarketIndex> = {};
+    indexMap.forEach((v, k) => { obj[k] = v; });
+    localStorage.setItem(INDEX_STORAGE_KEY, JSON.stringify(obj));
+  } catch {/* ignore quota errors */}
+}
+
+export function getAllIndexMarketData(): Record<string, MarketIndex> {
+  const obj: Record<string, MarketIndex> = {};
+  indexMap.forEach((v, k) => { obj[k] = v; });
+  return obj;
 }
 
 // ─── Intraday (per-minute, per-day net worth points used by intraday chart) ───

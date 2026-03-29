@@ -40,19 +40,19 @@ const IndexAISidePanel: React.FC<IndexAISidePanelProps> = ({
       second: '2-digit'
     });
 
-    // 构建历史收盘价
-    const closingPrices = history?.slice(-30).map(p => ({
+    // 构建历史收盘价（最近90个交易日）
+    const closingPrices = history?.slice(-90).map(p => ({
       date: new Date(p.date).toISOString().split('T')[0],
       price: p.value
     }));
 
-    // 获取均线值
-    const ma5 = maValues?.[5]?.slice(-30);
-    const ma10 = maValues?.[10]?.slice(-30);
-    const ma20 = maValues?.[20]?.slice(-30);
+    // 获取均线值（最近90个交易日）
+    const ma5 = maValues?.[5]?.slice(-90);
+    const ma10 = maValues?.[10]?.slice(-90);
+    const ma20 = maValues?.[20]?.slice(-90);
 
-    // 获取成交量
-    const volumes = volumeData?.slice(-30).map(v => v.volume);
+    // 获取成交量（最近90个交易日）
+    const volumes = volumeData?.slice(-90).map(v => v.volume);
 
     // 构建实时价格
     const realtimePrices = intradayPoints?.slice(-50).map(p => ({

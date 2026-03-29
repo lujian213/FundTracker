@@ -29,7 +29,8 @@ describe('systemSettingsService', () => {
     test('should return default settings when no saved data', () => {
       const settings = getSystemSettings();
       expect(settings).toEqual({
-        initialPriceAdjustmentEnabled: false
+        initialPriceAdjustmentEnabled: false,
+        jobLogEnabled: false
       });
     });
 

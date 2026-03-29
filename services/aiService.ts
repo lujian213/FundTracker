@@ -31,6 +31,8 @@ export interface PromptTemplate {
   description: string;
   enabled: boolean;
   template: string;
+  maxTokens?: number;
+  temperature?: number;
 }
 
 // 模板配置文件路径映射
@@ -165,12 +167,16 @@ export type StreamCallback = (chunk: string, fullContent: string) => void;
 /**
  * Queries the AI model with the provided query and context
  * @param onChunk 可选的流式回调，每次收到新内容时调用
+ * @param maxTokens 可选的最大token数，默认2000
+ * @param temperature 可选的温度参数，默认0.7
  */
 export async function queryAI(
   config: AIConfiguration,
   query: string,
   context?: AIQueryContext,
-  onChunk?: StreamCallback
+  onChunk?: StreamCallback,
+  maxTokens?: number,
+  temperature?: number
 ): Promise<AIResponse> {
   try {
     // Construct the full prompt with context
@@ -209,8 +215,8 @@ export async function queryAI(
         { role: 'system', content: 'You are an investment assistant that provides analysis and information about investment funds. Be concise and informative.' },
         { role: 'user', content: fullPrompt }
       ],
-      temperature: 0.7,
-      max_tokens: 2000,
+      temperature: temperature ?? 0.7,
+      max_tokens: maxTokens || 2000,
       stream: true  // 使用流式响应，避免 HTTP/2 长连接中断
     };
 

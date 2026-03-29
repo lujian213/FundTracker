@@ -1,5 +1,6 @@
 import CronExpressionParser from 'cron-parser';
 import { TimerJobConfig, Ticker } from '../types';
+import { logTaskStart, logTaskEnd } from './jobLogService';
 
 interface JobContext {
   portfolio: Ticker[];
@@ -11,12 +12,16 @@ type ErrorCallback = (jobId: string, jobName: string, error: Error) => void;
 
 const DEFAULT_JOBS: TimerJobConfig[] = [
   { id: 'fund-valuation-refresh', name: '基金估值刷新', cron: '*/3 * * * *', enabled: true },
-  { id: 'history-refresh', name: '历史净值刷新', cron: '*/20 * * * *', enabled: true },
+  { id: 'fund-history-refresh', name: '基金历史净值刷新', cron: '*/20 * * * *', enabled: true },
   { id: 'market-index-refresh', name: '市场指数刷新', cron: '*/2 * * * *', enabled: true },
+  { id: 'index-history-refresh', name: '指数历史刷新', cron: '*/20 * * * *', enabled: true },
   { id: 'news-refresh', name: '市场热点刷新', cron: '*/3 * * * *', enabled: true },
   { id: 'holiday-info-refresh', name: '节假日信息刷新', cron: '0 */6 * * *', enabled: true },
   { id: 'delivery-info-refresh', name: '交割日信息刷新', cron: '0 */6 * * *', enabled: true },
   { id: 'strategy-recommendation-refresh', name: '推荐交易策略刷新', cron: '0 */6 * * *', enabled: true },
+  { id: 'calendar_holiday_china', name: 'Calendar A股节假日信息刷新', cron: '0 0 * * *', enabled: true },
+  { id: 'calendar_holiday_hk', name: 'Calendar 港股节假日信息刷新', cron: '0 0 * * *', enabled: true },
+  { id: 'calendar_holiday_us', name: 'Calendar 美股节假日信息刷新', cron: '0 0 * * *', enabled: true },
 ];
 
 interface TimerJobScheduler {
@@ -175,9 +180,16 @@ class TimerJobSchedulerImpl implements TimerJobScheduler {
 
     this.runningJobs.add(job.id);
 
+    // 记录任务开始
+    const logId = logTaskStart(job.name);
+
     try {
       await handler(this.context);
+      // 记录任务成功
+      logTaskEnd(logId, 'success');
     } catch (error) {
+      // 记录任务失败
+      logTaskEnd(logId, 'failure', (error as Error).message);
       console.error(`[TimerJob] ${job.name} (${job.id}) failed:`, error);
       for (const callback of this.errorCallbacks) {
         callback(job.id, job.name, error as Error);

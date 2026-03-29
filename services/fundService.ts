@@ -570,22 +570,38 @@ async function fetchFundDataFromEastMoney(code: string): Promise<ValuationData |
   }
 }
 
+/**
+ * 标准化指数符号
+ * - A股: 保持原样 (如 1.000001 -> 1.000001)
+ * - 美股/港股指数别名: 转换为标准格式 (NDX -> 100.NDX, SPX -> 100.SPX, HSI -> 100.HSI)
+ */
+export function normalizeIndexSymbol(raw: string): string {
+  const normalized = (raw || '').trim().toUpperCase();
+  if (normalized === 'NDX') return '100.NDX';
+  if (normalized === 'SPX') return '100.SPX';
+  if (normalized === 'HSI') return '100.HSI';
+  return normalized;
+}
+
 export async function fetchSingleIndex(symbol: string): Promise<MarketIndex | null> {
-  const normalizeIndexSymbol = (raw: string): string => {
-    const normalized = (raw || '').trim().toUpperCase();
-    if (normalized === 'NDX') return '100.NDX';
-    if (normalized === 'SPX') return '100.SPX';
-    if (normalized === 'HSI') return '100.HSI';
-    return normalized;
-  };
+
+  // 0. 检查缓存
+  const normalizedSymbol = normalizeIndexSymbol(symbol);
+  const cached = cacheService.getIndexMarketData(normalizedSymbol);
+  if (cached) {
+    return cached;
+  }
 
   const ut = 'fa1a66105171779fbdd067425f38a7c2';
   const fields = 'f1,f2,f3,f4,f12,f13,f14,f43,f57,f58,f60,f80,f169,f170,f124';
   const secid = normalizeIndexSymbol(symbol);
 
-  const url = `https://push2.eastmoney.com/api/qt/stock/get?ut=${ut}&fltt=2&invt=2&secid=${secid}&fields=${fields}&_=${Date.now()}`;
+  const realtimeUrl = `https://push2.eastmoney.com/api/qt/stock/get?ut=${ut}&fltt=2&invt=2&secid=${secid}&fields=${fields}&_=${Date.now()}`;
+
+  // 1. 获取实时数据
+  let currentData: MarketIndex | null = null;
   try {
-    const response: any = await jsonp(url, 'cb');
+    const response: any = await jsonp(realtimeUrl, 'cb');
     const item = response?.data;
     if (item) {
       const timestamp = item.f124 ? new Date(item.f124 * 1000) : new Date();
@@ -595,21 +611,15 @@ export async function fetchSingleIndex(symbol: string): Promise<MarketIndex | nu
       let tradeDate: string | undefined;
       if (item.f80 && typeof item.f80 === 'string') {
         try {
-          // f80 格式: [{"b":202603210930,"e":202603211130},{"b":202603211300,"e":202603211500}]
           const match = item.f80.match(/"b":(\d{12})/);
           if (match) {
-            const dateNum = match[1]; // 202603210930
-            const year = dateNum.substring(0, 4);
-            const month = dateNum.substring(4, 6);
-            const day = dateNum.substring(6, 8);
-            tradeDate = `${year}-${month}-${day}`;
+            const dateNum = match[1];
+            tradeDate = `${dateNum.substring(0, 4)}-${dateNum.substring(4, 6)}-${dateNum.substring(6, 8)}`;
           }
-        } catch (e) {
-          // 解析失败，忽略
-        }
+        } catch (e) {}
       }
 
-      return {
+      currentData = {
         symbol: secid,
         name: item.f14 || item.f58 || "指数",
         current: parseFloat(item.f43) || 0,
@@ -618,10 +628,55 @@ export async function fetchSingleIndex(symbol: string): Promise<MarketIndex | nu
         lastUpdated: `${pad(timestamp.getHours())}:${pad(timestamp.getMinutes())}:${pad(timestamp.getSeconds())}`,
         tradeDate,
         previousClose: parseFloat(item.f60) || undefined,
+        volume: 0,
+        amount: 0,
       };
     }
   } catch (e) {}
-  return null;
+
+  // 2. 从历史数据获取成交量和成交额
+  try {
+    const history = await fetchIndexHistory(symbol);
+    if (history && history.length > 0) {
+      const lastPoint = history[history.length - 1];
+
+      // 如果已有实时数据，合并成交量和成交额
+      if (currentData) {
+        const result = {
+          ...currentData,
+          volume: lastPoint.volume || 0,
+          amount: lastPoint.amount || 0,
+        };
+        // 写入缓存
+        cacheService.setIndexMarketData(normalizedSymbol, result);
+        return result;
+      }
+
+      // 如果没有实时数据，从历史数据构造返回
+      const lastDate = new Date(lastPoint.date);
+      const year = lastDate.getFullYear();
+      const month = String(lastDate.getMonth() + 1).padStart(2, '0');
+      const day = String(lastDate.getDate()).padStart(2, '0');
+
+      const result = {
+        symbol: secid,
+        name: lastPoint.volume ? "指数" : "指数",
+        current: lastPoint.value,
+        change: lastPoint.equityReturn,
+        changePercent: lastPoint.equityReturn,
+        lastUpdated: `${year}-${month}-${day} 15:00`,
+        tradeDate: `${year}-${month}-${day}`,
+        previousClose: undefined,
+        volume: lastPoint.volume || 0,
+        amount: lastPoint.amount || 0,
+      };
+      // 写入缓存
+      cacheService.setIndexMarketData(normalizedSymbol, result);
+      return result;
+    }
+  } catch (e) {}
+
+  return currentData;
 }
 
 export async function fetchMarketIndices(symbols: string[]): Promise<MarketIndex[]> {
@@ -670,6 +725,12 @@ export async function forceFetchFundHistory(symbol: string): Promise<HistoricalP
 
 // Index history: fetch Kline data for indices via push2his and convert to HistoricalPoint[]
 export async function fetchIndexHistory(symbol: string): Promise<HistoricalPoint[]> {
+   // 1. 先检查缓存
+   const cached = cacheService.getHistory(symbol);
+   if (cached && cached.length > 0) {
+     return cached;
+   }
+
    let secid = symbol;
    if (secid === 'NDX') secid = '100.NDX';
    if (secid === 'SPX') secid = '100.SPX';

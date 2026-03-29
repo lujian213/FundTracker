@@ -85,7 +85,9 @@ export const IndexDetailsModal: React.FC<IndexDetailsModalProps> = ({ data, onCl
       return [...history, {
         date: tradeTs,
         value: data.current,
-        equityReturn: data.changePercent || 0
+        equityReturn: data.changePercent || 0,
+        volume: data.volume,
+        amount: data.amount
       }];
     }
 
@@ -95,13 +97,15 @@ export const IndexDetailsModal: React.FC<IndexDetailsModalProps> = ({ data, onCl
       updated[updated.length - 1] = {
         ...lastHist,
         value: data.current,
-        equityReturn: data.changePercent || 0
+        equityReturn: data.changePercent || 0,
+        volume: data.volume ?? lastHist.volume,
+        amount: data.amount ?? lastHist.amount
       };
       return updated;
     }
 
     return history;
-  }, [history, data.tradeDate, data.current, data.changePercent]);
+  }, [history, data.tradeDate, data.current, data.changePercent, data.volume, data.amount]);
 
   const { path, area, points, viewBox, yLabels, xLabels, maPaths, maValues, volumeData } = useMemo(() => {
     // 使用公共函数准备数据（包含MA计算和截取）

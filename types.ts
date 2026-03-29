@@ -16,6 +16,19 @@ export interface TickerAlert {
   content: string;                // 信息内容
 }
 
+// CalendarEvent - 日历事件（节假日/交割日）
+export interface CalendarEvent {
+  type: 'holiday_china' | 'holiday_hk' | 'holiday_us' | 'delivery';  // 事件类型
+  content: string;                // 简要内容
+  description?: string;           // 详细描述
+  market?: string;                // 市场名称（如"A股"、"港股"、"美股"）
+}
+
+// CalendarData - 日历数据（日期到事件列表的映射）
+export interface CalendarData {
+  [date: string]: CalendarEvent[];
+}
+
 // RecommendedStrategy - 推荐交易策略
 export interface RecommendedStrategy {
   strategy_id: string;    // 推荐策略的 key（如 'trendFollowing', 'meanReversion'）
@@ -55,6 +68,8 @@ export interface MarketIndex {
   lastUpdated: string;
   tradeDate?: string; // 交易日期 YYYY-MM-DD
   previousClose?: number; // 前收盘价
+  volume?: number; // 成交量（手）
+  amount?: number; // 成交额（元）
 }
 
 export interface HistoricalPoint {

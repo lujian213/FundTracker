@@ -19,6 +19,11 @@ const SWITCH_CONFIGS: SwitchConfig[] = [
     label: '初始价格调整',
     description: '启用后可在基金详情页调整初始价格',
   },
+  {
+    key: 'jobLogEnabled',
+    label: '后台任务日志',
+    description: '启用后可在主界面显示日志按钮',
+  },
 ];
 
 const SystemPanel: React.FC = () => {

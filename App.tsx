@@ -1,8 +1,9 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { Ticker, ValuationData, MarketType, MarketIndex, BackupData, CardStatus, ManageItemType, ManageSelectionKey } from './types';
-import { fetchFundData, fetchMarketIndices, forceFetchFundHistory, maybeTriggerHistoryRefresh } from './services/fundService';
+import { fetchFundData, fetchMarketIndices, forceFetchFundHistory, fetchIndexHistory, maybeTriggerHistoryRefresh } from './services/fundService';
 import { toLocalDateKey } from './utils/priceResolver';
 import * as cacheService from './services/cacheService';
+import { isFeatureEnabled } from './services/systemSettingsService';
 import { TickerCard } from './components/TickerCard';
 import IndexCard from './components/IndexCard';
 import { AddTickerModal } from './components/AddTickerModal';
@@ -21,7 +22,8 @@ import SyncManagementModal from './components/SyncManagementModal';
 import SyncConfirmationModal from './components/SyncConfirmationModal';
 import AIMenuItem from './components/AIMenuItem';
 import AIConfigModal from './components/AIConfigModal';
-import SystemSettingsModal from './components/SystemSettingsModal';
+import CalendarModal from './components/CalendarModal';
+import JobLogModal from './components/JobLogModal';
 import SystemConfigModal from './components/SystemConfigModal';
 import { getAvailableStrategyKeys } from './services/strategyRegistry';
 import {
@@ -33,8 +35,12 @@ import { applySyncUpdates } from './services/syncService';
 import { TimerJobErrorProvider, useTimerJobErrors } from './contexts/TimerJobErrorContext';
 import { NewsProvider, useNews } from './contexts/NewsContext';
 import { getTimerJobScheduler } from './services/timerJobScheduler';
-import { refreshTickerAlerts } from './services/backgroundJobService';
+import { refreshTickerAlerts, loadBackgroundJobPrompts } from './services/backgroundJobService';
+import { queryAI, AIResponse } from './services/aiService';
+import { getAIConfig } from './services/aiConfigService';
 import { refreshStrategyRecommendations } from './services/strategyRecommendationService';
+import { updateCalendarData, getEventsForYear, getUpcomingEvents, loadCalendarData } from './services/calendarService';
+import { formatDateDisplay } from './utils/dateFormat';
 
 type SortOrder = 'asc' | 'desc';
 
@@ -92,6 +98,313 @@ const mergeIndicesForDisplay = (
 };
 
 const createManageSelectionKey = (type: ManageItemType, value: string): ManageSelectionKey => `${type}:${value}`;
+
+/**
+ * 检查未来三天内（包括今天）是否有节假日/交割日事件
+ * 返回：{ hasUpcoming: boolean, nextEvent: { date: string, content: string, type: string } | null }
+ */
+function checkUpcomingCalendarEvents(): { hasUpcoming: boolean; nextEvent: { date: string; content: string; type: string } | null } {
+  const upcomingEvents = getUpcomingEvents(3);
+  if (upcomingEvents.length === 0) {
+    return { hasUpcoming: false, nextEvent: null };
+  }
+  const first = upcomingEvents[0];
+  return {
+    hasUpcoming: true,
+    nextEvent: {
+      date: first.date.slice(5), // 只保留月-日
+      content: first.content,
+      type: first.type
+    }
+  };
+}
+
+/**
+ * 解析 Calendar AI 响应
+ */
+interface CalendarAIResponse {
+  market?: string;
+  date?: string;
+  content?: string;
+  description?: string;
+}
+
+interface CalendarEventInput {
+  date: string;
+  content: string;
+  description: string;
+  market?: string;
+}
+
+function parseCalendarAIResponse(response: string): CalendarEventInput[] {
+  try {
+    let cleanedResponse = response.trim();
+
+    // 尝试从代码块中提取JSON（新格式：AI输出包含思考过程 + ```json ... ```代码块）
+    const codeBlockMatch = cleanedResponse.match(/```json\s*([\s\S]*?)\s*```/);
+    if (codeBlockMatch) {
+      cleanedResponse = codeBlockMatch[1].trim();
+    } else if (cleanedResponse.startsWith('```')) {
+      // 旧格式：从开头开始
+      const firstNewline = cleanedResponse.indexOf('\n');
+      if (firstNewline !== -1) {
+        cleanedResponse = cleanedResponse.slice(firstNewline + 1);
+      }
+      if (cleanedResponse.endsWith('```')) {
+        cleanedResponse = cleanedResponse.slice(0, -3).trim();
+      }
+    }
+
+    const parsed = JSON.parse(cleanedResponse);
+    if (!Array.isArray(parsed)) {
+      console.warn('[Calendar] AI response is not an array');
+      return [];
+    }
+
+    return parsed.filter((item: CalendarAIResponse) =>
+      item.date && item.content
+    ).map((item: CalendarAIResponse) => ({
+      market: typeof item.market === 'string' ? item.market : '',
+      date: String(item.date),
+      content: typeof item.content === 'string' ? item.content : '',
+      description: typeof item.description === 'string' ? item.description : '',
+    }));
+  } catch (e) {
+    console.error('[Calendar] Failed to parse AI response:', e);
+    return [];
+  }
+}
+
+/**
+ * 公共函数：从网站获取内容（通过jina.ai网页抓取）
+ */
+async function fetchWebContent(url: string, logPrefix: string): Promise<string> {
+  const JINA_URL = `https://r.jina.ai/${url}`;
+  try {
+    const response = await fetch(JINA_URL);
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}`);
+    }
+    const content = await response.text();
+    console.log(`[Calendar] ${logPrefix}成功获取网站内容，长度:`, content.length);
+    return content;
+  } catch (e) {
+    console.error(`[Calendar] ${logPrefix}获取网站内容失败:`, e);
+    throw new Error(`无法获取网站内容: ${url}，任务失败`);
+  }
+}
+
+/**
+ * 公共函数：处理Calendar节假日AI请求
+ */
+async function processCalendarHoliday(
+  promptType: string,
+  url: string,
+  logPrefix: string,
+  calendarType: 'holiday_china' | 'holiday_hk' | 'holiday_us'
+): Promise<void> {
+  const aiConfig = getAIConfig();
+  if (!aiConfig || !aiConfig.apiKey) {
+    throw new Error('未配置 AI API Key');
+  }
+
+  // 获取网站内容
+  const webContent = await fetchWebContent(url, logPrefix);
+
+  // 检查内容是否包含年份（基本验证）
+  const currentYear = new Date().getFullYear().toString();
+  if (!webContent.includes(currentYear) && !webContent.includes(String(parseInt(currentYear) + 1))) {
+    console.warn(`[Calendar] ${logPrefix}网站内容可能不包含有效年份信息`);
+  }
+
+  // 加载提示词模板
+  const prompts = await loadBackgroundJobPrompts();
+  const prompt = prompts.find(p => p.type === promptType);
+  if (!prompt) {
+    throw new Error(`未找到 ${promptType} 提示词模板`);
+  }
+
+  // 填充变量（包括网站内容）
+  const current_date = formatDateDisplay(new Date());
+  const current_year = new Date().getFullYear().toString();
+  const filledPrompt = prompt.template
+    .replace(/{web_content}/g, webContent)
+    .replace(/{current_date}/g, current_date)
+    .replace(/{year}/g, current_year);
+
+  // 从提示词模板中获取maxTokens和temperature参数
+  const maxTokens = prompt.maxTokens;
+  const temperature = prompt.temperature;
+
+  // 调用 AI
+  const response: AIResponse = await queryAI(aiConfig, filledPrompt, undefined, undefined, maxTokens, temperature);
+
+  if (!response.success) {
+    throw new Error(response.error || 'AI 请求失败');
+  }
+
+  // 解析响应
+  const results = parseCalendarAIResponse(response.content);
+
+  // 更新 calendar 数据
+  updateCalendarData(calendarType, results);
+
+  // 作为子任务，计算并更新交割日信息
+  calculateDeliveryDates();
+}
+
+/**
+ * 刷新 Calendar A股节假日信息
+ */
+async function refreshCalendarHolidays(): Promise<void> {
+  await processCalendarHoliday(
+    'calendar_holiday_china',
+    'https://www.sse.com.cn/disclosure/dealinstruc/closed',
+    'A股',
+    'holiday_china'
+  );
+}
+
+/**
+ * 刷新 Calendar 港股节假日信息
+ */
+async function refreshCalendarHolidaysHK(): Promise<void> {
+  await processCalendarHoliday(
+    'calendar_holiday_hk',
+    'https://invest101.com.hk/hong-kong-stock-market-holiday',
+    '港股',
+    'holiday_hk'
+  );
+}
+
+/**
+ * 刷新 Calendar 美股节假日信息
+ */
+async function refreshCalendarHolidaysUS(): Promise<void> {
+  await processCalendarHoliday(
+    'calendar_holiday_us',
+    'https://invest101.com.hk/stock-us-holidays',
+    '美股',
+    'holiday_us'
+  );
+}
+
+/**
+ * 计算交割日信息（基于已有节假日数据计算，不再使用AI）
+ * 在每个calendar节假日任务执行结束后作为子任务调用
+ */
+function calculateDeliveryDates(): void {
+  const year = new Date().getFullYear();
+  const results: Array<{ date: string; content: string; description: string; market?: string }> = [];
+
+  // Helper: 获取某月的第N个星期几
+  function getNthWeekdayOfMonth(year: number, month: number, weekday: number, n: number): Date {
+    const firstDay = new Date(year, month, 1);
+    let count = 0;
+    for (let d = 1; d <= 31; d++) {
+      const date = new Date(year, month, d);
+      if (date.getMonth() !== month) break;
+      if (date.getDay() === weekday) {
+        count++;
+        if (count === n) return date;
+      }
+    }
+    return new Date(year, month, 1);
+  }
+
+  // Helper: 检查是否为节假日（需要考虑A股节假日）
+  function isHoliday(date: Date): boolean {
+    const dateStr = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+    const data = loadCalendarData();
+    const events = data[dateStr] || [];
+    return events.some(e => e.type === 'holiday_china');
+  }
+
+  // Helper: 找到下一个营业日（跳过周末和节假日）
+  function getNextBusinessDay(date: Date): Date {
+    let next = new Date(date);
+    while (next.getDay() === 0 || next.getDay() === 6 || isHoliday(next)) {
+      next.setDate(next.getDate() + 1);
+    }
+    return next;
+  }
+
+  // Helper: 找到上一个营业日
+  function getPrevBusinessDay(date: Date): Date {
+    let prev = new Date(date);
+    while (prev.getDay() === 0 || prev.getDay() === 6 || isHoliday(prev)) {
+      prev.setDate(prev.getDate() - 1);
+    }
+    return prev;
+  }
+
+  // 月份遍历（1-12月）
+  for (let month = 0; month < 12; month++) {
+    // A股 - 中金所股指期货/期权交割日：每月第三个星期五
+    const thirdFriday = getNthWeekdayOfMonth(year, month, 5, 3);
+    let adjThirdFriday = thirdFriday;
+    // 遇法定节假日顺延至下一交易日
+    if (isHoliday(thirdFriday)) {
+      adjThirdFriday = getNextBusinessDay(thirdFriday);
+    }
+    results.push({
+      date: `${year}-${String(month + 1).padStart(2, '0')}-${String(adjThirdFriday.getDate()).padStart(2, '0')}`,
+      content: 'A股-中金所股指期货/期权交割日',
+      description: 'A股：每月第三个星期五，遇法定节假日顺延至下一交易日'
+    });
+
+    // A股 - 上交所/深交所ETF期权交割日：每月第四个星期三
+    const fourthWednesday = getNthWeekdayOfMonth(year, month, 3, 4);
+    let adjFourthWednesday = fourthWednesday;
+    if (isHoliday(fourthWednesday)) {
+      adjFourthWednesday = getNextBusinessDay(fourthWednesday);
+    }
+    results.push({
+      date: `${year}-${String(month + 1).padStart(2, '0')}-${String(adjFourthWednesday.getDate()).padStart(2, '0')}`,
+      content: 'A股-上交所/深交所ETF期权交割日',
+      description: 'A股：每月第四个星期三，遇法定节假日顺延'
+    });
+
+    // A股 - 富时中国A50指数期货（SGX）：每月倒数第二个营业日
+    // new Date(year, month + 2, 0) 获取month月的最后一天
+    let lastDay = new Date(year, month + 2, 0);
+    let secondLastBusinessDay = getPrevBusinessDay(lastDay);
+    results.push({
+      date: `${year}-${String(month + 1).padStart(2, '0')}-${String(secondLastBusinessDay.getDate()).padStart(2, '0')}`,
+      content: 'A股-富时中国A50指数期货（SGX）交割日',
+      description: 'A股：每月倒数第二个营业日，新加坡交易所规则'
+    });
+
+    // 港股 - 恒指期货及期权月度交割日：合约月份倒数第二个营业日
+    let hkLastDay = new Date(year, month + 2, 0);
+    let hkSecondLastBusinessDay = getPrevBusinessDay(hkLastDay);
+    results.push({
+      date: `${year}-${String(month + 1).padStart(2, '0')}-${String(hkSecondLastBusinessDay.getDate()).padStart(2, '0')}`,
+      content: '港股-恒指/国企股/科指期货及期权交割日',
+      description: '港股：合约月份倒数第二个营业日'
+    });
+
+    // 美股 - 月度期权到期日：每月第三个星期五
+    const usThirdFriday = getNthWeekdayOfMonth(year, month, 5, 3);
+    results.push({
+      date: `${year}-${String(month + 1).padStart(2, '0')}-${String(usThirdFriday.getDate()).padStart(2, '0')}`,
+      content: '美股-月度期权到期日',
+      description: '美股：每月第三个星期五'
+    });
+
+    // 美股 - 三巫日：3,6,9,12月的第三个星期五
+    if (month === 2 || month === 5 || month === 8 || month === 11) {
+      results.push({
+        date: `${year}-${String(month + 1).padStart(2, '0')}-${String(usThirdFriday.getDate()).padStart(2, '0')}`,
+        content: '美股-三巫日',
+        description: '美股：股指期货+股指期权+个股期权同时到期'
+      });
+    }
+  }
+
+  // 更新 calendar 数据
+  updateCalendarData('delivery', results);
+}
 
 const AppContent: React.FC = () => {
   const [portfolio, setPortfolio] = useState<Ticker[]>(() => {
@@ -161,14 +474,23 @@ const AppContent: React.FC = () => {
 
   // viewingSymbol 和 viewingFromDraft 合并为一个状态对象，确保同时更新
   const [viewingFund, setViewingFund] = useState<{ symbol: string; fromDraft: boolean } | null>(null);
+  // 跟踪上一次 viewingFund 是否为非 null，用于判断是否需要进场动画
+  const wasViewingFundOpenRef = useRef<boolean>(false);
+  // 更新 ref：每次 viewingFund 变化后，将当前值同步到 ref，供下一次渲染使用
+  useEffect(() => {
+    wasViewingFundOpenRef.current = viewingFund !== null;
+  }, [viewingFund]);
+
   const [virtualTradeModalFund, setVirtualTradeModalFund] = useState<string | null>(null);
   const [viewingIndexSymbol, setViewingIndexSymbol] = useState<string | null>(null);
   const [pendingImportData, setPendingImportData] = useState<BackupData | null>(null);
   const [showBackupSettings, setShowBackupSettings] = useState<boolean>(false);
   const [showSyncManagement, setShowSyncManagement] = useState<boolean>(false);
   const [showAIConfig, setShowAIConfig] = useState<boolean>(false);
-  const [showSystemSettings, setShowSystemSettings] = useState<boolean>(false);
   const [showSystemConfig, setShowSystemConfig] = useState<boolean>(false);
+  const [showCalendar, setShowCalendar] = useState<boolean>(false);
+  const [showCalendarTooltip, setShowCalendarTooltip] = useState<boolean>(false);
+  const [showJobLog, setShowJobLog] = useState<boolean>(false);
   const [showSyncConfirmation, setShowSyncConfirmation] = useState<boolean>(false);
   const [syncErrorMessage, setSyncErrorMessage] = useState<string | null>(null);
   const [autoExportTime, setAutoExportTime] = useState<string>(() => readBackupConfig().autoExportTime);
@@ -376,6 +698,23 @@ const AppContent: React.FC = () => {
     await Promise.allSettled([fetchDomestic(), fetchGlobal()]);
   }, [indicesConfig, globalIndicesConfig]);
 
+  // 刷新指数历史数据
+  const refreshIndexHistoryAsync = useCallback(async () => {
+    const allIndexSymbols = [...indicesConfig, ...globalIndicesConfig];
+    if (allIndexSymbols.length === 0) return;
+
+    const queue = [...allIndexSymbols];
+    const workers = Array(Math.min(3, allIndexSymbols.length)).fill(null).map(async () => {
+      while (queue.length > 0) {
+        const symbol = queue.shift();
+        if (symbol) {
+          try { await fetchIndexHistory(symbol); } catch { /* ignore individual errors */ }
+        }
+      }
+    });
+    await Promise.all(workers);
+  }, [indicesConfig, globalIndicesConfig]);
+
   const displayDomesticIndices = useMemo(
     () => mergeIndicesForDisplay(indicesConfig, marketIndices, marketIndices),
     [indicesConfig, marketIndices]
@@ -394,27 +733,10 @@ const AppContent: React.FC = () => {
         runBatchUpdate(portfolio),
         refreshMarketIndicesAsync(),
         runBatchHistoryUpdate(portfolio),
+        refreshIndexHistoryAsync(),
       ]);
     } finally { setIsRefreshing(false); }
-  }, [portfolio, isRefreshing, runBatchUpdate, refreshMarketIndicesAsync, runBatchHistoryUpdate]);
-
-  const deepRefreshAll = useCallback(() => {
-    if (portfolio.length === 0) return;
-    // 在后台强制刷新所有基金的历史净值（不改变 isRefreshing，不阻塞界面）
-    setBackgroundTasks(prev => prev + portfolio.length);
-    // immediate feedback
-    setDeepToast({ message: '深度刷新已启动（后台进行）', visible: true });
-    // fire-and-forget
-    runBatchHistoryUpdate(portfolio).then(() => {
-      setBackgroundTasks(prev => Math.max(0, prev - portfolio.length));
-      setDeepToast({ message: '深度刷新完成', visible: true });
-      setTimeout(() => setDeepToast(undefined), 3000);
-    }).catch(() => {
-      setBackgroundTasks(prev => Math.max(0, prev - portfolio.length));
-      setDeepToast({ message: '深度刷新失败', visible: true });
-      setTimeout(() => setDeepToast(undefined), 3000);
-    });
-  }, [portfolio, runBatchHistoryUpdate]);
+  }, [portfolio, isRefreshing, runBatchUpdate, refreshMarketIndicesAsync, runBatchHistoryUpdate, refreshIndexHistoryAsync]);
 
   useEffect(() => {
     if (portfolio.length > 0) {
@@ -449,12 +771,16 @@ const AppContent: React.FC = () => {
       await runBatchUpdate(portfolio);
     });
 
-    scheduler.registerHandler('history-refresh', async () => {
+    scheduler.registerHandler('fund-history-refresh', async () => {
       await runBatchHistoryUpdate(portfolio);
     });
 
     scheduler.registerHandler('market-index-refresh', async () => {
       await refreshMarketIndicesAsync();
+    });
+
+    scheduler.registerHandler('index-history-refresh', async () => {
+      await refreshIndexHistoryAsync();
     });
 
     scheduler.registerHandler('news-refresh', async () => {
@@ -473,6 +799,19 @@ const AppContent: React.FC = () => {
     // 注册策略推荐任务处理器
     scheduler.registerHandler('strategy-recommendation-refresh', async () => {
       await refreshStrategyRecommendations(() => portfolio, setPortfolio);
+    });
+
+    // 注册 Calendar 任务处理器
+    scheduler.registerHandler('calendar_holiday_china', async () => {
+      await refreshCalendarHolidays();
+    });
+
+    scheduler.registerHandler('calendar_holiday_hk', async () => {
+      await refreshCalendarHolidaysHK();
+    });
+
+    scheduler.registerHandler('calendar_holiday_us', async () => {
+      await refreshCalendarHolidaysUS();
     });
 
     // Set context with current portfolio
@@ -494,10 +833,17 @@ const AppContent: React.FC = () => {
       setTimeout(() => {
         scheduler._triggerJob?.('strategy-recommendation-refresh');
       }, 6000);
+
+      // Calendar 任务延迟 7 秒执行
+      setTimeout(() => {
+        scheduler._triggerJob?.('calendar_holiday_china');
+        scheduler._triggerJob?.('calendar_holiday_hk');
+        scheduler._triggerJob?.('calendar_holiday_us');
+      }, 7000);
     }
 
     return () => scheduler.stop();
-  }, [portfolio, runBatchUpdate, runBatchHistoryUpdate, refreshMarketIndicesAsync, addError, reloadNews]);
+  }, [portfolio, runBatchUpdate, runBatchHistoryUpdate, refreshMarketIndicesAsync, refreshIndexHistoryAsync, addError, reloadNews]);
 
   // 自动导出定时器
   useEffect(() => {
@@ -690,18 +1036,68 @@ const AppContent: React.FC = () => {
           </div>
           <div className="flex items-center space-x-2 relative">
             {!isSelectionMode && (
-              <button disabled={isRefreshing} onClick={refreshAll} title="刷新行情" aria-label="刷新行情" className={`p-2 w-10 h-10 rounded-full hover:bg-gray-100 transition-all flex items-center justify-center ${isRefreshing ? 'text-red-500' : 'text-gray-400'}`}>
+              <button disabled={isRefreshing} onClick={refreshAll} title="刷新全部（基金和指数的实时数据、历史数据）" aria-label="刷新全部" className={`p-2 w-10 h-10 rounded-full hover:bg-gray-100 transition-all flex items-center justify-center ${isRefreshing ? 'text-red-500' : 'text-gray-400'}`}>
                 <i className={`fas fa-sync-alt ${isRefreshing ? 'animate-spin' : ''}`}></i>
               </button>
             )}
-            {/* 深度刷新按钮：靠近刷新按钮的图标（纯图标以节省空间），data-testid 保留方便测试 */}
-            <button data-testid="deep-refresh-button" onClick={deepRefreshAll} title="深度刷新历史（后台）" aria-label="深度刷新历史" className="p-2 w-10 h-10 rounded-full hover:bg-gray-100 text-gray-700 transition-all">
-              <i className="fas fa-database"></i>
-            </button>
+            {/* Calendar 按钮 */}
+            <div className="relative">
+              <div
+                className="relative"
+                onMouseEnter={() => setShowCalendarTooltip(true)}
+                onMouseLeave={() => setShowCalendarTooltip(false)}
+              >
+                <div className="relative">
+                  <button onClick={() => setShowCalendar(true)} title="日历" aria-label="日历" className="p-2 w-10 h-10 rounded-full hover:bg-gray-100 text-gray-400 transition-all">
+                    <i className="fas fa-calendar-alt"></i>
+                  </button>
+                  {(() => {
+                    const { hasUpcoming, nextEvent } = checkUpcomingCalendarEvents();
+                    if (hasUpcoming && nextEvent) {
+                      return (
+                        <div
+                          className="absolute top-0 right-0 w-3 h-3 bg-red-500 rounded-full border-2 border-white"
+                          onClick={() => setShowCalendar(true)}
+                          title="查看日历"
+                        ></div>
+                      );
+                    }
+                    return null;
+                  })()}
+                </div>
+              </div>
+              {/* Tooltip - 鼠标悬停时显示 */}
+              {showCalendarTooltip && (() => {
+                const { hasUpcoming, nextEvent } = checkUpcomingCalendarEvents();
+                if (hasUpcoming && nextEvent) {
+                  return (
+                    <div className="absolute z-[99999] w-56 bg-white rounded-lg shadow-xl border border-gray-200 p-3 text-xs"
+                        style={{
+                          left: '50%',
+                          transform: 'translateX(-50%)',
+                          top: '100%',
+                          marginTop: '10px'
+                        }}>
+                      <div className="font-semibold text-gray-700 mb-1">即将到来的事件</div>
+                      <div className="text-gray-600">
+                        <span className={nextEvent.type === 'holiday' ? 'text-red-500' : 'text-amber-500'}>●</span> {nextEvent.date} {nextEvent.content}
+                      </div>
+                    </div>
+                  );
+                }
+                return null;
+              })()}
+            </div>
             {/* 系统配置按钮 */}
             <button onClick={() => setShowSystemConfig(true)} title="系统配置" aria-label="系统配置" className="p-2 w-10 h-10 rounded-full hover:bg-gray-100 text-gray-400 transition-all">
               <i className="fas fa-cog"></i>
             </button>
+            {/* 日志按钮 - 仅在开关开启时显示 */}
+            {isFeatureEnabled('jobLogEnabled') && (
+              <button onClick={() => setShowJobLog(true)} title="后台任务日志" aria-label="后台任务日志" className="p-2 w-10 h-10 rounded-full hover:bg-gray-100 text-gray-400 transition-all">
+                <i className="fas fa-list-alt"></i>
+              </button>
+            )}
             {/* 小型 toast 通知：在深度刷新开始/完成时短暂显示 */}
             {/** toast 位于 header 右上，短暂显示 */}
             {/** deepToast: { message: string, visible: boolean } */}
@@ -841,14 +1237,18 @@ const AppContent: React.FC = () => {
       }} marketData={marketData} sideBySide={viewingFund?.fromDraft} />}
       {viewingFund && marketData[viewingFund.symbol] && (() => {
           const fund = portfolio.find(f => f.symbol === viewingFund.symbol);
+          // 使用 useRef 来跟踪上一次 viewingFund 的值，判断是否是从关闭到打开的过渡
+          const shouldAnimate = viewingFund.fromDraft && !wasViewingFundOpenRef.current;
+          // 从草稿窗口打开时，key 只用 fromDraft，避免切换基金时重新挂载组件导致动画
+          const modalKey = viewingFund.fromDraft ? 'fromDraft' : viewingFund.symbol;
           return (
             <FundDetailsModal
-              key={`${viewingFund.symbol}-${viewingFund.fromDraft}`}
+              key={modalKey}
               data={marketData[viewingFund.symbol]}
               recommendedStrategy={fund?.recommended_strategy}
               onClose={() => { setViewingFund(null); }}
               position={viewingFund.fromDraft ? 'right' : 'center'}
-              animateSlide={viewingFund.fromDraft}
+              animateSlide={shouldAnimate}
               initialTab={viewingFund.fromDraft ? 'history' : 'intraday'}
             />
           );
@@ -906,10 +1306,14 @@ const AppContent: React.FC = () => {
           onClose={() => setShowAIConfig(false)}
         />
       )}
-      {showSystemSettings && (
-        <SystemSettingsModal
-          isOpen={showSystemSettings}
-          onClose={() => setShowSystemSettings(false)}
+      {showCalendar && (
+        <CalendarModal
+          onClose={() => setShowCalendar(false)}
+        />
+      )}
+      {showJobLog && (
+        <JobLogModal
+          onClose={() => setShowJobLog(false)}
         />
       )}
       {showSystemConfig && (
