@@ -64,15 +64,6 @@ export function prepareHistoryForProfitCalculation(params: {
     byDate.set(preferred.date, { date: preferredTs, value: preferred.price, equityReturn: 0 });
   }
 
-  // 确保目标日期有数据点
-  const hasTargetDate = byDate.has(targetDate);
-  if (!hasTargetDate && sorted.length > 0) {
-    // 使用历史数据中最后一个值作为目标日期的值
-    const lastValue = sorted[sorted.length - 1].value;
-    const targetTs = new Date(`${targetDate} 15:00`).getTime();
-    byDate.set(targetDate, { date: targetTs, value: lastValue, equityReturn: 0 });
-  }
-
   return Array.from(byDate.values()).sort((a, b) => a.date - b.date);
 }
 

@@ -31,33 +31,14 @@ describe('prepareHistoryForProfitCalculation', () => {
         todayDate,
       });
 
-      // Should have 3 entries: 19, 20 (higher timestamp wins), 23 (target date)
-      expect(result.length).toBe(3);
+      // Should have 2 entries: 19, 20 (target date no longer auto-filled)
+      expect(result.length).toBe(2);
       expect(result[0].date).toBe(mkTs('2026-03-19'));
       // For same date, higher timestamp wins (15:00 > 00:00)
       expect(result[1].value).toBe(1.5);
     });
 
-    it('should ensure target date has a data point', () => {
-      const history: HistoricalPoint[] = [
-        { date: mkTs('2026-03-20'), value: 1.5, equityReturn: 0 },
-      ];
-
-      const result = prepareHistoryForProfitCalculation({
-        history,
-        targetDate: '2026-03-22',
-        todayDate,
-      });
-
-      // Should have 2 entries: 20 and 22 (target date)
-      expect(result.length).toBe(2);
-      expect(result[1].date).toBe(mkTs('2026-03-22'));
-      // Target date should use last history value
-      expect(result[1].value).toBe(1.5);
-    });
-  });
-
-  describe('preferred price handling', () => {
+    describe('preferred price handling', () => {
     it('should override history with valuation data when targetDate is today', () => {
       // When targetDate === todayDate, resolvePreferredPrice prioritizes valuation
       const history: HistoricalPoint[] = [

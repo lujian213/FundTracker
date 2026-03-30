@@ -17,8 +17,9 @@ export function computeProfitTimeline(params: {
   initialPrice: number | null; // initial price per share (may be null)
   fromDate?: string | null; // inclusive YYYY-MM-DD
   toDate?: string | null; // inclusive YYYY-MM-DD
+  historyEndDate?: string | null; // 原始历史数据的最后日期（不包含填充的日期），用于判断是否需要补充没有数据的日期
 }): ProfitPoint[] {
-  const { history, trades, initialPosition, initialPrice, fromDate, toDate } = params;
+  const { history, trades, initialPosition, initialPrice, fromDate, toDate, historyEndDate } = params;
   if (!history || history.length === 0) return [];
 
   // normalize and sort history ascending by date
@@ -130,6 +131,43 @@ export function computeProfitTimeline(params: {
     timeline.push({ date: dateKey, netValue: Number(netValue.toFixed(4)), shares, cumulativeProfit: cumRounded, dailyProfit: daily });
 
     cumulativePrevious = cumulative;
+  }
+
+  // 如果用户选择的结束日期超过原始历史数据的最后日期，补充没有数据的日期
+  // 这些日期的当日盈利为0，累计盈利沿用最后有数据那天的累计盈利
+  if (historyEndDate && toDate && toDate > historyEndDate && timeline.length > 0) {
+    // 先移除 timeline 中所有 date > historyEndDate 的点（这些是用错误逻辑填充的）
+    const validPoints = timeline.filter(p => p.date <= historyEndDate);
+
+    // 找到 historyEndDate 对应的数据点（有有效数据的最后一天）
+    const lastValidPoint = validPoints.find(p => p.date === historyEndDate);
+    // 如果找不到有效的点，跳过补充逻辑
+    if (lastValidPoint) {
+      const lastDateObj = new Date(historyEndDate);
+      const toDateObj = new Date(toDate);
+
+      // 从历史最后日期的第二天开始，到用户选择的结束日期为止
+      const currentDate = new Date(lastDateObj);
+      currentDate.setDate(currentDate.getDate() + 1);
+
+      while (currentDate <= toDateObj) {
+        const dateKey = tsToISODate(currentDate.getTime());
+        // 使用 historyEndDate 那天的净值和累计盈利来补充后续日期
+        // 这样当日盈利为0，累计盈利保持不变
+        validPoints.push({
+          date: dateKey,
+          netValue: lastValidPoint.netValue,
+          shares: lastValidPoint.shares,
+          cumulativeProfit: lastValidPoint.cumulativeProfit,
+          dailyProfit: 0,
+        });
+        currentDate.setDate(currentDate.getDate() + 1);
+      }
+
+      // 用新的正确数据替换 timeline
+      timeline.length = 0;
+      validPoints.forEach(p => timeline.push(p));
+    }
   }
 
   return timeline;

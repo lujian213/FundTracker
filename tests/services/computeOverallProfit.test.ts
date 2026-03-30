@@ -63,11 +63,8 @@ describe('computeOverallProfit', () => {
     expect(Object.keys(timelines).sort()).toEqual(['270023', '300000'].sort());
 
     const dates = result.timeline.map((t: any) => t.date);
-    const todayLocal = (() => {
-      const d = new Date();
-      return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-    })();
-    expect(dates).toEqual(['2026-02-12', '2026-02-13', todayLocal]);
+    // 不再填充目标日期，所以不包含 todayLocal
+    expect(dates).toEqual(['2026-02-12', '2026-02-13']);
 
     // Fund A: startDate='2026-02-11', initialPrice=null in storage.
     // computeOverallProfit now resolves initialPrice from history: startDate has no exact match,

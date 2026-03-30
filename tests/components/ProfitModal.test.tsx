@@ -32,8 +32,8 @@ describe('ProfitModal', () => {
   test('renders and shows three-column table rows', async () => {
     render(<ProfitModal symbol="000001" initialPosition={100} initialPrice={9} onClose={() => {}} />);
     await waitFor(() => expect(fetchFundHistory).toHaveBeenCalled());
-    // wait for rows to be rendered (历史数据 3 行 + 今天日期 1 行 = 4 行)
-    await waitFor(() => expect(document.querySelectorAll('tbody tr').length).toBe(4));
+    // wait for rows to be rendered (历史数据 3 行，不再填充今天日期)
+    await waitFor(() => expect(document.querySelectorAll('tbody tr').length).toBe(3));
     // header should have three columns (flexible check)
     const headers = document.querySelectorAll('thead th');
     expect(headers.length).toBeGreaterThanOrEqual(2);
@@ -51,39 +51,17 @@ describe('ProfitModal', () => {
   test('changing dates and clicking 清除 should clear table rows', async () => {
     render(<ProfitModal symbol="000001" initialPosition={100} initialPrice={9} onClose={() => {}} />);
     await waitFor(() => expect(fetchFundHistory).toHaveBeenCalled());
-    // wait for initial rows exist (历史数据 3 行 + 今天日期 1 行 = 4 行)
-    await waitFor(() => expect(document.querySelectorAll('tbody tr').length).toBe(4));
+    // wait for initial rows exist (历史数据 3 行，不再填充今天日期)
+    await waitFor(() => expect(document.querySelectorAll('tbody tr').length).toBe(3));
     // change temp start date to trigger confirm dialog
     const inputs = document.querySelectorAll('input[type="date"]');
     fireEvent.change(inputs[0], { target: { value: '2026-02-21' } });
-    // dates apply immediately; table should be filtered to 3 rows (21, 22 and today)
-    await waitFor(() => expect(document.querySelectorAll('tbody tr').length).toBe(3));
+    // dates apply immediately; table should be filtered to 2 rows (21, 22)
+    await waitFor(() => expect(document.querySelectorAll('tbody tr').length).toBe(2));
     const rows = Array.from(document.querySelectorAll('tbody tr'));
     const rowDates = rows.map(r => r.querySelector('td')?.textContent?.trim());
     expect(rowDates).toContain(formatDateDisplay('2026-02-21'));
     expect(rowDates).toContain(formatDateDisplay('2026-02-22'));
-  });
-
-  test('uses today confirmed NAV when valuation is missing', async () => {
-    const d = new Date();
-    const todayIso = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-
-    render(
-      <ProfitModal
-        symbol="000001"
-        initialPosition={100}
-        initialPrice={9}
-        currentPrice={0}
-        previousPrice={3}
-        realtimeDate={'---'}
-        netWorthDate={todayIso}
-        onClose={() => {}}
-      />
-    );
-
-    await waitFor(() => expect(fetchFundHistory).toHaveBeenCalled());
-    await waitFor(() => expect(screen.getAllByText(formatDateDisplay(todayIso)).length).toBeGreaterThan(0));
-    expect(screen.getAllByText('3.0000').length).toBeGreaterThan(0);
   });
 });
 

@@ -31,6 +31,7 @@ const ProfitModal: React.FC<ProfitModalProps> = ({ symbol, fundName, currentPric
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [history, setHistory] = useState<HistoricalPoint[]>([]);
+  const [historyEndDate, setHistoryEndDate] = useState<string | null>(null); // 原始历史数据的最后日期
   const [fromDate, setFromDate] = useState<string | null>(null);
   const [toDate, setToDate] = useState<string | null>(null);
   const [validationError, setValidationError] = useState<string | null>(null);
@@ -82,11 +83,16 @@ const ProfitModal: React.FC<ProfitModalProps> = ({ symbol, fundName, currentPric
         setHistory(pts);
         if (pts.length > 0) {
           const first = toLocalDateKey(pts[0].date);
-          const last = toLocalDateKey(pts[pts.length - 1].date);
+          // 找到有有效数据的最后一天：优先用 realtimeDate，否则用原始历史数据的最后一天
+          // realtimeDate 是当前实际价格的日期，应该作为"有数据的最后一天"
+          const lastWithData = realtimeDate && realtimeDate <= todayLocal ? realtimeDate : toLocalDateKey(pts[pts.length - 1].date);
+          setHistoryEndDate(lastWithData);
           const defaultFrom = initialStartDate && initialStartDate > first ? initialStartDate : first;
           setFromDate(defaultFrom);
-          const defaultTo = last && last < todayLocal ? last : todayLocal;
-          setToDate(defaultTo);
+          // 默认结束日期用有数据的最后一天，而不是今天（避免计算没有数据的日期）
+          setToDate(lastWithData);
+        } else {
+          setHistoryEndDate(null);
         }
       } catch (e: any) {
         setError(e?.message || '加载历史数据失败');
@@ -100,8 +106,17 @@ const ProfitModal: React.FC<ProfitModalProps> = ({ symbol, fundName, currentPric
 
   const fullTimeline = useMemo(() => {
     if (!history || history.length === 0) return [];
-    return computeProfitTimeline({ history, trades: trades || [], initialPosition: initialPosition || 0, initialPrice: resolvedInitialPrice ?? null });
-  }, [history, trades, initialPosition, resolvedInitialPrice]);
+    const timeline = computeProfitTimeline({
+      history,
+      trades: trades || [],
+      initialPosition: initialPosition || 0,
+      initialPrice: resolvedInitialPrice ?? null,
+      historyEndDate,
+      toDate,
+    });
+
+    return timeline;
+  }, [history, trades, initialPosition, resolvedInitialPrice, historyEndDate, toDate]);
 
   const validateDates = (from?: string | null, to?: string | null) => {
     setValidationError(null);
