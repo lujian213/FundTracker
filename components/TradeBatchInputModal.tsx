@@ -278,7 +278,19 @@ const TradeBatchInputModal: React.FC<Props> = ({ onClose, onSaved, portfolio = [
     } else if (field === 'fee') {
       const num = Math.max(0, parseFloat(value as string) || 0);
       row.fee = num;
-      row.total = calculateTotal(row.type, row.shares, row.price, row.fee);
+      // 手续费变化时：
+      // 买入：如果总额不为空，根据总额和手续费重新计算份额
+      // 卖出：如果份额不为空，根据份额和手续费重新计算总额
+      if (row.type === 'buy') {
+        if (row.total > 0) {
+          row.shares = calculateShares(row.type, row.total, row.price, row.fee);
+        }
+      } else {
+        // 卖出
+        if (row.shares > 0) {
+          row.total = calculateTotal(row.type, row.shares, row.price, row.fee);
+        }
+      }
     } else if (field === 'total') {
       const num = Math.max(0, parseFloat(value as string) || 0);
       row.total = num;
@@ -579,7 +591,7 @@ const TradeBatchInputModal: React.FC<Props> = ({ onClose, onSaved, portfolio = [
                                 type="number"
                                 step="0.01"
                                 min="0"
-                                value={row.shares || ''}
+                                value={row.shares === undefined ? '' : row.shares}
                                 readOnly={row.type === 'buy'}
                                 onChange={(e) => updateRow(groupIndex, row.id, 'shares', e.target.value)}
                                 placeholder={row.type === 'buy' ? '自动计算' : '输入份额'}
@@ -591,7 +603,7 @@ const TradeBatchInputModal: React.FC<Props> = ({ onClose, onSaved, portfolio = [
                                 type="number"
                                 step="0.01"
                                 min="0"
-                                value={row.fee || ''}
+                                value={row.fee === undefined ? '' : row.fee}
                                 onChange={(e) => updateRow(groupIndex, row.id, 'fee', e.target.value)}
                                 className="w-full text-right text-xs border border-gray-200 rounded px-2 py-1 [-moz-appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                               />
@@ -601,7 +613,7 @@ const TradeBatchInputModal: React.FC<Props> = ({ onClose, onSaved, portfolio = [
                                 type="number"
                                 step="0.01"
                                 min="0"
-                                value={row.total || ''}
+                                value={row.total === undefined ? '' : row.total}
                                 readOnly={row.type === 'sell'}
                                 onChange={(e) => updateRow(groupIndex, row.id, 'total', e.target.value)}
                                 placeholder={row.type === 'sell' ? '自动计算' : '输入总额'}
