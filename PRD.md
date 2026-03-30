@@ -1,7 +1,7 @@
 # FundTracker — 产品需求文档 (PRD)
 
-版本：1.33
-最后更新：2026-03-29
+版本：1.34
+最后更新：2026-03-30
 
 ---
 
@@ -176,6 +176,7 @@
     * `holiday_china`（显示值为"节假日"）
     * `holiday_hk`（显示值为"节假日"）
     * `holiday_us`（显示值为"节假日"）
+    * `holiday_sg`（显示值为"节假日"）
     * `delivery`（显示值为"交割日"）
   * `content`：事件的内容，简要描述
   * `description`：事件的详细描述
@@ -247,6 +248,17 @@
   * `market`: "美股"
 * 注意：提前休市或提前收盘的日期也需要列出
 
+##### 节假日信息_新加坡（calendar_holiday_sg）
+* 后台任务信息类型：`calendar_holiday_sg`
+* 数据来源：AI分析 https://www.ibfs.com.tw/Stockoverseas/closedday_sp.aspx?xy=2&xt=7 网页内容
+* 执行频率：每天执行一次。页面刷新时也会触发一次。
+* 信息对象填充：
+  * `type`: `"holiday_sg"`
+  * `content`: 如"春节休市"
+  * `description`: 如"新加坡股市，春节假期"
+  * `market`: "新加坡股市"
+* 注意：半日盘交易的日期也需要列出
+
 ##### 交割日信息（calendar_delivery）
 * 此任务不需要在定时器内注册和执行，而是在其他calendar相关的后台任务执行结束后，作为子任务被调用。
 * 计算规则：基于已更新的节假日信息，计算各市场的交割日：
@@ -269,7 +281,7 @@
 #### 更新逻辑
 
 Calendar数据更新按照以下规则进行：
-1. 扫描calendar对象里有记录的日期，删除该日期对应列表里所有type为holiday_china/holiday_hk/holiday_us/delivery的事件，以及系统不支持的事件类型的事件
+1. 扫描calendar对象里有记录的日期，删除该日期对应列表里所有type为holiday_china/holiday_hk/holiday_us/holiday_sg/delivery的事件，以及系统不支持的事件类型的事件
 2. 将AI获取到的新事件添加到对应日期的列表中
 3. 删除所有没有任何事件的日期
 

@@ -2,7 +2,7 @@
 import React, { useState, useMemo, useRef } from 'react';
 import { zhCN } from 'date-fns/locale';
 import { CalendarEvent, CalendarData } from '../types';
-import { getEventsForYear, getUpcomingEvents } from '../services/calendarService';
+import { getEventsForYear, getUpcomingEvents, isHolidayType } from '../services/calendarService';
 
 interface CalendarModalProps {
   onClose: () => void;
@@ -156,11 +156,11 @@ export const CalendarModal: React.FC<CalendarModalProps> = ({
   const upcomingAlerts = useMemo(() => {
     return getUpcomingEvents(3).map(event => ({
       ...event,
-      type: event.type as 'holiday_china' | 'holiday_hk' | 'holiday_us' | 'delivery'
+      type: event.type as 'holiday_china' | 'holiday_hk' | 'holiday_us' | 'holiday_sg' | 'delivery'
     }));
   }, []);
 
-  const holidayEvents = tooltipData?.events.filter(e => e.type === 'holiday_china' || e.type === 'holiday_hk' || e.type === 'holiday_us') || [];
+  const holidayEvents = tooltipData?.events.filter(e => isHolidayType(e.type)) || [];
   const deliveryEvents = tooltipData?.events.filter(e => e.type === 'delivery') || [];
 
   return (
@@ -186,7 +186,7 @@ export const CalendarModal: React.FC<CalendarModalProps> = ({
             <div className="flex flex-wrap gap-2">
               {upcomingAlerts.slice(0, 5).map((alert, idx) => (
                 <span key={idx} className="flex items-center gap-1">
-                  <span className={(alert.type === 'holiday_china' || alert.type === 'holiday_hk' || alert.type === 'holiday_us') ? 'text-red-500' : 'text-amber-500'}>●</span>
+                  <span className={isHolidayType(alert.type) ? 'text-red-500' : 'text-amber-500'}>●</span>
                   <span className="text-gray-700">
                     {alert.date.slice(5)} {alert.content}
                   </span>
@@ -274,15 +274,15 @@ export const CalendarModal: React.FC<CalendarModalProps> = ({
                     {day > 0 ? day : ''}
                   </span>
 
-                  {/* 事件列表 - 去掉title属性 */}
+                  {/* 事件列表 - pointer-events-none确保日期格子的tooltip能正常显示 */}
                   {events.length > 0 && day > 0 && (
-                    <div className="w-full flex flex-col mt-0.5 overflow-hidden">
+                    <div className="w-full flex flex-col mt-0.5 overflow-hidden pointer-events-none">
                       {events.slice(0, 4).map((event, eIdx) => (
                         <div
                           key={eIdx}
                           className="flex items-center gap-px text-[10px] leading-none whitespace-nowrap overflow-hidden"
                         >
-                          <span className={(event.type === 'holiday_china' || event.type === 'holiday_hk' || event.type === 'holiday_us') ? 'text-red-500 flex-shrink-0' : 'text-amber-500 flex-shrink-0'}>●</span>
+                          <span className={isHolidayType(event.type) ? 'text-red-500 flex-shrink-0' : 'text-amber-500 flex-shrink-0'}>●</span>
                           {event.market && <span className="text-gray-400 text-[9px] flex-shrink-0">{event.market}</span>}
                           <span className="truncate">{event.content}</span>
                         </div>

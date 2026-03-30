@@ -22,6 +22,7 @@ const DEFAULT_JOBS: TimerJobConfig[] = [
   { id: 'calendar_holiday_china', name: 'Calendar A股节假日信息刷新', cron: '0 0 * * *', enabled: true },
   { id: 'calendar_holiday_hk', name: 'Calendar 港股节假日信息刷新', cron: '0 0 * * *', enabled: true },
   { id: 'calendar_holiday_us', name: 'Calendar 美股节假日信息刷新', cron: '0 0 * * *', enabled: true },
+  { id: 'calendar_holiday_sg', name: 'Calendar 新加坡股市节假日信息刷新', cron: '0 0 * * *', enabled: true },
 ];
 
 interface TimerJobScheduler {

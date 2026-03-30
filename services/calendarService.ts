@@ -3,6 +3,36 @@ import { CalendarEvent } from '../types';
 
 const CALENDAR_STORAGE_KEY = 'fund_tracker_calendar';
 
+// ============================================================
+// 公共类型定义和辅助函数 - 集中管理所有Calendar事件类型
+// ============================================================
+
+/**
+ * 所有支持的节假日类型
+ */
+export const HOLIDAY_TYPES = ['holiday_china', 'holiday_hk', 'holiday_us', 'holiday_sg'] as const;
+export type HolidayType = typeof HOLIDAY_TYPES[number];
+
+/**
+ * 所有支持的Calendar事件类型（包括节假日和交割日）
+ */
+export const SUPPORTED_CALENDAR_TYPES = [...HOLIDAY_TYPES, 'delivery'] as const;
+export type CalendarEventType = typeof SUPPORTED_CALENDAR_TYPES[number];
+
+/**
+ * 判断事件类型是否为节假日类型
+ */
+export function isHolidayType(type: string): type is HolidayType {
+  return HOLIDAY_TYPES.includes(type as HolidayType);
+}
+
+/**
+ * 判断事件类型是否为交割日类型
+ */
+export function isDeliveryType(type: string): type is 'delivery' {
+  return type === 'delivery';
+}
+
 /**
  * Calendar 数据的类型定义
  */
@@ -62,18 +92,18 @@ export function getEventsForMonth(year: number, month: number): CalendarData {
 
 /**
  * 更新 calendar 数据（用于后台任务）
- * @param type 事件类型 'holiday_china' | 'holiday_hk' | 'holiday_us' | 'delivery'
+ * @param type 事件类型 'holiday_china' | 'holiday_hk' | 'holiday_us' | 'holiday_sg' | 'delivery'
  * @param newEvents AI 返回的新事件列表
  */
 export function updateCalendarData(
-  type: 'holiday_china' | 'holiday_hk' | 'holiday_us' | 'delivery',
+  type: 'holiday_china' | 'holiday_hk' | 'holiday_us' | 'holiday_sg' | 'delivery',
   newEvents: Array<{ date: string; content: string; description: string; market?: string }>
 ): void {
   const data = loadCalendarData();
 
   // 第一步：删除所有现有 type 为指定类型的事件
   // 以及删除所有目前不支持的类型的事件（如旧的 'holiday' 类型）
-  const supportedTypes = ['holiday_china', 'holiday_hk', 'holiday_us', 'delivery'];
+  const supportedTypes = [...SUPPORTED_CALENDAR_TYPES] as string[];
   const typesToDelete = [type];
   for (const date of Object.keys(data)) {
     // 保留：不在typesToDelete中 且 是supportedTypes中的类型

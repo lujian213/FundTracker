@@ -65,6 +65,12 @@
       "name": "Calendar 美股节假日信息刷新",
       "cron": "0 0 * * *",
       "enabled": true
+    },
+    {
+      "id": "calendar_holiday_sg",
+      "name": "Calendar 新加坡股市节假日信息刷新",
+      "cron": "0 0 * * *",
+      "enabled": true
     }
   ]
 }

@@ -201,7 +201,7 @@ async function processCalendarHoliday(
   promptType: string,
   url: string,
   logPrefix: string,
-  calendarType: 'holiday_china' | 'holiday_hk' | 'holiday_us'
+  calendarType: 'holiday_china' | 'holiday_hk' | 'holiday_us' | 'holiday_sg'
 ): Promise<void> {
   const aiConfig = getAIConfig();
   if (!aiConfig || !aiConfig.apiKey) {
@@ -286,6 +286,18 @@ async function refreshCalendarHolidaysUS(): Promise<void> {
     'https://invest101.com.hk/stock-us-holidays',
     '美股',
     'holiday_us'
+  );
+}
+
+/**
+ * 刷新 Calendar 新加坡股市节假日信息
+ */
+async function refreshCalendarHolidaysSG(): Promise<void> {
+  await processCalendarHoliday(
+    'calendar_holiday_sg',
+    'https://www.ibfs.com.tw/Stockoverseas/closedday_sp.aspx?xy=2&xt=7',
+    '新加坡股市',
+    'holiday_sg'
   );
 }
 
@@ -814,6 +826,10 @@ const AppContent: React.FC = () => {
       await refreshCalendarHolidaysUS();
     });
 
+    scheduler.registerHandler('calendar_holiday_sg', async () => {
+      await refreshCalendarHolidaysSG();
+    });
+
     // Set context with current portfolio
     scheduler.setContext({ portfolio });
 
@@ -839,6 +855,7 @@ const AppContent: React.FC = () => {
         scheduler._triggerJob?.('calendar_holiday_china');
         scheduler._triggerJob?.('calendar_holiday_hk');
         scheduler._triggerJob?.('calendar_holiday_us');
+        scheduler._triggerJob?.('calendar_holiday_sg');
       }, 7000);
     }
 

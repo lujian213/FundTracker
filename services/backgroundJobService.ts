@@ -6,7 +6,7 @@ import { formatDateDisplay } from '../utils/dateFormat';
 export interface BackgroundJobPrompt {
   id: string;
   name: string;
-  type: 'holiday' | 'delivery' | 'strategy' | 'calendar_holiday_china' | 'calendar_holiday_hk' | 'calendar_holiday_us' | 'calendar_delivery';
+  type: 'holiday' | 'delivery' | 'strategy' | 'calendar_holiday_china' | 'calendar_holiday_hk' | 'calendar_holiday_us' | 'calendar_holiday_sg' | 'calendar_delivery';
   template: string;
   maxTokens?: number;
   temperature?: number;

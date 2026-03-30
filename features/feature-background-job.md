@@ -17,7 +17,7 @@
 ### calendar信息
 在系统中增加一个全局的calendar对象，存储相关的节假日信息和交割日信息。这个信息会被储存在localStorage中，并且会被定期更新。
 这个对象是一个字典，key是日期，value是一个列表，列表里每个元素都是一个描述这个日期的事件的对象(calendar_event)，包含以下内容：
-* type：事件的类型，比如holiday_china（显示值统一为节假日），holiday_hk（显示值统一为节假日），holiday_us（显示值统一为节假日），delivery（显示值为交割日）等。
+* type：事件的类型，比如holiday_china（显示值统一为节假日），holiday_hk（显示值统一为节假日），holiday_us（显示值统一为节假日），holiday_sg（显示值统一为节假日），delivery（显示值为交割日）等。
 * content：事件的内容，简要描述。
 * description：事件的描述，比如节假日的名字，交割日的相关说明等。
 
@@ -54,9 +54,9 @@ Calendar窗口内显示的节假日信息和交割日信息来自于系统内的
   * 如果获取到基金A的信息，则在A的alert_list字段里，找到type为x的信息，如果找到了，就更新这个信息的date和content；如果没有找到，就在alert_list里增加一个新的对象，包含type为x，date和content。
   * 如果没有获取到基金A的信息，则在A的alert_list字段里，找到type为x的信息，如果找到了，就删除这个信息；如果没有找到，就不做任何操作。
 * 推荐交易策略信息的后台任务会将信息更新到基金的recommended_strategy字段中。
-* calendar_holiday_china, calendar_holiday_hk, calendar_holiday_us和calendar_delivery信息的后台任务会将信息更新到系统内的calendar对象中。
-  * 先扫描目前calendar对象里的有记录的日期，删除这个日期对应的value列表里面所有type为holiday_china/holiday_hk/ holiday_us/delivery的事件（取决于后台任务的类型），以及目前系统不支持的事件类型的事件。
-  * 再扫描AI获取到的每条信息，如果这个日期在目前calendar对象里没有，就增加这个日期作为key，并且把AI获取到的信息（type为holiday_china/holiday_hk/holiday_us/delivery）加入对应的value列表里；如果这个日期在目前calendar对象里已经有了，就直接把AI获取到的信息（type为holiday_china/holiday_hk/holiday_us/delivery）加入对应的value列表里。
+* calendar_holiday_china, calendar_holiday_hk, calendar_holiday_us, calendar_holiday_sg和calendar_delivery信息的后台任务会将信息更新到系统内的calendar对象中。
+  * 先扫描目前calendar对象里的有记录的日期，删除这个日期对应的value列表里面所有type为holiday_china/holiday_hk/ holiday_us/holiday_sg/delivery的事件（取决于后台任务的类型），以及目前系统不支持的事件类型的事件。
+  * 再扫描AI获取到的每条信息，如果这个日期在目前calendar对象里没有，就增加这个日期作为key，并且把AI获取到的信息（type为holiday_china/holiday_hk/holiday_us/holiday_sg/delivery）加入对应的value列表里；如果这个日期在目前calendar对象里已经有了，就直接把AI获取到的信息（type为holiday_china/holiday_hk/holiday_us/holiday_sg/delivery）加入对应的value列表里。
   * 再次扫描目前的calendar对象，删除所有value列表里没有任何事件的日期。
   
 ### 节假日信息
@@ -284,6 +284,52 @@ Calendar窗口内显示的节假日信息和交割日信息来自于系统内的
   * type: "holiday_us"
   * content: AI获取到的节假日的简要内容（content）
   * description: AI获取到的节假日的相关说明（description）
+### 节假日信息_新加坡（calendar）
+* 后台任务信息类型：calendar_holiday_sg
+* 后台任务首先读取来在网站 https://www.ibfs.com.tw/Stockoverseas/closedday_sp.aspx?xy=2&xt=7 的内容，如果无法访问或内容缺失，打印出错信息，并将任务状态置为失败，并不进行后续步骤。否则则将网站内容放入上下文，继续后续请求。
+* AI提示词
+```markdown
+你是一个金融数据助手。请严格按照以下步骤执行。
+
+1. **分析以下关于节假日的内容**
+-----------------------------   
+   {web_content}
+-----------------------------   
+   确保内容中包含{year}字样
+
+   如果没有找到，明确说明“未获取到有效内容”。
+2. **执行顺序（先输出思考过程，再输出最终JSON）**：
+  - 第一步：在最终答案的开头，用自然语言写下你从上面内容中提取到的关键信息。列出每个节日的放假区间（如“春节：2月15日至23日”）、调休上班日（如“2月14日上班”）的具体假期日期。
+  - 第二步：基于上述信息，按照以下规则生成最终结果列表，并转换为 JSON 数组。
+  - 第三步：将最终 JSON 数组放在一个独立的代码块中（```json ... ```）。
+
+3. **处理规则（严格按此执行）**：
+   a. 若假期本身在非周末，直接输出该日期。
+   b. 半盤交易的日期也要列出来，在 content 中除了及假日的名称外，还要加上“半盤交易”，description中也是一样要求。
+   c. 内容若为繁体中文，转换成简体中文后再输出。
+   
+4. **最终JSON格式**：数组，每个对象包含：
+  - `market`：新加坡股市
+  - `date`：YYYY-MM-DD 格式
+  - `content`：如“春节休市”
+  - `description`：如“中国，春节假期，休市1天”
+
+5. **强制验证**：在输出JSON前，检查每个日期的合法性。
+  - 每个日期必须在对应的放假区间内，且不能是周末，不能是调休上班日。
+  - 如果某假期的区间无法从搜索结果中确认，不要输出该假期的任何日期。
+  - **禁止使用内部记忆中的日期，禁止编造日期**。
+
+6. 最终JSON按日期升序排列。
+
+现在，请搜索并执行以上步骤，输出最终结果。
+```
+其中web_content为从网站中搜索到的内容，year是当前的年份。
+* 执行频率：每天执行一次。页面刷新时也会触发一次。
+* 信息对象(calendar_event)填充：
+  * type: "holiday_sg"
+  * content: AI获取到的节假日的简要内容（content）
+  * description: AI获取到的节假日的相关说明（description）
+
 ### 交割日信息（calendar）
 * 后台任务信息类型：calendar_delivery
 * 此任务不需要在定时器内注册和执行。而是在其他calendar相关的后台任务执行结束后，作为一个子任务被调用。比如，在calendar_holiday_china这个任务执行结束后，最后会调用calendar_delivery这个任务来计算交割日信息，并将交割日信息更新到系统内的calendar对象中。
