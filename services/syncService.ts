@@ -192,18 +192,22 @@ function compareDateTradeGroups(local: DateTradeGroup, external: DateTradeGroup)
     });
   }
 
-  if (Math.abs(local.netShares - external.netShares) > 0.001) { // 使用小的误差范围处理浮点数比较
+  // 先将本地记录的份额精确到小数点后2位，再进行比较
+  const localNetSharesRounded = Number(local.netShares.toFixed(2));
+  if (Math.abs(localNetSharesRounded - external.netShares) > 0.001) {
     differences.push({
       type: 'netShares',
-      localValue: local.netShares,
+      localValue: localNetSharesRounded,
       externalValue: external.netShares
     });
   }
 
-  if (Math.abs(local.totalFees - external.totalFees) > 0.001) {
+  // 先将本地记录的费用精确到小数点后2位，再进行比较
+  const localTotalFeesRounded = Number(local.totalFees.toFixed(2));
+  if (Math.abs(localTotalFeesRounded - external.totalFees) > 0.001) {
     differences.push({
       type: 'fees',
-      localValue: local.totalFees,
+      localValue: localTotalFeesRounded,
       externalValue: external.totalFees
     });
   }
