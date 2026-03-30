@@ -658,7 +658,7 @@ const AppContent: React.FC = () => {
         try {
           data.forEach(d => {
             try {
-              cacheService.appendIntradayPoint(d.symbol, { value: d.current, lastUpdated: d.lastUpdated, equityReturn: d.changePercent });
+              cacheService.appendIntradayPoint(d.symbol, { value: d.current, lastUpdated: d.lastUpdated, equityReturn: d.changePercent, tradeDate: d.tradeDate });
             } catch (e) { /* ignore per-index errors */ }
           });
         } catch (e) { /* ignore */ }
@@ -693,7 +693,7 @@ const AppContent: React.FC = () => {
         try {
           data.forEach(d => {
             try {
-              cacheService.appendIntradayPoint(d.symbol, { value: d.current, lastUpdated: d.lastUpdated, equityReturn: d.changePercent });
+              cacheService.appendIntradayPoint(d.symbol, { value: d.current, lastUpdated: d.lastUpdated, equityReturn: d.changePercent, tradeDate: d.tradeDate });
             } catch (e) { /* ignore per-index errors */ }
           });
         } catch (e) { /* ignore */ }

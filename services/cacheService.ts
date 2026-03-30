@@ -370,16 +370,44 @@ export function setIntradayPoints(symbol: string, points: IntradayPoint[]): void
  * Append a new intraday point for symbol. Will floor timestamp to minute and
  * replace existing point in the same minute if present. Uses valuation.lastUpdated
  * preferentially to build timestamp; fallbacks to Date.now().
+ * If tradeDate is provided and is not today, skip adding intraday point.
  */
-export function appendIntradayPoint(symbol: string, valuation: ValuationData | { value: number; lastUpdated?: string | number; equityReturn?: number }): void {
+export function appendIntradayPoint(symbol: string, valuation: ValuationData | { value: number; lastUpdated?: string | number; equityReturn?: number; tradeDate?: string }): void {
   try {
     const s = symbol.padStart ? symbol.padStart(6, '0') : symbol;
+    const tradeDateVal = (valuation as any).tradeDate;
+
+    // 检查tradeDate：如果不是今天，不添加日内点
+    if (tradeDateVal) {
+      const today = new Date();
+      const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+      if (tradeDateVal !== todayStr) {
+        return;
+      }
+    }
+
     // choose timestamp: prefer valuation.lastUpdated if parseable
+    // 如果lastUpdated只包含时间(如"15:00:00")，需要结合tradeDate来构建完整时间戳
     let ts = Date.now();
     if ((valuation as any).lastUpdated) {
       const lu = (valuation as any).lastUpdated;
-      const parsed = typeof lu === 'number' ? lu : Date.parse(String(lu));
-      if (!Number.isNaN(parsed)) ts = parsed;
+      // 如果lastUpdated只包含时间格式(HH:mm:ss)，需要结合tradeDate或使用当前日期
+      if (typeof lu === 'string' && /^\d{1,2}:\d{2}:\d{2}$/.test(lu)) {
+        // 时间格式，构建完整日期时间
+        let dateStr = '';
+        if (tradeDateVal) {
+          dateStr = `${tradeDateVal} ${lu}`;
+        } else {
+          // 没有tradeDate，使用当前日期
+          const now = new Date();
+          dateStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')} ${lu}`;
+        }
+        const parsed = Date.parse(dateStr);
+        if (!Number.isNaN(parsed)) ts = parsed;
+      } else {
+        const parsed = typeof lu === 'number' ? lu : Date.parse(String(lu));
+        if (!Number.isNaN(parsed)) ts = parsed;
+      }
     }
     const minuteTs = floorToMinute(ts);
     const value = Number((valuation as any).value ?? (valuation as any).currentPrice ?? 0) || 0;
@@ -389,7 +417,11 @@ export function appendIntradayPoint(symbol: string, valuation: ValuationData | {
 
     const existing = intradayMap.get(s) || [];
     // ensure existing only contains today's points
-    const today = existing.filter(p => isSameLocalDay(p.timestamp));
+    let today = existing.filter(p => isSameLocalDay(p.timestamp));
+
+    // 清除时间戳比新点更晚的脏数据（之前错误解析导致的15:00收市时间点）
+    today = today.filter(p => p.timestamp <= minuteTs);
+
     const last = today[today.length - 1];
     if (last && Object.is(last.value, point.value)) {
       // same as last value: keep earliest (do not append or replace)
