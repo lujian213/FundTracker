@@ -30,9 +30,21 @@ const toMatchedRecord = (record: TradeRecord): MatchedRecord => ({
   originalFee: record.fee || 0,
 });
 
-// 普通视图匹配器：直接返回原始数据
+// 普通视图匹配器：直接返回原始数据，按交易日期倒序，建仓记录永远在最下面
 export const normalMatcher: MatcherFunction = (records, _currentPrice) => {
   const matchedRecords = records.map(toMatchedRecord);
+  // 排序：先按日期倒序，然后建仓记录移到最下面
+  matchedRecords.sort((a, b) => {
+    const aIsInitial = (a as any).isInitial;
+    const bIsInitial = (b as any).isInitial;
+
+    // 建仓记录永远排在最后
+    if (aIsInitial && !bIsInitial) return 1;
+    if (!aIsInitial && bIsInitial) return -1;
+
+    // 同类型内按日期倒序
+    return new Date(b.date).getTime() - new Date(a.date).getTime();
+  });
   return {
     records: matchedRecords,
     errors: [],

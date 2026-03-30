@@ -37,9 +37,13 @@ describe('tradeMatcher', () => {
 
       expect(result.records).toHaveLength(3);
       expect(result.errors).toHaveLength(0);
-      expect(result.records[0].remainingShares).toBe(100);
+      // 排序：按日期倒序（最新在前）
+      expect(result.records[0].id).toBe('3'); // 2024-01-03 buy 200 (最新)
+      expect(result.records[0].remainingShares).toBe(200);
+      expect(result.records[1].id).toBe('2'); // 2024-01-02 sell 50
       expect(result.records[1].remainingShares).toBe(50);
-      expect(result.records[2].remainingShares).toBe(200);
+      expect(result.records[2].id).toBe('1'); // 2024-01-01 buy 100 (最早)
+      expect(result.records[2].remainingShares).toBe(100);
     });
 
     test('preserves original record properties', () => {
