@@ -1018,7 +1018,7 @@ const AISidePanelBase: React.FC<AISidePanelBaseProps> = ({
       const rect = modal.getBoundingClientRect();
       // Ensure there's enough space and it doesn't go off-screen
       const rightPos = rect.right + 10; // Add a little gap
-      const adjustedLeft = Math.min(rightPos, window.innerWidth - 400); // Max width of 400px
+      const adjustedLeft = Math.min(rightPos, window.innerWidth - 440); // Max width of 440px (10% wider)
 
       return {
         top: `${Math.max(rect.top, 10)}px`, // Minimum 10px from top
@@ -1086,7 +1086,7 @@ const AISidePanelBase: React.FC<AISidePanelBaseProps> = ({
 
   return (
     <div
-      className="w-96 bg-white shadow-2xl z-[9999] flex flex-col border-l border-gray-200 fixed"
+      className="w-[420px] bg-white shadow-2xl z-[9999] flex flex-col border-l border-gray-200 fixed"
       style={{
         top: panelPosition.top,
         height: panelPosition.height,
@@ -1215,7 +1215,7 @@ const AISidePanelBase: React.FC<AISidePanelBaseProps> = ({
               className={`rounded-2xl px-4 py-2.5 text-sm ${
                 message.role === 'user'
                   ? 'max-w-[85%] bg-blue-500 text-white rounded-br-none'
-                  : 'max-w-[92%] bg-gray-100 text-gray-800 rounded-bl-none'
+                  : 'max-w-[98%] bg-gray-100 text-gray-800 rounded-bl-none'
               }`}
             >
               <div className="prose prose-sm max-w-none">
