@@ -216,6 +216,17 @@ export interface TradeRecord {
   total?: number;
 }
 
+// 批量交易输入记录
+export interface BatchTradeInput {
+  symbol: string;
+  name: string;
+  type: TradeType;
+  price: number;
+  shares: number;
+  fee: number;
+  total: number;
+}
+
 // structured reason for strategy decisions (for hovertip)
 export type StrategyReasonType = 'golden' | 'death' | 'insufficient' | 'info' | 'other';
 

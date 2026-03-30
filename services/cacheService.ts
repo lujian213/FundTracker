@@ -153,7 +153,7 @@ function applyAccuracyEnhancements(
   const latestHistoryDate = toLocalDateKey(latestHistory.date);
   const valuationDate = valuation.valuationDate?.split(' ')[0] || valuation.realtimeDate;
 
-  if (valuationDate && latestHistoryDate && valuationDate < latestHistoryDate) {
+  if (valuationDate && latestHistoryDate && valuationDate <= latestHistoryDate) {
     // Use the most recent historical data as the valuation data
     result = {
       ...result,
@@ -169,17 +169,29 @@ function applyAccuracyEnhancements(
   // Rule 2: Compare valuationDate and netWorthDate
   const netWorthDate = valuation.netWorthDate;
   if (valuationDate && netWorthDate && valuationDate <= netWorthDate) {
-    // Find the closest historical net worth before the valuation date
-    const closestHistory = sortedHistory
-      .filter(h => toLocalDateKey(h.date) < valuationDate)
-      .sort((a, b) => (b.date as number) - (a.date as number))[0]; // Most recent before valuation date
+    // Find the historical net worth on or before the valuation date
+    const sortedHistoryDesc = [...sortedHistory].sort((a, b) => (b.date as number) - (a.date as number));
+    const closestHistory = sortedHistoryDesc.find(h => toLocalDateKey(h.date) <= valuationDate);
 
     if (closestHistory) {
-      result = {
-        ...result,
-        previousPrice: closestHistory.value,
-        netWorthDate: toLocalDateKey(closestHistory.date),
-      };
+      // If valuationDate equals netWorthDate, use that day's NAV to replace the valuation
+      if (valuationDate === netWorthDate) {
+        result = {
+          ...result,
+          currentPrice: closestHistory.value,
+          realtimeDate: toLocalDateKey(closestHistory.date),
+          valuationDate: toLocalDateKey(closestHistory.date),
+          previousPrice: sortedHistoryDesc.find(h => toLocalDateKey(h.date) < valuationDate)?.value || valuation.previousPrice,
+          netWorthDate: toLocalDateKey(closestHistory.date),
+        };
+      } else {
+        // Otherwise, just update previousPrice and netWorthDate
+        result = {
+          ...result,
+          previousPrice: closestHistory.value,
+          netWorthDate: toLocalDateKey(closestHistory.date),
+        };
+      }
     }
   }
 
@@ -279,6 +291,16 @@ export function getIndexMarketData(symbol: string): MarketIndex | undefined {
 export function setIndexMarketData(symbol: string, data: MarketIndex): void {
   indexMap.set(symbol, data);
   // Persist entire index map as a single JSON blob
+  try {
+    const obj: Record<string, MarketIndex> = {};
+    indexMap.forEach((v, k) => { obj[k] = v; });
+    localStorage.setItem(INDEX_STORAGE_KEY, JSON.stringify(obj));
+  } catch {/* ignore quota errors */}
+}
+
+export function evictIndexMarketData(symbol: string): void {
+  indexMap.delete(symbol);
+  // Persist updated map
   try {
     const obj: Record<string, MarketIndex> = {};
     indexMap.forEach((v, k) => { obj[k] = v; });

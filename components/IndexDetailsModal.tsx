@@ -80,6 +80,7 @@ export const IndexDetailsModal: React.FC<IndexDetailsModalProps> = ({ data, onCl
     const lastDayKey = toLocalDateKey(lastHist.date);
     const tradeDayKey = toLocalDateKey(tradeTs);
 
+    // 始终以实时指数值作为图中最新点
     // 当交易日期晚于历史数据最后日期时，追加当前点
     if (tradeDayKey > lastDayKey) {
       return [...history, {
@@ -91,20 +92,16 @@ export const IndexDetailsModal: React.FC<IndexDetailsModalProps> = ({ data, onCl
       }];
     }
 
-    // 当交易日期等于历史数据最后日期时，更新最后一个点的价格和涨跌幅（保留交易量/额）
-    if (tradeDayKey === lastDayKey) {
-      const updated = [...history];
-      updated[updated.length - 1] = {
-        ...lastHist,
-        value: data.current,
-        equityReturn: data.changePercent || 0,
-        volume: data.volume ?? lastHist.volume,
-        amount: data.amount ?? lastHist.amount
-      };
-      return updated;
-    }
-
-    return history;
+    // 当交易日期等于或早于历史数据最后日期时，更新最后一个点的价格和涨跌幅
+    const updated = [...history];
+    updated[updated.length - 1] = {
+      ...lastHist,
+      value: data.current,
+      equityReturn: data.changePercent || 0,
+      volume: data.volume ?? lastHist.volume,
+      amount: data.amount ?? lastHist.amount
+    };
+    return updated;
   }, [history, data.tradeDate, data.current, data.changePercent, data.volume, data.amount]);
 
   const { path, area, points, viewBox, yLabels, xLabels, maPaths, maValues, volumeData } = useMemo(() => {
@@ -340,24 +337,36 @@ export const IndexDetailsModal: React.FC<IndexDetailsModalProps> = ({ data, onCl
                       let amountLabel = '—';
                       if (hp && points && points.length > 0) {
                         const idx = points.findIndex((p: any) => p.data === hp);
+                        const isLastPoint = idx === points.length - 1 || idx === -1;
                         const v = (idx >= 0) ? points[idx].data.value : (points[points.length - 1].data.value);
                         const d = (idx >= 0) ? new Date(points[idx].data.date) : new Date(points[points.length - 1].data.date);
                         dateLabel = formatDateDisplay(d);
                         valueLabel = v.toFixed(4);
-                        // 使用 equityReturn 字段计算涨跌（数据源已包含）
-                        const equityReturn = (idx >= 0) ? points[idx].data.equityReturn : (points[points.length - 1].data.equityReturn);
-                        if (typeof equityReturn === 'number') {
-                          const prev = equityReturn === -100 ? 0 : v / (1 + equityReturn / 100);
-                          const abs = v - prev;
-                          changeText = `${abs.toFixed(2)} (${equityReturn >= 0 ? '+' : ''}${equityReturn.toFixed(2)}%)`;
-                          changeClass = equityReturn >= 0 ? 'text-red-600' : 'text-green-600';
-                        } else if (idx > 0) {
-                          // fallback: 与前一日比较
-                          const prev = points[idx - 1].data.value;
-                          const abs = v - prev;
-                          const pct = prev !== 0 ? (abs / prev * 100) : 0;
-                          changeText = `${abs.toFixed(2)} (${pct >= 0 ? '+' : ''}${pct.toFixed(2)}%)`;
-                          changeClass = pct >= 0 ? 'text-red-600' : 'text-green-600';
+                        // 最新点直接使用 data 中的值，历史点使用 equityReturn 计算
+                        if (isLastPoint) {
+                          // 最新点：以窗口显示的实时数据为准
+                          const changePct = data.changePercent;
+                          const changeAbs = data.change;
+                          if (typeof changePct === 'number') {
+                            changeText = `${changeAbs >= 0 ? '+' : ''}${changeAbs.toFixed(2)} (${changePct >= 0 ? '+' : ''}${changePct.toFixed(2)}%)`;
+                            changeClass = changePct >= 0 ? 'text-red-600' : 'text-green-600';
+                          }
+                        } else {
+                          // 历史点：使用 equityReturn 字段计算涨跌
+                          const equityReturn = (idx >= 0) ? points[idx].data.equityReturn : (points[points.length - 1].data.equityReturn);
+                          if (typeof equityReturn === 'number') {
+                            const prev = equityReturn === -100 ? 0 : v / (1 + equityReturn / 100);
+                            const abs = v - prev;
+                            changeText = `${abs.toFixed(2)} (${equityReturn >= 0 ? '+' : ''}${equityReturn.toFixed(2)}%)`;
+                            changeClass = equityReturn >= 0 ? 'text-red-600' : 'text-green-600';
+                          } else if (idx > 0) {
+                            // fallback: 与前一日比较
+                            const prev = points[idx - 1].data.value;
+                            const abs = v - prev;
+                            const pct = prev !== 0 ? (abs / prev * 100) : 0;
+                            changeText = `${abs.toFixed(2)} (${pct >= 0 ? '+' : ''}${pct.toFixed(2)}%)`;
+                            changeClass = pct >= 0 ? 'text-red-600' : 'text-green-600';
+                          }
                         }
                         // 成交量和成交额
                         const dataPoint = (idx >= 0) ? points[idx].data : (points[points.length - 1].data);
@@ -371,13 +380,12 @@ export const IndexDetailsModal: React.FC<IndexDetailsModalProps> = ({ data, onCl
                         const last = points[points.length - 1];
                         dateLabel = formatDateDisplay(new Date(last.data.date));
                         valueLabel = last.data.value.toFixed(4);
-                        // 使用 equityReturn 字段计算涨跌
-                        const equityReturn = last.data.equityReturn;
-                        if (typeof equityReturn === 'number') {
-                          const prev = equityReturn === -100 ? 0 : last.data.value / (1 + equityReturn / 100);
-                          const abs = last.data.value - prev;
-                          changeText = `${abs.toFixed(2)} (${equityReturn >= 0 ? '+' : ''}${equityReturn.toFixed(2)}%)`;
-                          changeClass = equityReturn >= 0 ? 'text-red-600' : 'text-green-600';
+                        // 最新点：以窗口显示的实时数据为准
+                        const changePct = data.changePercent;
+                        const changeAbs = data.change;
+                        if (typeof changePct === 'number') {
+                          changeText = `${changeAbs >= 0 ? '+' : ''}${changeAbs.toFixed(2)} (${changePct >= 0 ? '+' : ''}${changePct.toFixed(2)}%)`;
+                          changeClass = changePct >= 0 ? 'text-red-600' : 'text-green-600';
                         }
                         // 成交量和成交额
                         if (last.data.volume !== undefined && last.data.volume > 0) {

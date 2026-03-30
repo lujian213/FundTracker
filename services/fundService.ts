@@ -583,15 +583,20 @@ export function normalizeIndexSymbol(raw: string): string {
   return normalized;
 }
 
-export async function fetchSingleIndex(symbol: string): Promise<MarketIndex | null> {
+export async function fetchSingleIndex(symbol: string, ignoreCache: boolean = false): Promise<MarketIndex | null> {
 
   // 0. 检查缓存
   const normalizedSymbol = normalizeIndexSymbol(symbol);
+
   const cached = cacheService.getIndexMarketData(normalizedSymbol);
-  if (cached) {
+
+  // 默认返回缓存数据（ignoreCache为false时），由后台定时任务负责更新缓存
+  // 这样做的好处是：界面始终有数据显示，不会因为API失败而空白
+  if (cached && !ignoreCache) {
     return cached;
   }
 
+  // 无缓存 或 ignoreCache为true 时，去API获取新数据并更新缓存
   const ut = 'fa1a66105171779fbdd067425f38a7c2';
   const fields = 'f1,f2,f3,f4,f12,f13,f14,f43,f57,f58,f60,f80,f169,f170,f124';
   const secid = normalizeIndexSymbol(symbol);
@@ -679,11 +684,11 @@ export async function fetchSingleIndex(symbol: string): Promise<MarketIndex | nu
   return currentData;
 }
 
-export async function fetchMarketIndices(symbols: string[]): Promise<MarketIndex[]> {
+export async function fetchMarketIndices(symbols: string[], ignoreCache: boolean = false): Promise<MarketIndex[]> {
   if (symbols.length === 0) return [];
   const results: MarketIndex[] = [];
   for (const sym of symbols) {
-    const res = await globalQueue.add(() => fetchSingleIndex(sym));
+    const res = await globalQueue.add(() => fetchSingleIndex(sym, ignoreCache));
     if (res) results.push(res);
   }
   return results;
@@ -724,10 +729,10 @@ export async function forceFetchFundHistory(symbol: string): Promise<HistoricalP
 }
 
 // Index history: fetch Kline data for indices via push2his and convert to HistoricalPoint[]
-export async function fetchIndexHistory(symbol: string): Promise<HistoricalPoint[]> {
+export async function fetchIndexHistory(symbol: string, ignoreCache: boolean = false): Promise<HistoricalPoint[]> {
    // 1. 先检查缓存
    const cached = cacheService.getHistory(symbol);
-   if (cached && cached.length > 0) {
+   if (cached && cached.length > 0 && !ignoreCache) {
      return cached;
    }
 

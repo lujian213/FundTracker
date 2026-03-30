@@ -50,11 +50,13 @@ describe('Cache Service - Accuracy Enhancement', () => {
 
   test('should apply rule 1: when valuation date is earlier than latest history date', () => {
     // Create a valuation where valuation date is earlier than the latest history date
+    // and netWorthDate is different from valuationDate to test rule 1 independently
     const earlyValuation: ValuationData = {
       ...mockValuation,
       currentPrice: 1.2200,
       realtimeDate: '2026-03-16', // Earlier than latest history date (2026-03-17)
       valuationDate: '2026-03-16',
+      netWorthDate: '2026-03-14', // Different from valuationDate to avoid rule 2
     };
 
     cacheService.setValuation('000001', earlyValuation);
@@ -75,8 +77,8 @@ describe('Cache Service - Accuracy Enhancement', () => {
     expect(result).toBeDefined();
   });
 
-  test('should apply rule 2: when valuation date is not later than netWorthDate', () => {
-    // Create a valuation where valuation date is not later than netWorthDate
+  test('should apply rule 2: when valuation date equals netWorthDate, replace valuation with confirmed NAV', () => {
+    // Create a valuation where valuation date equals netWorthDate
     const conflictingValuation: ValuationData = {
       ...mockValuation,
       currentPrice: 1.2200,
@@ -90,27 +92,32 @@ describe('Cache Service - Accuracy Enhancement', () => {
 
     const result = cacheService.getValuation('000001');
 
-    // According to rule 2, when valuation date is not later than netWorthDate,
-    // the previousPrice should be adjusted to the closest historical record before valuation date
-    // That would be the history from 2026-03-15 with value 1.1800
-
+    // According to rule 2, when valuation date equals netWorthDate,
+    // the valuation should be replaced with the confirmed NAV from that date
+    // History: 2026-03-16 = 1.2000, 2026-03-15 = 1.1800
     if (result) {
+      // currentPrice should be replaced with the confirmed NAV from 2026-03-16
+      expect(result.currentPrice).toBeCloseTo(1.2000);
+      expect(result.realtimeDate).toBe('2026-03-16');
+      expect(result.valuationDate).toBe('2026-03-16');
+      // previousPrice should be the historical value before valuation date
       expect(result.previousPrice).toBeCloseTo(1.1800);
-      expect(result.netWorthDate).toBe('2026-03-15');
+      // netWorthDate should remain the confirmed date
+      expect(result.netWorthDate).toBe('2026-03-16');
     }
 
     expect(result).toBeDefined();
   });
 
-  test('should not modify data when no adjustment needed', () => {
-    // Create a valuation where no rules apply
+  test('should not modify data when no rules apply', () => {
+    // Create a valuation where no rules apply (valuationDate is later than both history and netWorthDate)
     const normalValuation: ValuationData = {
       ...mockValuation,
       currentPrice: 1.2345,
-      realtimeDate: '2026-03-17',
-      valuationDate: '2026-03-17',
+      realtimeDate: '2026-03-18',
+      valuationDate: '2026-03-18', // Later than latest history date (2026-03-17)
       previousPrice: 1.2000,
-      netWorthDate: '2026-03-16', // Earlier than valuation date
+      netWorthDate: '2026-03-17', // Earlier than valuation date
     };
 
     cacheService.setValuation('000001', normalValuation);

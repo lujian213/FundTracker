@@ -4,6 +4,7 @@ import { DayPicker } from 'react-day-picker';
 import { zhCN } from 'date-fns/locale';
 import { Ticker, ValuationData } from '../types';
 import { readAll, getAllTradeDates } from '../hooks/useTrades';
+import TradeBatchInputModal from './TradeBatchInputModal';
 
 interface Props {
   portfolio: Ticker[];
@@ -42,6 +43,7 @@ const TransactionsModal: React.FC<Props> = ({ portfolio, marketData, onClose, on
   const [selectedDateStr, setSelectedDateStr] = useState<string | null>(null);
   const [pickerOpen, setPickerOpen] = useState(false);
   const [pickerMonth, setPickerMonth] = useState<Date>(new Date());
+  const [showBatchInput, setShowBatchInput] = useState(false);
 
   // Load trade dates on mount (fresh read each time modal opens)
   useEffect(() => {
@@ -157,8 +159,8 @@ const TransactionsModal: React.FC<Props> = ({ portfolio, marketData, onClose, on
         </div>
 
         <div className="p-6 overflow-y-auto flex-1 min-h-0" style={{ minHeight: '450px' }}>
-          {/* Date picker button */}
-          <div className="mb-4 relative">
+          {/* Date picker button and batch input */}
+          <div className="mb-4 relative flex items-center gap-3">
             <button
               disabled={hasNoTrades}
               onClick={() => setPickerOpen(o => !o)}
@@ -173,6 +175,14 @@ const TransactionsModal: React.FC<Props> = ({ portfolio, marketData, onClose, on
               {!hasNoTrades && (
                 <i className={`fas fa-chevron-down text-xs text-gray-400 transition-transform ${pickerOpen ? 'rotate-180' : ''}`} />
               )}
+            </button>
+
+            <button
+              onClick={() => setShowBatchInput(true)}
+              className="flex items-center space-x-2 px-4 py-2 rounded-xl border border-gray-200 bg-white text-sm font-medium text-gray-700 hover:border-blue-400 hover:text-blue-600 shadow-sm transition-colors"
+            >
+              <i className="fas fa-plus-circle text-gray-400" />
+              <span>批量输入</span>
             </button>
 
             {/* Inline DayPicker dropdown */}
@@ -289,6 +299,19 @@ const TransactionsModal: React.FC<Props> = ({ portfolio, marketData, onClose, on
           )}
         </div>
       </div>
+
+      {/* 批量输入弹窗 */}
+      {showBatchInput && (
+        <TradeBatchInputModal
+          portfolio={portfolio}
+          marketData={marketData}
+          onClose={() => setShowBatchInput(false)}
+          onSaved={() => {
+            // 刷新交易记录 - 通过更新时间戳触发重新渲染
+            setTradeDateStrs(getAllTradeDates());
+          }}
+        />
+      )}
     </div>
   );
 

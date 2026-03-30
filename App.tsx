@@ -623,14 +623,14 @@ const AppContent: React.FC = () => {
     await Promise.all(workers);
   }, []);
 
-  const refreshMarketIndicesAsync = useCallback(async () => {
+  const refreshMarketIndicesAsync = useCallback(async (ignoreCache: boolean = false) => {
     const fetchDomestic = async () => {
       if (indicesConfig.length === 0) {
         setMarketIndices([]);
         return;
       }
       try {
-        const data = await fetchMarketIndices(indicesConfig);
+        const data = await fetchMarketIndices(indicesConfig, ignoreCache);
         setMarketIndices(prev => mergeIndicesForDisplay(indicesConfig, data, prev));
         // mark fetched symbols as ok, any configured but missing as error
         const fetchedSet = new Set(data.map(d => normalizeIndexSymbol(d.symbol)));
@@ -666,7 +666,7 @@ const AppContent: React.FC = () => {
         return;
       }
       try {
-        const data = await fetchMarketIndices(globalIndicesConfig);
+        const data = await fetchMarketIndices(globalIndicesConfig, ignoreCache);
         setGlobalIndices(prev => mergeIndicesForDisplay(globalIndicesConfig, data, prev));
         const fetchedSet = new Set(data.map(d => normalizeIndexSymbol(d.symbol)));
         setIndexStatuses(prev => {
@@ -699,7 +699,7 @@ const AppContent: React.FC = () => {
   }, [indicesConfig, globalIndicesConfig]);
 
   // 刷新指数历史数据
-  const refreshIndexHistoryAsync = useCallback(async () => {
+  const refreshIndexHistoryAsync = useCallback(async (ignoreCache: boolean = false) => {
     const allIndexSymbols = [...indicesConfig, ...globalIndicesConfig];
     if (allIndexSymbols.length === 0) return;
 
@@ -708,7 +708,7 @@ const AppContent: React.FC = () => {
       while (queue.length > 0) {
         const symbol = queue.shift();
         if (symbol) {
-          try { await fetchIndexHistory(symbol); } catch { /* ignore individual errors */ }
+          try { await fetchIndexHistory(symbol, ignoreCache); } catch { /* ignore individual errors */ }
         }
       }
     });
@@ -731,9 +731,9 @@ const AppContent: React.FC = () => {
     try {
       await Promise.allSettled([
         runBatchUpdate(portfolio),
-        refreshMarketIndicesAsync(),
+        refreshMarketIndicesAsync(true),
         runBatchHistoryUpdate(portfolio),
-        refreshIndexHistoryAsync(),
+        refreshIndexHistoryAsync(true),
       ]);
     } finally { setIsRefreshing(false); }
   }, [portfolio, isRefreshing, runBatchUpdate, refreshMarketIndicesAsync, runBatchHistoryUpdate, refreshIndexHistoryAsync]);
@@ -776,11 +776,11 @@ const AppContent: React.FC = () => {
     });
 
     scheduler.registerHandler('market-index-refresh', async () => {
-      await refreshMarketIndicesAsync();
+      await refreshMarketIndicesAsync(true);
     });
 
     scheduler.registerHandler('index-history-refresh', async () => {
-      await refreshIndexHistoryAsync();
+      await refreshIndexHistoryAsync(true);
     });
 
     scheduler.registerHandler('news-refresh', async () => {
@@ -987,7 +987,7 @@ const AppContent: React.FC = () => {
     }
     setPendingImportData(null);
     runBatchUpdate(applied.portfolio);
-    refreshMarketIndicesAsync();
+    refreshMarketIndicesAsync(true);
   }, [pendingImportData, runBatchUpdate, refreshMarketIndicesAsync]);
 
   const renderIndexCard = (idx: MarketIndex, type: 'index' | 'global_index', status: CardStatus = 'unknown') => {
