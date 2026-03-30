@@ -190,6 +190,7 @@ export interface BackupData {
   globalIndices: BackupIndex[];
   positions: Record<string, BackupPosition>;
   trades: Record<string, BackupTrade[]>;
+  comboTrades: Record<string, ComboTrade>;
   config: BackupConfig;
 }
 
@@ -324,4 +325,17 @@ export interface TimerJobError {
   jobName: string;
   message: string;
   time: Date;
+}
+
+// --- Combo trade types ---
+export interface ComboTradeRecord {
+  fundId: string;   // 基金代码（唯一标识）
+  amount: number;   // 买入金额
+  fee: number;      // 手续费
+}
+
+export interface ComboTrade {
+  id: string;                          // 唯一标识
+  name: string;                        // 组合名称
+  records: ComboTradeRecord[];        // 组合内的基金记录（只保存 amount > 0）
 }

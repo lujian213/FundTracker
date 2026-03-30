@@ -114,6 +114,14 @@ export const TradeManager: React.FC<{
   const [fee, setFee] = useState<string>('0');
   const [error, setError] = useState<string | null>(null);
 
+  // 调整日期（前一天/后一天）
+  const adjustDate = (delta: number) => {
+    if (!date) return;
+    const d = new Date(date);
+    d.setDate(d.getDate() + delta);
+    setDate(toLocalDateKey(d));
+  };
+
   useEffect(() => { setError(null); }, [date, type, shares, total, fee]);
 
   // 计算当前页应显示的记录
@@ -374,7 +382,28 @@ export const TradeManager: React.FC<{
         <div className="grid grid-cols-1 md:grid-cols-3 gap-2 mb-2">
           <div>
             <label className="text-xs text-gray-500">交易日期</label>
-            <input type="date" value={date} onChange={e => setDate(e.target.value)} className="w-full px-2 py-1 border rounded h-8 text-sm" />
+            <div className="flex items-center">
+              <button
+                type="button"
+                onClick={() => adjustDate(-1)}
+                className="px-2 py-1 border border-r-0 rounded-l h-8 text-sm text-gray-500 hover:bg-gray-50"
+              >
+                <i className="fas fa-chevron-up text-xs"></i>
+              </button>
+              <input
+                type="date"
+                value={date}
+                onChange={e => setDate(e.target.value)}
+                className="w-full px-2 py-1 border h-8 text-sm [-webkit-appearance:none]"
+              />
+              <button
+                type="button"
+                onClick={() => adjustDate(1)}
+                className="px-2 py-1 border border-l-0 rounded-r h-8 text-sm text-gray-500 hover:bg-gray-50"
+              >
+                <i className="fas fa-chevron-down text-xs"></i>
+              </button>
+            </div>
           </div>
           <div>
             <label className="text-xs text-gray-500">类型</label>

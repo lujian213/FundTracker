@@ -103,6 +103,7 @@ const BackupPanel: React.FC<BackupPanelProps> = ({
           globalIndices: normalizeIndices(imported.globalIndices || []),
           positions: imported.positions || {},
           trades: imported.trades || {},
+          comboTrades: imported.comboTrades || {},
           config: imported.config || { autoExportTime: '16:00' },
         };
 

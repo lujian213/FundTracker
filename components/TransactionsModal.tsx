@@ -5,6 +5,7 @@ import { zhCN } from 'date-fns/locale';
 import { Ticker, ValuationData } from '../types';
 import { readAll, getAllTradeDates } from '../hooks/useTrades';
 import TradeBatchInputModal from './TradeBatchInputModal';
+import ComboTradeModal from './ComboTradeModal';
 
 interface Props {
   portfolio: Ticker[];
@@ -44,6 +45,7 @@ const TransactionsModal: React.FC<Props> = ({ portfolio, marketData, onClose, on
   const [pickerOpen, setPickerOpen] = useState(false);
   const [pickerMonth, setPickerMonth] = useState<Date>(new Date());
   const [showBatchInput, setShowBatchInput] = useState(false);
+  const [showComboTrade, setShowComboTrade] = useState(false);
 
   // Load trade dates on mount (fresh read each time modal opens)
   useEffect(() => {
@@ -185,6 +187,14 @@ const TransactionsModal: React.FC<Props> = ({ portfolio, marketData, onClose, on
               <span>批量输入</span>
             </button>
 
+            <button
+              onClick={() => setShowComboTrade(true)}
+              className="flex items-center space-x-2 px-4 py-2 rounded-xl border border-gray-200 bg-white text-sm font-medium text-gray-700 hover:border-blue-400 hover:text-blue-600 shadow-sm transition-colors"
+            >
+              <i className="fas fa-layer-group text-gray-400" />
+              <span>组合交易</span>
+            </button>
+
             {/* Inline DayPicker dropdown */}
             {pickerOpen && !hasNoTrades && (
               <>
@@ -310,6 +320,14 @@ const TransactionsModal: React.FC<Props> = ({ portfolio, marketData, onClose, on
             // 刷新交易记录 - 通过更新时间戳触发重新渲染
             setTradeDateStrs(getAllTradeDates());
           }}
+        />
+      )}
+
+      {/* 组合交易弹窗 */}
+      {showComboTrade && (
+        <ComboTradeModal
+          portfolio={portfolio}
+          onClose={() => setShowComboTrade(false)}
         />
       )}
     </div>

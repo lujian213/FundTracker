@@ -979,6 +979,7 @@ const AppContent: React.FC = () => {
           globalIndices: normalizeIndices(imported.globalIndices || []),
           positions: imported.positions || {},
           trades: imported.trades || {},
+          comboTrades: imported.comboTrades || {},
           config: imported.config || { autoExportTime: '16:00' },
         };
         setPendingImportData(normalized);
