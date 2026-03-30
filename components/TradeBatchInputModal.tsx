@@ -59,12 +59,12 @@ function calculateTotal(type: TradeType, shares: number, price: number, fee: num
     : Number((shares * price - fee).toFixed(2));
 }
 
-// 根据总额计算份额
+// 根据总额计算份额（保留2位小数）
 function calculateShares(type: TradeType, total: number, price: number, fee: number): number {
   if (price <= 0) return 0;
   return type === 'buy'
-    ? Number(((total - fee) / price).toFixed(4))
-    : Number(((total + fee) / price).toFixed(4));
+    ? Number(((total - fee) / price).toFixed(2))
+    : Number(((total + fee) / price).toFixed(2));
 }
 
 // 单条交易输入行
@@ -591,7 +591,7 @@ const TradeBatchInputModal: React.FC<Props> = ({ onClose, onSaved, portfolio = [
                                 type="number"
                                 step="0.01"
                                 min="0"
-                                value={row.shares === undefined ? '' : row.shares}
+                                value={row.shares === undefined ? '' : (row.shares > 0 ? Number(row.shares.toFixed(2)) : '')}
                                 readOnly={row.type === 'buy'}
                                 onChange={(e) => updateRow(groupIndex, row.id, 'shares', e.target.value)}
                                 placeholder={row.type === 'buy' ? '自动计算' : '输入份额'}
