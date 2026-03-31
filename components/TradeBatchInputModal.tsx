@@ -98,7 +98,6 @@ const TradeBatchInputModal: React.FC<Props> = ({ onClose, onSaved, portfolio = [
 
   // 组合交易相关状态
   const [comboTrades, setComboTrades] = useState<ComboTrade[]>([]);
-  const [comboPanelExpanded, setComboPanelExpanded] = useState(false);
 
   // 标记是否已初始化
   const [initialized, setInitialized] = useState(false);
@@ -270,25 +269,20 @@ const TradeBatchInputModal: React.FC<Props> = ({ onClose, onSaved, portfolio = [
 
       if (price <= 0) continue; // 如果价格无效，跳过
 
-      // 模拟手动添加一行，然后分别设置 fee 和 total
-      // updateRow 中的自动计算逻辑会自动计算 shares
+      // 添加新行
       group.rows.push({
         id: generateId(),
         type: 'buy', // 默认为买入
         price,
         shares: 0,
-        fee: 0,
-        total: 0,
+        fee: record.fee, // 设置手续费
+        total: record.amount, // 设置总额（会触发 shares 计算）
       });
 
-      // 获取刚添加的行
+      // 获取刚添加的行，触发自动计算
       const newRow = group.rows[group.rows.length - 1];
-
-      // 先设置手续费（会触发 shares 计算，但 total 为 0 时 shares 仍为 0）
-      newRow.fee = record.fee;
-
-      // 再设置总额（会触发正确的 shares 计算）
-      newRow.total = record.amount;
+      // 买入时：根据总额和手续费计算份额
+      newRow.shares = calculateShares(newRow.type, newRow.total, newRow.price, newRow.fee);
     }
 
     setFundGroups(newGroups);
@@ -523,7 +517,7 @@ const TradeBatchInputModal: React.FC<Props> = ({ onClose, onSaved, portfolio = [
           </button>
         </div>
 
-        <div className="p-6 overflow-y-auto flex-1 min-h-0" style={{ minHeight: '660px' }}>
+        <div className="p-6 flex-1 overflow-hidden" style={{ minHeight: '500px' }}>
           {/* Date picker */}
           <div className="mb-4 relative flex items-center gap-3">
             <span className="text-sm text-gray-600">交易日期：</span>
@@ -557,48 +551,42 @@ const TradeBatchInputModal: React.FC<Props> = ({ onClose, onSaved, portfolio = [
             )}
           </div>
 
-          {/* 组合交易面板 - 可收缩 */}
+          {/* 组合交易面板 - 始终展开 */}
           {comboTrades.length > 0 && (
             <div className="mb-4 border border-gray-100 rounded-xl overflow-hidden">
               {/* 面板标题 */}
-              <div
-                className="px-4 py-2 bg-gray-50 flex items-center justify-between cursor-pointer hover:bg-gray-100"
-                onClick={() => setComboPanelExpanded(!comboPanelExpanded)}
-              >
+              <div className="px-4 py-2 bg-gray-50 flex items-center justify-between">
                 <div className="flex items-center gap-2">
-                  <i className={`fas fa-chevron-down text-xs text-gray-400 transition-transform ${comboPanelExpanded ? 'rotate-180' : ''}`} />
                   <span className="text-xs font-medium text-gray-700">组合交易</span>
                   <span className="text-xs text-gray-400">({comboTrades.length}个)</span>
                 </div>
               </div>
 
               {/* 面板内容 */}
-              {comboPanelExpanded && (
-                <div className="p-3 bg-white">
-                  <div className="flex flex-wrap gap-2">
-                    {comboTrades.map(combo => (
-                      <button
-                        key={combo.id}
-                        onClick={() => applyComboTrade(combo)}
-                        className="inline-flex items-center px-3 py-1.5 rounded-lg text-xs font-medium bg-blue-50 text-blue-700 hover:bg-blue-100 transition-colors"
-                        title={`点击应用组合交易"${combo.name}"`}
-                      >
-                        <i className="fas fa-layer-group mr-1.5" />
-                        {combo.name}
-                      </button>
-                    ))}
-                  </div>
-                  <div className="mt-2 text-xs text-gray-400">
-                    点击组合交易名称自动填充对应基金的交易记录
-                  </div>
+              <div className="p-3 bg-white">
+                <div className="flex flex-wrap gap-2">
+                  {comboTrades.map(combo => (
+                    <button
+                      key={combo.id}
+                      onClick={() => applyComboTrade(combo)}
+                      className="inline-flex items-center px-3 py-1.5 rounded-lg text-xs font-medium bg-blue-50 text-blue-700 hover:bg-blue-100 transition-colors"
+                      title={`点击应用组合交易"${combo.name}"`}
+                    >
+                      <i className="fas fa-layer-group mr-1.5" />
+                      {combo.name}
+                    </button>
+                  ))}
                 </div>
-              )}
+                <div className="mt-2 text-xs text-gray-400">
+                  点击组合交易名称自动填充对应基金的交易记录
+                </div>
+              </div>
             </div>
           )}
 
           {/* Fund groups table */}
           <div className="border border-gray-100 rounded-xl overflow-hidden">
-            <div className="overflow-y-auto" style={{ maxHeight: '540px' }}>
+            <div className="overflow-y-auto" style={{ maxHeight: '400px' }}>
               {fundGroups.length === 0 ? (
                 <div className="py-12 text-center text-sm text-gray-400">
                   暂无持仓基金，请先添加基金并设置满仓份额
