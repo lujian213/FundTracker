@@ -581,6 +581,11 @@ export async function fetchSingleIndex(symbol: string, ignoreCache: boolean = fa
 
   const cached = cacheService.getIndexMarketData(normalizedSymbol);
 
+  // DEBUG_START: 指数卡片调试信息 - 缓存数据
+  // eslint-disable-next-line no-console
+  console.log(`[DEBUG IndexCard] ${symbol} -> cached:`, cached);
+  // DEBUG_END
+
   // 默认返回缓存数据（ignoreCache为false时），由后台定时任务负责更新缓存
   // 这样做的好处是：界面始终有数据显示，不会因为API失败而空白
   if (cached && !ignoreCache) {
@@ -598,6 +603,10 @@ export async function fetchSingleIndex(symbol: string, ignoreCache: boolean = fa
   let currentData: MarketIndex | null = null;
   try {
     const response: any = await jsonp(realtimeUrl, 'cb');
+    // DEBUG_START: 指数卡片调试信息 - API 原始响应
+    // eslint-disable-next-line no-console
+    console.log(`[DEBUG IndexCard] ${symbol} -> API response:`, response);
+    // DEBUG_END
     const item = response?.data;
     if (item) {
       const timestamp = item.f124 ? new Date(item.f124 * 1000) : new Date();
@@ -614,6 +623,11 @@ export async function fetchSingleIndex(symbol: string, ignoreCache: boolean = fa
           }
         } catch (e) {}
       }
+
+      // DEBUG_START: 指数卡片调试信息 - 关键字段值
+      // eslint-disable-next-line no-console
+      console.log(`[DEBUG IndexCard] ${symbol} -> f14:`, item.f14, 'f58:', item.f58, 'f43:', item.f43, 'f124:', item.f124, 'f80:', item.f80);
+      // DEBUG_END
 
       currentData = {
         symbol: secid,
@@ -671,6 +685,11 @@ export async function fetchSingleIndex(symbol: string, ignoreCache: boolean = fa
       return result;
     }
   } catch (e) {}
+
+  // DEBUG_START: 指数卡片调试信息 - 最终返回数据
+  // eslint-disable-next-line no-console
+  console.log(`[DEBUG IndexCard] ${symbol} -> final result:`, currentData);
+  // DEBUG_END
 
   return currentData;
 }
