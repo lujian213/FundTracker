@@ -495,7 +495,7 @@ const ComboTradeModal: React.FC<Props> = ({ portfolio, onClose }) => {
                                 type="number"
                                 step="0.01"
                                 min="0"
-                                value={record.amount === 0 ? '' : record.amount}
+                                value={record.amount}
                                 onChange={(e) => {
                                   const value = parseFloat(e.target.value) || 0;
                                   handleUpdateRecord(record.fundId, 'amount', value);
@@ -509,7 +509,7 @@ const ComboTradeModal: React.FC<Props> = ({ portfolio, onClose }) => {
                                 type="number"
                                 step="0.01"
                                 min="0"
-                                value={record.fee === 0 ? '' : record.fee}
+                                value={record.fee}
                                 onChange={(e) => {
                                   const value = parseFloat(e.target.value) || 0;
                                   handleUpdateRecord(record.fundId, 'fee', value);

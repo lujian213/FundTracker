@@ -581,11 +581,6 @@ export async function fetchSingleIndex(symbol: string, ignoreCache: boolean = fa
 
   const cached = cacheService.getIndexMarketData(normalizedSymbol);
 
-  // DEBUG_START: 指数卡片调试信息 - 缓存数据
-  // eslint-disable-next-line no-console
-  console.log(`[DEBUG IndexCard] ${symbol} -> cached:`, cached);
-  // DEBUG_END
-
   // 默认返回缓存数据（ignoreCache为false时），由后台定时任务负责更新缓存
   // 这样做的好处是：界面始终有数据显示，不会因为API失败而空白
   if (cached && !ignoreCache) {
@@ -603,10 +598,6 @@ export async function fetchSingleIndex(symbol: string, ignoreCache: boolean = fa
   let currentData: MarketIndex | null = null;
   try {
     const response: any = await jsonp(realtimeUrl, 'cb');
-    // DEBUG_START: 指数卡片调试信息 - API 原始响应
-    // eslint-disable-next-line no-console
-    console.log(`[DEBUG IndexCard] ${symbol} -> API response:`, response);
-    // DEBUG_END
     const item = response?.data;
     if (item) {
       const timestamp = item.f124 ? new Date(item.f124 * 1000) : new Date();
@@ -624,11 +615,6 @@ export async function fetchSingleIndex(symbol: string, ignoreCache: boolean = fa
         } catch (e) {}
       }
 
-      // DEBUG_START: 指数卡片调试信息 - 关键字段值
-      // eslint-disable-next-line no-console
-      console.log(`[DEBUG IndexCard] ${symbol} -> f14:`, item.f14, 'f58:', item.f58, 'f43:', item.f43, 'f124:', item.f124, 'f80:', item.f80);
-      // DEBUG_END
-
       currentData = {
         symbol: secid,
         name: item.f14 || item.f58 || "指数",
@@ -644,53 +630,27 @@ export async function fetchSingleIndex(symbol: string, ignoreCache: boolean = fa
     }
   } catch (e) {}
 
-  // 2. 从历史数据获取成交量和成交额
-  try {
-    const history = await fetchIndexHistory(symbol);
-    if (history && history.length > 0) {
-      const lastPoint = history[history.length - 1];
-
-      // 如果已有实时数据，合并成交量和成交额
-      if (currentData) {
+  // 2. 从历史数据获取成交量和成交额（仅当有实时数据时才处理）
+  // 如果API调用失败（currentData为null），不写入任何缓存，直接返回null
+  if (currentData) {
+    try {
+      const history = await fetchIndexHistory(symbol);
+      if (history && history.length > 0) {
+        const lastPoint = history[history.length - 1];
+        // 合并成交量和成交额，写入缓存
         const result = {
           ...currentData,
           volume: lastPoint.volume || 0,
           amount: lastPoint.amount || 0,
         };
-        // 写入缓存
         cacheService.setIndexMarketData(normalizedSymbol, result);
         return result;
       }
+    } catch (e) {}
+  }
 
-      // 如果没有实时数据，从历史数据构造返回
-      const lastDate = new Date(lastPoint.date);
-      const year = lastDate.getFullYear();
-      const month = String(lastDate.getMonth() + 1).padStart(2, '0');
-      const day = String(lastDate.getDate()).padStart(2, '0');
-
-      const result = {
-        symbol: secid,
-        name: lastPoint.volume ? "指数" : "指数",
-        current: lastPoint.value,
-        change: lastPoint.equityReturn,
-        changePercent: lastPoint.equityReturn,
-        lastUpdated: `${year}-${month}-${day} 15:00`,
-        tradeDate: `${year}-${month}-${day}`,
-        previousClose: undefined,
-        volume: lastPoint.volume || 0,
-        amount: lastPoint.amount || 0,
-      };
-      // 写入缓存
-      cacheService.setIndexMarketData(normalizedSymbol, result);
-      return result;
-    }
-  } catch (e) {}
-
-  // DEBUG_START: 指数卡片调试信息 - 最终返回数据
-  // eslint-disable-next-line no-console
-  console.log(`[DEBUG IndexCard] ${symbol} -> final result:`, currentData);
-  // DEBUG_END
-
+  // API失败时，直接返回null，不写入任何缓存
+  // 这样界面会显示已有的旧缓存（正确的名称）
   return currentData;
 }
 
