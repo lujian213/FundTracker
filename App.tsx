@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { Ticker, ValuationData, MarketType, MarketIndex, BackupData, CardStatus, ManageItemType, ManageSelectionKey } from './types';
+import { Ticker, ValuationData, MarketType, MarketIndex, BackupData, CardStatus, ManageItemType, ManageSelectionKey, JobResult } from './types';
 import { fetchFundData, fetchMarketIndices, forceFetchFundHistory, fetchIndexHistory, maybeTriggerHistoryRefresh } from './services/fundService';
 import { toLocalDateKey } from './utils/priceResolver';
 import * as cacheService from './services/cacheService';
@@ -635,41 +635,37 @@ const AppContent: React.FC = () => {
     await Promise.all(workers);
   }, []);
 
-  const refreshMarketIndicesAsync = useCallback(async (ignoreCache: boolean = false) => {
+  const refreshMarketIndicesAsync = useCallback(async (ignoreCache: boolean = false): Promise<JobResult<MarketIndex[]>> => {
+    const errors: string[] = [];
+
     const fetchDomestic = async () => {
       if (indicesConfig.length === 0) {
         setMarketIndices([]);
         return;
       }
-      try {
-        const data = await fetchMarketIndices(indicesConfig, ignoreCache);
-        setMarketIndices(prev => mergeIndicesForDisplay(indicesConfig, data, prev));
-        // mark fetched symbols as ok, any configured but missing as error
-        const fetchedSet = new Set(data.map(d => normalizeIndexSymbol(d.symbol)));
-        setIndexStatuses(prev => {
-          const next = { ...prev };
-          indicesConfig.forEach(sym => {
-            const n = normalizeIndexSymbol(sym);
-            next[n] = fetchedSet.has(n) ? 'ok' : 'error';
-          });
-          return next;
-        });
-        // Append intraday points for each fetched index
-        try {
-          data.forEach(d => {
-            try {
-              cacheService.appendIntradayPoint(d.symbol, { value: d.current, lastUpdated: d.lastUpdated, equityReturn: d.changePercent, tradeDate: d.tradeDate });
-            } catch (e) { /* ignore per-index errors */ }
-          });
-        } catch (e) { /* ignore */ }
-      } catch {
-        setMarketIndices(prev => mergeIndicesForDisplay(indicesConfig, [], prev));
-        setIndexStatuses(prev => {
-          const next = { ...prev };
-          indicesConfig.forEach(sym => { next[normalizeIndexSymbol(sym)] = 'error'; });
-          return next;
-        });
+      const result = await fetchMarketIndices(indicesConfig, ignoreCache);
+      // 即使有部分失败，也使用返回的数据（成功的部分）
+      const data = result.data || [];
+      if (!result.success && result.message) {
+        errors.push(result.message);
       }
+      setMarketIndices(prev => mergeIndicesForDisplay(indicesConfig, data, prev));
+      // mark fetched symbols as ok, any configured but missing as error
+      const fetchedSet = new Set(data.map(d => normalizeIndexSymbol(d.symbol)));
+      setIndexStatuses(prev => {
+        const next = { ...prev };
+        indicesConfig.forEach(sym => {
+          const n = normalizeIndexSymbol(sym);
+          next[n] = fetchedSet.has(n) ? 'ok' : 'error';
+        });
+        return next;
+      });
+      // Append intraday points for each fetched index
+      data.forEach(d => {
+        try {
+          cacheService.appendIntradayPoint(d.symbol, { value: d.current, lastUpdated: d.lastUpdated, equityReturn: d.changePercent, tradeDate: d.tradeDate });
+        } catch (e) { /* ignore per-index errors */ }
+      });
     };
 
     const fetchGlobal = async () => {
@@ -677,37 +673,36 @@ const AppContent: React.FC = () => {
         setGlobalIndices([]);
         return;
       }
-      try {
-        const data = await fetchMarketIndices(globalIndicesConfig, ignoreCache);
-        setGlobalIndices(prev => mergeIndicesForDisplay(globalIndicesConfig, data, prev));
-        const fetchedSet = new Set(data.map(d => normalizeIndexSymbol(d.symbol)));
-        setIndexStatuses(prev => {
-          const next = { ...prev };
-          globalIndicesConfig.forEach(sym => {
-            const n = normalizeIndexSymbol(sym);
-            next[n] = fetchedSet.has(n) ? 'ok' : 'error';
-          });
-          return next;
-        });
-        // Append intraday points for each fetched global index
-        try {
-          data.forEach(d => {
-            try {
-              cacheService.appendIntradayPoint(d.symbol, { value: d.current, lastUpdated: d.lastUpdated, equityReturn: d.changePercent, tradeDate: d.tradeDate });
-            } catch (e) { /* ignore per-index errors */ }
-          });
-        } catch (e) { /* ignore */ }
-      } catch {
-        setGlobalIndices(prev => mergeIndicesForDisplay(globalIndicesConfig, [], prev));
-        setIndexStatuses(prev => {
-          const next = { ...prev };
-          globalIndicesConfig.forEach(sym => { next[normalizeIndexSymbol(sym)] = 'error'; });
-          return next;
-        });
+      const result = await fetchMarketIndices(globalIndicesConfig, ignoreCache);
+      // 即使有部分失败，也使用返回的数据（成功的部分）
+      const data = result.data || [];
+      if (!result.success && result.message) {
+        errors.push(result.message);
       }
+      setGlobalIndices(prev => mergeIndicesForDisplay(globalIndicesConfig, data, prev));
+      const fetchedSet = new Set(data.map(d => normalizeIndexSymbol(d.symbol)));
+      setIndexStatuses(prev => {
+        const next = { ...prev };
+        globalIndicesConfig.forEach(sym => {
+          const n = normalizeIndexSymbol(sym);
+          next[n] = fetchedSet.has(n) ? 'ok' : 'error';
+        });
+        return next;
+      });
+      // Append intraday points for each fetched global index
+      data.forEach(d => {
+        try {
+          cacheService.appendIntradayPoint(d.symbol, { value: d.current, lastUpdated: d.lastUpdated, equityReturn: d.changePercent, tradeDate: d.tradeDate });
+        } catch (e) { /* ignore per-index errors */ }
+      });
     };
 
     await Promise.allSettled([fetchDomestic(), fetchGlobal()]);
+
+    if (errors.length > 0) {
+      return { success: false, message: errors[0] };
+    }
+    return { success: true };
   }, [indicesConfig, globalIndicesConfig]);
 
   // 刷新指数历史数据
@@ -761,10 +756,7 @@ const AppContent: React.FC = () => {
 
   // Timer Job Scheduler: handles fund valuation, history, and market index refresh
   const { addError } = useTimerJobErrors();
-  const { reload: reloadNews } = useNews();
-
-  // 用于跟踪是否已触发过初始后台任务
-  const initialJobTriggeredRef = useRef(false);
+  const { reload: reloadNews, loadNews } = useNews();
 
   useEffect(() => {
     const scheduler = getTimerJobScheduler();
@@ -788,7 +780,8 @@ const AppContent: React.FC = () => {
     });
 
     scheduler.registerHandler('market-index-refresh', async () => {
-      await refreshMarketIndicesAsync(true);
+      // refreshMarketIndicesAsync 内部已经调用了 fetchMarketIndices，直接使用其返回值
+      return await refreshMarketIndicesAsync(true);
     });
 
     scheduler.registerHandler('index-history-refresh', async () => {
@@ -796,7 +789,7 @@ const AppContent: React.FC = () => {
     });
 
     scheduler.registerHandler('news-refresh', async () => {
-      reloadNews();
+      return await loadNews();
     });
 
     // 注册后台任务处理器
@@ -835,29 +828,6 @@ const AppContent: React.FC = () => {
 
     // Start the scheduler
     scheduler.start();
-
-    // 页面加载时触发一次后台任务（延迟执行，避免阻塞首屏渲染）
-    // 使用 ref 确保只触发一次，避免 portfolio 变化时重复触发
-    if (portfolio.length > 0 && !initialJobTriggeredRef.current) {
-      initialJobTriggeredRef.current = true;
-      setTimeout(() => {
-        scheduler._triggerJob?.('holiday-info-refresh');
-        scheduler._triggerJob?.('delivery-info-refresh');
-      }, 5000);
-
-      // 策略推荐任务延迟 6 秒执行
-      setTimeout(() => {
-        scheduler._triggerJob?.('strategy-recommendation-refresh');
-      }, 6000);
-
-      // Calendar 任务延迟 7 秒执行
-      setTimeout(() => {
-        scheduler._triggerJob?.('calendar_holiday_china');
-        scheduler._triggerJob?.('calendar_holiday_hk');
-        scheduler._triggerJob?.('calendar_holiday_us');
-        scheduler._triggerJob?.('calendar_holiday_sg');
-      }, 7000);
-    }
 
     return () => scheduler.stop();
   }, [portfolio, runBatchUpdate, runBatchHistoryUpdate, refreshMarketIndicesAsync, refreshIndexHistoryAsync, addError, reloadNews]);

@@ -4,73 +4,89 @@
       "id": "fund-valuation-refresh",
       "name": "基金估值刷新",
       "cron": "*/3 * * * *",
-      "enabled": true
+      "enabled": true,
+      "initialDelay": 5000
     },
     {
       "id": "fund-history-refresh",
       "name": "基金历史净值刷新",
       "cron": "*/20 * * * *",
-      "enabled": true
+      "enabled": true,
+      "initialDelay": 5000
     },
     {
       "id": "market-index-refresh",
       "name": "市场指数刷新",
-      "cron": "*/2 * * * *",
-      "enabled": true
+      "cron": "*/1 * * * *",
+      "enabled": true,
+      "initialDelay": 5000,
+      "initialTriggerCount": 3,
+      "maxTriggerCount": 10
     },
     {
       "id": "index-history-refresh",
       "name": "指数历史刷新",
       "cron": "*/20 * * * *",
-      "enabled": true
+      "enabled": true,
+      "initialDelay": 5000
     },
     {
       "id": "news-refresh",
       "name": "市场热点刷新",
-      "cron": "*/3 * * * *",
-      "enabled": true
+      "cron": "*/1 * * * *",
+      "enabled": true,
+      "initialDelay": 5000,
+      "initialTriggerCount": 3,
+      "maxTriggerCount": 10
     },
     {
       "id": "holiday-info-refresh",
       "name": "节假日信息刷新",
       "cron": "0 */6 * * *",
-      "enabled": false
+      "enabled": false,
+      "initialDelay": 5000
     },
     {
       "id": "delivery-info-refresh",
       "name": "交割日信息刷新",
       "cron": "0 */6 * * *",
-      "enabled": false
+      "enabled": false,
+      "initialDelay": 5000
     },
     {
       "id": "strategy-recommendation-refresh",
       "name": "推荐交易策略刷新",
       "cron": "0 */6 * * *",
-      "enabled": true
+      "enabled": true,
+      "initialDelay": 6000
     },
     {
       "id": "calendar_holiday_china",
       "name": "Calendar A股节假日信息刷新",
       "cron": "0 0 * * *",
-      "enabled": true
+      "enabled": true,
+      "initialDelay": 7000
     },
     {
       "id": "calendar_holiday_hk",
       "name": "Calendar 港股节假日信息刷新",
       "cron": "0 0 * * *",
-      "enabled": true
+      "enabled": true,
+      "initialDelay": 7000
     },
     {
       "id": "calendar_holiday_us",
       "name": "Calendar 美股节假日信息刷新",
       "cron": "0 0 * * *",
-      "enabled": true
+      "enabled": true,
+      "initialDelay": 7000
     },
     {
       "id": "calendar_holiday_sg",
       "name": "Calendar 新加坡股市节假日信息刷新",
       "cron": "0 0 * * *",
-      "enabled": true
+      "enabled": true,
+      "initialDelay": 7000
     }
   ]
 }

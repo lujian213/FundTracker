@@ -1,4 +1,4 @@
-import { ValuationData, MarketIndex, HistoricalPoint, OverallProfitSummary, OverallFundRow, ProfitPoint } from "../types";
+import { ValuationData, MarketIndex, HistoricalPoint, OverallProfitSummary, OverallFundRow, ProfitPoint, JobResult } from "../types";
 import { computeProfitTimeline } from '../utils/profitCalculator';
 import { toLocalDateKey, resolvePreferredPrice, ResolvedPrice } from '../utils/priceResolver';
 import { getTradesForSymbol } from '../hooks/useTrades';
@@ -113,7 +113,7 @@ class RequestQueue {
     return new Promise((resolve, reject) => {
       this.queue.push(async () => {
         try {
-          await new Promise(r => setTimeout(r, 150 + Math.random() * 200));
+          await new Promise(r => setTimeout(r, 350 + Math.random() * 400));
           const result = await task();
           resolve(result);
         } catch (e) {
@@ -654,14 +654,36 @@ export async function fetchSingleIndex(symbol: string, ignoreCache: boolean = fa
   return currentData;
 }
 
-export async function fetchMarketIndices(symbols: string[], ignoreCache: boolean = false): Promise<MarketIndex[]> {
-  if (symbols.length === 0) return [];
+export async function fetchMarketIndices(symbols: string[], ignoreCache: boolean = false): Promise<JobResult<MarketIndex[]>> {
+  if (symbols.length === 0) return { success: true, data: [] };
+
   const results: MarketIndex[] = [];
+  const errors: string[] = [];
+
   for (const sym of symbols) {
-    const res = await globalQueue.add(() => fetchSingleIndex(sym, ignoreCache));
-    if (res) results.push(res);
+    try {
+      const res = await globalQueue.add(() => fetchSingleIndex(sym, ignoreCache));
+      if (res) {
+        results.push(res);
+      } else {
+        errors.push(`${sym}: API返回空数据`);
+      }
+    } catch (e) {
+      errors.push(`${sym}: ${(e as Error).message || '未知错误'}`);
+    }
   }
-  return results;
+
+  // 如果全部失败
+  if (results.length === 0) {
+    return { success: false, message: `获取指数数据全部失败: ${errors[0]}` };
+  }
+
+  // 部分失败：返回成功数据，但在 message 中只包含第一个失败信息
+  if (errors.length > 0) {
+    return { success: false, data: results, message: `部分指数刷新失败: ${errors[0]}` };
+  }
+
+  return { success: true, data: results };
 }
 
 export async function fetchFundHistory(symbol: string): Promise<HistoricalPoint[]> {
@@ -779,9 +801,12 @@ export async function fetchFundDailyProfit(symbol: string): Promise<DailyProfitP
 /**
  * 获取实时市场热点 (替代受限的异动接口)
  * 使用 push2 排行榜接口，通常比异动接口更稳定且无跨域限制
+ * 返回 JobResult 结构，包含成功/失败状态和数据
  */
-export async function fetchMarketNews(): Promise<{ id: string, title: string, time: string, url: string, altUrls?: { label: string; url: string }[] }[]> {
-  // 获取领涨板块或热门个股，作为“市场动态”展示
+export type NewsItem = { id: string, title: string, time: string, url: string, altUrls?: { label: string; url: string }[] };
+
+export async function fetchMarketNews(): Promise<JobResult<NewsItem[]>> {
+  // 获取领涨板块或热门个股，作为”市场动态”展示
   const ut = 'fa1a66105171779fbdd067425f38a7c2';
   // 综合排行榜接口，获取当前涨幅前列的板块
   const url = `https://push2.eastmoney.com/api/qt/clist/get?pn=1&pz=10&po=1&np=1&ut=${ut}&fltt=2&invt=2&fid=f3&fs=m:90+t:2&type=90&fields=f12,f14,f2,f3,f4&_=${Date.now()}`;
@@ -794,7 +819,7 @@ export async function fetchMarketNews(): Promise<{ id: string, title: string, ti
       const now = new Date();
       const timeStr = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}`;
 
-      return Object.values(diff).map((item: any, idx: number) => {
+      const newsItems: NewsItem[] = Object.values(diff).map((item: any, idx: number) => {
         const code = item.f12;
         // build candidate links and altUrls
         const alt: { label: string; url: string }[] = [];
@@ -848,24 +873,25 @@ export async function fetchMarketNews(): Promise<{ id: string, title: string, ti
           altUrls
         };
       });
+
+      return { success: true, data: newsItems };
     }
+
+    // API 返回空数据
+    return { success: false, message: 'API返回空数据' };
   } catch (e) {
     // 如果排行榜也挂了，最后保底尝试直接从上证指数获取简要状态
     try {
       const index = await fetchSingleIndex('1.000001');
       if (index) {
-        return [{
-          id: 'status-sh',
-          title: `上证指数当前 ${index.current} (${index.changePercent > 0 ? '↑' : '↓'}${index.changePercent}%) 交易进行中`,
-          time: index.lastUpdated.slice(0, 5),
-          url: 'https://quote.eastmoney.com/zs000001.html'
-        }];
+        // API 失败但 fallback 成功，返回失败状态让任务日志显示失败
+        return { success: false, message: `主API失败，使用fallback显示上证指数状态` };
       }
     } catch (inner) {}
-    throw e;
-  }
 
-  return [];
+    // 所有 API 都失败
+    return { success: false, message: (e as Error).message || '未知错误' };
+  }
 }
 
 /**

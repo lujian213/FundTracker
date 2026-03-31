@@ -1,11 +1,11 @@
 import { fetchFundData, fetchFundHistory, fetchSingleIndex, normalizeIndexSymbol } from '../../services/fundService';
 import { ValuationData } from '../../types';
 
-// Advance past the RequestQueue random delay (150–350 ms) without triggering
+// Advance past the RequestQueue random delay (350–750 ms) without triggering
 // the 8000 ms JSONP timeout.  Multiple Promise.resolve() calls drain the
 // microtask queue that the async RequestQueue.process() loop produces.
 async function drainQueue() {
-  await jest.advanceTimersByTimeAsync(400);
+  await jest.advanceTimersByTimeAsync(800);
   await Promise.resolve();
   await Promise.resolve();
 }

@@ -1,7 +1,7 @@
 import { fetchFundData } from '../../services/fundService';
 
 async function drainQueue() {
-  await jest.advanceTimersByTimeAsync(400);
+  await jest.advanceTimersByTimeAsync(800);
   await Promise.resolve();
   await Promise.resolve();
 }

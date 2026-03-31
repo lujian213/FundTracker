@@ -318,6 +318,9 @@ export interface TimerJobConfig {
   name: string;
   cron: string;
   enabled: boolean;
+  initialTriggerCount?: number;  // 初始累计触发数（默认1）
+  maxTriggerCount?: number;       // 最大累计触发数（默认1）
+  initialDelay?: number;           // 初始延迟（毫秒），任务启动后延迟执行
 }
 
 export interface TimerJobError {
@@ -325,6 +328,13 @@ export interface TimerJobError {
   jobName: string;
   message: string;
   time: Date;
+}
+
+// 定时任务执行结果 - 用于统一报告任务状态
+export interface JobResult<T = any> {
+  success: boolean;
+  data?: T;        // 成功时返回的数据
+  message?: string; // 成功时的可选信息或失败时的错误原因
 }
 
 // --- Combo trade types ---

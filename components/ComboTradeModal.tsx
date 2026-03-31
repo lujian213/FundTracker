@@ -487,7 +487,7 @@ const ComboTradeModal: React.FC<Props> = ({ portfolio, onClose }) => {
                       <tbody>
                         {editData.records.map((record) => (
                           <tr key={record.fundId} className="border-b border-gray-50 hover:bg-gray-50 h-6">
-                            <td className="px-1 py-0 text-left text-xs text-gray-700">
+                            <td className="px-1 py-0 text-left text-xs text-gray-700 whitespace-nowrap overflow-hidden text-ellipsis">
                               {getFundName(record.fundId)}
                             </td>
                             <td className="px-1 py-0">

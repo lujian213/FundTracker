@@ -1,13 +1,9 @@
 import { createContext, useContext, useState, useCallback, ReactNode } from 'react';
 import * as cacheService from '../services/cacheService';
-import { fetchMarketNews } from '../services/fundService';
+import { fetchMarketNews, NewsItem } from '../services/fundService';
+import { JobResult } from '../types';
 
-export interface NewsItem {
-  id: string;
-  title: string;
-  time: string;
-  url: string;
-}
+export type { NewsItem };
 
 interface NewsContextValue {
   news: NewsItem[];
@@ -18,7 +14,7 @@ interface NewsContextValue {
   setError: (error: boolean) => void;
   reload: () => void;
   reloadTrigger: number;
-  loadNews: () => Promise<void>;
+  loadNews: () => Promise<JobResult<NewsItem[]>>;
 }
 
 const NewsContext = createContext<NewsContextValue>({
@@ -30,7 +26,7 @@ const NewsContext = createContext<NewsContextValue>({
   setError: () => {},
   reload: () => {},
   reloadTrigger: 0,
-  loadNews: async () => {},
+  loadNews: async () => ({ success: true }),
 });
 
 export const NewsProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
@@ -48,15 +44,20 @@ export const NewsProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     try {
       setLoading(true);
       setError(false);
-      const data = await fetchMarketNews();
-      if (data && data.length > 0) {
-        cacheService.setNews(data);
-        setNews(data);
+      const result = await fetchMarketNews();
+
+      if (result.success && result.data && result.data.length > 0) {
+        cacheService.setNews(result.data);
+        setNews(result.data);
+        return { success: true, data: result.data };
       } else {
         setNews([]);
+        setError(true);
+        return { success: false, message: result.message };
       }
     } catch (e: unknown) {
       setError(true);
+      return { success: false, message: (e as Error).message || '未知错误' };
     } finally {
       setLoading(false);
     }
