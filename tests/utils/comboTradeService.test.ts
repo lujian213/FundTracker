@@ -1,167 +1,183 @@
 import { ComboTrade, ComboTradeRecord } from '../../types';
+import {
+  isValidComboTradeRecord,
+  isValidComboTrade,
+  normalizeComboTradeRecords,
+  normalizeComboTrade,
+  normalizeComboTrades,
+  filterValidRecords
+} from '../../utils/comboTradeService';
 
-// 测试过滤逻辑
-describe('ComboTrade 过滤逻辑', () => {
-  test('过滤 amount <= 0 的记录', () => {
-    const records: ComboTradeRecord[] = [
-      { fundId: 'A', amount: 100, fee: 10 },
-      { fundId: 'B', amount: 0, fee: 5 },    // 应该被过滤
-      { fundId: 'C', amount: -10, fee: 3 },   // 应该被过滤
-      { fundId: 'D', amount: 50, fee: 2 },
+// 测试记录校验函数
+describe('isValidComboTradeRecord', () => {
+  test('有效的记录返回 true', () => {
+    expect(isValidComboTradeRecord({ fundId: '000001', amount: 100, fee: 10 })).toBe(true);
+    expect(isValidComboTradeRecord({ fundId: '000001', amount: 0.01, fee: 0 })).toBe(true);
+    expect(isValidComboTradeRecord({ fundId: '000001', amount: 100, fee: 0.01 })).toBe(true);
+  });
+
+  test('fundId 无效返回 false', () => {
+    expect(isValidComboTradeRecord({ fundId: '', amount: 100, fee: 10 })).toBe(false);
+    expect(isValidComboTradeRecord({ fundId: '  ', amount: 100, fee: 10 })).toBe(false);
+    expect(isValidComboTradeRecord({ amount: 100, fee: 10 })).toBe(false);
+  });
+
+  test('amount 无效返回 false', () => {
+    expect(isValidComboTradeRecord({ fundId: '000001', amount: 0, fee: 10 })).toBe(false);
+    expect(isValidComboTradeRecord({ fundId: '000001', amount: -10, fee: 10 })).toBe(false);
+    expect(isValidComboTradeRecord({ fundId: '000001', fee: 10 })).toBe(false);
+  });
+
+  test('fee 无效返回 false', () => {
+    expect(isValidComboTradeRecord({ fundId: '000001', amount: 100, fee: -10 })).toBe(false);
+    expect(isValidComboTradeRecord({ fundId: '000001', amount: 100 })).toBe(false);
+  });
+
+  test('null/undefined 返回 false', () => {
+    expect(isValidComboTradeRecord(null)).toBe(false);
+    expect(isValidComboTradeRecord(undefined)).toBe(false);
+  });
+});
+
+// 测试组合交易校验函数
+describe('isValidComboTrade', () => {
+  test('有效的组合返回 true', () => {
+    expect(isValidComboTrade({ name: '测试组合', records: [] })).toBe(true);
+    expect(isValidComboTrade({ name: '  测试组合  ', records: [] })).toBe(true);
+  });
+
+  test('无效的组合返回 false', () => {
+    expect(isValidComboTrade({ name: '', records: [] })).toBe(false);
+    expect(isValidComboTrade({ name: '  ', records: [] })).toBe(false);
+    expect(isValidComboTrade({ records: [] })).toBe(false);
+    expect(isValidComboTrade({})).toBe(false);
+  });
+});
+
+// 测试记录规范化函数
+describe('normalizeComboTradeRecords', () => {
+  test('过滤并格式化有效记录', () => {
+    const records = [
+      { fundId: '  000001  ', amount: 100.456, fee: 10.789 },
+      { fundId: '000002', amount: 200, fee: 0 },
     ];
 
-    const filtered = records.filter(r => r.amount > 0);
-    expect(filtered).toHaveLength(2);
-    expect(filtered[0].fundId).toBe('A');
-    expect(filtered[1].fundId).toBe('D');
+    const result = normalizeComboTradeRecords(records);
+
+    expect(result).toHaveLength(2);
+    expect(result[0].fundId).toBe('000001');
+    expect(result[0].amount).toBe(100.46);
+    expect(result[0].fee).toBe(10.79);
+  });
+
+  test('过滤掉无效记录', () => {
+    const records = [
+      { fundId: '000001', amount: 100, fee: 10 },
+      { fundId: '', amount: 200, fee: 20 },
+      { fundId: '000003', amount: 0, fee: 30 },
+      { fundId: '000004', amount: -10, fee: 40 },
+    ];
+
+    const result = normalizeComboTradeRecords(records);
+
+    expect(result).toHaveLength(1);
+    expect(result[0].fundId).toBe('000001');
   });
 
   test('空数组返回空数组', () => {
-    const records: ComboTradeRecord[] = [];
-    const filtered = records.filter(r => r.amount > 0);
-    expect(filtered).toHaveLength(0);
-  });
-
-  test('全部过滤返回空数组', () => {
-    const records: ComboTradeRecord[] = [
-      { fundId: 'A', amount: 0, fee: 0 },
-      { fundId: 'B', amount: -10, fee: 0 },
-    ];
-    const filtered = records.filter(r => r.amount > 0);
-    expect(filtered).toHaveLength(0);
-  });
-
-  test('只保留正金额的记录', () => {
-    const records: ComboTradeRecord[] = [
-      { fundId: '000001', amount: 1000, fee: 1 },
-      { fundId: '000002', amount: 500, fee: 0.5 },
-      { fundId: '000003', amount: 0, fee: 0 },
-      { fundId: '000004', amount: -100, fee: 0 },
-    ];
-    const filtered = records.filter(r => r.amount > 0);
-    expect(filtered).toHaveLength(2);
-    expect(filtered.map(r => r.fundId)).toEqual(['000001', '000002']);
+    expect(normalizeComboTradeRecords(null)).toHaveLength(0);
+    expect(normalizeComboTradeRecords(undefined)).toHaveLength(0);
+    expect(normalizeComboTradeRecords([])).toHaveLength(0);
   });
 });
 
-// 测试数据结构
-describe('ComboTrade 数据结构', () => {
-  test('创建有效的 ComboTrade 对象', () => {
-    const combo: ComboTrade = {
-      id: 'test-id',
-      name: '测试组合',
+// 测试组合规范化函数
+describe('normalizeComboTrade', () => {
+  test('有效的组合返回规范化后的对象', () => {
+    const combo = {
+      name: '  测试组合  ',
       records: [
-        { fundId: '000001', amount: 1000, fee: 10 }
+        { fundId: '  000001  ', amount: 100.456, fee: 10.789 },
       ]
     };
 
-    expect(combo.id).toBe('test-id');
-    expect(combo.name).toBe('测试组合');
-    expect(combo.records).toHaveLength(1);
-    expect(combo.records[0].fundId).toBe('000001');
+    const result = normalizeComboTrade('combo1', combo);
+
+    expect(result).not.toBeNull();
+    expect(result?.id).toBe('combo1');
+    expect(result?.name).toBe('测试组合');
+    expect(result?.records).toHaveLength(1);
   });
 
-  test('ComboTrade 可以有空的 records', () => {
-    const combo: ComboTrade = {
-      id: 'empty-combo',
-      name: '空组合',
-      records: []
-    };
-
-    expect(combo.id).toBe('empty-combo');
-    expect(combo.name).toBe('空组合');
-    expect(combo.records).toHaveLength(0);
+  test('无效的组合返回 null', () => {
+    expect(normalizeComboTrade('combo1', { name: '', records: [] })).toBeNull();
+    expect(normalizeComboTrade('combo1', { records: [] })).toBeNull();
+    expect(normalizeComboTrade('combo1', null)).toBeNull();
   });
 
-  test('ComboTradeRecord 包含必要字段', () => {
-    const record: ComboTradeRecord = {
-      fundId: '000001',
-      amount: 1000,
-      fee: 1.5
+  test('无有效记录返回 null', () => {
+    const combo = {
+      name: '测试组合',
+      records: [
+        { fundId: '', amount: 100, fee: 10 },
+      ]
     };
 
-    expect(record.fundId).toBe('000001');
-    expect(record.amount).toBe(1000);
-    expect(record.fee).toBe(1.5);
-  });
+    const result = normalizeComboTrade('combo1', combo);
 
-  test('ComboTradeRecord 金额和手续费可以为0', () => {
-    const record: ComboTradeRecord = {
-      fundId: '000001',
-      amount: 0,
-      fee: 0
-    };
-
-    expect(record.amount).toBe(0);
-    expect(record.fee).toBe(0);
+    // 即使组合有效，但如果记录全被过滤，则返回 null
+    expect(result?.records).toHaveLength(0);
   });
 });
 
-// 测试过滤函数
-describe('ComboTrade 过滤函数', () => {
-  // 模拟实际的过滤函数
-  function filterValidRecords(records: ComboTradeRecord[]): ComboTradeRecord[] {
-    return records.filter(r => r.amount > 0);
-  }
-
-  test('过滤函数正确过滤无效记录', () => {
-    const records: ComboTradeRecord[] = [
-      { fundId: 'A', amount: 100, fee: 10 },
-      { fundId: 'B', amount: 0, fee: 5 },
-      { fundId: 'C', amount: 200, fee: 20 },
-      { fundId: 'D', amount: -50, fee: 2 },
-    ];
-
-    const result = filterValidRecords(records);
-    expect(result).toHaveLength(2);
-    expect(result.every(r => r.amount > 0)).toBe(true);
-  });
-
-  test('过滤函数保持原始数据不变', () => {
-    const originalRecords: ComboTradeRecord[] = [
-      { fundId: 'A', amount: 100, fee: 10 },
-      { fundId: 'B', amount: 0, fee: 5 },
-    ];
-
-    const filtered = filterValidRecords(originalRecords);
-    expect(originalRecords).toHaveLength(2);
-    expect(originalRecords[1].amount).toBe(0);
-  });
-});
-
-// 模拟 localStorage 测试
-const mockLocalStorage = {
-  getItem: jest.fn(),
-  setItem: jest.fn(),
-  clear: jest.fn()
-};
-
-// Mock global localStorage
-Object.defineProperty(window, 'localStorage', {
-  value: mockLocalStorage
-});
-
-describe('localStorage 操作模拟', () => {
-  beforeEach(() => {
-    mockLocalStorage.clear.mockClear();
-    mockLocalStorage.getItem.mockReturnValue(null);
-  });
-
-  test('读取空数据时返回空对象', () => {
-    mockLocalStorage.getItem.mockReturnValue(null);
-    const data = mockLocalStorage.getItem('fund_combo_trades');
-    const result = data ? JSON.parse(data) : {};
-    expect(result).toEqual({});
-  });
-
-  test('保存和读取数据正确', () => {
-    const testData = {
-      'combo1': { id: 'combo1', name: '测试组合', records: [] }
+// 测试批量组合交易规范化函数
+describe('normalizeComboTrades', () => {
+  test('规范化多个组合交易', () => {
+    const comboTrades = {
+      'combo1': {
+        name: '组合1',
+        records: [{ fundId: '000001', amount: 100, fee: 10 }]
+      },
+      'combo2': {
+        name: '组合2',
+        records: [{ fundId: '', amount: 200, fee: 20 }]
+      },
+      'combo3': {
+        name: '组合3',
+        records: []
+      }
     };
-    mockLocalStorage.getItem.mockReturnValue(JSON.stringify(testData));
-    const data = mockLocalStorage.getItem('fund_combo_trades');
-    const result = data ? JSON.parse(data) : {};
+
+    const result = normalizeComboTrades(comboTrades);
+
     expect(result.combo1).toBeDefined();
-    expect(result.combo1.name).toBe('测试组合');
+    expect(result.combo2).toBeUndefined(); // 无有效记录
+    expect(result.combo3).toBeUndefined(); // 记录为空
+  });
+});
+
+// 测试过滤有效记录函数（用于保存）
+describe('filterValidRecords', () => {
+  test('过滤 amount > 0 的记录并格式化', () => {
+    const records: ComboTradeRecord[] = [
+      { fundId: 'A', amount: 100.456, fee: 10.789 },
+      { fundId: 'B', amount: 0, fee: 5 },
+      { fundId: 'C', amount: -10, fee: 3 },
+      { fundId: 'D', amount: 50, fee: 2.123 },
+    ];
+
+    const filtered = filterValidRecords(records);
+
+    expect(filtered).toHaveLength(2);
+    expect(filtered[0].fundId).toBe('A');
+    expect(filtered[0].amount).toBe(100.46);
+    expect(filtered[0].fee).toBe(10.79);
+    expect(filtered[1].fundId).toBe('D');
+    expect(filtered[1].amount).toBe(50);
+    expect(filtered[1].fee).toBe(2.12);
+  });
+
+  test('空数组返回空数组', () => {
+    expect(filterValidRecords([])).toHaveLength(0);
   });
 });

@@ -1,7 +1,9 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { ComboTrade, ComboTradeRecord } from '../types';
 import { ConfirmDialog } from './ConfirmDialog';
+import { loadComboTradesFromStorage, saveComboTradesToStorage, filterValidRecords, validateComboTrade, isValidComboTradeRecord } from '../utils/comboTradeService';
+import { fmtNumber } from '../utils/format';
 
 interface Props {
   portfolio: { symbol: string; name: string }[];
@@ -13,14 +15,8 @@ interface FundWithPosition {
   name: string;
 }
 
-const STORAGE_KEY = 'fund_combo_trades';
-
 function generateId(): string {
   return `combo_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-}
-
-function formatNumber(num: number): string {
-  return num.toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
 const ComboTradeModal: React.FC<Props> = ({ portfolio, onClose }) => {
@@ -40,6 +36,8 @@ const ComboTradeModal: React.FC<Props> = ({ portfolio, onClose }) => {
   } | null>(null);
   // 是否有未保存的数据
   const [hasUnsavedData, setHasUnsavedData] = useState(false);
+  // 保存后的消息（成功或错误）
+  const [saveMessage, setSaveMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   // 新组合名称输入
   const [newComboName, setNewComboName] = useState('');
   // 满仓基金列表
@@ -53,18 +51,21 @@ const ComboTradeModal: React.FC<Props> = ({ portfolio, onClose }) => {
     onCancel: () => void;
   } | null>(null);
 
+  // 组件挂载状态跟踪
+  const isMounted = useRef(true);
+
   // 初始化：加载组合列表
   useEffect(() => {
-    try {
-      const stored = localStorage.getItem(STORAGE_KEY);
-      if (stored) {
-        const data = JSON.parse(stored) as Record<string, ComboTrade>;
-        const list = Object.values(data);
-        setComboList(list);
-      }
-    } catch (e) {
-      console.error('加载组合交易数据失败:', e);
-    }
+    const list = loadComboTradesFromStorage();
+    setComboList(list);
+  }, []);
+
+  // 组件卸载时清理
+  useEffect(() => {
+    isMounted.current = true;
+    return () => {
+      isMounted.current = false;
+    };
   }, []);
 
   // 初始化：获取满仓基金（fullCapacity > 0）
@@ -99,7 +100,8 @@ const ComboTradeModal: React.FC<Props> = ({ portfolio, onClose }) => {
   const totals = useMemo(() => {
     if (!editData) return { count: 0, amount: 0, fee: 0 };
 
-    const validRecords = editData.records.filter(r => r.amount > 0);
+    // 使用统一的校验规则
+    const validRecords = editData.records.filter(r => isValidComboTradeRecord(r));
     const count = validRecords.length;
     const amount = validRecords.reduce((sum, r) => sum + r.amount, 0);
     const fee = validRecords.reduce((sum, r) => sum + r.fee, 0);
@@ -156,7 +158,10 @@ const ComboTradeModal: React.FC<Props> = ({ portfolio, onClose }) => {
       return existing || { fundId: fund.symbol, amount: 0, fee: 0 };
     });
 
-    const newEditData = { name: combo.name, records };
+    // 排序：买入金额大于0的记录显示在上方，买入金额为0的记录显示在下方
+    const sortedRecords = [...records].sort((a, b) => b.amount - a.amount);
+
+    const newEditData = { name: combo.name, records: sortedRecords };
     setSelectedComboId(combo.id);
     setEditData(newEditData);
     setOriginalEditData(newEditData);
@@ -176,10 +181,10 @@ const ComboTradeModal: React.FC<Props> = ({ portfolio, onClose }) => {
       records: [],
     };
 
-    // 保存到 localStorage
+    // 保存到 localStorage（使用公共函数）
     const updatedList = [...comboList, newCombo];
     const storageObj = Object.fromEntries(updatedList.map(c => [c.id, c]));
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(storageObj));
+    saveComboTradesToStorage(storageObj);
 
     setComboList(updatedList);
     setNewComboName('');
@@ -205,7 +210,7 @@ const ComboTradeModal: React.FC<Props> = ({ portfolio, onClose }) => {
       onConfirm: () => {
         const updatedList = comboList.filter(c => c.id !== combo.id);
         const storageObj = Object.fromEntries(updatedList.map(c => [c.id, c]));
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(storageObj));
+        saveComboTradesToStorage(storageObj);
 
         setComboList(updatedList);
 
@@ -225,6 +230,8 @@ const ComboTradeModal: React.FC<Props> = ({ portfolio, onClose }) => {
   // 更新编辑数据
   const handleUpdateRecord = (fundId: string, field: 'amount' | 'fee', value: number) => {
     if (!editData) return;
+    // 阻止负数输入
+    if (value < 0) return;
 
     setEditData(prev => {
       if (!prev) return prev;
@@ -262,56 +269,74 @@ const ComboTradeModal: React.FC<Props> = ({ portfolio, onClose }) => {
   const handleSave = () => {
     if (!editData) return;
 
-    const name = editData.name.trim();
-    if (!name) {
-      setConfirmDialog({
-        isOpen: true,
-        title: '保存失败',
-        message: '组合名称不能为空',
-        onConfirm: () => setConfirmDialog(null),
-        onCancel: () => setConfirmDialog(null),
-      });
+    // 使用公共校验函数
+    const existingNames = comboList.map(c => c.name);
+    // 获取当前组合的原始名称用于排除自身
+    const currentName = originalEditData?.name;
+    const validation = validateComboTrade(
+      editData.name,
+      editData.records,
+      existingNames,
+      currentName,
+      fullCapacityFunds
+    );
+
+    if (!validation.valid) {
+      setSaveMessage({ type: 'error', text: validation.errorMessage || '数据校验失败' });
       return;
     }
 
-    // 只保存 amount > 0 的记录
-    const validRecords: ComboTradeRecord[] = editData.records
-      .filter(r => r.amount > 0)
-      .map(r => ({
+    try {
+      // 过滤掉 amount = 0 且 fee = 0 的记录
+      const nonEmptyRecords = editData.records.filter(r => r.amount > 0 || r.fee > 0);
+
+      // 格式化并保存过滤后的记录
+      const records = nonEmptyRecords.map(r => ({
         fundId: r.fundId,
         amount: Number(r.amount.toFixed(2)),
         fee: Number(r.fee.toFixed(2)),
       }));
 
-    const updatedCombo: ComboTrade = {
-      id: selectedComboId!,
-      name,
-      records: validRecords,
-    };
+      const updatedCombo: ComboTrade = {
+        id: selectedComboId!,
+        name: (editData.name || '').trim(),
+        records,
+      };
 
-    // 更新列表
-    const updatedList = comboList.map(c =>
-      c.id === selectedComboId ? updatedCombo : c
-    );
+      // 更新列表
+      const updatedList = comboList.map(c =>
+        c.id === selectedComboId ? updatedCombo : c
+      );
 
-    // 如果是新增的组合（不在列表中），添加进去
-    if (!updatedList.find(c => c.id === selectedComboId)) {
-      updatedList.push(updatedCombo);
+      // 如果是新增的组合（不在列表中），添加进去
+      if (!updatedList.find(c => c.id === selectedComboId)) {
+        updatedList.push(updatedCombo);
+      }
+
+      // 使用公共函数保存
+      const storageObj = Object.fromEntries(updatedList.map(c => [c.id, c]));
+      saveComboTradesToStorage(storageObj);
+
+      setComboList(updatedList);
+
+      // 重新加载当前组合（保持编辑状态）
+      const savedCombo = updatedList.find(c => c.id === selectedComboId);
+      if (savedCombo) {
+        loadComboToEdit(savedCombo);
+      }
+
+      setHasUnsavedData(false);
+      setSaveMessage({ type: 'success', text: '保存成功' });
+
+      // 3秒后清除消息（组件卸载后不执行）
+      setTimeout(() => {
+        if (isMounted.current) {
+          setSaveMessage(null);
+        }
+      }, 3000);
+    } catch (e) {
+      setSaveMessage({ type: 'error', text: '保存失败，请重试' });
     }
-
-    const storageObj = Object.fromEntries(updatedList.map(c => [c.id, c]));
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(storageObj));
-
-    setComboList(updatedList);
-
-    // 重新加载编辑数据（过滤掉 amount = 0 的记录）
-    const records = fullCapacityFunds.map(fund => {
-      const existing = validRecords.find(r => r.fundId === fund.symbol);
-      return existing || { fundId: fund.symbol, amount: 0, fee: 0 };
-    });
-    const newEditData = { name, records };
-    setEditData(newEditData);
-    setOriginalEditData(newEditData);
   };
 
   // 关闭弹窗
@@ -343,7 +368,7 @@ const ComboTradeModal: React.FC<Props> = ({ portfolio, onClose }) => {
       <div className="absolute inset-0 bg-black/40" onClick={handleClose} />
       <div
         className="relative bg-white rounded-2xl w-full max-w-2xl shadow-2xl animate-in zoom-in-95 duration-200 flex flex-col"
-        style={{ maxHeight: '90vh' }}
+        style={{ height: '660px' }}
         role="dialog"
         aria-modal="true"
       >
@@ -443,7 +468,7 @@ const ComboTradeModal: React.FC<Props> = ({ portfolio, onClose }) => {
 
                 {/* 表格 */}
                 <div className="border border-gray-100 rounded-xl overflow-hidden">
-                  <div className="overflow-y-auto" style={{ maxHeight: '240px' }}>
+                  <div className="overflow-y-auto" style={{ maxHeight: '270px' }}>
                     <table className="w-full text-sm table-fixed border-collapse">
                       <colgroup>
                         <col style={{ width: '35%' }} />
@@ -505,16 +530,23 @@ const ComboTradeModal: React.FC<Props> = ({ portfolio, onClose }) => {
                           </tr>
                         ))}
                       </tbody>
+                      {/* 总计行 - 固定在底部，始终可见 */}
+                      <tfoot className="sticky bottom-0 bg-white">
+                        <tr className="border-t border-gray-200">
+                          <td className="px-2 py-2 text-xs text-gray-600">总计：{totals.count}条</td>
+                          <td className="px-2 py-2 text-right text-xs text-gray-600">{fmtNumber(totals.amount)}</td>
+                          <td className="px-2 py-2 text-right text-xs text-gray-600">{fmtNumber(totals.fee)}</td>
+                          <td className="px-2 py-2"></td>
+                        </tr>
+                      </tfoot>
                     </table>
                   </div>
                 </div>
 
-                {/* 总计行和保存按钮同一行 */}
-                <div className="mt-3 flex justify-between items-center">
-                  <div className="flex gap-8 text-xs text-gray-600">
-                    <span>总计：{totals.count}条</span>
-                    <span>{formatNumber(totals.amount)}元</span>
-                    <span>{formatNumber(totals.fee)}元</span>
+                {/* 保存按钮和信息显示区 */}
+                <div className="mt-2 flex items-center gap-4">
+                  <div className={`flex-1 text-xs ${saveMessage?.type === 'success' ? 'text-green-600' : 'text-red-600'}`}>
+                    {saveMessage?.text || '\u00A0'}
                   </div>
                   <button
                     onClick={handleSave}

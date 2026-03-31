@@ -2,11 +2,12 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { DayPicker } from 'react-day-picker';
 import { zhCN } from 'date-fns/locale';
-import { Ticker, ValuationData, TradeType } from '../types';
+import { Ticker, ValuationData, TradeType, ComboTrade } from '../types';
 import { addTradeForSymbol, readAll } from '../hooks/useTrades';
 import { resolvePreferredPrice, toLocalDateKey } from '../utils/priceResolver';
 import { getHistory } from '../services/cacheService';
 import { ConfirmDialog } from './ConfirmDialog';
+import { loadComboTradesFromStorage } from '../utils/comboTradeService';
 
 interface Props {
   onClose: () => void;
@@ -95,6 +96,10 @@ const TradeBatchInputModal: React.FC<Props> = ({ onClose, onSaved, portfolio = [
   const [errors, setErrors] = useState<string[]>([]);
   const [errorFieldIds, setErrorFieldIds] = useState<Set<string>>(new Set());
 
+  // 组合交易相关状态
+  const [comboTrades, setComboTrades] = useState<ComboTrade[]>([]);
+  const [comboPanelExpanded, setComboPanelExpanded] = useState(false);
+
   // 标记是否已初始化
   const [initialized, setInitialized] = useState(false);
 
@@ -135,6 +140,11 @@ const TradeBatchInputModal: React.FC<Props> = ({ onClose, onSaved, portfolio = [
     // 按基金名称排序
     groups.sort((a, b) => a.name.localeCompare(b.name));
     setFundGroups(groups);
+
+    // 加载组合交易数据（使用公共函数）
+    const list = loadComboTradesFromStorage();
+    setComboTrades(list);
+
     setInitialized(true);
   }, []); // 空依赖，只在初始化时运行一次
 
@@ -242,6 +252,45 @@ const TradeBatchInputModal: React.FC<Props> = ({ onClose, onSaved, portfolio = [
     const group = newGroups[groupIndex];
     group.rows = group.rows.filter(r => r.id !== rowId);
     // 如果没有行了，就不添加空行（让用户手动添加）
+    setFundGroups(newGroups);
+  };
+
+  // 应用组合交易 - 根据组合交易中的记录自动填充交易行
+  const applyComboTrade = (combo: ComboTrade) => {
+    const newGroups = [...fundGroups];
+
+    // 遍历组合交易中的每条记录
+    for (const record of combo.records) {
+      // 找到对应的基金分组
+      const groupIndex = newGroups.findIndex(g => g.symbol === record.fundId);
+      if (groupIndex === -1) continue; // 如果找不到对应的基金，跳过
+
+      const group = newGroups[groupIndex];
+      const price = group.price || 0;
+
+      if (price <= 0) continue; // 如果价格无效，跳过
+
+      // 模拟手动添加一行，然后分别设置 fee 和 total
+      // updateRow 中的自动计算逻辑会自动计算 shares
+      group.rows.push({
+        id: generateId(),
+        type: 'buy', // 默认为买入
+        price,
+        shares: 0,
+        fee: 0,
+        total: 0,
+      });
+
+      // 获取刚添加的行
+      const newRow = group.rows[group.rows.length - 1];
+
+      // 先设置手续费（会触发 shares 计算，但 total 为 0 时 shares 仍为 0）
+      newRow.fee = record.fee;
+
+      // 再设置总额（会触发正确的 shares 计算）
+      newRow.total = record.amount;
+    }
+
     setFundGroups(newGroups);
   };
 
@@ -507,6 +556,45 @@ const TradeBatchInputModal: React.FC<Props> = ({ onClose, onSaved, portfolio = [
               </>
             )}
           </div>
+
+          {/* 组合交易面板 - 可收缩 */}
+          {comboTrades.length > 0 && (
+            <div className="mb-4 border border-gray-100 rounded-xl overflow-hidden">
+              {/* 面板标题 */}
+              <div
+                className="px-4 py-2 bg-gray-50 flex items-center justify-between cursor-pointer hover:bg-gray-100"
+                onClick={() => setComboPanelExpanded(!comboPanelExpanded)}
+              >
+                <div className="flex items-center gap-2">
+                  <i className={`fas fa-chevron-down text-xs text-gray-400 transition-transform ${comboPanelExpanded ? 'rotate-180' : ''}`} />
+                  <span className="text-xs font-medium text-gray-700">组合交易</span>
+                  <span className="text-xs text-gray-400">({comboTrades.length}个)</span>
+                </div>
+              </div>
+
+              {/* 面板内容 */}
+              {comboPanelExpanded && (
+                <div className="p-3 bg-white">
+                  <div className="flex flex-wrap gap-2">
+                    {comboTrades.map(combo => (
+                      <button
+                        key={combo.id}
+                        onClick={() => applyComboTrade(combo)}
+                        className="inline-flex items-center px-3 py-1.5 rounded-lg text-xs font-medium bg-blue-50 text-blue-700 hover:bg-blue-100 transition-colors"
+                        title={`点击应用组合交易"${combo.name}"`}
+                      >
+                        <i className="fas fa-layer-group mr-1.5" />
+                        {combo.name}
+                      </button>
+                    ))}
+                  </div>
+                  <div className="mt-2 text-xs text-gray-400">
+                    点击组合交易名称自动填充对应基金的交易记录
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
 
           {/* Fund groups table */}
           <div className="border border-gray-100 rounded-xl overflow-hidden">

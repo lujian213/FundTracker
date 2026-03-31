@@ -12,6 +12,7 @@ import {
 } from '../types';
 import * as cacheService from '../services/cacheService';
 import { readAll as readAllTrades } from '../hooks/useTrades';
+import { normalizeComboTrades } from './comboTradeService';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 const BACKUP_CONFIG_KEY = 'fund_backup_config';
@@ -184,13 +185,10 @@ export async function buildBackupData(
     const data = localStorage.getItem('fund_combo_trades');
     if (data) {
       const parsed = JSON.parse(data);
-      // 验证数据结构并清理
-      Object.entries(parsed).forEach(([id, combo]: [string, any]) => {
-        comboTrades[id] = {
-          id,
-          name: combo.name || '',
-          records: (combo.records || []).filter((r: ComboTradeRecord) => r.amount > 0)
-        };
+      // 使用公共函数过滤并规范化
+      const normalized = normalizeComboTrades(parsed);
+      Object.entries(normalized).forEach(([id, combo]) => {
+        comboTrades[id] = combo;
       });
     }
   } catch { /* ignore */ }
@@ -375,18 +373,12 @@ export async function applyBackupData(imported: BackupData): Promise<AppliedData
   // ── 10. Write comboTrades ──────────────────────────────────────────────────────
   // 只有当导入数据中包含 comboTrades 时才覆盖，否则保留现有的组合交易数据
   if (imported.comboTrades && Object.keys(imported.comboTrades).length > 0) {
-    // 过滤掉 amount <= 0 的记录，与导出时保持一致
     try {
-      const comboTrades = imported.comboTrades || {};
-      const filteredComboTrades: Record<string, ComboTrade> = {};
-      Object.entries(comboTrades).forEach(([id, combo]: [string, any]) => {
-        filteredComboTrades[id] = {
-          id,
-          name: combo.name || '',
-          records: (combo.records || []).filter((r: ComboTradeRecord) => r.amount > 0)
-        };
-      });
-      localStorage.setItem('fund_combo_trades', JSON.stringify(filteredComboTrades));
+      // 使用公共函数过滤并规范化导入数据
+      const filteredComboTrades = normalizeComboTrades(imported.comboTrades);
+      if (Object.keys(filteredComboTrades).length > 0) {
+        localStorage.setItem('fund_combo_trades', JSON.stringify(filteredComboTrades));
+      }
     } catch { /* ignore */ }
   }
 
