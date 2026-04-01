@@ -1,6 +1,6 @@
 # FundTracker — 产品需求文档 (PRD)
 
-版本：1.36
+版本：1.37
 最后更新：2026-04-01
 
 ---
@@ -2051,3 +2051,48 @@ AI投资组合分析功能允许用户在持仓窗口中一键获取整个投资
 - **集成测试**：`tests/components/PositionsModal.AI.test.tsx`
   - AI分析按钮渲染
   - 点击打开浮窗
+
+---
+
+## 基金历史趋势图增强 (v1.37)
+
+### 功能概述
+在基金历史趋势图下方添加交易量柱状图和持仓趋势线，以直观展示基金的交易活跃度和仓位变化情况。
+
+### 图表布局
+- **上半区**：价格趋势线（净值）+ 渐变填充，左轴显示净值刻度
+- **下半区**：交易量柱状图 + 持仓趋势线叠加，无右轴
+- 两个区域共享时间轴（X轴）
+
+### 交易量柱状图
+- 仅在有交易记录的日期显示柱子
+- 买入显示为红色柱（#ef4444），向上延伸（正值）
+- 卖出显示为蓝色柱（#2563eb），向下延伸（负值）
+- 柱子颜色与交易点颜色统一
+- 中间水平线为零线基准
+
+### 持仓趋势线
+- 显示持仓份额变化（而非市值）
+- 使用紫色（#8b5cf6）线条，区别于图中其他颜色
+- 使用独立的隐形Y轴，不影响柱状图高度
+- 建仓日期之前不显示
+
+### 提示信息
+- 鼠标悬停时显示日期、净值
+- 增加当前仓位显示："仓位：XXX份"（琥珀色字体）
+
+### 数据计算
+持仓份额按日期累积计算：
+```
+持仓份额 = 初始份额 + Σ(该日期之前的买入份额) - Σ(该日期之前的卖出份额)
+```
+
+### 实现文件
+- `types.ts` - 新增 `VolumeBar` 和 `FundPositionTrendPoint` 类型
+- `utils/tradeVolumeHelper.ts` - 数据计算函数（含 `computePositionSharesByDate` 和 `prepareVolumeBars`）
+- `components/HistoryChart.tsx` - 图表渲染扩展
+- `components/FundDetailsModal.tsx` - 集成新功能
+
+### 测试要求
+- `tests/utils/tradeVolumeHelper.test.ts` - 数据计算函数测试
+- `tests/components/HistoryChart.fundVolume.test.tsx` - 图表渲染测试

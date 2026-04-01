@@ -9,7 +9,7 @@ import { computeRatingFromHistory } from '../utils/ratingHelper';
 import { computeAvgCostPrice } from '../utils/positionHelper';
 import RatingTooltip from './RatingTooltip';
 import TradeManager from './TradeManager';
-import useTrades from '../hooks/useTrades';
+import useTrades, { getTradesForSymbol } from '../hooks/useTrades';
 import ProfitModal from './ProfitModal';
 import VirtualTradeModal from './VirtualTradeModal';
 import { resolvePreferredPrice, toLocalDateKey } from '../utils/priceResolver';
@@ -21,6 +21,7 @@ import { queryAI, AIResponse, AIQueryContext } from '../services/aiService';
 import { formatMoneyWithSeparators, fmtNav, fmtNumber, formatPercent } from '../utils/format';
 import { getAIConfig, AIConfiguration } from '../services/aiConfigService';
 import { prepareChartData } from '../utils/chartDataHelper';
+import { computePositionSharesByDate, prepareVolumeBars } from '../utils/tradeVolumeHelper';
 import { isFeatureEnabled } from '../services/systemSettingsService';
 import InitialPriceAdjustModal from './InitialPriceAdjustModal';
 
@@ -376,6 +377,105 @@ export const FundDetailsModal: React.FC<FundDetailsModalProps> = ({ data, onClos
 
     return { path: pathData, area: areaData, points: svgPoints, viewBox: `0 0 ${width} ${height}`, yLabels, xLabels, maPaths, maValues };
   }, [chartData]);
+
+  // 准备基金交易量数据（新增）
+  const { fundVolumeBars, positionTrendData, positionTrendPath, maxBarShares } = useMemo(() => {
+    if (!chartData || chartData.length === 0 || !points || points.length === 0) {
+      return { fundVolumeBars: [], positionTrendData: [], positionTrendPath: '' };
+    }
+
+    // 获取交易记录
+    const trades = getTradesForSymbol(data.symbol);
+
+    // 读取初始仓位配置和建仓日期
+    let initialShares = 0;
+    let positionStartDate: string | null = null;
+    try {
+      const cfgRaw = localStorage.getItem(`fund_position_${data.symbol}`);
+      if (cfgRaw) {
+        const cfg = JSON.parse(cfgRaw);
+        initialShares = Number(cfg.initialPosition) || 0;
+        positionStartDate = cfg.startDate || null;
+      }
+    } catch (e) {
+      // ignore
+    }
+
+    // 构建日期列表（从 points 获取）
+    const dates = points.map(p => toLocalDateKey(p.data.date));
+
+    // 构建日期到 X 坐标的映射
+    const dateToX = new Map<string, number>();
+    for (const p of points) {
+      const dateKey = toLocalDateKey(p.data.date);
+      dateToX.set(dateKey, p.x);
+    }
+
+    // 计算持仓份额趋势
+    const positionMap = computePositionSharesByDate(initialShares, trades || [], dates);
+    const positionTrendData = dates.map(d => ({
+      date: d,
+      shares: positionMap.get(d) || 0,
+    }));
+
+    // 准备交易量柱状图数据
+    const { bars: fundVolumeBars, maxBarShares } = prepareVolumeBars(trades || [], dateToX);
+
+    // 交易量区域坐标
+    const volumeChartHeight = 80;
+    const chartTop = chartHeight - 20; // 上移20px
+    const chartBottom = chartHeight + volumeChartHeight - 20;
+    const rangeHeight = chartBottom - chartTop;
+
+    // 计算持仓趋势线的独立 Y 轴范围
+    let minPosition = 0;
+    let maxPosition = 0;
+    const validShares = positionTrendData.map(p => p.shares).filter(s => s > 0);
+    if (validShares.length > 0) {
+      minPosition = Math.min(...validShares);
+      maxPosition = Math.max(...validShares);
+      // 增加10%边距
+      const margin = (maxPosition - minPosition) * 0.1 || maxPosition * 0.1;
+      minPosition = Math.max(0, minPosition - margin);
+      maxPosition = maxPosition + margin;
+    }
+
+    // 持仓趋势线 Y 坐标计算（独立Y轴）
+    const getPositionY = (shares: number) => {
+      if (maxPosition === minPosition) return chartBottom;
+      // 份额越大，Y 越小（向上）
+      return chartBottom - ((shares - minPosition) / (maxPosition - minPosition)) * rangeHeight;
+    };
+
+    // 构建持仓趋势路径（建仓日前不显示）
+    let positionTrendPath = '';
+    let pathStarted = false;
+    for (let i = 0; i < positionTrendData.length; i++) {
+      const pt = positionTrendData[i];
+      const x = dateToX.get(pt.date);
+      if (x === undefined) continue;
+
+      // 如果有建仓日期，在建仓日期之前不绘制
+      if (positionStartDate && pt.date < positionStartDate) {
+        continue;
+      }
+
+      // 如果持仓为0，不绘制（可能是建仓前的数据）
+      if (pt.shares <= 0 && !pathStarted) {
+        continue;
+      }
+
+      const y = getPositionY(pt.shares);
+      if (!pathStarted) {
+        positionTrendPath = `M ${x} ${y}`;
+        pathStarted = true;
+      } else {
+        positionTrendPath += ` L ${x} ${y}`;
+      }
+    }
+
+    return { fundVolumeBars, positionTrendData, positionTrendPath, maxBarShares };
+  }, [chartData, points, data.symbol, initialPosition]);
 
     // Risk analysis based on history + today's valuation through the shared isolated model
   const ratingInfo = useMemo(() => {
@@ -1076,6 +1176,13 @@ export const FundDetailsModal: React.FC<FundDetailsModalProps> = ({ data, onClos
                         onMarkerHover={(m) => setHoveredTrade(m)}
                          height={chartHeight}
                          stroke="#ef4444"
+                         // 新增 props
+                         fundVolumeBars={fundVolumeBars}
+                         positionTrendData={positionTrendData}
+                         positionTrendPath={positionTrendPath}
+                         maxBarShares={maxBarShares}
+                         showFundVolume={true}
+                         volumeChartHeight={80}
                        />
                      </div>
                     {/* 占位区域，保持与日内趋势图高度一致 */}

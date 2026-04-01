@@ -8,3 +8,4 @@ __tests__/
 debug/
 docs/
 scripts/
+.superpowers/

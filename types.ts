@@ -88,6 +88,20 @@ export interface VolumeData {
   isUp: boolean;       // 是否上涨（决定柱状图颜色）
 }
 
+// 交易量柱状图数据点（用于基金交易量显示）
+export interface VolumeBar {
+  date: string;       // YYYY-MM-DD
+  x: number;          // SVG X 坐标
+  type: 'buy' | 'sell';
+  shares: number;     // 交易份额（绝对值）
+}
+
+// 持仓份额趋势点（用于基金持仓趋势线）
+export interface FundPositionTrendPoint {
+  date: string;       // YYYY-MM-DD
+  shares: number;     // 持仓份额
+}
+
 // Profit calculator result type
 export interface ProfitPoint {
   date: string; // YYYY-MM-DD

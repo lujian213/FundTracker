@@ -1,5 +1,5 @@
 import React, { useMemo } from 'react';
-import { HistoricalPoint, VolumeData } from '../types';
+import { HistoricalPoint, VolumeData, VolumeBar, FundPositionTrendPoint } from '../types';
 import { MA_COLORS } from '../utils/movingAverage';
 import { toLocalDateKey } from '../utils/priceResolver';
 
@@ -23,6 +23,13 @@ interface HistoryChartProps {
   // 成交量相关（仅指数使用）
   volumeData?: VolumeData[]; // 成交量柱状图数据
   volumeHeight?: number; // 成交量图表高度，默认 60
+  // 基金交易量相关（新增）
+  fundVolumeBars?: VolumeBar[];          // 基金交易量柱状图数据
+  positionTrendData?: FundPositionTrendPoint[]; // 持仓趋势数据
+  positionTrendPath?: string;            // 持仓趋势 SVG 路径
+  maxBarShares?: number;                 // 交易量柱状图最大值（用于Y轴缩放）
+  showFundVolume?: boolean;              // 是否显示基金交易量区域
+  volumeChartHeight?: number;            // 交易量图表高度，默认 80
 }
 
 const HistoryChart: React.FC<HistoryChartProps> = ({
@@ -43,7 +50,14 @@ const HistoryChart: React.FC<HistoryChartProps> = ({
   stroke = '#ef4444',
   markers,
   volumeData,
-  volumeHeight = 60
+  volumeHeight = 60,
+  // 新增 props
+  fundVolumeBars,
+  positionTrendData,
+  positionTrendPath,
+  maxBarShares = 1,
+  showFundVolume = false,
+  volumeChartHeight = 80,
 }) => {
   // find index of hovered point for MA lookup
   const hoveredIndex = hoveredPoint ? points.findIndex(p => p.data === hoveredPoint) : -1;
@@ -53,17 +67,23 @@ const HistoryChart: React.FC<HistoryChartProps> = ({
     return toLocalDateKey(ts);
   };
 
+  // 是否显示成交量
+  const showVolume = volumeData && volumeData.length > 0;
+
+  // 是否显示基金交易量区域
+  const showFundVolumeChart = showFundVolume && fundVolumeBars && fundVolumeBars.length > 0;
+
   // chart paddings must match modal chartData paddingTop/paddingBottom and paddingLeft/paddingRight
   const PADDING_LEFT = 110; // increased to reserve space for up to ~12 chars (including thousand separators and symbols)
   const PADDING_RIGHT = 30;
   const PADDING_TOP = 20; // increase top padding so the top hover label stays inside viewBox
   const PADDING_BOTTOM = 0;
 
-  // 是否显示成交量
-  const showVolume = volumeData && volumeData.length > 0;
-
-  // 计算总高度（价格图 + 成交量图）
-  const totalHeight = showVolume ? height + volumeHeight : height;
+  // 计算总高度（价格图 + 成交量图 或 基金交易量图）
+  // 注意：如果已经显示了指数成交量，则不再显示基金交易量
+  const totalHeight = showVolume
+    ? height + volumeHeight
+    : (showFundVolumeChart ? height + volumeChartHeight : height);
 
   // 成交量图表参数
   const volumeChartParams = useMemo(() => {
@@ -79,13 +99,47 @@ const HistoryChart: React.FC<HistoryChartProps> = ({
     };
   }, [showVolume, volumeData, height, volumeHeight]);
 
-  // 计算 viewBox（如果显示成交量，需要扩展高度）
+  // 基金交易量图表参数
+  const fundVolumeChartParams = useMemo(() => {
+    if (!showFundVolumeChart || !fundVolumeBars || fundVolumeBars.length === 0) return null;
+
+    // 持仓趋势线Y轴：独立计算，基于持仓份额范围
+    let minPosition = 0;
+    let maxPosition = 0;
+    if (positionTrendData && positionTrendData.length > 0) {
+      const shares = positionTrendData.map(p => p.shares).filter(s => s > 0);
+      if (shares.length > 0) {
+        minPosition = Math.min(...shares);
+        maxPosition = Math.max(...shares);
+        // 增加10%的边距
+        const margin = (maxPosition - minPosition) * 0.1 || maxPosition * 0.1;
+        minPosition = Math.max(0, minPosition - margin);
+        maxPosition = maxPosition + margin;
+      }
+    }
+
+    // 交易量区域坐标
+    const chartTop = height - 20; // 交易量区域顶部（上移20px）
+    const chartBottom = height + volumeChartHeight - 20;
+    const chartHeight = chartBottom - chartTop;
+
+    return {
+      minPosition,
+      maxPosition,
+      chartY: chartTop,
+      chartHeight,
+      zeroLineY: chartTop + chartHeight / 2, // 零线在中间
+      chartTop,
+      chartBottom,
+    };
+  }, [showFundVolumeChart, fundVolumeBars, positionTrendData, height, volumeChartHeight]);
+
+  // 计算 viewBox（如果显示成交量或基金交易量，需要扩展高度）
   const actualViewBox = useMemo(() => {
-    if (!showVolume) return viewBox;
     const vb = (viewBox || '0 0 1000 280').split(' ').map(Number);
     const vbW = vb[2] || 1000;
     return `0 0 ${vbW} ${totalHeight}`;
-  }, [showVolume, viewBox, totalHeight]);
+  }, [showVolume, showFundVolumeChart, viewBox, totalHeight]);
 
   return (
     <>
@@ -103,6 +157,15 @@ const HistoryChart: React.FC<HistoryChartProps> = ({
           <linearGradient id="volume-down-gradient" x1="0" y1="0" x2="0" y2="1">
             <stop offset="0%" stopColor="#22c55e" stopOpacity="0.8" />
             <stop offset="100%" stopColor="#22c55e" stopOpacity="0.4" />
+          </linearGradient>
+          {/* 基金交易量颜色 */}
+          <linearGradient id="fund-buy-gradient" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="#ef4444" stopOpacity="0.8" />
+            <stop offset="100%" stopColor="#ef4444" stopOpacity="0.4" />
+          </linearGradient>
+          <linearGradient id="fund-sell-gradient" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="#2563eb" stopOpacity="0.8" />
+            <stop offset="100%" stopColor="#2563eb" stopOpacity="0.4" />
           </linearGradient>
         </defs>
         {(() => {
@@ -195,6 +258,56 @@ const HistoryChart: React.FC<HistoryChartProps> = ({
           </g>
         )}
 
+        {/* 基金交易量柱状图（新增） */}
+        {showFundVolumeChart && fundVolumeChartParams && fundVolumeBars && (
+          <g className="fund-volume-chart">
+            {/* 零线 */}
+            <line
+              x1={PADDING_LEFT}
+              y1={fundVolumeChartParams.zeroLineY}
+              x2={PADDING_LEFT + (points.length > 1 ? points[points.length - 1].x - points[0].x : 0) + 20}
+              y2={fundVolumeChartParams.zeroLineY}
+              stroke="#555"
+              strokeWidth="0.5"
+            />
+
+            {/* 柱状图 - 基于交易量最大值计算高度 */}
+            {fundVolumeBars.map((bar, i) => {
+              // 使用 maxBarShares 计算柱子高度
+              const barHeight = (bar.shares / maxBarShares) * fundVolumeChartParams.chartHeight * 0.3;
+              const barWidth = Math.max(6, (points.length > 1 ? (points[1].x - points[0].x) * 0.6 : 8));
+              const y = bar.type === 'buy'
+                ? fundVolumeChartParams.zeroLineY - barHeight
+                : fundVolumeChartParams.zeroLineY;
+
+              return (
+                <rect
+                  key={`fund-vol-${i}`}
+                  x={bar.x - barWidth / 2}
+                  y={y}
+                  width={barWidth}
+                  height={Math.max(1, barHeight)}
+                  fill={bar.type === 'buy' ? 'url(#fund-buy-gradient)' : 'url(#fund-sell-gradient)'}
+                  className="transition-all duration-300"
+                />
+              );
+            })}
+
+            {/* 持仓趋势线 - 使用独立Y轴 */}
+            {positionTrendPath && (
+              <path
+                d={positionTrendPath}
+                fill="none"
+                stroke="#8b5cf6"
+                strokeWidth="1.5"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                className="transition-all duration-700"
+              />
+            )}
+          </g>
+        )}
+
         {/* markers (e.g. trades) - render above overlays */}
         {(Array.isArray(markers) ? markers : []).map((m: any, idx: number) => (
           <g key={`marker-${idx}`} onMouseEnter={() => { const hp = points.find(pt => pt.data.date === m.date); setHoveredPoint(hp ? hp.data : null); if (onMarkerHover) onMarkerHover(m); }} onMouseLeave={() => { setHoveredPoint(null); if (onMarkerHover) onMarkerHover(null); }} className="pointer-events-auto">
@@ -225,17 +338,37 @@ const HistoryChart: React.FC<HistoryChartProps> = ({
 
           // Different lines depending on marker type
           let lines: string[];
+          let tooltipHeight: number;
+
+          // 查找该日期的持仓份额
+          let positionText: string | null = null;
+          if (positionTrendData) {
+            const dateKey = formatLocalDate(m.date);
+            const posPoint = positionTrendData.find(p => p.date === dateKey);
+            if (posPoint && posPoint.shares > 0) {
+              positionText = `仓位：${posPoint.shares.toFixed(0)}份`;
+            }
+          }
+
           if (m.type === 'position_start') {
             lines = ['持仓开始', `${m.shares} 份`];
+            tooltipHeight = 34;
           } else {
             lines = [(m.type === 'sell' ? '卖出' : '买入'), `${m.shares !== undefined ? m.shares : '—'} 份`, `${m.amount !== undefined ? m.amount.toFixed(2) + ' 元' : '—'}`];
+            // 如果有仓位信息，增加一行
+            if (positionText) {
+              lines.push(positionText);
+              tooltipHeight = 62;
+            } else {
+              tooltipHeight = 48;
+            }
           }
 
           return (
             <g className="pointer-events-none">
-              <rect x={tooltipX - 60} y={tooltipY - 20} rx={6} ry={6} width={120} height={m.type === 'position_start' ? 34 : 48} fill="#111827" fillOpacity={0.9} />
+              <rect x={tooltipX - 60} y={tooltipY - 20} rx={6} ry={6} width={120} height={tooltipHeight} fill="#111827" fillOpacity={0.9} />
               {lines.map((ln, i) => (
-                <text key={i} x={tooltipX} y={tooltipY - 6 + i * 14} textAnchor="middle" className="text-[11px] font-medium" fill="#fff">{ln}</text>
+                <text key={i} x={tooltipX} y={tooltipY - 6 + i * 14} textAnchor="middle" className="text-[11px] font-medium" fill={i === lines.length - 1 && positionText ? '#f59e0b' : '#fff'}>{ln}</text>
               ))}
             </g>
           );
@@ -262,27 +395,27 @@ const HistoryChart: React.FC<HistoryChartProps> = ({
         )}
 
         {(() => {
-          // match hovered point by date to be robust across object identity
           const hpPoint = hoveredPoint ? points.find(p => p.data && (p.data as any).date === (hoveredPoint as any).date) : undefined;
           const px = hpPoint ? hpPoint.x : undefined;
           if (px === undefined || px === null) return null;
-          // compute svg height from viewBox if provided
+
           const vbParts = (viewBox || '0 0 1000 280').split(' ').map(Number);
           const vbW = vbParts[2] || 1000;
           const vbH = vbParts[3] || height;
           const chartTop = PADDING_TOP;
-          const chartBottom = showVolume ? totalHeight : (vbH - PADDING_BOTTOM);
-          // compute label text and estimate its half width (approx) so we can clamp x precisely
+          const chartBottom = showFundVolumeChart ? totalHeight : (showVolume ? totalHeight : (vbH - PADDING_BOTTOM));
+
           const labelText = formatLocalDate((hoveredPoint as any).date);
-          const EST_CHAR_WIDTH = 7; // conservative per-char px width at font-size ~14
-          const halfWidth = Math.ceil((labelText.length * EST_CHAR_WIDTH) / 2) + 6; // +6px padding (more conservative)
+          const EST_CHAR_WIDTH = 7;
+          const halfWidth = Math.ceil((labelText.length * EST_CHAR_WIDTH) / 2) + 6;
           const labelX = Math.max(halfWidth, Math.min(vbW - halfWidth, px));
-           return (
-             <>
-               <line x1={px} y1={chartTop} x2={px} y2={chartBottom} stroke={stroke} strokeWidth="1" strokeDasharray="4 2" className="pointer-events-none" />
+
+          return (
+            <>
+              <line x1={px} y1={chartTop} x2={px} y2={chartBottom} stroke={stroke} strokeWidth="1" strokeDasharray="4 2" className="pointer-events-none" />
               <text x={labelX} y={Math.max(18, chartTop - 4)} textAnchor="middle" className="text-[12px] font-medium fill-gray-600 pointer-events-none">{labelText}</text>
-             </>
-           );
+            </>
+          );
         })()}
       </svg>
     </>
