@@ -102,7 +102,7 @@ describe('TransactionsModal', () => {
 
   // 3. Table columns and headers
   describe('table structure', () => {
-    test('renders five column headers correctly', async () => {
+    test('renders six column headers correctly', async () => {
       seed();
       render(<TransactionsModal portfolio={portfolio} marketData={marketData} onClose={jest.fn()} />);
       await waitFor(() => expect(screen.getByText('2026-02-20')).toBeInTheDocument());
@@ -112,6 +112,9 @@ describe('TransactionsModal', () => {
       expect(screen.getByText('份额')).toBeInTheDocument();
       expect(screen.getByText('手续费')).toBeInTheDocument();
       expect(screen.getByText('交易总额')).toBeInTheDocument();
+      // 第六列多选按钮 - 表头有一个全选checkbox，每行也有一个checkbox
+      const checkboxes = screen.getAllByRole('checkbox');
+      expect(checkboxes.length).toBeGreaterThan(0);
     });
   });
 
@@ -151,47 +154,54 @@ describe('TransactionsModal', () => {
     });
   });
 
-  // 6. Total amount calculation: sell total - buy total
+  // 6. Total row shows buy/sell counts and amounts (matches TradeBatchInputModal style)
   describe('totals row', () => {
-    test('shows correct record count in totals row', async () => {
+    test('shows buy and sell counts', async () => {
       seed();
       render(<TransactionsModal portfolio={portfolio} marketData={marketData} onClose={jest.fn()} />);
-      await waitFor(() => expect(screen.getByText(/总计：/)).toBeInTheDocument());
-      // 2026-02-20 has 2 trades (a1 buy + b1 sell)
-      expect(screen.getByText('总计：2 条记录')).toBeInTheDocument();
+      // Find the totals container and check its text content
+      await waitFor(() => {
+        const totalsSection = screen.getByText(/总计：/);
+        expect(totalsSection.parentElement).toHaveTextContent('买入');
+        expect(totalsSection.parentElement).toHaveTextContent('卖出');
+      });
     });
 
-    test('net amount = sell total - buy total with （卖出）/（买入）label', async () => {
-      // 000001 buy: 100 * 1.5 + 1.5 = 151.5  → buy outflow
-      // 000002 sell: 50 * 2.0 - 0.5 = 99.5   → sell inflow
-      // net = 99.5 - 151.5 = -52 → 52.00（买入）
+    test('shows buy total and sell total amounts', async () => {
+      // 000001 buy: 100 * 1.5 + 1.5 = 151.5
+      // 000002 sell: 50 * 2.0 - 0.5 = 99.5
       seed();
       render(<TransactionsModal portfolio={portfolio} marketData={marketData} onClose={jest.fn()} />);
-      await waitFor(() => expect(screen.getByText(/52\.00（买入）/)).toBeInTheDocument());
+      await waitFor(() => {
+        const totalsSection = screen.getByText(/总计：/);
+        expect(totalsSection.parentElement).toHaveTextContent('151.50');
+        expect(totalsSection.parentElement).toHaveTextContent('99.50');
+      });
     });
 
-    test('shows net （卖出） when sells exceed buys', async () => {
-      // Only a large sell on 2026-03-01
-      setTradesForSymbol('000001', [
-        { id: 's1', date: '2026-03-01', type: 'sell', shares: 500, price: 2.0, fee: 1.0 },
-      ] as any);
+    test('shows total fee', async () => {
+      // 000001 fee: 1.5, 000002 fee: 0.5 → total = 2.0
+      seed();
       render(<TransactionsModal portfolio={portfolio} marketData={marketData} onClose={jest.fn()} />);
-      // 500 * 2.0 - 1.0 = 999.00
-      await waitFor(() => expect(screen.getByText(/999\.00（卖出）/)).toBeInTheDocument());
+      await waitFor(() => {
+        const totalsSection = screen.getByText(/总计：/);
+        expect(totalsSection.parentElement).toHaveTextContent('手续费');
+        expect(totalsSection.parentElement).toHaveTextContent('2.00');
+      });
     });
 
-    test('shows "-" when net is zero', async () => {
-      // buy and sell with identical amounts so net = 0
+    test('shows correct counts for multiple buys and sells', async () => {
       setTradesForSymbol('000001', [
-        { id: 'x1', date: '2026-03-01', type: 'buy',  shares: 100, price: 1.0, fee: 0 },
-        { id: 'x2', date: '2026-03-01', type: 'sell', shares: 100, price: 1.0, fee: 0 },
+        { id: 'm1', date: '2026-03-01', type: 'buy', shares: 100, price: 1.0, fee: 0 },
+        { id: 'm2', date: '2026-03-01', type: 'buy', shares: 50, price: 1.5, fee: 1 },
+        { id: 'm3', date: '2026-03-01', type: 'sell', shares: 30, price: 2.0, fee: 0.5 },
       ] as any);
       render(<TransactionsModal portfolio={portfolio} marketData={marketData} onClose={jest.fn()} />);
-      await waitFor(() => expect(screen.getByText('总计：2 条记录')).toBeInTheDocument());
-      // net = 100 - 100 = 0 → "-"
-      // The totals row is the last row; find all "-" spans and verify at least one exists
-      const dashes = screen.getAllByText('-');
-      expect(dashes.length).toBeGreaterThan(0);
+      await waitFor(() => {
+        const totalsSection = screen.getByText(/总计：/);
+        expect(totalsSection.parentElement).toHaveTextContent('买入 2 条');
+        expect(totalsSection.parentElement).toHaveTextContent('卖出 1 条');
+      });
     });
   });
 
@@ -200,8 +210,12 @@ describe('TransactionsModal', () => {
     test('table updates when a different date is selected', async () => {
       seed();
       render(<TransactionsModal portfolio={portfolio} marketData={marketData} onClose={jest.fn()} />);
-      // default date is 2026-02-20 → 2 records
-      await waitFor(() => expect(screen.getByText('总计：2 条记录')).toBeInTheDocument());
+      // default date is 2026-02-20 → 1 buy + 1 sell
+      await waitFor(() => {
+        const totalsSection = screen.getByText(/总计：/);
+        expect(totalsSection.parentElement).toHaveTextContent('买入 1 条');
+        expect(totalsSection.parentElement).toHaveTextContent('卖出 1 条');
+      });
 
       // open the picker
       const dateBtn = screen.getByText('2026-02-20').closest('button')!;
@@ -211,8 +225,12 @@ describe('TransactionsModal', () => {
       const picker = await screen.findByTestId('mock-day-picker');
       fireEvent.change(picker, { target: { value: '2026-01-10' } });
 
-      // table should now show 1 record (b2 on 2026-01-10)
-      await waitFor(() => expect(screen.getByText('总计：1 条记录')).toBeInTheDocument());
+      // table should now show 1 buy (b2 on 2026-01-10), 0 sell
+      await waitFor(() => {
+        const totalsSection = screen.getByText(/总计：/);
+        expect(totalsSection.parentElement).toHaveTextContent('买入 1 条');
+        expect(totalsSection.parentElement).toHaveTextContent('卖出 0 条');
+      });
     });
 
     test('picker closes after selecting a date', async () => {
@@ -236,7 +254,10 @@ describe('TransactionsModal', () => {
         { id: 'z1', date: '2026-03-01', type: 'buy', shares: 100, price: 1.0, fee: 0 },
       ] as any);
       render(<TransactionsModal portfolio={portfolio} marketData={marketData} onClose={jest.fn()} />);
-      await waitFor(() => expect(screen.getByText('总计：1 条记录')).toBeInTheDocument());
+      await waitFor(() => {
+        const totalsSection = screen.getByText(/总计：/);
+        expect(totalsSection.parentElement).toHaveTextContent('买入 1 条');
+      });
       // fee column should show "-" for zero fee
       const dashes = screen.getAllByText('-');
       expect(dashes.length).toBeGreaterThan(0);

@@ -46,6 +46,7 @@ const TransactionsModal: React.FC<Props> = ({ portfolio, marketData, onClose, on
   const [pickerMonth, setPickerMonth] = useState<Date>(new Date());
   const [showBatchInput, setShowBatchInput] = useState(false);
   const [showComboTrade, setShowComboTrade] = useState(false);
+  const [selectedRows, setSelectedRows] = useState<Set<number>>(new Set()); // 多选状态
 
   // Load trade dates on mount (fresh read each time modal opens)
   useEffect(() => {
@@ -101,7 +102,8 @@ const TransactionsModal: React.FC<Props> = ({ portfolio, marketData, onClose, on
   const rows = useMemo(() => {
     if (!selectedDateStr) return [];
     const all = readAll();
-    const result: { symbol: string; name: string; type: 'buy' | 'sell'; shares: number; price: number; fee: number; total: number }[] = [];
+    const result: { id: number; symbol: string; name: string; type: 'buy' | 'sell'; shares: number; price: number; fee: number; total: number }[] = [];
+    let id = 0;
     Object.entries(all).forEach(([symbol, records]) => {
       records.forEach(r => {
         if (r.date === selectedDateStr) {
@@ -112,16 +114,59 @@ const TransactionsModal: React.FC<Props> = ({ portfolio, marketData, onClose, on
           const total = r.type === 'sell'
             ? r.price * r.shares - (r.fee || 0)
             : r.price * r.shares + (r.fee || 0);
-          result.push({ symbol, name, type: r.type, shares: r.shares, price: r.price, fee: r.fee || 0, total });
+          result.push({ id: id++, symbol, name, type: r.type, shares: r.shares, price: r.price, fee: r.fee || 0, total });
         }
       });
     });
     return result;
   }, [selectedDateStr, tradeDateStrs, portfolio, marketData]);
 
-  const totalFee = rows.reduce((s, r) => s + r.fee, 0);
-  // 净额 = 所有卖出交易总额之和 - 所有买入交易总额之和
-  const totalNet = rows.reduce((s, r) => s + (r.type === 'sell' ? r.total : -r.total), 0);
+  // 统计买入/卖出数据
+  const stats = useMemo(() => {
+    let buyCount = 0;
+    let sellCount = 0;
+    let buyTotal = 0;
+    let sellTotal = 0;
+    let totalFee = 0;
+
+    for (const r of rows) {
+      if (r.type === 'buy') {
+        buyCount++;
+        buyTotal += r.total;
+      } else {
+        sellCount++;
+        sellTotal += r.total;
+      }
+      totalFee += r.fee;
+    }
+
+    return { buyCount, sellCount, buyTotal, sellTotal, totalFee };
+  }, [rows]);
+
+  // 全选/反选
+  const toggleSelectAll = () => {
+    if (selectedRows.size === rows.length) {
+      setSelectedRows(new Set());
+    } else {
+      setSelectedRows(new Set(rows.map(r => r.id)));
+    }
+  };
+
+  // 单行选择
+  const toggleRowSelect = (id: number) => {
+    const newSet = new Set(selectedRows);
+    if (newSet.has(id)) {
+      newSet.delete(id);
+    } else {
+      newSet.add(id);
+    }
+    setSelectedRows(newSet);
+  };
+
+  // 当日期变化时清空选择
+  useEffect(() => {
+    setSelectedRows(new Set());
+  }, [selectedDateStr]);
 
   const hasNoTrades = tradeDateStrs.length === 0;
 
@@ -234,11 +279,12 @@ const TransactionsModal: React.FC<Props> = ({ portfolio, marketData, onClose, on
               <div className="overflow-y-auto" style={{ maxHeight: '330px' }}>
                 <table className="w-full text-sm table-fixed border-collapse">
                   <colgroup>
-                    <col style={{ width: '30%' }} />
+                    <col style={{ width: '25%' }} />
                     <col style={{ width: '10%' }} />
                     <col style={{ width: '13%' }} />
-                    <col style={{ width: '15%' }} />
-                    <col style={{ width: '32%' }} />
+                    <col style={{ width: '12%' }} />
+                    <col style={{ width: '18%' }} />
+                    <col style={{ width: '6%' }} />
                   </colgroup>
                   <thead className="sticky top-0 z-10 bg-gray-50">
                     <tr className="border-b border-gray-200">
@@ -247,12 +293,20 @@ const TransactionsModal: React.FC<Props> = ({ portfolio, marketData, onClose, on
                       <th className="px-3 py-2 text-right text-xs font-semibold text-gray-500">份额</th>
                       <th className="px-3 py-2 text-right text-xs font-semibold text-gray-500">手续费</th>
                       <th className="px-3 py-2 text-right text-xs font-semibold text-gray-500">交易总额</th>
+                      <th className="px-3 py-2 text-center text-xs font-semibold text-gray-500">
+                        <input
+                          type="checkbox"
+                          checked={rows.length > 0 && selectedRows.size === rows.length}
+                          onChange={toggleSelectAll}
+                          className="w-3 h-3 rounded border-gray-300"
+                        />
+                      </th>
                     </tr>
                   </thead>
                   <tbody>
                     {rows.length === 0 ? (
                       <tr>
-                        <td colSpan={5} className="px-3 py-8 text-center text-gray-400 text-xs">
+                        <td colSpan={6} className="px-3 py-8 text-center text-gray-400 text-xs">
                           该日期无任何交易
                         </td>
                       </tr>
@@ -260,7 +314,7 @@ const TransactionsModal: React.FC<Props> = ({ portfolio, marketData, onClose, on
                       rows.map((r, i) => {
                         const label = r.name ? `${r.name}（${r.symbol}）` : `（${r.symbol}）`;
                         return (
-                          <tr key={i} className="border-b border-gray-50 hover:bg-gray-50 transition-colors">
+                          <tr key={r.id} className="border-b border-gray-50 hover:bg-gray-50 transition-colors">
                             <td className="px-3 py-2 text-left">
                               {onSelectFund ? (
                                 <button
@@ -282,6 +336,14 @@ const TransactionsModal: React.FC<Props> = ({ portfolio, marketData, onClose, on
                             <td className="px-3 py-2 text-right text-xs text-gray-700">{formatNum(r.shares)}</td>
                             <td className="px-3 py-2 text-right text-xs text-gray-700">{formatNum(r.fee)}</td>
                             <td className="px-3 py-2 text-right text-xs text-gray-700">{formatNum(r.total)}</td>
+                            <td className="px-3 py-2 text-center">
+                              <input
+                                type="checkbox"
+                                checked={selectedRows.has(r.id)}
+                                onChange={() => toggleRowSelect(r.id)}
+                                className="w-3 h-3 rounded border-gray-300"
+                              />
+                            </td>
                           </tr>
                         );
                       })
@@ -289,17 +351,18 @@ const TransactionsModal: React.FC<Props> = ({ portfolio, marketData, onClose, on
                   </tbody>
                   <tfoot className="sticky bottom-0 z-10 bg-gray-50">
                     <tr className="border-t border-gray-200">
-                      <td className="px-3 py-2 text-left text-xs font-bold text-gray-700">总计：{rows.length} 条记录</td>
-                      <td className="px-3 py-2" />
-                      <td className="px-3 py-2" />
-                      <td className="px-3 py-2 text-right text-xs font-bold text-gray-700">{formatNum(totalFee)}</td>
-                      <td className="px-3 py-2 text-right text-xs font-bold text-gray-700">
-                        {totalNet === 0
-                          ? <span className="text-black">-</span>
-                          : totalNet > 0
-                            ? <span>{fmt.format(totalNet)}（卖出）</span>
-                            : <span>{fmt.format(Math.abs(totalNet))}（买入）</span>
-                        }
+                      <td colSpan={6} className="px-3 py-3 text-xs text-gray-700">
+                        <div className="flex justify-between">
+                          <span>
+                            总计：买入 <span className="font-bold text-green-600">{stats.buyCount}</span> 条，
+                            卖出 <span className="font-bold text-red-500">{stats.sellCount}</span> 条
+                          </span>
+                          <span className="space-x-4">
+                            <span>买入总额：<span className="font-bold text-green-600">{fmt.format(stats.buyTotal)}</span></span>
+                            <span>卖出总额：<span className="font-bold text-red-500">{fmt.format(stats.sellTotal)}</span></span>
+                            <span>手续费：<span className="font-bold">{fmt.format(stats.totalFee)}</span></span>
+                          </span>
+                        </div>
                       </td>
                     </tr>
                   </tfoot>
