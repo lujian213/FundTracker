@@ -67,6 +67,99 @@ export function prepareHistoryForProfitCalculation(params: {
   return Array.from(byDate.values()).sort((a, b) => a.date - b.date);
 }
 
+// ============================================================================
+// 纯业务逻辑函数（可独立测试，无需 mock 队列或网络请求）
+// ============================================================================
+
+/**
+ * 将 symbol 补零到6位
+ * @example padSymbol('1234') -> '001234'
+ * @example padSymbol('123456') -> '123456'
+ */
+export function padSymbol(symbol: string): string {
+  return symbol.padStart(6, '0');
+}
+
+/**
+ * 解析天天基金 jsonpgz 响应为 ValuationData
+ * @param data 天天基金 API 返回的原始数据
+ * @returns 解析后的估值数据，如果数据无效则返回 null
+ */
+export function parseJsonpgzResponse(data: any): ValuationData | null {
+  if (!data || !data.fundcode) return null;
+  return {
+    symbol: data.fundcode,
+    name: data.name || "未知基金",
+    currentPrice: parseFloat(data.gsz) || 0,
+    previousPrice: parseFloat(data.dwjz) || 0,
+    changePercentage: parseFloat(data.gszzl) || 0,
+    lastUpdated: data.gztime || "---",
+    realtimeDate: (data.gztime || "---").split(' ')[0],
+    netWorthDate: data.jzrq || "---",
+    valuationDate: data.gztime || "---",
+    sourceUrl: `https://fund.eastmoney.com/${data.fundcode}.html`
+  };
+}
+
+/**
+ * 解析东方财富 Data_netWorthTrend 数据为 HistoricalPoint[]
+ * @param trendData 东方财富返回的历史净值趋势数据
+ * @returns 归一化后的历史数据点数组
+ */
+export function parseHistoryFromTrendData(trendData: any[]): HistoricalPoint[] {
+  if (!Array.isArray(trendData)) return [];
+  const rawPoints = trendData.map((item: any) => ({
+    date: item?.x,
+    value: parseFloat(item?.y) || 0,
+    equityReturn: parseFloat(item?.equityReturn) || 0,
+  }));
+  return normalizeHistoryPoints(rawPoints);
+}
+
+/**
+ * 从东方财富 fallback 数据构建 ValuationData
+ * @param code 基金代码
+ * @param trend 历史净值数据
+ * @param name 基金名称（可选）
+ * @returns 构建的估值数据，如果数据无效则返回 null
+ */
+export function buildValuationFromFallback(code: string, trend: any[], name?: string | null): ValuationData | null {
+  if (!Array.isArray(trend) || trend.length === 0) return null;
+
+  const last = trend[trend.length - 1];
+  const prev = trend.length > 1 ? trend[trend.length - 2] : null;
+
+  const confirmedPrice = parseFloat(last?.y) || 0;
+  const prevPriceHist = prev ? (parseFloat(prev.y) || 0) : 0;
+  const changePercentage = prevPriceHist > 0 ? ((confirmedPrice - prevPriceHist) / prevPriceHist) * 100 : 0;
+
+  // 解析日期
+  const lastDate = last?.x ? normalizeHistoryTimestamp(last.x) : null;
+  const d = lastDate ? new Date(lastDate) : new Date();
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  const netWorthDate = `${year}-${month}-${day}`;
+  const lastUpdated = `${netWorthDate} 15:00:00`;
+
+  return {
+    symbol: code,
+    name: name || `基金 ${code}`,
+    currentPrice: confirmedPrice,
+    previousPrice: confirmedPrice,
+    changePercentage,
+    lastUpdated,
+    realtimeDate: netWorthDate,
+    netWorthDate,
+    valuationDate: lastUpdated,
+    sourceUrl: `https://fund.eastmoney.com/${code}.html`
+  };
+}
+
+// ============================================================================
+// 依赖注入 seam（用于测试 mock）
+// ============================================================================
+
 /**
  * Dependency seam used by computeOverallProfit.
  * Tests can replace these properties to mock fetchFundHistory / fetchFundData
@@ -352,25 +445,13 @@ async function fetchJson<T>(url: string, timeout: number = 10000): Promise<T> {
 }
 
 export async function fetchFundData(symbol: string): Promise<ValuationData | null> {
-  const code = symbol.padStart(6, '0');
+  const code = padSymbol(symbol);
   const url = `https://fundgz.1234567.com.cn/js/${code}.js?rt=${Date.now()}`;
   try {
     // 队列控制在外层批量函数进行，这里直接执行
     const data: any = await jsonp(url, 'jsonpgz', code);
-    if (data && data.fundcode) {
-      return {
-        symbol: data.fundcode,
-        name: data.name || "未知基金",
-        currentPrice: parseFloat(data.gsz) || 0,
-        previousPrice: parseFloat(data.dwjz) || 0,
-        changePercentage: parseFloat(data.gszzl) || 0,
-        lastUpdated: data.gztime || "---",
-        realtimeDate: (data.gztime || "---").split(' ')[0],
-        netWorthDate: data.jzrq || "---",
-        valuationDate: data.gztime || "---",
-        sourceUrl: `https://fund.eastmoney.com/${code}.html`
-      };
-    }
+    const parsed = parseJsonpgzResponse(data);
+    if (parsed) return parsed;
   } catch (e) {}
 
   // Fallback: try EastMoney pingzhongdata JS which contains full fund info and history

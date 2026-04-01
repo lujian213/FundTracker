@@ -1,330 +1,344 @@
-import { fetchFundData, fetchFundHistory, fetchSingleIndex, normalizeIndexSymbol } from '../../services/fundService';
-import { ValuationData } from '../../types';
+import {
+  fetchFundData,
+  fetchFundHistory,
+  fetchSingleIndex,
+  normalizeIndexSymbol,
+  padSymbol,
+  parseJsonpgzResponse,
+  parseHistoryFromTrendData,
+  buildValuationFromFallback
+} from '../../services/fundService';
+import { ValuationData, HistoricalPoint } from '../../types';
 
-// Advance past the RequestQueue random delay (350–750 ms) without triggering
-// the 8000 ms JSONP timeout.  Multiple Promise.resolve() calls drain the
-// microtask queue that the async RequestQueue.process() loop produces.
-async function drainQueue() {
-  await jest.advanceTimersByTimeAsync(800);
-  await Promise.resolve();
-  await Promise.resolve();
-}
+// ============================================================================
+// 纯函数测试（无需 mock 队列或网络请求）
+// ============================================================================
 
-describe('fundService', () => {
-  beforeEach(() => {
-    jest.useFakeTimers();
-    document.head.innerHTML = '';
-    delete (window as any).Data_netWorthTrend;
-    delete (window as any).fundName;
-    delete (window as any).FundName;
-    delete (window as any).fS_name;
-    delete (window as any).name;
-    if (!(window as any).jsonpgz) {
-      (window as any).jsonpgz = (d: any) => {};
-    }
-    jest.restoreAllMocks();
+describe('padSymbol', () => {
+  test.each([
+    ['1234', '001234'],
+    ['12345', '012345'],
+    ['123456', '123456'],
+    ['1234567', '1234567'],
+    ['', '000000'],
+    ['1', '000001'],
+  ])('padSymbol("%s") -> "%s"', (input, expected) => {
+    expect(padSymbol(input)).toBe(expected);
   });
+});
 
-  afterEach(() => {
-    jest.useRealTimers();
-  });
-
-  test.skip('fetchFundData parses jsonpgz response into ValuationData', async () => {
-    const symbol = '123456';
-    const promise = fetchFundData(symbol);
-
-    await drainQueue();
-
-    (window as any).jsonpgz({
-      fundcode: symbol,
+describe('parseJsonpgzResponse', () => {
+  test('parses valid jsonpgz response into ValuationData', () => {
+    const input = {
+      fundcode: '123456',
       name: 'Test Fund',
       gsz: '1.2345',
       dwjz: '1.0000',
       gszzl: '23.45',
       gztime: '2026-02-11 15:30:00',
       jzrq: '2026-02-11'
-    });
-
-    const result = await promise;
-
-    expect(result).not.toBeNull();
-    expect((result as ValuationData).symbol).toBe(symbol);
-    expect((result as ValuationData).name).toBe('Test Fund');
-    expect((result as ValuationData).currentPrice).toBeCloseTo(1.2345);
-    expect((result as ValuationData).previousPrice).toBeCloseTo(1.0);
-    expect((result as ValuationData).changePercentage).toBeCloseTo(23.45);
-    expect((result as ValuationData).lastUpdated).toBe('2026-02-11 15:30:00');
-    expect((result as ValuationData).realtimeDate).toBe('2026-02-11');
-    expect((result as ValuationData).netWorthDate).toBe('2026-02-11');
-  });
-
-  test.skip('fetchFundData returns null on JSONP script error', async () => {
-    const symbol = '654321';
-    const promise = fetchFundData(symbol);
-
-    await drainQueue();
-
-    const script = document.head.querySelector('script') as any;
-    expect(script).toBeTruthy();
-    if (script && script.onerror) script.onerror(new Error('script error'));
-
-    // After onerror the service tries a fallback (fetchFundDataFromEastMoney) which has a 2000ms
-    // internal timeout. Advance past that so the promise resolves to null.
-    await jest.advanceTimersByTimeAsync(3000);
-    await Promise.resolve();
-    await Promise.resolve();
-
-    const result = await promise;
-    expect(result).toBeNull();
-  });
-
-  test.skip('fetchFundData returns null for non-numeric symbol (invalid input)', async () => {
-    const promise = fetchFundData('abc');
-
-    await drainQueue();
-
-    const script = document.head.querySelector('script') as any;
-    if (script && script.onerror) script.onerror(new Error('invalid symbol'));
-
-    // Advance past the fallback 2000ms timeout
-    await jest.advanceTimersByTimeAsync(3000);
-    await Promise.resolve();
-    await Promise.resolve();
-
-    const result = await promise;
-    expect(result).toBeNull();
-  });
-
-  test.skip('fetchFundData deterministic for same symbol when fed identical responses', async () => {
-    const symbol = '222222';
-    const resp = {
-      fundcode: symbol,
-      name: 'Det Fund',
-      gsz: '2.2222',
-      dwjz: '2.0000',
-      gszzl: '11.11',
-      gztime: '2026-02-11 10:00:00',
-      jzrq: '2026-02-11'
     };
 
-    const p1 = fetchFundData(symbol);
-    await drainQueue();
-    (window as any).jsonpgz(resp);
-    const r1 = await p1;
+    const result = parseJsonpgzResponse(input);
 
-    const p2 = fetchFundData(symbol);
-    await drainQueue();
-    (window as any).jsonpgz(resp);
-    const r2 = await p2;
-
-    expect(r1).not.toBeNull();
-    expect(r2).not.toBeNull();
-    expect(r1).toEqual(r2);
+    expect(result).not.toBeNull();
+    expect(result!.symbol).toBe('123456');
+    expect(result!.name).toBe('Test Fund');
+    expect(result!.currentPrice).toBeCloseTo(1.2345);
+    expect(result!.previousPrice).toBeCloseTo(1.0);
+    expect(result!.changePercentage).toBeCloseTo(23.45);
+    expect(result!.lastUpdated).toBe('2026-02-11 15:30:00');
+    expect(result!.realtimeDate).toBe('2026-02-11');
+    expect(result!.netWorthDate).toBe('2026-02-11');
+    expect(result!.sourceUrl).toBe('https://fund.eastmoney.com/123456.html');
   });
 
-  test.skip('fetchFundData handles internal exception and returns null', async () => {
-    const origCreate = document.createElement.bind(document);
-    // @ts-ignore
-    document.createElement = (tag: string) => {
-      if (tag === 'script') throw new Error('forced create error');
-      return origCreate(tag);
+  test('returns null for null input', () => {
+    expect(parseJsonpgzResponse(null)).toBeNull();
+  });
+
+  test('returns null for undefined input', () => {
+    expect(parseJsonpgzResponse(undefined)).toBeNull();
+  });
+
+  test('returns null for empty object', () => {
+    expect(parseJsonpgzResponse({})).toBeNull();
+  });
+
+  test('returns null for object without fundcode', () => {
+    expect(parseJsonpgzResponse({ name: 'Test' })).toBeNull();
+  });
+
+  test('handles missing optional fields with defaults', () => {
+    const input = {
+      fundcode: '123456',
+      // name is missing
+      gsz: '', // invalid number
+      dwjz: 'invalid',
+      gszzl: '',
+      gztime: '',
+      jzrq: ''
     };
 
-    try {
-      const promise = fetchFundData('333333');
-      await drainQueue();
-      const res = await promise;
-      expect(res).toBeNull();
-    } finally {
-      // @ts-ignore
-      document.createElement = origCreate;
-    }
-  });
+    const result = parseJsonpgzResponse(input);
 
-  test.skip.each([
-    ['1234', '001234'],
-    ['12345', '012345'],
-    ['123456', '123456'],
-    ['1234567', '1234567']
-  ])('fetchFundData handles boundary symbol %s -> code %s', async (input, expectedCode) => {
-    const promise = fetchFundData(input as string);
-    await drainQueue();
-
-    const script = document.head.querySelector('script') as HTMLScriptElement | null;
-    expect(script).toBeTruthy();
-    if (script) expect(script.src).toContain(`${expectedCode}.js`);
-
-    (window as any).jsonpgz({ fundcode: expectedCode, name: 'B', gsz: '1', dwjz: '1', gszzl: '0', gztime: '2026-02-11 00:00:00', jzrq: '2026-02-11' });
-    const result = await promise;
     expect(result).not.toBeNull();
-    expect(result!.symbol).toBe(expectedCode);
+    expect(result!.name).toBe('未知基金');
+    expect(result!.currentPrice).toBe(0);
+    expect(result!.previousPrice).toBe(0);
+    expect(result!.changePercentage).toBe(0);
+    expect(result!.lastUpdated).toBe('---');
+    expect(result!.realtimeDate).toBe('---');
+    expect(result!.netWorthDate).toBe('---');
   });
 
-  test.skip('fetchFundHistory loads Data_netWorthTrend and maps to HistoricalPoint[]', async () => {
-    document.head.innerHTML = '';
+  test('extracts realtimeDate from gztime', () => {
+    const input = {
+      fundcode: '123456',
+      name: 'Test',
+      gsz: '1.0',
+      dwjz: '1.0',
+      gszzl: '0',
+      gztime: '2026-03-15 09:30:00',
+      jzrq: '2026-03-14'
+    };
 
-    const symbol = '100001';
-    const promise = fetchFundHistory(symbol);
+    const result = parseJsonpgzResponse(input);
 
-    await Promise.resolve();
-    const script = document.head.querySelector('script');
-    expect(script).toBeTruthy();
+    expect(result!.realtimeDate).toBe('2026-03-15');
+    expect(result!.netWorthDate).toBe('2026-03-14');
+  });
+});
 
-    (window as any).Data_netWorthTrend = [
+describe('parseHistoryFromTrendData', () => {
+  test('parses valid trend data into HistoricalPoint[]', () => {
+    const input = [
       { x: 1670000000000, y: '1.1000', equityReturn: '0.01' },
       { x: 1670000001000, y: '1.2000', equityReturn: '0.02' }
     ];
-    // @ts-ignore
-    if ((script as any).onload) (script as any).onload();
 
-    const result = await promise;
+    const result = parseHistoryFromTrendData(input);
+
     expect(result).toHaveLength(2);
     expect(result[0].date).toBe(1670000000000);
     expect(result[0].value).toBeCloseTo(1.1);
     expect(result[0].equityReturn).toBeCloseTo(0.01);
+    expect(result[1].date).toBe(1670000001000);
+    expect(result[1].value).toBeCloseTo(1.2);
+    expect(result[1].equityReturn).toBeCloseTo(0.02);
   });
 
-  test.skip('fetchFundHistory caches results so subsequent calls return cached data', async () => {
-    document.head.innerHTML = '';
-    const symbol = '200002';
-
-    const p1 = fetchFundHistory(symbol);
-    await Promise.resolve();
-    const script1 = document.head.querySelector('script');
-    (window as any).Data_netWorthTrend = [{ x: 1600000000000, y: '2.000', equityReturn: '0.05' }];
-    // @ts-ignore
-    if ((script1 as any).onload) (script1 as any).onload();
-    const r1 = await p1;
-    expect(r1).toHaveLength(1);
-
-    const beforeCount = document.head.querySelectorAll('script').length;
-    const p2 = fetchFundHistory(symbol);
-    const r2 = await p2;
-    const afterCount = document.head.querySelectorAll('script').length;
-    expect(r2).toEqual(r1);
-    expect(afterCount).toBe(beforeCount);
+  test('returns empty array for null input', () => {
+    expect(parseHistoryFromTrendData(null)).toEqual([]);
   });
 
-  test.skip('fetchFundHistory normalizes second timestamps, sorts ascending, and deduplicates same timestamp', async () => {
-    document.head.innerHTML = '';
-    const symbol = '300003';
+  test('returns empty array for undefined input', () => {
+    expect(parseHistoryFromTrendData(undefined)).toEqual([]);
+  });
 
-    const promise = fetchFundHistory(symbol);
-    await Promise.resolve();
-    const script = document.head.querySelector('script');
-    expect(script).toBeTruthy();
+  test('returns empty array for non-array input', () => {
+    expect(parseHistoryFromTrendData({})).toEqual([]);
+    expect(parseHistoryFromTrendData('string')).toEqual([]);
+  });
 
-    // Unordered data with second-level timestamps and one duplicate timestamp.
-    (window as any).Data_netWorthTrend = [
+  test('returns empty array for empty array', () => {
+    expect(parseHistoryFromTrendData([])).toEqual([]);
+  });
+
+  test('normalizes second-level timestamps to milliseconds', () => {
+    const input = [
+      { x: 1699999000, y: '1.00', equityReturn: '0.00' },  // seconds -> 1699999000000
+      { x: 1700000000000, y: '1.10', equityReturn: '0.10' } // milliseconds
+    ];
+
+    const result = parseHistoryFromTrendData(input);
+
+    expect(result).toHaveLength(2);
+    expect(result[0].date).toBe(1699999000000); // converted to ms
+    expect(result[1].date).toBe(1700000000000);
+  });
+
+  test('sorts data ascending by date', () => {
+    const input = [
       { x: 1700000200, y: '1.20', equityReturn: '0.10' },
       { x: 1700000000, y: '1.00', equityReturn: '0.00' },
-      { x: 1700000100, y: '1.10', equityReturn: '0.10' },
-      { x: 1700000100, y: '1.15', equityReturn: '0.15' }
+      { x: 1700000100, y: '1.10', equityReturn: '0.05' }
     ];
-    // @ts-ignore
-    if ((script as any).onload) (script as any).onload();
 
-    const result = await promise;
+    const result = parseHistoryFromTrendData(input);
+
     expect(result).toHaveLength(3);
     expect(result.map(p => p.date)).toEqual([1700000000000, 1700000100000, 1700000200000]);
-    expect(result[1].value).toBeCloseTo(1.15);
   });
 
-  test.skip('fetchFundData falls back to EastMoney pingzhongdata and extracts name for 019005', async () => {
-    const symbol = '019005';
-    const promise = fetchFundData(symbol);
+  test('deduplicates same timestamp keeping latest value', () => {
+    const input = [
+      { x: 1700000100, y: '1.10', equityReturn: '0.10' },
+      { x: 1700000100, y: '1.15', equityReturn: '0.15' }  // duplicate timestamp
+    ];
 
-    await drainQueue();
-    const primaryScript = document.head.querySelector('script') as any;
-    expect(primaryScript).toBeTruthy();
+    const result = parseHistoryFromTrendData(input);
 
-    if (primaryScript && primaryScript.onerror) primaryScript.onerror(new Error('script error'));
+    expect(result).toHaveLength(1);
+    expect(result[0].value).toBeCloseTo(1.15); // keeps latest
+    expect(result[0].equityReturn).toBeCloseTo(0.15);
+  });
 
-    // Drain queue again for the fallback request to be scheduled and injected
-    await drainQueue();
-    const scripts = Array.from(document.head.querySelectorAll('script'));
-    const fallbackScript = scripts[scripts.length - 1] as any;
-    expect(fallbackScript).toBeTruthy();
+  test('handles missing fields gracefully', () => {
+    const input = [
+      { x: 1670000000000 }, // missing y and equityReturn
+      { y: '1.5' }, // missing x
+    ];
 
-    (window as any).fundName = '东方基金 019005';
-    (window as any).Data_netWorthTrend = [
+    const result = parseHistoryFromTrendData(input);
+
+    // First point has valid date but missing value -> value=0
+    // Second point missing date -> filtered out
+    expect(result).toHaveLength(1);
+    expect(result[0].date).toBe(1670000000000);
+    expect(result[0].value).toBe(0);
+    expect(result[0].equityReturn).toBe(0);
+  });
+});
+
+describe('buildValuationFromFallback', () => {
+  test('builds ValuationData from valid trend data', () => {
+    const code = '019005';
+    const trend = [
       { x: 1700000000000, y: '1.0000', equityReturn: '0' },
       { x: 1700000001000, y: '1.1000', equityReturn: '0.1' }
     ];
-    // @ts-ignore
-    if (fallbackScript && fallbackScript.onload) fallbackScript.onload();
 
-    const result = await promise;
+    const result = buildValuationFromFallback(code, trend, '东方基金 019005');
+
     expect(result).not.toBeNull();
     expect(result!.symbol).toBe('019005');
     expect(result!.name).toBe('东方基金 019005');
+    expect(result!.currentPrice).toBeCloseTo(1.1);
+    expect(result!.previousPrice).toBeCloseTo(1.1);
+    expect(result!.changePercentage).toBeCloseTo(10); // (1.1-1.0)/1.0 * 100
   });
 
-  test.skip('fetchFundData treats jsonpgz() empty callback as failure and falls back extracting fS_name', async () => {
-    const symbol = '019005';
-    const promise = fetchFundData(symbol);
+  test('builds ValuationData with default name when name is null', () => {
+    const code = '123456';
+    const trend = [
+      { x: 1700000000000, y: '1.0000', equityReturn: '0' }
+    ];
 
-    await drainQueue();
-    const primaryScript = document.head.querySelector('script') as any;
-    expect(primaryScript).toBeTruthy();
+    const result = buildValuationFromFallback(code, trend, null);
 
-    (window as any).jsonpgz();
+    expect(result).not.toBeNull();
+    expect(result!.name).toBe('基金 123456');
+  });
 
-    await drainQueue();
-    const scripts = Array.from(document.head.querySelectorAll('script'));
-    const fallbackScript = scripts[scripts.length - 1] as any;
-    expect(fallbackScript).toBeTruthy();
+  test('returns null for null trend', () => {
+    expect(buildValuationFromFallback('123456', null)).toBeNull();
+  });
 
-    (window as any).fS_name = '国投瑞银白银期货(LOF)C';
-    (window as any).Data_netWorthTrend = [
+  test('returns null for undefined trend', () => {
+    expect(buildValuationFromFallback('123456', undefined)).toBeNull();
+  });
+
+  test('returns null for empty array', () => {
+    expect(buildValuationFromFallback('123456', [])).toBeNull();
+  });
+
+  test('returns null for non-array trend', () => {
+    expect(buildValuationFromFallback('123456', {} as any)).toBeNull();
+  });
+
+  test('handles single trend point with zero change percentage', () => {
+    const code = '019005';
+    const trend = [
+      { x: 1700000000000, y: '2.0000', equityReturn: '0' }
+    ];
+
+    const result = buildValuationFromFallback(code, trend);
+
+    expect(result).not.toBeNull();
+    expect(result!.currentPrice).toBeCloseTo(2.0);
+    expect(result!.previousPrice).toBeCloseTo(2.0);
+    expect(result!.changePercentage).toBe(0); // no previous point
+  });
+
+  test('handles invalid y values gracefully', () => {
+    const code = '019005';
+    const trend = [
+      { x: 1700000000000, y: 'invalid', equityReturn: '0' },
+      { x: 1700000001000, y: '1.1000', equityReturn: '0.1' }
+    ];
+
+    const result = buildValuationFromFallback(code, trend);
+
+    expect(result).not.toBeNull();
+    expect(result!.currentPrice).toBeCloseTo(1.1);
+    expect(result!.previousPrice).toBeCloseTo(1.1);
+  });
+
+  test('uses latest history point date as netWorthDate', () => {
+    const code = '019005';
+    // Use timestamps representing later in the day to ensure consistent local date across timezones
+    const trend = [
+      { x: 1770955200000, y: '2.1904', equityReturn: '-4.98' },  // Feb 23, 2026 12:00 UTC
+      { x: 1771905600000, y: '2.4405', equityReturn: '11.42' }   // Feb 24, 2026 12:00 UTC
+    ];
+
+    const result = buildValuationFromFallback(code, trend);
+
+    expect(result).not.toBeNull();
+    expect(result!.currentPrice).toBeCloseTo(2.4405);
+    expect(result!.previousPrice).toBeCloseTo(2.4405);
+    expect(result!.netWorthDate).toBe('2026-02-24');
+    expect(result!.lastUpdated).toBe('2026-02-24 15:00:00');
+  });
+
+  test('extracts name from fS_name style', () => {
+    const code = '019005';
+    const trend = [
       { x: 1700000000000, y: '1.0000', equityReturn: '0' },
       { x: 1700000001000, y: '1.1000', equityReturn: '0.1' }
     ];
-    // @ts-ignore
-    if (fallbackScript && fallbackScript.onload) fallbackScript.onload();
 
-    const result = await promise;
-    expect(result).not.toBeNull();
-    expect(result!.symbol).toBe('019005');
+    const result = buildValuationFromFallback(code, trend, '国投瑞银白银期货(LOF)C');
+
     expect(result!.name).toBe('国投瑞银白银期货(LOF)C');
   });
+});
 
-  describe('normalizeIndexSymbol', () => {
-    test('keeps domestic secid symbol stable (1.000001)', () => {
-      expect(normalizeIndexSymbol('1.000001')).toBe('1.000001');
-    });
-
-    test('keeps domestic secid symbol stable (0.000001)', () => {
-      expect(normalizeIndexSymbol('0.000001')).toBe('0.000001');
-    });
-
-    test('normalizes alias NDX to 100.NDX', () => {
-      expect(normalizeIndexSymbol('NDX')).toBe('100.NDX');
-    });
-
-    test('normalizes alias SPX to 100.SPX', () => {
-      expect(normalizeIndexSymbol('SPX')).toBe('100.SPX');
-    });
-
-    test('normalizes alias HSI to 100.HSI', () => {
-      expect(normalizeIndexSymbol('HSI')).toBe('100.HSI');
-    });
-
-    test('keeps already normalized symbols unchanged', () => {
-      expect(normalizeIndexSymbol('100.NDX')).toBe('100.NDX');
-      expect(normalizeIndexSymbol('100.SPX')).toBe('100.SPX');
-      expect(normalizeIndexSymbol('100.HSI')).toBe('100.HSI');
-    });
-
-    test('handles lowercase input', () => {
-      expect(normalizeIndexSymbol('ndx')).toBe('100.NDX');
-      expect(normalizeIndexSymbol('spx')).toBe('100.SPX');
-    });
-
-    test('handles empty and whitespace input', () => {
-      expect(normalizeIndexSymbol('')).toBe('');
-      expect(normalizeIndexSymbol('   ')).toBe('');
-    });
+describe('normalizeIndexSymbol', () => {
+  test('keeps domestic secid symbol stable (1.000001)', () => {
+    expect(normalizeIndexSymbol('1.000001')).toBe('1.000001');
   });
 
+  test('keeps domestic secid symbol stable (0.000001)', () => {
+    expect(normalizeIndexSymbol('0.000001')).toBe('0.000001');
+  });
+
+  test('normalizes alias NDX to 100.NDX', () => {
+    expect(normalizeIndexSymbol('NDX')).toBe('100.NDX');
+  });
+
+  test('normalizes alias SPX to 100.SPX', () => {
+    expect(normalizeIndexSymbol('SPX')).toBe('100.SPX');
+  });
+
+  test('normalizes alias HSI to 100.HSI', () => {
+    expect(normalizeIndexSymbol('HSI')).toBe('100.HSI');
+  });
+
+  test('keeps already normalized symbols unchanged', () => {
+    expect(normalizeIndexSymbol('100.NDX')).toBe('100.NDX');
+    expect(normalizeIndexSymbol('100.SPX')).toBe('100.SPX');
+    expect(normalizeIndexSymbol('100.HSI')).toBe('100.HSI');
+  });
+
+  test('handles lowercase input', () => {
+    expect(normalizeIndexSymbol('ndx')).toBe('100.NDX');
+    expect(normalizeIndexSymbol('spx')).toBe('100.SPX');
+  });
+
+  test('handles empty and whitespace input', () => {
+    expect(normalizeIndexSymbol('')).toBe('');
+    expect(normalizeIndexSymbol('   ')).toBe('');
+  });
 });
