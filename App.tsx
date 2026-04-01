@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { Ticker, ValuationData, MarketType, MarketIndex, BackupData, CardStatus, ManageItemType, ManageSelectionKey, JobResult } from './types';
-import { fetchFundData, fetchMarketIndices, forceFetchFundHistory, fetchIndexHistory, maybeTriggerHistoryRefresh } from './services/fundService';
+import { fetchFundData, fetchFundDatas, forceFetchFundHistories, fetchMarketIndices, fetchIndexHistories, maybeTriggerHistoryRefresh } from './services/fundService';
 import { toLocalDateKey } from './utils/priceResolver';
 import * as cacheService from './services/cacheService';
 import { isFeatureEnabled } from './services/systemSettingsService';
@@ -577,7 +577,7 @@ const AppContent: React.FC = () => {
     if (validKeys.size === 0) clearSelectionMode();
   }, [portfolio, indicesConfig, globalIndicesConfig, isSelectionMode, clearSelectionMode]);
 
-  const updateSingleFund = useCallback(async (symbol: string) => {
+  const updateSingleFund = useCallback(async (symbol: string): Promise<ValuationData | null> => {
     try {
       const data = await fetchFundData(symbol);
       if (data) {
@@ -600,39 +600,54 @@ const AppContent: React.FC = () => {
             setBackgroundTasks(prev => Math.max(0, prev - 1));
           });
         } catch (e) { setBackgroundTasks(prev => Math.max(0, prev - 1)); }
+        return enhancedData;
       } else {
         setFundStatuses(prev => ({ ...prev, [symbol]: 'error' }));
+        return null;
       }
     } catch {
       setFundStatuses(prev => ({ ...prev, [symbol]: 'error' }));
+      return null;
     } finally { setBackgroundTasks(prev => Math.max(0, prev - 1)); }
   }, []);
 
-  const runBatchUpdate = useCallback(async (targets: Ticker[]) => {
-    if (targets.length === 0) return;
+  const runBatchUpdate = useCallback(async (targets: Ticker[]): Promise<JobResult<void>> => {
+    if (targets.length === 0) return { success: true, data: undefined };
+
+    const symbols = targets.map(t => t.symbol);
+    const errors: string[] = [];
+
     setBackgroundTasks(prev => prev + targets.length);
-    const queue = [...targets];
-    const workers = Array(Math.min(3, targets.length)).fill(null).map(async () => {
-      while (queue.length > 0) {
-        const item = queue.shift();
-        if (item) await updateSingleFund(item.symbol);
+
+    for (const sym of symbols) {
+      try {
+        const data = await updateSingleFund(sym);
+        if (!data) {
+          errors.push(`${sym}: API返回空数据`);
+        }
+      } catch (e) {
+        errors.push(`${sym}: ${(e as Error).message || '未知错误'}`);
       }
-    });
-    await Promise.all(workers);
+    }
+
+    // 全部失败
+    if (errors.length === symbols.length) {
+      return { success: false, message: `获取基金估值数据全部失败: ${errors[0]}` };
+    }
+
+    // 部分失败
+    if (errors.length > 0) {
+      return { success: false, data: undefined, message: `部分基金估值刷新失败: ${errors[0]}` };
+    }
+
+    return { success: true, data: undefined };
   }, [updateSingleFund]);
 
-  const runBatchHistoryUpdate = useCallback(async (targets: Ticker[]) => {
-    if (targets.length === 0) return;
-    const queue = [...targets];
-    const workers = Array(Math.min(3, targets.length)).fill(null).map(async () => {
-      while (queue.length > 0) {
-        const item = queue.shift();
-        if (item) {
-          try { await forceFetchFundHistory(item.symbol); } catch { /* ignore individual errors */ }
-        }
-      }
-    });
-    await Promise.all(workers);
+  const runBatchHistoryUpdate = useCallback(async (targets: Ticker[]): Promise<JobResult<void>> => {
+    if (targets.length === 0) return { success: true, data: undefined };
+
+    const symbols = targets.map(t => t.symbol);
+    return await forceFetchFundHistories(symbols);
   }, []);
 
   const refreshMarketIndicesAsync = useCallback(async (ignoreCache: boolean = false): Promise<JobResult<MarketIndex[]>> => {
@@ -710,20 +725,11 @@ const AppContent: React.FC = () => {
   }, [indicesConfig, globalIndicesConfig]);
 
   // 刷新指数历史数据
-  const refreshIndexHistoryAsync = useCallback(async (ignoreCache: boolean = false) => {
+  const refreshIndexHistoryAsync = useCallback(async (ignoreCache: boolean = false): Promise<JobResult<void>> => {
     const allIndexSymbols = [...indicesConfig, ...globalIndicesConfig];
-    if (allIndexSymbols.length === 0) return;
+    if (allIndexSymbols.length === 0) return { success: true, data: undefined };
 
-    const queue = [...allIndexSymbols];
-    const workers = Array(Math.min(3, allIndexSymbols.length)).fill(null).map(async () => {
-      while (queue.length > 0) {
-        const symbol = queue.shift();
-        if (symbol) {
-          try { await fetchIndexHistory(symbol, ignoreCache); } catch { /* ignore individual errors */ }
-        }
-      }
-    });
-    await Promise.all(workers);
+    return await fetchIndexHistories(allIndexSymbols, ignoreCache);
   }, [indicesConfig, globalIndicesConfig]);
 
   const displayDomesticIndices = useMemo(
@@ -777,11 +783,11 @@ const AppContent: React.FC = () => {
 
     // Register job handlers
     scheduler.registerHandler('fund-valuation-refresh', async () => {
-      await runBatchUpdate(portfolio);
+      return await runBatchUpdate(portfolio);
     });
 
     scheduler.registerHandler('fund-history-refresh', async () => {
-      await runBatchHistoryUpdate(portfolio);
+      return await runBatchHistoryUpdate(portfolio);
     });
 
     scheduler.registerHandler('market-index-refresh', async () => {
@@ -790,7 +796,7 @@ const AppContent: React.FC = () => {
     });
 
     scheduler.registerHandler('index-history-refresh', async () => {
-      await refreshIndexHistoryAsync(true);
+      return await refreshIndexHistoryAsync(true);
     });
 
     scheduler.registerHandler('news-refresh', async () => {

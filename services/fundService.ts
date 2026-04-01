@@ -108,60 +108,19 @@ const fundRegistry: Record<string, (data: any) => void> = {};
 class RequestQueue {
   private queue: (() => Promise<any>)[] = [];
   private processing = false;
-  private scheduled = false;
+
+  constructor(private delayMs: number = 0) {}
 
   async add<T>(task: () => Promise<T>): Promise<T> {
     return new Promise((resolve, reject) => {
       this.queue.push(async () => {
         try {
-          await new Promise(r => setTimeout(r, 2000 + Math.random() * 1000));
+          if (this.delayMs > 0) {
+            await new Promise(r => setTimeout(r, this.delayMs + Math.random() * 1000));
+          }
           const result = await task();
           resolve(result);
         } catch (e) {
-          reject(e);
-        }
-      });
-      this.process();
-    });
-  }
-
-  private async process() {
-    if (this.processing) return;
-    this.processing = true;
-    while (this.queue.length > 0) {
-      const task = this.queue.shift();
-      if (task) {
-        try { await task(); } catch (e) {}
-      }
-    }
-    this.processing = false;
-    // 处理完成后再次检查是否有新任务
-    if (this.queue.length > 0) {
-      this.process();
-    }
-  }
-}
-
-const globalQueue = new RequestQueue();
-
-// 慢速队列：专门用于 push2.eastmoney.com，间隔更长以避免限流
-class SlowRequestQueue {
-  private queue: (() => Promise<any>)[] = [];
-  private processing = false;
-  private requestCount = 0;
-
-  async add<T>(task: () => Promise<T>): Promise<T> {
-    return new Promise((resolve, reject) => {
-      this.queue.push(async () => {
-        this.requestCount++;
-        const isFirst = this.requestCount === 1;
-        try {
-          await new Promise(r => setTimeout(r, 1000 + Math.random() * 1000));
-          console.log(`[SlowRequestQueue] 请求 #${this.requestCount}, 是第一个: ${isFirst}`);
-          const result = await task();
-          resolve(result);
-        } catch (e) {
-          console.log(`[SlowRequestQueue] 请求 #${this.requestCount} 失败, 是第一个: ${isFirst}, 错误:`, e);
           reject(e);
         }
       });
@@ -185,45 +144,10 @@ class SlowRequestQueue {
   }
 }
 
-const indexQueue = new SlowRequestQueue(); // 指数专用队列（慢速）
-const newsQueue = new SlowRequestQueue();   // 新闻专用队列（慢速）
-
-/**
- * 串行队列：用于历史净值加载，避免并发访问全局变量 Data_netWorthTrend 时的竞态条件。
- * 东方财富的 pingzhongdata 脚本会将数据写入全局变量，并发加载会导致数据错乱。
- */
-class SerialQueue {
-  private queue: (() => Promise<any>)[] = [];
-  private processing = false;
-
-  async add<T>(task: () => Promise<T>): Promise<T> {
-    return new Promise((resolve, reject) => {
-      this.queue.push(async () => {
-        try {
-          const result = await task();
-          resolve(result);
-        } catch (e) {
-          reject(e);
-        }
-      });
-      this.process();
-    });
-  }
-
-  private async process() {
-    if (this.processing || this.queue.length === 0) return;
-    this.processing = true;
-    while (this.queue.length > 0) {
-      const task = this.queue.shift();
-      if (task) {
-        try { await task(); } catch (e) {}
-      }
-    }
-    this.processing = false;
-  }
-}
-
-const historyLoadQueue = new SerialQueue();
+const globalQueue = new RequestQueue(2000);
+const indexQueue = new RequestQueue(1000);
+const newsQueue = new RequestQueue(1000);
+const historyLoadQueue = new RequestQueue(0);
 
 function normalizeHistoryTimestamp(input: unknown): number | null {
   // Accept numbers (ms or s), numeric strings, and common date string formats (YYYY-MM-DD or YYYYMMDD)
@@ -315,35 +239,33 @@ function toRawHistoryPoints(trendData: any[]): Array<Partial<HistoricalPoint>> {
 }
 
 function loadHistoryFromPingzhongData(code: string, url: string): Promise<HistoricalPoint[]> {
-  // 使用串行队列避免并发访问全局变量 Data_netWorthTrend 时的竞态条件
-  return historyLoadQueue.add(() => {
-    return new Promise((resolve, reject) => {
-      const script = document.createElement('script');
-      script.src = url;
+  // 队列控制在外层批量函数进行，这里直接执行
+  return new Promise((resolve, reject) => {
+    const script = document.createElement('script');
+    script.src = url;
 
-      // 清理函数：移除脚本和全局变量
-      const cleanup = () => {
-        if (script.parentNode) script.parentNode.removeChild(script);
-        // 清理全局变量，避免下次加载时读取到旧数据
-        try { delete (window as any).Data_netWorthTrend; } catch (e) {}
-      };
+    // 清理函数：移除脚本和全局变量
+    const cleanup = () => {
+      if (script.parentNode) script.parentNode.removeChild(script);
+      // 清理全局变量，避免下次加载时读取到旧数据
+      try { delete (window as any).Data_netWorthTrend; } catch (e) {}
+    };
 
-      script.onload = () => {
-        const trendData = (window as any).Data_netWorthTrend;
-        if (Array.isArray(trendData)) {
-          resolve(normalizeAndSyncHistory(code, toRawHistoryPoints(trendData)));
-          cleanup();
-          return;
-        }
-        resolve(syncHistoryCache(code, []));
+    script.onload = () => {
+      const trendData = (window as any).Data_netWorthTrend;
+      if (Array.isArray(trendData)) {
+        resolve(normalizeAndSyncHistory(code, toRawHistoryPoints(trendData)));
         cleanup();
-      };
-      script.onerror = () => {
-        cleanup();
-        reject();
-      };
-      document.head.appendChild(script);
-    });
+        return;
+      }
+      resolve(syncHistoryCache(code, []));
+      cleanup();
+    };
+    script.onerror = () => {
+      cleanup();
+      reject();
+    };
+    document.head.appendChild(script);
   });
 }
 
@@ -433,7 +355,8 @@ export async function fetchFundData(symbol: string): Promise<ValuationData | nul
   const code = symbol.padStart(6, '0');
   const url = `https://fundgz.1234567.com.cn/js/${code}.js?rt=${Date.now()}`;
   try {
-    const data: any = await globalQueue.add(() => jsonp(url, 'jsonpgz', code));
+    // 队列控制在外层批量函数进行，这里直接执行
+    const data: any = await jsonp(url, 'jsonpgz', code);
     if (data && data.fundcode) {
       return {
         symbol: data.fundcode,
@@ -457,6 +380,45 @@ export async function fetchFundData(symbol: string): Promise<ValuationData | nul
   } catch (e) {}
 
   return null;
+}
+
+/**
+ * 批量获取基金估值数据
+ * - 成功获取的数据会自动写入缓存
+ * - 支持部分失败：成功的数据写入缓存，失败的会在 message 中报告
+ * - 返回 JobResult<void>，不返回具体数据（数据已在缓存中）
+ */
+export async function fetchFundDatas(symbols: string[]): Promise<JobResult<void>> {
+  if (symbols.length === 0) return { success: true, data: undefined };
+
+  const errors: string[] = [];
+
+  for (const sym of symbols) {
+    try {
+      const res = await globalQueue.add(() => fetchFundData(sym));
+      if (!res) {
+        errors.push(`${sym}: API返回空数据`);
+      } else {
+        // 写入缓存
+        cacheService.setValuation(sym, res);
+        try { cacheService.appendIntradayPoint(sym, res); } catch (e) { /* ignore */ }
+      }
+    } catch (e) {
+      errors.push(`${sym}: ${(e as Error).message || '未知错误'}`);
+    }
+  }
+
+  // 全部失败
+  if (errors.length === symbols.length) {
+    return { success: false, message: `获取基金估值数据全部失败: ${errors[0]}` };
+  }
+
+  // 部分失败
+  if (errors.length > 0) {
+    return { success: false, data: undefined, message: `部分基金估值刷新失败: ${errors[0]}` };
+  }
+
+  return { success: true, data: undefined };
 }
 
 // helper to format timestamp as yyyyMMddHHmmss
@@ -808,6 +770,41 @@ export async function forceFetchFundHistory(symbol: string): Promise<HistoricalP
   } catch (e) { return []; }
 }
 
+/**
+ * 批量强制获取基金历史数据
+ * - 成功获取的数据会自动写入缓存
+ * - 支持部分失败：成功的数据写入缓存，失败的会在 message 中报告
+ * - 返回 JobResult<void>，不返回具体数据（数据已在缓存中）
+ */
+export async function forceFetchFundHistories(symbols: string[]): Promise<JobResult<void>> {
+  if (symbols.length === 0) return { success: true, data: undefined };
+
+  const errors: string[] = [];
+
+  for (const sym of symbols) {
+    try {
+      const res = await historyLoadQueue.add(() => forceFetchFundHistory(sym));
+      if (!res || res.length === 0) {
+        errors.push(`${sym}: API返回空数据`);
+      }
+    } catch (e) {
+      errors.push(`${sym}: ${(e as Error).message || '未知错误'}`);
+    }
+  }
+
+  // 全部失败
+  if (errors.length === symbols.length) {
+    return { success: false, message: `获取基金历史数据全部失败: ${errors[0]}` };
+  }
+
+  // 部分失败
+  if (errors.length > 0) {
+    return { success: false, data: undefined, message: `部分基金历史刷新失败: ${errors[0]}` };
+  }
+
+  return { success: true, data: undefined };
+}
+
 // Index history: fetch Kline data for indices via push2his and convert to HistoricalPoint[]
 export async function fetchIndexHistory(symbol: string, ignoreCache: boolean = false): Promise<HistoricalPoint[]> {
    // 1. 先检查缓存
@@ -825,8 +822,8 @@ export async function fetchIndexHistory(symbol: string, ignoreCache: boolean = f
    // 恢复使用 JSONP
    const url = `https://push2his.eastmoney.com/api/qt/stock/kline/get?secid=${secid}&fields1=f1,f2,f3,f4,f5,f6&fields2=f51,f53,f56,f57,f59&klt=101&fqt=1&end=20500101&lmt=365`;
    try {
-   // 使用 JSONP
-     const response: any = await indexQueue.add(() => jsonp(url, 'cb'));
+   // 使用 JSONP（队列控制在外层 fetchIndexHistories/fetchMarketIndices 中进行）
+     const response: any = await jsonp(url, 'cb');
      if (response?.data?.klines) {
       // Map raw klines into partial points and normalize (ensure timestamps in ms, sort, dedupe)
       // kline format: 日期,收盘价,成交量,成交额,涨跌幅
@@ -850,6 +847,41 @@ export async function fetchIndexHistory(symbol: string, ignoreCache: boolean = f
    } catch (e) {}
    return [];
  }
+
+/**
+ * 批量获取指数历史数据
+ * - 成功获取的数据会自动写入缓存
+ * - 支持部分失败：成功的数据写入缓存，失败的会在 message 中报告
+ * - 返回 JobResult<void>，不返回具体数据（数据已在缓存中）
+ */
+export async function fetchIndexHistories(symbols: string[], ignoreCache: boolean = false): Promise<JobResult<void>> {
+  if (symbols.length === 0) return { success: true, data: undefined };
+
+  const errors: string[] = [];
+
+  for (const sym of symbols) {
+    try {
+      const res = await indexQueue.add(() => fetchIndexHistory(sym, ignoreCache));
+      if (!res || res.length === 0) {
+        errors.push(`${sym}: API返回空数据`);
+      }
+    } catch (e) {
+      errors.push(`${sym}: ${(e as Error).message || '未知错误'}`);
+    }
+  }
+
+  // 全部失败
+  if (errors.length === symbols.length) {
+    return { success: false, message: `获取指数历史数据全部失败: ${errors[0]}` };
+  }
+
+  // 部分失败
+  if (errors.length > 0) {
+    return { success: false, data: undefined, message: `部分指数历史刷新失败: ${errors[0]}` };
+  }
+
+  return { success: true, data: undefined };
+}
 
 // 新增：根据历史净值计算每日净值变化（每份的日盈亏）并返回可供前端展示的数据
 export interface DailyProfitPoint {
