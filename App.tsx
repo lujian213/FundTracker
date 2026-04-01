@@ -638,71 +638,75 @@ const AppContent: React.FC = () => {
   const refreshMarketIndicesAsync = useCallback(async (ignoreCache: boolean = false): Promise<JobResult<MarketIndex[]>> => {
     const errors: string[] = [];
 
-    const fetchDomestic = async () => {
-      if (indicesConfig.length === 0) {
-        setMarketIndices([]);
-        return;
-      }
-      const result = await fetchMarketIndices(indicesConfig, ignoreCache);
-      // 即使有部分失败，也使用返回的数据（成功的部分）
-      const data = result.data || [];
-      if (!result.success && result.message) {
-        errors.push(result.message);
-      }
-      setMarketIndices(prev => mergeIndicesForDisplay(indicesConfig, data, prev));
-      // mark fetched symbols as ok, any configured but missing as error
-      const fetchedSet = new Set(data.map(d => normalizeIndexSymbol(d.symbol)));
-      setIndexStatuses(prev => {
-        const next = { ...prev };
-        indicesConfig.forEach(sym => {
-          const n = normalizeIndexSymbol(sym);
-          next[n] = fetchedSet.has(n) ? 'ok' : 'error';
-        });
-        return next;
-      });
-      // Append intraday points for each fetched index
-      data.forEach(d => {
-        try {
-          cacheService.appendIntradayPoint(d.symbol, { value: d.current, lastUpdated: d.lastUpdated, equityReturn: d.changePercent, tradeDate: d.tradeDate });
-        } catch (e) { /* ignore per-index errors */ }
-      });
-    };
+    // 合并所有指数配置，统一获取
+    const allSymbols = [...indicesConfig, ...globalIndicesConfig];
+    if (allSymbols.length === 0) {
+      setMarketIndices([]);
+      setGlobalIndices([]);
+      return { success: true, data: [] };
+    }
 
-    const fetchGlobal = async () => {
-      if (globalIndicesConfig.length === 0) {
-        setGlobalIndices([]);
-        return;
-      }
-      const result = await fetchMarketIndices(globalIndicesConfig, ignoreCache);
-      // 即使有部分失败，也使用返回的数据（成功的部分）
-      const data = result.data || [];
-      if (!result.success && result.message) {
-        errors.push(result.message);
-      }
-      setGlobalIndices(prev => mergeIndicesForDisplay(globalIndicesConfig, data, prev));
-      const fetchedSet = new Set(data.map(d => normalizeIndexSymbol(d.symbol)));
-      setIndexStatuses(prev => {
-        const next = { ...prev };
-        globalIndicesConfig.forEach(sym => {
-          const n = normalizeIndexSymbol(sym);
-          next[n] = fetchedSet.has(n) ? 'ok' : 'error';
-        });
-        return next;
-      });
-      // Append intraday points for each fetched global index
-      data.forEach(d => {
-        try {
-          cacheService.appendIntradayPoint(d.symbol, { value: d.current, lastUpdated: d.lastUpdated, equityReturn: d.changePercent, tradeDate: d.tradeDate });
-        } catch (e) { /* ignore per-index errors */ }
-      });
-    };
+    // 统一获取所有指数数据
+    const result = await fetchMarketIndices(allSymbols, ignoreCache);
+    const data = result.data || [];
 
-    await Promise.allSettled([fetchDomestic(), fetchGlobal()]);
+    if (!result.success && result.message) {
+      errors.push(result.message);
+    }
+
+    // 根据配置的 symbol 分离国内和全球指数
+    const domesticData: MarketIndex[] = [];
+    const globalData: MarketIndex[] = [];
+
+    const fetchedMap = new Map<string, MarketIndex>();
+    data.forEach(d => fetchedMap.set(normalizeIndexSymbol(d.symbol), d));
+
+    // 处理国内指数
+    const domesticFetched: string[] = [];
+    indicesConfig.forEach(sym => {
+      const n = normalizeIndexSymbol(sym);
+      const item = fetchedMap.get(n);
+      if (item) {
+        domesticData.push(item);
+        domesticFetched.push(n);
+        try {
+          cacheService.appendIntradayPoint(item.symbol, { value: item.current, lastUpdated: item.lastUpdated, equityReturn: item.changePercent, tradeDate: item.tradeDate });
+        } catch (e) { /* ignore */ }
+      }
+    });
+
+    // 处理全球指数
+    const globalFetched: string[] = [];
+    globalIndicesConfig.forEach(sym => {
+      const n = normalizeIndexSymbol(sym);
+      const item = fetchedMap.get(n);
+      if (item) {
+        globalData.push(item);
+        globalFetched.push(n);
+        try {
+          cacheService.appendIntradayPoint(item.symbol, { value: item.current, lastUpdated: item.lastUpdated, equityReturn: item.changePercent, tradeDate: item.tradeDate });
+        } catch (e) { /* ignore */ }
+      }
+    });
+
+    // 更新状态
+    setMarketIndices(prev => mergeIndicesForDisplay(indicesConfig, domesticData, prev));
+    setGlobalIndices(prev => mergeIndicesForDisplay(globalIndicesConfig, globalData, prev));
+    setIndexStatuses(prev => {
+      const next = { ...prev };
+      indicesConfig.forEach(sym => {
+        next[normalizeIndexSymbol(sym)] = domesticFetched.includes(normalizeIndexSymbol(sym)) ? 'ok' : 'error';
+      });
+      globalIndicesConfig.forEach(sym => {
+        next[normalizeIndexSymbol(sym)] = globalFetched.includes(normalizeIndexSymbol(sym)) ? 'ok' : 'error';
+      });
+      return next;
+    });
 
     if (errors.length > 0) {
       return { success: false, message: errors[0] };
     }
-    return { success: true };
+    return { success: true, data };
   }, [indicesConfig, globalIndicesConfig]);
 
   // 刷新指数历史数据
@@ -752,7 +756,8 @@ const AppContent: React.FC = () => {
     }
   }, [portfolio.length]);
 
-  useEffect(() => { refreshMarketIndicesAsync(); }, [indicesConfig, globalIndicesConfig]);
+  // 指数刷新由定时任务统一管理，不再在这里单独触发
+  // useEffect(() => { refreshMarketIndicesAsync(); }, [indicesConfig, globalIndicesConfig]);
 
   // Timer Job Scheduler: handles fund valuation, history, and market index refresh
   const { addError } = useTimerJobErrors();

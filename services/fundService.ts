@@ -108,12 +108,13 @@ const fundRegistry: Record<string, (data: any) => void> = {};
 class RequestQueue {
   private queue: (() => Promise<any>)[] = [];
   private processing = false;
+  private scheduled = false;
 
   async add<T>(task: () => Promise<T>): Promise<T> {
     return new Promise((resolve, reject) => {
       this.queue.push(async () => {
         try {
-          await new Promise(r => setTimeout(r, 350 + Math.random() * 400));
+          await new Promise(r => setTimeout(r, 2000 + Math.random() * 1000));
           const result = await task();
           resolve(result);
         } catch (e) {
@@ -125,7 +126,7 @@ class RequestQueue {
   }
 
   private async process() {
-    if (this.processing || this.queue.length === 0) return;
+    if (this.processing) return;
     this.processing = true;
     while (this.queue.length > 0) {
       const task = this.queue.shift();
@@ -134,10 +135,58 @@ class RequestQueue {
       }
     }
     this.processing = false;
+    // 处理完成后再次检查是否有新任务
+    if (this.queue.length > 0) {
+      this.process();
+    }
   }
 }
 
 const globalQueue = new RequestQueue();
+
+// 慢速队列：专门用于 push2.eastmoney.com，间隔更长以避免限流
+class SlowRequestQueue {
+  private queue: (() => Promise<any>)[] = [];
+  private processing = false;
+  private requestCount = 0;
+
+  async add<T>(task: () => Promise<T>): Promise<T> {
+    return new Promise((resolve, reject) => {
+      this.queue.push(async () => {
+        this.requestCount++;
+        const isFirst = this.requestCount === 1;
+        try {
+          await new Promise(r => setTimeout(r, 1000 + Math.random() * 1000));
+          console.log(`[SlowRequestQueue] 请求 #${this.requestCount}, 是第一个: ${isFirst}`);
+          const result = await task();
+          resolve(result);
+        } catch (e) {
+          console.log(`[SlowRequestQueue] 请求 #${this.requestCount} 失败, 是第一个: ${isFirst}, 错误:`, e);
+          reject(e);
+        }
+      });
+      this.process();
+    });
+  }
+
+  private async process() {
+    if (this.processing) return;
+    this.processing = true;
+    while (this.queue.length > 0) {
+      const task = this.queue.shift();
+      if (task) {
+        try { await task(); } catch (e) {}
+      }
+    }
+    this.processing = false;
+    if (this.queue.length > 0) {
+      this.process();
+    }
+  }
+}
+
+const indexQueue = new SlowRequestQueue(); // 指数专用队列（慢速）
+const newsQueue = new SlowRequestQueue();   // 新闻专用队列（慢速）
 
 /**
  * 串行队列：用于历史净值加载，避免并发访问全局变量 Data_netWorthTrend 时的竞态条件。
@@ -298,49 +347,86 @@ function loadHistoryFromPingzhongData(code: string, url: string): Promise<Histor
   });
 }
 
-function jsonp<T>(url: string, callbackParam: string = 'cb', fundCode?: string): Promise<T> {
-  return new Promise((resolve, reject) => {
-    const isFundGz = callbackParam === 'jsonpgz';
-    const callbackName = isFundGz ? 'jsonpgz' : `__jp_cb_${Math.random().toString(36).slice(2, 10)}`;
+function jsonp<T>(url: string, callbackParam: string = 'cb', fundCode?: string, retryCount: number = 3): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    let attempts = 0;
 
-    const script = document.createElement('script');
-    const separator = url.includes('?') ? '&' : '?';
-    const finalUrl = isFundGz ? url : `${url}${separator}${callbackParam}=${callbackName}`;
+    const doRequest = () => {
+      attempts++;
+      const isFundGz = callbackParam === 'jsonpgz';
+      const callbackName = isFundGz ? 'jsonpgz' : `__jp_cb_${Math.random().toString(36).slice(2, 10)}`;
 
-    const timeoutLimit = 8000;
-    const timeoutId = setTimeout(() => {
-      cleanup();
-      if (fundCode) delete fundRegistry[fundCode];
-      reject(new Error(`TIMEOUT`));
-    }, timeoutLimit);
+      const script = document.createElement('script');
+      const separator = url.includes('?') ? '&' : '?';
+      const finalUrl = isFundGz ? url : `${url}${separator}${callbackParam}=${callbackName}`;
 
-    const cleanup = () => {
-      clearTimeout(timeoutId);
-      if (script.parentNode) script.parentNode.removeChild(script);
-      if (!isFundGz) delete (window as any)[callbackName];
+      const timeoutLimit = 8000;
+      const timeoutId = setTimeout(() => {
+        cleanup();
+        if (fundCode) delete fundRegistry[fundCode];
+        if (attempts < retryCount) {
+          // 重试前等待
+          setTimeout(doRequest, 1000 * attempts);
+        } else {
+          reject(new Error(`TIMEOUT`));
+        }
+      }, timeoutLimit);
+
+      const cleanup = () => {
+        clearTimeout(timeoutId);
+        if (script.parentNode) script.parentNode.removeChild(script);
+        if (!isFundGz) delete (window as any)[callbackName];
+      };
+
+      if (isFundGz && fundCode) {
+        fundRegistry[fundCode] = (data: T) => {
+          cleanup();
+          resolve(data);
+        };
+      } else {
+        (window as any)[callbackName] = (data: T) => {
+          cleanup();
+          resolve(data);
+        };
+      }
+
+      script.src = finalUrl;
+      // 不设置 referrerPolicy，让浏览器自动添加 Referer
+      script.onerror = () => {
+        cleanup();
+        if (fundCode) delete fundRegistry[fundCode];
+        if (attempts < retryCount) {
+          // 重试前等待
+          setTimeout(doRequest, 1000 * attempts);
+        } else {
+          reject(new Error(`SCRIPT_ERROR`));
+        }
+      };
+      document.head.appendChild(script);
     };
 
-    if (isFundGz && fundCode) {
-      fundRegistry[fundCode] = (data: T) => {
-        cleanup();
-        resolve(data);
-      };
-    } else {
-      (window as any)[callbackName] = (data: T) => {
-        cleanup();
-        resolve(data);
-      };
-    }
-
-    script.src = finalUrl;
-    script.referrerPolicy = "no-referrer";
-    script.onerror = () => {
-      cleanup();
-      if (fundCode) delete fundRegistry[fundCode];
-      reject(new Error(`SCRIPT_ERROR`));
-    };
-    document.head.appendChild(script);
+    doRequest();
   });
+}
+
+// fetch 方式 - 用于替代 JSONP 解决跨域问题
+async function fetchJson<T>(url: string, timeout: number = 10000): Promise<T> {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), timeout);
+
+  try {
+    const response = await fetch(url, {
+      signal: controller.signal,
+      mode: 'cors',
+      headers: {
+        'Origin': 'https://quote.eastmoney.com',
+      },
+    });
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    return await response.json();
+  } finally {
+    clearTimeout(timeoutId);
+  }
 }
 
 export async function fetchFundData(symbol: string): Promise<ValuationData | null> {
@@ -592,12 +678,14 @@ export async function fetchSingleIndex(symbol: string, ignoreCache: boolean = fa
   const fields = 'f1,f2,f3,f4,f12,f13,f14,f43,f57,f58,f60,f80,f169,f170,f124';
   const secid = normalizeIndexSymbol(symbol);
 
-  const realtimeUrl = `https://push2.eastmoney.com/api/qt/stock/get?ut=${ut}&fltt=2&invt=2&secid=${secid}&fields=${fields}&_=${Date.now()}`;
+  // push2delay.eastmoney.com 可直接访问，使用 fetch（不是 JSONP）
+  const realtimeUrl = `https://push2delay.eastmoney.com/api/qt/stock/get?ut=${ut}&fltt=2&invt=2&secid=${secid}&fields=${fields}&_=${Date.now()}`;
 
-  // 1. 获取实时数据（使用队列控制，避免并发请求触发限流）
+  // 1. 获取实时数据（队列控制在 fetchMarketIndices 中处理）
   let currentData: MarketIndex | null = null;
   try {
-    const response: any = await globalQueue.add(() => jsonp(realtimeUrl, 'cb'));
+    // 使用 fetchJson 直接获取（push2delay 返回普通 JSON）
+    const response: any = await fetchJson(realtimeUrl);
     const item = response?.data;
     if (item) {
       const timestamp = item.f124 ? new Date(item.f124 * 1000) : new Date();
@@ -662,7 +750,7 @@ export async function fetchMarketIndices(symbols: string[], ignoreCache: boolean
 
   for (const sym of symbols) {
     try {
-      const res = await globalQueue.add(() => fetchSingleIndex(sym, ignoreCache));
+      const res = await indexQueue.add(() => fetchSingleIndex(sym, ignoreCache));
       if (res) {
         results.push(res);
       } else {
@@ -734,9 +822,11 @@ export async function fetchIndexHistory(symbol: string, ignoreCache: boolean = f
    if (secid === 'HSI') secid = '100.HSI';
    // fields2: date(f51), close price(f53), change percent(f59), volume(f56), amount(f57)
    // request last 365 points instead of 90 (expanded window)
+   // 恢复使用 JSONP
    const url = `https://push2his.eastmoney.com/api/qt/stock/kline/get?secid=${secid}&fields1=f1,f2,f3,f4,f5,f6&fields2=f51,f53,f56,f57,f59&klt=101&fqt=1&end=20500101&lmt=365`;
    try {
-     const response: any = await jsonp(url, 'cb');
+   // 使用 JSONP
+     const response: any = await indexQueue.add(() => jsonp(url, 'cb'));
      if (response?.data?.klines) {
       // Map raw klines into partial points and normalize (ensure timestamps in ms, sort, dedupe)
       // kline format: 日期,收盘价,成交量,成交额,涨跌幅
@@ -808,11 +898,12 @@ export type NewsItem = { id: string, title: string, time: string, url: string, a
 export async function fetchMarketNews(): Promise<JobResult<NewsItem[]>> {
   // 获取领涨板块或热门个股，作为”市场动态”展示
   const ut = 'fa1a66105171779fbdd067425f38a7c2';
-  // 综合排行榜接口，获取当前涨幅前列的板块
-  const url = `https://push2.eastmoney.com/api/qt/clist/get?pn=1&pz=10&po=1&np=1&ut=${ut}&fltt=2&invt=2&fid=f3&fs=m:90+t:2&type=90&fields=f12,f14,f2,f3,f4&_=${Date.now()}`;
+  // push2delay.eastmoney.com 可直接访问，使用 fetch
+  const url = `https://push2delay.eastmoney.com/api/qt/clist/get?pn=1&pz=10&po=1&np=1&ut=${ut}&fltt=2&invt=2&fid=f3&fs=m:90+t:2&type=90&fields=f12,f14,f2,f3,f4&_=${Date.now()}`;
 
   try {
-    const response: any = await jsonp(url, 'cb');
+    // 使用 fetchJson 直接获取（push2delay 返回普通 JSON）
+    const response: any = await newsQueue.add(() => fetchJson(url));
 
     if (response?.data?.diff) {
       const diff = response.data.diff;
