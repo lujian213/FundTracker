@@ -594,10 +594,10 @@ export async function fetchSingleIndex(symbol: string, ignoreCache: boolean = fa
 
   const realtimeUrl = `https://push2.eastmoney.com/api/qt/stock/get?ut=${ut}&fltt=2&invt=2&secid=${secid}&fields=${fields}&_=${Date.now()}`;
 
-  // 1. 获取实时数据
+  // 1. 获取实时数据（使用队列控制，避免并发请求触发限流）
   let currentData: MarketIndex | null = null;
   try {
-    const response: any = await jsonp(realtimeUrl, 'cb');
+    const response: any = await globalQueue.add(() => jsonp(realtimeUrl, 'cb'));
     const item = response?.data;
     if (item) {
       const timestamp = item.f124 ? new Date(item.f124 * 1000) : new Date();
