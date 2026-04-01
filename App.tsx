@@ -176,22 +176,38 @@ function parseCalendarAIResponse(response: string): CalendarEventInput[] {
 }
 
 /**
- * 公共函数：从网站获取内容（通过jina.ai网页抓取）
+ * 网页抓取代理服务列表
+ * 按顺序尝试，直到成功或全部失败
+ */
+const WEB_FETCH_PROXIES = [
+  (url: string) => `https://r.jina.ai/${url}`,
+  (url: string) => `https://txtify.it/${url}`,
+];
+
+/**
+ * 公共函数：从网站获取内容（通过代理抓取，支持备份代理）
  */
 async function fetchWebContent(url: string, logPrefix: string): Promise<string> {
-  const JINA_URL = `https://r.jina.ai/${url}`;
-  try {
-    const response = await fetch(JINA_URL);
-    if (!response.ok) {
-      throw new Error(`HTTP ${response.status}`);
+  let lastError: Error | null = null;
+
+  for (let i = 0; i < WEB_FETCH_PROXIES.length; i++) {
+    const proxyUrl = WEB_FETCH_PROXIES[i](url);
+    try {
+      const response = await fetch(proxyUrl);
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`);
+      }
+      const content = await response.text();
+      console.log(`[Calendar] ${logPrefix}成功获取网站内容（代理${i + 1}），长度:`, content.length);
+      return content;
+    } catch (e) {
+      lastError = e as Error;
+      console.warn(`[Calendar] ${logPrefix}代理${i + 1}失败:`, e);
     }
-    const content = await response.text();
-    console.log(`[Calendar] ${logPrefix}成功获取网站内容，长度:`, content.length);
-    return content;
-  } catch (e) {
-    console.error(`[Calendar] ${logPrefix}获取网站内容失败:`, e);
-    throw new Error(`无法获取网站内容: ${url}，任务失败`);
   }
+
+  console.error(`[Calendar] ${logPrefix}所有代理均失败`);
+  throw new Error(`无法获取网站内容: ${url}，任务失败`);
 }
 
 /**

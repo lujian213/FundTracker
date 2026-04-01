@@ -67,10 +67,6 @@ export function prepareHistoryForProfitCalculation(params: {
   return Array.from(byDate.values()).sort((a, b) => a.date - b.date);
 }
 
-// ============================================================================
-// 纯业务逻辑函数（可独立测试，无需 mock 队列或网络请求）
-// ============================================================================
-
 /**
  * 将 symbol 补零到6位
  * @example padSymbol('1234') -> '001234'
@@ -155,10 +151,6 @@ export function buildValuationFromFallback(code: string, trend: any[], name?: st
     sourceUrl: `https://fund.eastmoney.com/${code}.html`
   };
 }
-
-// ============================================================================
-// 依赖注入 seam（用于测试 mock）
-// ============================================================================
 
 /**
  * Dependency seam used by computeOverallProfit.
