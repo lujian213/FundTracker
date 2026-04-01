@@ -679,6 +679,10 @@ const AISidePanelBase: React.FC<AISidePanelBaseProps> = ({
       // 首先更新全局状态
       aiAssistantStateManager.setState(stateKey, newState);
 
+      // 先更新显示的上下文长度，让用户看到真实数值
+      const currentLength = compressionService.getContextLength(newState);
+      setContextLength(currentLength);
+
       // 检查是否需要压缩 - 注意：只有在AI回应之后才检查压缩，而不是用户提问后
       if (compressionService.needsCompression(newState)) {
         // 设置压缩状态和ref，防止其他副作用更新状态
@@ -898,6 +902,10 @@ const AISidePanelBase: React.FC<AISidePanelBaseProps> = ({
       };
 
       aiAssistantStateManager.setState(stateKey, newState);
+
+      // 先更新显示的上下文长度，让用户看到真实数值
+      const currentLength = compressionService.getContextLength(newState);
+      setContextLength(currentLength);
 
       // 检查压缩
       if (compressionService.needsCompression(newState)) {
