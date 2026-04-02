@@ -33,8 +33,18 @@ const BackupPanel: React.FC<BackupPanelProps> = ({
   const [error, setError] = useState('');
   const [countdown, setCountdown] = useState(() => tmpEnabled ? secondsUntilNext(tmpTime) : 0);
   const [isExporting, setIsExporting] = useState(false);
+  const [saveMessage, setSaveMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const isMountedRef = useRef(true);
+
+  // 组件挂载状态追踪
+  useEffect(() => {
+    isMountedRef.current = true;
+    return () => {
+      isMountedRef.current = false;
+    };
+  }, []);
 
   // 倒计时逻辑
   useEffect(() => {
@@ -54,6 +64,18 @@ const BackupPanel: React.FC<BackupPanelProps> = ({
     };
   }, [tmpTime, tmpEnabled]);
 
+  // 保存消息自动消失
+  useEffect(() => {
+    if (saveMessage) {
+      const timer = setTimeout(() => {
+        if (isMountedRef.current) {
+          setSaveMessage(null);
+        }
+      }, 3000);
+      return () => clearTimeout(timer);
+    }
+  }, [saveMessage]);
+
   const handleSave = () => {
     if (tmpEnabled && !/^\d{2}:\d{2}$/.test(tmpTime)) {
       setError('请输入有效的时间（HH:mm）');
@@ -65,7 +87,7 @@ const BackupPanel: React.FC<BackupPanelProps> = ({
       onBackupSettingsChange(tmpTime, tmpEnabled);
     }
     setError('');
-    alert('备份设置已保存');
+    setSaveMessage({ type: 'success', text: '备份设置已保存' });
   };
 
   const handleExport = async () => {
@@ -75,7 +97,7 @@ const BackupPanel: React.FC<BackupPanelProps> = ({
       downloadBackupFile(data, false);
     } catch (err) {
       console.error('导出备份失败:', err);
-      alert('导出备份失败');
+      setSaveMessage({ type: 'error', text: '导出备份失败' });
     } finally {
       setIsExporting(false);
     }
@@ -111,7 +133,7 @@ const BackupPanel: React.FC<BackupPanelProps> = ({
         window.dispatchEvent(new CustomEvent('backup-import', { detail: normalized }));
         onClose();
       } catch {
-        alert('导入文件格式错误');
+        setSaveMessage({ type: 'error', text: '导入文件格式错误' });
       }
     };
     reader.readAsText(file);
@@ -164,21 +186,20 @@ const BackupPanel: React.FC<BackupPanelProps> = ({
             )}
           </div>
 
-          {/* 倒计时显示 */}
-          <div className="bg-green-50 rounded-2xl px-4 py-3 flex items-center space-x-3">
+          {/* 倒计时显示 - 固定高度布局，避免开关切换时窗口抖动 */}
+          <div className="bg-green-50 rounded-2xl px-4 py-3 flex items-center space-x-3 min-h-[68px]">
             <i className="fas fa-clock text-green-500 text-sm" />
-            <div>
+            <div className="flex-1">
               <p className="text-xs text-green-700 font-medium">自动备份状态</p>
-              {tmpEnabled ? (
-                <>
-                  <p className="text-xs text-green-700">距下次自动备份还有</p>
+              <div className="h-7 mt-1">
+                {tmpEnabled ? (
                   <p className="text-lg font-mono font-bold text-green-700 leading-tight">
-                    {formatCountdown(countdown)}
+                    距下次备份：{formatCountdown(countdown)}
                   </p>
-                </>
-              ) : (
-                <p className="text-lg font-bold text-gray-500 leading-tight">已关闭</p>
-              )}
+                ) : (
+                  <p className="text-lg font-bold text-gray-500 leading-tight">已关闭</p>
+                )}
+              </div>
             </div>
           </div>
 
@@ -235,6 +256,20 @@ const BackupPanel: React.FC<BackupPanelProps> = ({
             className="hidden"
           />
         </div>
+      </div>
+
+      {/* 保存消息提示 - 固定高度预留，避免显示/消失时窗口抖动 */}
+      <div className="h-10">
+        {saveMessage && (
+          <div className={`rounded-xl p-3 flex items-center space-x-2 ${
+            saveMessage.type === 'success'
+              ? 'bg-green-50 text-green-700'
+              : 'bg-red-50 text-red-700'
+          }`}>
+            <i className={`fas ${saveMessage.type === 'success' ? 'fa-check-circle' : 'fa-exclamation-circle'} text-sm`}></i>
+            <span className="text-sm font-medium">{saveMessage.text}</span>
+          </div>
+        )}
       </div>
     </div>
   );
