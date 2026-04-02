@@ -195,13 +195,14 @@ const OverallProfitModal: React.FC<Props> = ({ symbols, onClose, onSelectFund })
   }, [summary]);
 
   // 图表完整期间的累计盈利（从 chartFromDate 到 chartEndDate）
-  // 与日期选择器无关，固定显示图表起始到终止的总累计
+  // 与日期选择器无关，固定显示图表起始到终止的总累计变化
   const chartPeriodTotal = useMemo(() => {
-    if (!summary || !summary.timeline || summary.timeline.length === 0) return 0;
-    // 图表终止日期的累计盈利即为期间累计
-    const lastPoint = summary.timeline[summary.timeline.length - 1];
-    return lastPoint.cumulativeProfit || 0;
-  }, [summary]);
+    if (!chartTimeline || chartTimeline.length === 0) return 0;
+    const lastPoint = chartTimeline[chartTimeline.length - 1];
+    const firstPoint = chartTimeline[0];
+    // 期间累计 = 终点累计盈利 - 起点累计盈利
+    return (lastPoint.cumulativeProfit || 0) - (firstPoint.cumulativeProfit || 0);
+  }, [chartTimeline]);
 
   const applyPreset = useCallback((preset: OverallProfitDatePresetKey) => {
     const range = getOverallProfitPresetRange(preset, { maxToDate: chartEndDate });
@@ -248,8 +249,6 @@ const OverallProfitModal: React.FC<Props> = ({ symbols, onClose, onSelectFund })
       const fundTimeline = timelines[p.symbol] || [];
       // find entries for fromDate and toDate; if not exact, find last <= date
       const findValue = (date: string) => {
-        // if fund has configured startDate and it's on-or-after date, return 0 (per rule equality yields zero)
-        if (p.startDate && p.startDate >= date) return 0;
         // find exact match
         const exact = fundTimeline.find(r => r.date === date);
         // find last before
@@ -268,6 +267,8 @@ const OverallProfitModal: React.FC<Props> = ({ symbols, onClose, onSelectFund })
         }
         if (exact) return exact.cumulativeProfit;
         if (lastBefore) return lastBefore.cumulativeProfit;
+        // 如果没有 lastBefore 但有 nextAfter，说明 date 早于建仓日期，返回建仓日期的累计盈利
+        if (nextAfter) return nextAfter.cumulativeProfit;
         return 0;
       };
       valFrom = findValue(fromDate);
@@ -466,6 +467,16 @@ const OverallProfitModal: React.FC<Props> = ({ symbols, onClose, onSelectFund })
                   <label>日期2</label>
                   <input type="date" value={toDate ?? ''} onChange={e => setToDate(e.target.value)} className="px-2 py-1 border rounded" />
                 </div>
+                <button
+                  type="button"
+                  className="text-xs text-blue-600 hover:text-blue-800 transition-colors"
+                  onClick={() => {
+                    setFromDate(chartFromDate);
+                    setToDate(chartEndDate);
+                  }}
+                >
+                  重置
+                </button>
                 <div className="flex flex-wrap items-center gap-2 text-xs">
                   {OVERALL_PROFIT_DATE_PRESETS.map((preset) => (
                     <button

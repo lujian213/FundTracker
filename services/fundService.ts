@@ -1118,6 +1118,8 @@ export async function computeOverallProfit(opts: { symbols?: string[]; fromDate?
 
   const includedFundTimelines: Record<string, ProfitPoint[]> = {};
   const perFundRows: OverallFundRow[] = [];
+  const fundStartDates: Record<string, string> = {}; // 收集每个基金的建仓日期
+  const fundStartDateCumProfits: Record<string, number> = {}; // 收集每个基金建仓日期对应的累计盈利值
 
   for (const sym of syms) {
     try {
@@ -1221,25 +1223,29 @@ export async function computeOverallProfit(opts: { symbols?: string[]; fromDate?
         netWorthDate: fd?.netWorthDate,
       });
 
-      const timeline = computeProfitTimeline({ history: preparedHistory, trades, initialPosition: initialPosition || 0, initialPrice: initialPrice ?? null, fromDate: fromDate ?? null, toDate: toDate ?? null });
+      const timeline = computeProfitTimeline({ history: preparedHistory, trades, initialPosition: initialPosition || 0, initialPrice: initialPrice ?? null, fromDate: fundStartDate, toDate: toDate ?? null });
      if (!timeline || timeline.length === 0) continue;
 
       includedFundTimelines[sym] = timeline;
+      // 收集建仓日期及其对应的累计盈利值（timeline 从 fundStartDate 开始，所以第一个点就是建仓日期）
+      fundStartDates[sym] = fundStartDate;
+      fundStartDateCumProfits[sym] = timeline[0].cumulativeProfit || 0;
 
-      // Determine effective fromDate used by this timeline (computeProfitTimeline may have cropped it)
+      // 累计盈利直接使用 timeline 的计算结果
+      // 如果 fromDate < fundStartDate，使用 fundStartDate 作为起始点
       const effectiveFrom = fromDate ?? timeline[0].date;
-
-      // 累计盈利直接使用 computeProfitTimeline 的计算结果，与单个基金的累计盈利一致
-      let profitFrom = timeline[0].cumulativeProfit || 0;
+      let profitFrom: number;
+      if (fromDate && fromDate < fundStartDate) {
+        // fromDate 早于建仓日期，使用建仓日期的累计盈利
+        profitFrom = timeline[0].cumulativeProfit || 0;
+      } else {
+        // fromDate >= 建仓日期或未指定，使用 timeline 第一个点的累计盈利
+        const startPoint = timeline.find(p => p.date === effectiveFrom);
+        profitFrom = startPoint ? (startPoint.cumulativeProfit || 0) : (timeline[0].cumulativeProfit || 0);
+      }
       const profitTo = timeline[timeline.length - 1].cumulativeProfit || 0;
 
-      // If the fund has a configured startDate (from storage) and it is later than effectiveFrom,
-      // then its cumulative profit at effectiveFrom (date1) should be considered 0 per requirement.
-      // Per latest rule: if startDate >= effectiveFrom (including equal), the cumulative at effectiveFrom is 0.
-      if (startDateFromStorage && effectiveFrom && startDateFromStorage >= effectiveFrom) {
-        profitFrom = 0;
-      }
-
+      
       // record whether startDate came from storage and the configured initialPosition
       const hasStoredStartDate = !!startDateFromStorage;
       const displayName = portfolioArr.find(p => p && p.symbol === sym)?.name || undefined;
@@ -1281,16 +1287,20 @@ export async function computeOverallProfit(opts: { symbols?: string[]; fromDate?
     const arr: { date: string; cumulativeProfit: number }[] = [];
     let lastCum = 0;
     let foundFirstData = false;
+    const fundStartDate = fundStartDates[sym];
+    const startDateCumProfit = fundStartDateCumProfits[sym] || 0;
+
     for (const d of dates) {
       if (cumMap[d] !== undefined) {
-        // 该日期有数据，使用原始 cumulativeProfit
         lastCum = cumMap[d];
         foundFirstData = true;
       } else if (!foundFirstData) {
-        // gap date before first data: use 0
-        lastCum = 0;
+        if (fundStartDate && d < fundStartDate) {
+          lastCum = startDateCumProfit;
+        } else {
+          lastCum = 0;
+        }
       }
-      // gap date after first data: 使用最近可用的 cumulativeProfit（forward-fill）
       arr.push({ date: d, cumulativeProfit: lastCum });
     }
     perFundTimelines[sym] = arr;

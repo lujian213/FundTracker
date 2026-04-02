@@ -69,17 +69,19 @@ describe('computeOverallProfit', () => {
     // Fund A: startDate='2026-02-11', initialPrice=null in storage.
     // computeOverallProfit now resolves initialPrice from history: startDate has no exact match,
     // falls back to first available history point value = 5.0.
+    // Timeline 从 fundStartDate 开始，但历史最早是 2026-02-12，所以实际从 2026-02-12 开始
     const aTimeline = computeProfitTimeline({ history: [
       { date: mkTs('2026-02-12'), value: 5.0, equityReturn: 0 },
       { date: mkTs('2026-02-13'), value: 6.0, equityReturn: 0 }
-    ], trades: [], initialPosition: 1, initialPrice: 5.0, fromDate: null, toDate: null });
+    ], trades: [], initialPosition: 1, initialPrice: 5.0, fromDate: '2026-02-11', toDate: null });
 
     // Fund B: startDate='2026-02-13', initialPrice=null in storage.
     // Resolved: exact match on 2026-02-13 = 1.5.
+    // Timeline 从 fundStartDate 2026-02-13 开始
     const bTimeline = computeProfitTimeline({ history: [
       { date: mkTs('2026-02-12'), value: 1.0, equityReturn: 0 },
       { date: mkTs('2026-02-13'), value: 1.5, equityReturn: 0 }
-    ], trades: [], initialPosition: 2, initialPrice: 1.5, fromDate: null, toDate: null });
+    ], trades: [], initialPosition: 2, initialPrice: 1.5, fromDate: '2026-02-13', toDate: null });
 
     const allDates = dates;
     function buildForwardFilled(pt: any[]) {
@@ -620,5 +622,92 @@ describe('computeOverallProfit — fee-deferral matches single-fund computeProfi
     // Note: The overall daily is derived from cumulative differences,
     // which does NOT include fee-deferral effect from individual fund dailyProfit calculations.
     // Fee-deferral is applied in computeProfitTimeline's dailyProfit, not in cumulativeProfit.
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// findValue: 当查询日期早于建仓日期时，返回建仓日期的累计盈利
+// ─────────────────────────────────────────────────────────────────────────────
+describe('findValue — query date before fund startDate', () => {
+  // 模拟 OverallProfitModal 中 findValue 函数的核心逻辑
+  function findValue(
+    date: string,
+    fundTimeline: { date: string; cumulativeProfit: number }[]
+  ): number {
+    // find exact match
+    const exact = fundTimeline.find(r => r.date === date);
+    // find last before
+    let lastBefore: { date: string; cumulativeProfit: number } | null = null;
+    for (let i = fundTimeline.length - 1; i >= 0; i--) {
+      if (fundTimeline[i].date <= date) { lastBefore = fundTimeline[i]; break; }
+    }
+    // find next after
+    let nextAfter: { date: string; cumulativeProfit: number } | null = null;
+    for (let i = 0; i < fundTimeline.length; i++) {
+      if (fundTimeline[i].date > date) { nextAfter = fundTimeline[i]; break; }
+    }
+    if (exact) return exact.cumulativeProfit;
+    if (lastBefore) return lastBefore.cumulativeProfit;
+    // 如果没有 lastBefore 但有 nextAfter，说明 date 早于建仓日期，返回建仓日期的累计盈利
+    if (nextAfter) return nextAfter.cumulativeProfit;
+    return 0;
+  }
+
+  test('returns cumulativeProfit at exact date when it exists', () => {
+    const timeline = [
+      { date: '2026-02-12', cumulativeProfit: 100 },
+      { date: '2026-02-13', cumulativeProfit: 150 },
+    ];
+    expect(findValue('2026-02-12', timeline)).toBe(100);
+    expect(findValue('2026-02-13', timeline)).toBe(150);
+  });
+
+  test('returns lastBefore cumulativeProfit when date falls between two points', () => {
+    const timeline = [
+      { date: '2026-02-12', cumulativeProfit: 100 },
+      { date: '2026-02-14', cumulativeProfit: 200 },
+    ];
+    // 2026-02-13 不在 timeline 中，但 2026-02-12 <= 2026-02-13
+    expect(findValue('2026-02-13', timeline)).toBe(100);
+  });
+
+  test('returns nextAfter cumulativeProfit when date is before first point (earlier than startDate)', () => {
+    const timeline = [
+      { date: '2026-02-12', cumulativeProfit: 28790.97 },
+      { date: '2026-02-13', cumulativeProfit: 30000 },
+    ];
+    // 2026-02-11 早于建仓日期 2026-02-12，应返回建仓日期的累计盈利
+    expect(findValue('2026-02-11', timeline)).toBe(28790.97);
+  });
+
+  test('returns 0 when timeline is empty', () => {
+    expect(findValue('2026-02-11', [])).toBe(0);
+  });
+
+  test('returns lastBefore when date is after last point', () => {
+    const timeline = [
+      { date: '2026-02-12', cumulativeProfit: 100 },
+      { date: '2026-02-13', cumulativeProfit: 150 },
+    ];
+    // 2026-02-14 在最后一个点之后，lastBefore 存在
+    expect(findValue('2026-02-14', timeline)).toBe(150);
+  });
+
+  test('returns nextAfter when fromDate is multiple days before startDate', () => {
+    const timeline = [
+      { date: '2026-02-12', cumulativeProfit: 28790.97 },
+      { date: '2026-02-15', cumulativeProfit: 35000 },
+    ];
+    // 2026-02-10 早于建仓日期 2026-02-12 多天
+    expect(findValue('2026-02-10', timeline)).toBe(28790.97);
+  });
+
+  test('regression: date exactly one day before startDate returns startDate cumulative', () => {
+    // 这是对之前 bug 的回归测试：建仓日期前一天返回 0 而不是建仓日期的累计盈利
+    const timeline = [
+      { date: '2026-02-12', cumulativeProfit: 28790.97 },
+      { date: '2026-02-13', cumulativeProfit: 29000 },
+    ];
+    expect(findValue('2026-02-11', timeline)).toBe(28790.97);
   });
 });
