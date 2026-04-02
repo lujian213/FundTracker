@@ -417,7 +417,7 @@ const OverallProfitModal: React.FC<Props> = ({ symbols, onClose, onSelectFund })
                 {hoverIndex !== null && chart.points[hoverIndex] && (
                   <div
                     data-testid="overall-profit-tooltip"
-                    className="absolute z-20 bg-white/95 backdrop-blur-sm px-3 py-2 rounded-lg shadow-lg border border-gray-100"
+                    className="absolute z-20 bg-white/95 backdrop-blur-sm px-3 py-2 rounded-lg shadow-lg border border-gray-100 pointer-events-none"
                     style={getTooltipStyle(
                       chart.points[hoverIndex].x,
                       chart.points[hoverIndex].y,
