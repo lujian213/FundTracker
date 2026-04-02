@@ -272,7 +272,7 @@ export const IndexDetailsModal: React.FC<IndexDetailsModalProps> = ({ data, onCl
                     </div>
                   )}
                   {activeTab === 'intraday' ? (
-                    <IntradayChart points={intradayPoints} width={1000} height={chartHeight} stroke="#2563eb" onHover={p => setHoveredIntradayPoint(p)} />
+                    <IntradayChart points={intradayPoints} width={1000} height={chartHeight} stroke="#2563eb" onHover={p => setHoveredIntradayPoint(p)} valueDecimalPlaces={2} />
                   ) : (
                     <HistoryChart
                        viewBox={viewBox}

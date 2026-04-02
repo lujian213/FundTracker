@@ -8,13 +8,14 @@ interface IntradayChartProps {
   stroke?: string;
   fill?: string;
   onHover?: (p: IntradayPoint | null) => void;
+  valueDecimalPlaces?: number;  // tooltip中value显示的小数位数，默认4
 }
 
 const formatTime = (ts: number) => {
   try { return new Date(ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }); } catch { return new Date(ts).toLocaleString(); }
 };
 
-const IntradayChart: React.FC<IntradayChartProps> = ({ points, width = 1000, height = 250, stroke = '#ef4444', fill, onHover }) => {
+const IntradayChart: React.FC<IntradayChartProps> = ({ points, width = 1000, height = 250, stroke = '#ef4444', fill, onHover, valueDecimalPlaces = 4 }) => {
   const [hoverIdx, setHoverIdx] = useState<number | null>(null);
 
   const data = useMemo(() => {
@@ -257,25 +258,30 @@ const IntradayChart: React.FC<IntradayChartProps> = ({ points, width = 1000, hei
                   {(() => {
                     const pct = Number.isFinite(pt.data.equityReturn) ? pt.data.equityReturn : 0;
                     const pctText = `${pct >= 0 ? '+' : ''}${pct.toFixed(2)}%`;
-                    const valueText = typeof pt.data.value === 'number' ? pt.data.value.toFixed(4) : '—';
+                    const valueText = typeof pt.data.value === 'number' ? pt.data.value.toFixed(valueDecimalPlaces) : '—';
                     // color: positive -> red, negative -> green, zero -> gray
                     const posColor = stroke || '#ef4444';
                     const negColor = '#16a34a'; // green-600 approximate
                     const zeroColor = '#6b7280'; // gray-500
                     const valueColor = pct > 0 ? posColor : (pct < 0 ? negColor : zeroColor);
                     // estimate tooltip width and clamp to avoid clipping
-                    const EST_CHAR_WIDTH = 7;
-                    const estWidth = Math.min(220, Math.max(80, Math.ceil((labelText.length + Math.max(pctText.length, valueText.length)) * EST_CHAR_WIDTH / 2) + 16));
+                    // tooltip shows two lines: time (line1) and pctText + space + valueText (line2)
+                    // use the longer line to determine width
+                    const EST_CHAR_WIDTH = 8;
+                    const line1Len = labelText.length;
+                    const line2Len = pctText.length + 1 + valueText.length; // space between pct and value
+                    const maxLineLen = Math.max(line1Len, line2Len);
+                    const estWidth = Math.max(100, Math.ceil(maxLineLen * EST_CHAR_WIDTH) + 20);
                     const tooltipW = estWidth;
-                    const tooltipH = 36;
+                    const tooltipH = 44;
                     const tipX = Math.max(8 + tooltipW / 2, Math.min(width - 8 - tooltipW / 2, pt.x));
                     const rectX = tipX - tooltipW / 2;
                     // place tooltip above chartTop if space, else below
                     const aboveY = chartTop - tooltipH - 6;
                     const belowY = chartTop + 6;
                     const rectY = aboveY >= 4 ? aboveY : belowY;
-                    const timeY = rectY + 12;
-                    const valY = rectY + 26;
+                    const timeY = rectY + 14;
+                    const valY = rectY + 30;
                     return (
                       <g>
                         <rect x={rectX} y={rectY} width={tooltipW} height={tooltipH} rx={6} ry={6} fill="#ffffff" stroke="#e5e7eb" strokeWidth={1} />
