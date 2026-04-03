@@ -1,9 +1,12 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { createPortal } from 'react-dom';
-import { Ticker, ValuationData, BackupPosition } from '../types';
+import { Ticker, ValuationData, BackupPosition, HistoricalPoint, MarketIndex } from '../types';
 import { fetchFundData } from '../services/fundService';  // Import fetchFundData
 import { toLocalDateKey } from '../utils/priceResolver';
 import * as cacheService from '../services/cacheService';  // Import cacheService for enhanced valuation
+import AIInvestmentDraftModal from './AIInvestmentDraftModal';
+import { DraftEntry } from '../services/aiInvestmentDraftService';
+import { formatMoneyWithSeparators } from '../utils/format';
 
 interface InvestmentDraftModalProps {
   portfolio: Ticker[];
@@ -11,13 +14,10 @@ interface InvestmentDraftModalProps {
   onSelectFund?: (symbol: string) => void;  // Optional callback to select a fund
   marketData?: Record<string, ValuationData>;
   sideBySide?: boolean;  // 是否并排显示（与B窗口同时显示）
-}
-
-interface DraftEntry {
-  fundSymbol: string;
-  operation: '买入' | '卖出' | '不操作';
-  amount: string;
-  note: string;  // 注释
+  fundHistories?: Record<string, HistoricalPoint[]>;
+  indexHistories?: Record<string, HistoricalPoint[]>;
+  marketIndices?: MarketIndex[];
+  globalIndices?: MarketIndex[];
 }
 
 const InvestmentDraftModal: React.FC<InvestmentDraftModalProps> = ({
@@ -25,7 +25,11 @@ const InvestmentDraftModal: React.FC<InvestmentDraftModalProps> = ({
   onClose,
   onSelectFund,
   marketData = {},
-  sideBySide = false
+  sideBySide = false,
+  fundHistories,
+  indexHistories,
+  marketIndices,
+  globalIndices
 }) => {
   const [draftData, setDraftData] = useState<Record<string, DraftEntry>>({});
   const [copied, setCopied] = useState(false);
@@ -41,6 +45,7 @@ const InvestmentDraftModal: React.FC<InvestmentDraftModalProps> = ({
       return null;
     }
   }); // 动态高度
+  const [showAIAnalysis, setShowAIAnalysis] = useState(false);
 
   // 监听详情窗口高度变化
   useEffect(() => {
@@ -290,16 +295,6 @@ const InvestmentDraftModal: React.FC<InvestmentDraftModalProps> = ({
     });
   };
 
-  
-  const formatCurrency = (value: number, decimals: number = 2): string => {
-    if (isNaN(value) || !isFinite(value)) return '-';
-
-    return value.toLocaleString(undefined, {
-      minimumFractionDigits: decimals,
-      maximumFractionDigits: decimals
-    });
-  };
-
   const formatDateMMDD = (dateString: string): string => {
     try {
       const date = new Date(dateString);
@@ -357,7 +352,7 @@ const InvestmentDraftModal: React.FC<InvestmentDraftModalProps> = ({
     if (!valuation || !valuation.currentPrice) return '-';
 
     const shares = amount / valuation.currentPrice;
-    return formatCurrency(shares, 2);
+    return formatMoneyWithSeparators(shares, 2);
   };
 
   const getGainLoss = (fundSymbol: string): string => {
@@ -455,6 +450,13 @@ const InvestmentDraftModal: React.FC<InvestmentDraftModalProps> = ({
         <div className="px-6 pt-3 pb-1 border-b border-gray-100 flex justify-between items-center flex-shrink-0">
           <h3 className="text-lg font-bold">投资计划草稿</h3>
           <div className="flex items-center gap-2">
+            <button
+              onClick={() => setShowAIAnalysis(true)}
+              className="w-8 h-8 rounded-full bg-gray-50 flex items-center justify-center text-gray-400 hover:bg-gray-100"
+              title="AI分析"
+            >
+              <i className="fas fa-robot"></i>
+            </button>
             <button
               onClick={handleCopyToClipboard}
               className="w-8 h-8 rounded-full bg-gray-50 flex items-center justify-center text-gray-400 hover:bg-gray-100"
@@ -568,7 +570,7 @@ const InvestmentDraftModal: React.FC<InvestmentDraftModalProps> = ({
                                 if (valuation && valuation.currentPrice) {
                                   return (
                                     <>
-                                      {formatCurrency(valuation.currentPrice, 4)}
+                                      {formatMoneyWithSeparators(valuation.currentPrice, 4)}
                                       <span className={valuation.realtimeDate !== toLocalDateKey(new Date()) ? 'bg-yellow-200 px-1 rounded ml-1 text-[9px]' : 'ml-1 text-[9px]'}>
                                         ({valuation.realtimeDate ? formatDateMMDD(valuation.realtimeDate) : '-'})
                                       </span>
@@ -593,7 +595,7 @@ const InvestmentDraftModal: React.FC<InvestmentDraftModalProps> = ({
                                 if (valuation && valuation.previousPrice) {
                                   return (
                                     <>
-                                      {formatCurrency(valuation.previousPrice, 4)}
+                                      {formatMoneyWithSeparators(valuation.previousPrice, 4)}
                                       <span className="ml-1 text-[9px]">
                                         ({valuation.netWorthDate ? formatDateMMDD(valuation.netWorthDate) : '-'})
                                       </span>
@@ -693,15 +695,35 @@ const InvestmentDraftModal: React.FC<InvestmentDraftModalProps> = ({
         {/* Summary section - buy and sell counts and totals */}
         <div className="px-6 py-3 border-t border-gray-100 bg-gray-50 text-xs text-gray-500">
           <div className="flex justify-end space-x-6">
-            <span>买入：{buyCount}只 / {formatCurrency(buyTotal, 2)}</span>
-            <span>卖出：{sellCount}只 / {formatCurrency(sellTotal, 2)}</span>
+            <span>买入：{buyCount}只 / {formatMoneyWithSeparators(buyTotal, 2)}</span>
+            <span>卖出：{sellCount}只 / {formatMoneyWithSeparators(sellTotal, 2)}</span>
           </div>
         </div>
       </div>
     </div>
   );
 
-  return createPortal(content, document.body);
+  // AI分析浮窗
+  const aiModalContent = (
+    <AIInvestmentDraftModal
+      isVisible={showAIAnalysis}
+      onClose={() => setShowAIAnalysis(false)}
+      draftData={draftData}
+      portfolio={portfolio}
+      fundHistories={fundHistories || {}}
+      indexHistories={indexHistories || {}}
+      marketIndices={marketIndices || []}
+      globalIndices={globalIndices || []}
+      marketData={marketData}
+    />
+  );
+
+  return (
+    <>
+      {createPortal(content, document.body)}
+      {createPortal(aiModalContent, document.body)}
+    </>
+  );
 };
 
 export default InvestmentDraftModal;

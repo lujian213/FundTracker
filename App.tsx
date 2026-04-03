@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { Ticker, ValuationData, MarketType, MarketIndex, BackupData, CardStatus, ManageItemType, ManageSelectionKey, JobResult } from './types';
+import { Ticker, ValuationData, MarketType, MarketIndex, BackupData, CardStatus, ManageItemType, ManageSelectionKey, JobResult, HistoricalPoint } from './types';
 import { fetchFundData, fetchFundDatas, forceFetchFundHistories, fetchMarketIndices, fetchIndexHistories, maybeTriggerHistoryRefresh } from './services/fundService';
 import { toLocalDateKey } from './utils/priceResolver';
 import * as cacheService from './services/cacheService';
@@ -1053,6 +1053,34 @@ const AppContent: React.FC = () => {
     return allIndices.find(idx => normalizeIndexSymbol(idx.symbol) === viewingIndexSymbol) || null;
   }, [viewingIndexSymbol, displayDomesticIndices, displayGlobalIndices]);
 
+  // 从 cacheService 获取基金历史数据
+  const fundHistories = useMemo(() => {
+    const allHistories = cacheService.getAllHistories();
+    const result: Record<string, HistoricalPoint[]> = {};
+    portfolio.forEach(fund => {
+      const history = allHistories.get(fund.symbol);
+      if (history) {
+        result[fund.symbol] = history;
+      }
+    });
+    return result;
+  }, [portfolio]);
+
+  // 从 cacheService 获取指数历史数据
+  const indexHistories = useMemo(() => {
+    const allHistories = cacheService.getAllHistories();
+    const result: Record<string, HistoricalPoint[]> = {};
+    const allIndexSymbols = [...indicesConfig, ...globalIndicesConfig];
+    allIndexSymbols.forEach(symbol => {
+      const normalized = normalizeIndexSymbol(symbol);
+      const history = allHistories.get(normalized);
+      if (history) {
+        result[normalized] = history;
+      }
+    });
+    return result;
+  }, [indicesConfig, globalIndicesConfig]);
+
   return (
     <div className={`min-h-screen pb-32 transition-colors duration-300 ${isSelectionMode ? 'bg-blue-50/50' : 'bg-gray-50'}`}>
       <header className="bg-white border-b sticky top-0 z-50 shadow-sm overflow-visible">
@@ -1267,7 +1295,7 @@ const AppContent: React.FC = () => {
       }} marketData={marketData} />}
       {isInvestmentDraftModalOpen && <InvestmentDraftModal portfolio={portfolio} onClose={() => { setIsInvestmentDraftModalOpen(false); setViewingFund(null); }} onSelectFund={(sym) => {
         setViewingFund({ symbol: sym, fromDraft: true });
-      }} marketData={marketData} sideBySide={viewingFund?.fromDraft} />}
+      }} marketData={marketData} sideBySide={viewingFund?.fromDraft} fundHistories={fundHistories} indexHistories={indexHistories} marketIndices={marketIndices} globalIndices={globalIndices} />}
       {viewingFund && marketData[viewingFund.symbol] && (() => {
           const fund = portfolio.find(f => f.symbol === viewingFund.symbol);
           // 使用 useRef 来跟踪上一次 viewingFund 的值，判断是否是从关闭到打开的过渡
