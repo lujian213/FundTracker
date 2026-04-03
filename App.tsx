@@ -23,6 +23,7 @@ import SyncConfirmationModal from './components/SyncConfirmationModal';
 import AIMenuItem from './components/AIMenuItem';
 import AIConfigModal from './components/AIConfigModal';
 import CalendarModal from './components/CalendarModal';
+import CalendarEventTooltip from './components/CalendarEventTooltip';
 import JobLogModal from './components/JobLogModal';
 import SystemConfigModal from './components/SystemConfigModal';
 import { getAvailableStrategyKeys } from './services/strategyRegistry';
@@ -40,7 +41,7 @@ import { queryAI, AIResponse } from './services/aiService';
 import { getAIConfig } from './services/aiConfigService';
 import { refreshStrategyRecommendations } from './services/strategyRecommendationService';
 import { refreshFundProfiles } from './services/fundProfileService';
-import { updateCalendarData, getEventsForYear, getUpcomingEvents, loadCalendarData } from './services/calendarService';
+import { updateCalendarData, getEventsForYear, getUpcomingEvents, loadCalendarData, getFirstEventInWorkdays } from './services/calendarService';
 import { formatDateDisplay } from './utils/dateFormat';
 
 type SortOrder = 'asc' | 'desc';
@@ -99,26 +100,6 @@ const mergeIndicesForDisplay = (
 };
 
 const createManageSelectionKey = (type: ManageItemType, value: string): ManageSelectionKey => `${type}:${value}`;
-
-/**
- * 检查未来三天内（包括今天）是否有节假日/交割日事件
- * 返回：{ hasUpcoming: boolean, nextEvent: { date: string, content: string, type: string } | null }
- */
-function checkUpcomingCalendarEvents(): { hasUpcoming: boolean; nextEvent: { date: string; content: string; type: string } | null } {
-  const upcomingEvents = getUpcomingEvents(3);
-  if (upcomingEvents.length === 0) {
-    return { hasUpcoming: false, nextEvent: null };
-  }
-  const first = upcomingEvents[0];
-  return {
-    hasUpcoming: true,
-    nextEvent: {
-      date: first.date.slice(5), // 只保留月-日
-      content: first.content,
-      type: first.type
-    }
-  };
-}
 
 /**
  * 解析 Calendar AI 响应
@@ -1066,48 +1047,44 @@ const AppContent: React.FC = () => {
               </button>
             )}
             {/* Calendar 按钮 */}
-            <div className="relative">
-              <div
-                className="relative"
-                onMouseEnter={() => setShowCalendarTooltip(true)}
-                onMouseLeave={() => setShowCalendarTooltip(false)}
-              >
-                <div className="relative">
-                  <button onClick={() => setShowCalendar(true)} title="日历" aria-label="日历" className="p-2 w-10 h-10 rounded-full hover:bg-gray-100 text-gray-400 transition-all">
-                    <i className="fas fa-calendar-alt"></i>
-                  </button>
-                  {(() => {
-                    const { hasUpcoming, nextEvent } = checkUpcomingCalendarEvents();
-                    if (hasUpcoming && nextEvent) {
-                      return (
-                        <div
-                          className="absolute top-0 right-0 w-3 h-3 bg-red-500 rounded-full border-2 border-white"
-                          onClick={() => setShowCalendar(true)}
-                          title="查看日历"
-                        ></div>
-                      );
-                    }
-                    return null;
-                  })()}
-                </div>
-              </div>
+            <div
+              className="relative"
+              onMouseEnter={() => setShowCalendarTooltip(true)}
+              onMouseLeave={() => setShowCalendarTooltip(false)}
+            >
+              <button onClick={() => setShowCalendar(true)} title="日历" aria-label="日历" className="p-2 w-10 h-10 rounded-full hover:bg-gray-100 text-gray-400 transition-all">
+                <i className="fas fa-calendar-alt"></i>
+              </button>
+              {(() => {
+                const nextEvents = getFirstEventInWorkdays(4);
+                if (nextEvents.length > 0) {
+                  return (
+                    <div
+                      className="absolute top-0 right-0 w-3 h-3 bg-red-500 rounded-full border-2 border-white"
+                      onClick={() => setShowCalendar(true)}
+                      title="查看日历"
+                    ></div>
+                  );
+                }
+                return null;
+              })()}
               {/* Tooltip - 鼠标悬停时显示 */}
               {showCalendarTooltip && (() => {
-                const { hasUpcoming, nextEvent } = checkUpcomingCalendarEvents();
-                if (hasUpcoming && nextEvent) {
+                const nextEvents = getFirstEventInWorkdays(4);
+                if (nextEvents.length > 0) {
                   return (
-                    <div className="absolute z-[99999] w-56 bg-white rounded-lg shadow-xl border border-gray-200 p-3 text-xs"
-                        style={{
-                          left: '50%',
-                          transform: 'translateX(-50%)',
-                          top: '100%',
-                          marginTop: '10px'
-                        }}>
-                      <div className="font-semibold text-gray-700 mb-1">即将到来的事件</div>
-                      <div className="text-gray-600">
-                        <span className={nextEvent.type === 'holiday' ? 'text-red-500' : 'text-amber-500'}>●</span> {nextEvent.date} {nextEvent.content}
-                      </div>
-                    </div>
+                    <CalendarEventTooltip
+                      events={nextEvents}
+                      title="即将到来的事件"
+                      style={{
+                        position: 'absolute',
+                        left: '50%',
+                        transform: 'translateX(-50%)',
+                        top: '100%',
+                        marginTop: '10px',
+                        zIndex: 99999
+                      }}
+                    />
                   );
                 }
                 return null;

@@ -186,8 +186,11 @@ const OverallProfitModal: React.FC<Props> = ({ symbols, onClose, onSelectFund })
 
   const [tableRows, setTableRows] = useState<OverallFundRow[]>([]);
   const [tableError, setTableError] = useState<string | null>(null);
-  // 差额列排序：none → desc → asc → none
-  const [diffSort, setDiffSort] = useState<'none' | 'asc' | 'desc'>('desc');
+  // 表格列排序：三列共用一个排序状态，点击某列时该列启用排序
+  // sortColumn: 当前排序的列 ('from' | 'to' | 'diff')
+  // sortOrder: 排序方向 ('none' | 'asc' | 'desc')
+  const [sortColumn, setSortColumn] = useState<'from' | 'to' | 'diff'>('diff');
+  const [sortOrder, setSortOrder] = useState<'none' | 'asc' | 'desc'>('desc');
 
   const chartEndDate = useMemo(() => {
     if (!summary || !summary.timeline || summary.timeline.length === 0) return null;
@@ -279,13 +282,31 @@ const OverallProfitModal: React.FC<Props> = ({ symbols, onClose, onSelectFund })
     setTableRows(rows.filter(r => !!r.startDate && r.startDate <= toDate));
   }, [summary, fromDate, toDate]);
 
-  // 按差额排序后的展示行
+  // 处理列排序点击：点击某列时，该列启用排序，循环切换排序方向
+  const handleSortClick = useCallback((column: 'from' | 'to' | 'diff') => {
+    if (sortColumn === column) {
+      // 同一列：循环切换 none → desc → asc → none
+      const nextOrder = sortOrder === 'none' ? 'desc' : sortOrder === 'desc' ? 'asc' : 'none';
+      setSortOrder(nextOrder);
+    } else {
+      // 不同列：切换到该列，默认降序
+      setSortColumn(column);
+      setSortOrder('desc');
+    }
+  }, [sortColumn, sortOrder]);
+
+  // 按当前排序状态排序后的展示行
   const displayedRows = useMemo(() => {
-    if (diffSort === 'none') return tableRows;
+    if (sortOrder === 'none') return tableRows;
+    const getValue = (row: OverallFundRow) => {
+      if (sortColumn === 'from') return row.profitFrom || 0;
+      if (sortColumn === 'to') return row.profitTo || 0;
+      return row.profitDiff || 0;
+    };
     return [...tableRows].sort((a, b) =>
-      diffSort === 'desc' ? (b.profitDiff || 0) - (a.profitDiff || 0) : (a.profitDiff || 0) - (b.profitDiff || 0)
+      sortOrder === 'desc' ? getValue(b) - getValue(a) : getValue(a) - getValue(b)
     );
-  }, [tableRows, diffSort]);
+  }, [tableRows, sortColumn, sortOrder]);
 
   const content = (
     <div className="fixed inset-0 z-[130] flex items-center justify-center p-4">
@@ -507,19 +528,48 @@ const OverallProfitModal: React.FC<Props> = ({ symbols, onClose, onSelectFund })
                       <thead className="sticky top-0 z-10 bg-gray-50">
                         <tr className="border-b border-gray-200">
                           <th className="px-3 py-2 text-left text-xs font-semibold text-gray-500">基金名称（基金代码）</th>
-                          <th className="px-3 py-2 text-right text-xs font-semibold text-gray-500">{formatDateDisplay(fromDate)}累计盈利</th>
-                          <th className="px-3 py-2 text-right text-xs font-semibold text-gray-500">{formatDateDisplay(toDate)}累计盈利</th>
                           <th className="px-3 py-2 text-right text-xs font-semibold text-gray-500">
                             <button
                               className="inline-flex items-center gap-1 hover:text-gray-700 transition-colors select-none"
-                              onClick={() => setDiffSort(s => s === 'none' ? 'desc' : s === 'desc' ? 'asc' : 'none')}
+                              onClick={() => handleSortClick('from')}
+                              title="点击切换排序"
+                            >
+                              {formatDateDisplay(fromDate)}累计盈利
+                              <span className="text-gray-400">
+                                {sortColumn !== 'from' && <i className="fas fa-sort" />}
+                                {sortColumn === 'from' && sortOrder === 'none' && <i className="fas fa-sort" />}
+                                {sortColumn === 'from' && sortOrder === 'desc' && <i className="fas fa-sort-down text-blue-500" />}
+                                {sortColumn === 'from' && sortOrder === 'asc'  && <i className="fas fa-sort-up text-blue-500" />}
+                              </span>
+                            </button>
+                          </th>
+                          <th className="px-3 py-2 text-right text-xs font-semibold text-gray-500">
+                            <button
+                              className="inline-flex items-center gap-1 hover:text-gray-700 transition-colors select-none"
+                              onClick={() => handleSortClick('to')}
+                              title="点击切换排序"
+                            >
+                              {formatDateDisplay(toDate)}累计盈利
+                              <span className="text-gray-400">
+                                {sortColumn !== 'to' && <i className="fas fa-sort" />}
+                                {sortColumn === 'to' && sortOrder === 'none' && <i className="fas fa-sort" />}
+                                {sortColumn === 'to' && sortOrder === 'desc' && <i className="fas fa-sort-down text-blue-500" />}
+                                {sortColumn === 'to' && sortOrder === 'asc'  && <i className="fas fa-sort-up text-blue-500" />}
+                              </span>
+                            </button>
+                          </th>
+                          <th className="px-3 py-2 text-right text-xs font-semibold text-gray-500">
+                            <button
+                              className="inline-flex items-center gap-1 hover:text-gray-700 transition-colors select-none"
+                              onClick={() => handleSortClick('diff')}
                               title="点击切换排序"
                             >
                               差额
                               <span className="text-gray-400">
-                                {diffSort === 'none' && <i className="fas fa-sort" />}
-                                {diffSort === 'desc' && <i className="fas fa-sort-down text-blue-500" />}
-                                {diffSort === 'asc'  && <i className="fas fa-sort-up text-blue-500" />}
+                                {sortColumn !== 'diff' && <i className="fas fa-sort" />}
+                                {sortColumn === 'diff' && sortOrder === 'none' && <i className="fas fa-sort" />}
+                                {sortColumn === 'diff' && sortOrder === 'desc' && <i className="fas fa-sort-down text-blue-500" />}
+                                {sortColumn === 'diff' && sortOrder === 'asc'  && <i className="fas fa-sort-up text-blue-500" />}
                               </span>
                             </button>
                           </th>

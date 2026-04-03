@@ -1,5 +1,6 @@
 // services/calendarService.ts
 import { CalendarEvent } from '../types';
+import { toLocalDateKey } from '../utils/priceResolver';
 
 const CALENDAR_STORAGE_KEY = 'fund_tracker_calendar';
 
@@ -67,10 +68,19 @@ export function saveCalendarData(data: CalendarData): void {
 
 /**
  * 获取指定日期的事件列表
+ * @param date 日期字符串 (YYYY-MM-DD 格式)
+ * @returns 事件列表，每条包含日期、内容、描述、类型和市场
  */
-export function getEventsForDate(date: string): CalendarEvent[] {
+export function getEventsForDate(date: string): Array<{ date: string; content: string; description: string; type: string; market?: string }> {
   const data = loadCalendarData();
-  return data[date] || [];
+  const events = data[date] || [];
+  return events.map(event => ({
+    date,
+    content: event.content,
+    description: event.description || '',
+    type: event.type,
+    market: event.market
+  }));
 }
 
 /**
@@ -164,12 +174,15 @@ export function getEventsForYear(year: number): CalendarData {
 /**
  * 获取未来n个工作日内的事件（跳过周末）
  * @param days 查询天数
- * @returns 事件列表，每条包含日期、内容和类型
+ * @returns 事件列表，每条包含日期、内容、描述、类型和市场
  */
-export function getUpcomingEvents(days: number = 3): Array<{ date: string; content: string; type: string }> {
-  const alerts: Array<{ date: string; content: string; type: string }> = [];
+export function getUpcomingEvents(days: number = 3): Array<{ date: string; content: string; description: string; type: string; market?: string }> {
+  const alerts: Array<{ date: string; content: string; description: string; type: string; market?: string }> = [];
   const today = new Date();
   today.setHours(0, 0, 0, 0);
+
+  // Load calendar data once at the start
+  const data = loadCalendarData();
 
   let found = 0;
   for (let i = 0; i <= 10 && found < days; i++) {
@@ -180,19 +193,61 @@ export function getUpcomingEvents(days: number = 3): Array<{ date: string; conte
     // 跳过周末（但包含今天，即使是周末也显示）
     if (i > 0 && (dayOfWeek === 0 || dayOfWeek === 6)) continue;
 
-    const dateStr = `${checkDate.getFullYear()}-${String(checkDate.getMonth() + 1).padStart(2, '0')}-${String(checkDate.getDate()).padStart(2, '0')}`;
-    const data = loadCalendarData();
+    const dateStr = toLocalDateKey(checkDate);
     const events = data[dateStr] || [];
 
     for (const event of events) {
       alerts.push({
         date: dateStr,
         content: event.content,
-        type: event.type
+        description: event.description || '',
+        type: event.type,
+        market: event.market
       });
     }
     found++;
   }
 
   return alerts;
+}
+
+/**
+ * 获取从今天开始的指定工作日范围内最早有事件的日期的所有事件
+ * 用于主界面日历图标红点判断和tooltip显示
+ * @param workdays 工作日数量（包含今天，跳过周末），默认4
+ * @returns 事件列表；如果范围内没有事件返回空数组
+ */
+export function getFirstEventInWorkdays(workdays: number = 4): Array<{ date: string; content: string; description: string; type: string; market?: string }> {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  // Load calendar data once at the start
+  const data = loadCalendarData();
+
+  let foundDays = 0;
+  // 最多检查14天（足够覆盖4个工作日）
+  for (let i = 0; i <= 14 && foundDays < workdays; i++) {
+    const checkDate = new Date(today);
+    checkDate.setDate(today.getDate() + i);
+    const dayOfWeek = checkDate.getDay();
+
+    // 跳过周末（但包含今天，即使是周末也检查）
+    if (i > 0 && (dayOfWeek === 0 || dayOfWeek === 6)) continue;
+
+    const dateStr = toLocalDateKey(checkDate);
+    const events = data[dateStr] || [];
+
+    if (events.length > 0) {
+      return events.map(event => ({
+        date: dateStr,
+        content: event.content,
+        description: event.description || '',
+        type: event.type,
+        market: event.market
+      }));
+    }
+    foundDays++;
+  }
+
+  return [];
 }

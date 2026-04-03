@@ -1,8 +1,10 @@
 // components/CalendarModal.tsx
 import React, { useState, useMemo, useRef } from 'react';
 import { zhCN } from 'date-fns/locale';
-import { CalendarEvent, CalendarData } from '../types';
+import { CalendarData } from '../types';
 import { getEventsForYear, getUpcomingEvents, isHolidayType } from '../services/calendarService';
+import { toLocalDateKey } from '../utils/priceResolver';
+import CalendarEventTooltip, { CalendarEventItem } from './CalendarEventTooltip';
 
 interface CalendarModalProps {
   onClose: () => void;
@@ -19,6 +21,11 @@ function getFirstDayOfMonth(year: number, month: number): number {
   return new Date(year, month, 1).getDay();
 }
 
+// 根据年月日生成日期字符串 (YYYY-MM-DD)
+function makeDateStr(year: number, month: number, day: number): string {
+  return toLocalDateKey(new Date(year, month, day));
+}
+
 export const CalendarModal: React.FC<CalendarModalProps> = ({
   onClose,
   zIndex = 150,
@@ -26,7 +33,7 @@ export const CalendarModal: React.FC<CalendarModalProps> = ({
   const today = new Date();
   const [currentYear, setCurrentYear] = useState(today.getFullYear());
   const [viewMonth, setViewMonth] = useState(today.getMonth());
-  const [tooltipData, setTooltipData] = useState<{ x: number; y: number; events: CalendarEvent[]; dateStr: string } | null>(null);
+  const [tooltipData, setTooltipData] = useState<{ x: number; y: number; events: CalendarEventItem[]; dateStr: string } | null>(null);
   const hideTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // 月份名称
@@ -70,11 +77,18 @@ export const CalendarModal: React.FC<CalendarModalProps> = ({
   // 计算实际行数
   const actualRows = Math.ceil((firstDayOfMonth + daysInMonth) / 7);
 
-  // 获取某一天的事件
-  const getEventsForDay = (day: number): CalendarEvent[] => {
+  // 获取某一天的事件（使用预加载的 yearEvents）
+  const getEventsForDay = (day: number): CalendarEventItem[] => {
     if (day === 0) return [];
-    const dateStr = `${currentYear}-${String(viewMonth + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-    return yearEvents[dateStr] || [];
+    const dateStr = makeDateStr(currentYear, viewMonth, day);
+    const events = yearEvents[dateStr] || [];
+    return events.map(event => ({
+      date: dateStr,
+      content: event.content,
+      description: event.description || '',
+      type: event.type,
+      market: event.market
+    }));
   };
 
   // 判断是否今天
@@ -93,7 +107,7 @@ export const CalendarModal: React.FC<CalendarModalProps> = ({
       hideTimeoutRef.current = null;
     }
     const events = getEventsForDay(day);
-    const dateStr = `${currentYear}-${String(viewMonth + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+    const dateStr = makeDateStr(currentYear, viewMonth, day);
 
     // 如果该日期没有事件，不显示tooltip
     if (events.length === 0) {
@@ -159,9 +173,6 @@ export const CalendarModal: React.FC<CalendarModalProps> = ({
       type: event.type as 'holiday_china' | 'holiday_hk' | 'holiday_us' | 'holiday_sg' | 'delivery'
     }));
   }, []);
-
-  const holidayEvents = tooltipData?.events.filter(e => isHolidayType(e.type)) || [];
-  const deliveryEvents = tooltipData?.events.filter(e => e.type === 'delivery') || [];
 
   return (
     <div className="fixed inset-0 flex items-center justify-center p-4" style={{ zIndex }}>
@@ -298,42 +309,22 @@ export const CalendarModal: React.FC<CalendarModalProps> = ({
           </div>
         </div>
 
-        {/* Tooltip - 使用绝对定位跟随鼠标/元素 - 去掉滚动条，全部显示 */}
+        {/* Tooltip - 使用公共组件 */}
         {tooltipData && (
-          <div
-            className="fixed z-[9999] w-56 bg-white rounded-lg shadow-xl border border-gray-200 p-3 text-xs"
+          <CalendarEventTooltip
+            events={tooltipData.events}
+            title={tooltipData.dateStr}
+            showDate={false}
             style={{
+              position: 'fixed',
               left: tooltipData.x,
               top: tooltipData.y + 10,
-              transform: 'translateX(-50%)'
+              transform: 'translateX(-50%)',
+              zIndex: 9999
             }}
             onMouseEnter={handleTooltipMouseEnter}
             onMouseLeave={handleTooltipMouseLeave}
-          >
-            <div className="font-semibold text-gray-700 mb-2">{tooltipData.dateStr}</div>
-            {holidayEvents.length > 0 && (
-              <div className="mb-2">
-                <div className="text-red-500 font-medium mb-1">节假日</div>
-                {holidayEvents.map((event, idx) => (
-                  <div key={idx} className="text-gray-600 ml-1 mb-1">
-                    {event.market && <span className="text-gray-400">[{event.market}] </span>}
-                    {event.description || event.content}
-                  </div>
-                ))}
-              </div>
-            )}
-            {deliveryEvents.length > 0 && (
-              <div>
-                <div className="text-amber-500 font-medium mb-1">交割日</div>
-                {deliveryEvents.map((event, idx) => (
-                  <div key={idx} className="text-gray-600 ml-1 mb-1">
-                    {event.market && <span className="text-gray-400">[{event.market}] </span>}
-                    {event.description || event.content}
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
+          />
         )}
       </div>
     </div>

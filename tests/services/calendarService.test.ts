@@ -8,6 +8,7 @@ import {
   getUpcomingEvents,
   updateCalendarData,
   clearCalendarData,
+  getFirstEventInWorkdays,
 } from '../../services/calendarService';
 import { CalendarEvent } from '../../types';
 
@@ -131,11 +132,11 @@ describe('calendarService', () => {
         { date: '2026-04-04', content: '清明节', description: '清明节放假', market: 'A股' },
       ];
 
-      updateCalendarData('holiday', newEvents);
+      updateCalendarData('holiday_china', newEvents);
 
       const result = loadCalendarData();
       expect(result['2026-04-04']).toHaveLength(1);
-      expect(result['2026-04-04'][0].type).toBe('holiday');
+      expect(result['2026-04-04'][0].type).toBe('holiday_china');
       expect(result['2026-04-04'][0].content).toBe('清明节');
     });
 
@@ -155,7 +156,7 @@ describe('calendarService', () => {
       // First add some data
       const existingData = {
         '2026-04-04': [
-          { type: 'holiday' as const, content: '旧节假日', description: '旧' },
+          { type: 'holiday_china' as const, content: '旧节假日', description: '旧' },
           { type: 'delivery' as const, content: '交割日', description: '交割' },
         ],
       };
@@ -165,19 +166,19 @@ describe('calendarService', () => {
       const newEvents = [
         { date: '2026-04-04', content: '新节假日', description: '新', market: 'A股' },
       ];
-      updateCalendarData('holiday', newEvents);
+      updateCalendarData('holiday_china', newEvents);
 
       const result = loadCalendarData();
       // Should keep delivery, replace holiday with new one - so 2 events
       expect(result['2026-04-04']).toHaveLength(2);
       expect(result['2026-04-04'][0].type).toBe('delivery');
-      expect(result['2026-04-04'][1].type).toBe('holiday');
+      expect(result['2026-04-04'][1].type).toBe('holiday_china');
       expect(result['2026-04-04'][1].content).toBe('新节假日');
     });
 
     test('removes dates with no events after update', () => {
       const existingData = {
-        '2026-04-04': [{ type: 'holiday' as const, content: '清明节' }],
+        '2026-04-04': [{ type: 'holiday_china' as const, content: '清明节' }],
       };
       localStorage.setItem('fund_tracker_calendar', JSON.stringify(existingData));
 
@@ -185,7 +186,7 @@ describe('calendarService', () => {
       const newEvents = [
         { date: '2026-05-01', content: '劳动节', description: '放假' },
       ];
-      updateCalendarData('holiday', newEvents);
+      updateCalendarData('holiday_china', newEvents);
 
       const result = loadCalendarData();
       // Old date should be removed, new date added
@@ -195,12 +196,12 @@ describe('calendarService', () => {
 
     test('handles empty events array', () => {
       const existingData = {
-        '2026-04-04': [{ type: 'holiday' as const, content: '清明节' }],
+        '2026-04-04': [{ type: 'holiday_china' as const, content: '清明节' }],
       };
       localStorage.setItem('fund_tracker_calendar', JSON.stringify(existingData));
 
       // Update with empty events - should remove existing
-      updateCalendarData('holiday', []);
+      updateCalendarData('holiday_china', []);
 
       const result = loadCalendarData();
       expect(result['2026-04-04']).toBeUndefined();
@@ -297,4 +298,139 @@ describe('calendarService', () => {
       expect(result.some(e => e.type === 'delivery')).toBe(true);
     });
   });
-});
+
+  describe('getFirstEventInWorkdays', () => {
+    test('returns empty array when no events in range', () => {
+      const result = getFirstEventInWorkdays(4);
+      expect(result).toEqual([]);
+    });
+
+    test('returns today events when today has events', () => {
+      const today = new Date();
+      const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+
+      const testData = {
+        [todayStr]: [{ type: 'holiday_china' as const, content: '今日节假日', description: '放假' }],
+      };
+      localStorage.setItem('fund_tracker_calendar', JSON.stringify(testData));
+
+      const result = getFirstEventInWorkdays(4);
+      expect(result).toHaveLength(1);
+      expect(result[0].content).toBe('今日节假日');
+      expect(result[0].date).toBe(todayStr);
+    });
+
+    test('returns first event date within workdays range', () => {
+      const today = new Date();
+      const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+
+      // 创建明天的日期
+      const tomorrow = new Date(today);
+      tomorrow.setDate(today.getDate() + 1);
+      const tomorrowStr = `${tomorrow.getFullYear()}-${String(tomorrow.getMonth() + 1).padStart(2, '0')}-${String(tomorrow.getDate()).padStart(2, '0')}`;
+
+      // 只在明天放事件，今天没有
+      const testData = {
+        [tomorrowStr]: [{ type: 'delivery' as const, content: '明日交割日', description: '期权交割' }],
+      };
+      localStorage.setItem('fund_tracker_calendar', JSON.stringify(testData));
+
+      const result = getFirstEventInWorkdays(4);
+      // 如果明天是周末，可能找不到；如果是工作日，应该找到
+      const tomorrowDay = tomorrow.getDay();
+      if (tomorrowDay !== 0 && tomorrowDay !== 6) {
+        expect(result).toHaveLength(1);
+        expect(result[0].content).toBe('明日交割日');
+      } else {
+        // 明天是周末，被跳过，返回空数组
+        expect(result).toEqual([]);
+      }
+    });
+
+    test('returns empty array when event is outside workdays range', () => {
+      const today = new Date();
+
+      // 找一个超过4个工作日后的日期（至少7天后，确保超出范围）
+      const futureDate = new Date(today);
+      futureDate.setDate(today.getDate() + 10);
+      const futureStr = `${futureDate.getFullYear()}-${String(futureDate.getMonth() + 1).padStart(2, '0')}-${String(futureDate.getDate()).padStart(2, '0')}`;
+
+      const testData = {
+        [futureStr]: [{ type: 'holiday_china' as const, content: '远期节假日' }],
+      };
+      localStorage.setItem('fund_tracker_calendar', JSON.stringify(testData));
+
+      const result = getFirstEventInWorkdays(4);
+      expect(result).toEqual([]);
+    });
+
+    test('skips weekend days in range', () => {
+      const today = new Date();
+
+      // 构造测试数据：在接下来的14天内设置事件，验证周末被跳过
+      const dates: string[] = [];
+      for (let i = 0; i <= 14; i++) {
+        const d = new Date(today);
+        d.setDate(today.getDate() + i);
+        dates.push(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`);
+      }
+
+      // 在第5个工作日放事件（应该超出4个工作日范围）
+      let workdayCount = 0;
+      let targetDate = '';
+      for (let i = 0; i < dates.length && !targetDate; i++) {
+        const d = new Date(today);
+        d.setDate(today.getDate() + i);
+        const dayOfWeek = d.getDay();
+        // 跳过周末
+        if (i > 0 && (dayOfWeek === 0 || dayOfWeek === 6)) continue;
+        workdayCount++;
+        if (workdayCount === 5) {
+          targetDate = dates[i];
+        }
+      }
+
+      if (targetDate) {
+        const testData = {
+          [targetDate]: [{ type: 'holiday_china' as const, content: '第5个工作日事件' }],
+        };
+        localStorage.setItem('fund_tracker_calendar', JSON.stringify(testData));
+
+        const result = getFirstEventInWorkdays(4);
+        expect(result).toEqual([]);
+      }
+    });
+
+    test('returns multiple events for same date', () => {
+      const today = new Date();
+      const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+
+      const testData = {
+        [todayStr]: [
+          { type: 'holiday_china' as const, content: '节假日', description: '放假' },
+          { type: 'delivery' as const, content: '交割日', description: '期权交割' },
+        ],
+      };
+      localStorage.setItem('fund_tracker_calendar', JSON.stringify(testData));
+
+      const result = getFirstEventInWorkdays(4);
+      expect(result).toHaveLength(2);
+      expect(result[0].date).toBe(todayStr);
+      expect(result[1].date).toBe(todayStr);
+    });
+
+    test('includes today even if today is weekend', () => {
+      const today = new Date();
+      const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+
+      const testData = {
+        [todayStr]: [{ type: 'holiday_china' as const, content: '今日事件' }],
+      };
+      localStorage.setItem('fund_tracker_calendar', JSON.stringify(testData));
+
+      const result = getFirstEventInWorkdays(4);
+      // 今天有事件就应该返回，即使是周末
+      expect(result).toHaveLength(1);
+      expect(result[0].content).toBe('今日事件');
+    });
+  });

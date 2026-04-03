@@ -1,19 +1,65 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useTimerJobErrors } from '../contexts/TimerJobErrorContext';
 import { useNews } from '../contexts/NewsContext';
+
+// 每条错误信息最多滚动显示的次数
+const MAX_ERROR_SCROLL_COUNT = 3;
+// Marquee动画时长（毫秒），每次循环完成后增加计数
+const MARQUEE_DURATION_MS = 60000;
 
 export const MarketNewsTicker: React.FC = () => {
   const { errors: jobErrors } = useTimerJobErrors();
   const { news, loading, error, loadNews, reloadTrigger } = useNews();
+  // 记录每个错误ID的滚动次数
+  const [scrollCounts, setScrollCounts] = useState<Map<string, number>>(new Map());
 
   // Load news when reloadTrigger changes (triggered by scheduler)
   useEffect(() => {
     loadNews();
   }, [reloadTrigger, loadNews]);
 
+  // 每 MARQUEE_DURATION_MS 毫秒增加所有当前显示错误的滚动次数
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setScrollCounts(prev => {
+        const next = new Map(prev);
+        // 对当前所有错误增加计数
+        for (const err of jobErrors) {
+          const currentCount = next.get(err.id) || 0;
+          next.set(err.id, currentCount + 1);
+        }
+        return next;
+      });
+    }, MARQUEE_DURATION_MS);
+
+    return () => clearInterval(interval);
+  }, [jobErrors]);
+
+  // 新错误加入时初始化计数为0
+  useEffect(() => {
+    setScrollCounts(prev => {
+      const next = new Map(prev);
+      for (const err of jobErrors) {
+        if (!next.has(err.id)) {
+          next.set(err.id, 0);
+        }
+      }
+      // 清理已移除错误的计数
+      for (const [id] of next) {
+        if (!jobErrors.find(e => e.id === id)) {
+          next.delete(id);
+        }
+      }
+      return next;
+    });
+  }, [jobErrors]);
+
+  // 过滤掉滚动次数超过限制的错误
+  const visibleErrors = jobErrors.filter(err => (scrollCounts.get(err.id) || 0) < MAX_ERROR_SCROLL_COUNT);
+
   // Combine errors and news for display
   const displayItems = [
-    ...jobErrors.map(e => ({
+    ...visibleErrors.map(e => ({
       id: `error-${e.id}`,
       title: `[${e.jobName}] 执行失败: ${e.message}`,
       time: e.time.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' }),
