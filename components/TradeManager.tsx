@@ -22,10 +22,11 @@ export const TradeManager: React.FC<{
   initialPosition?: number;
   initialPrice?: number | null;
   startDate?: string | null;
-}> = ({ name, symbol, currentPrice, previousPrice, realtimeDate, netWorthDate, onClose, zIndex = 130, initialPosition = 0, initialPrice = null, startDate = null }) => {
+  initialViewMode?: ViewMode;
+}> = ({ name, symbol, currentPrice, previousPrice, realtimeDate, netWorthDate, onClose, zIndex = 130, initialPosition = 0, initialPrice = null, startDate = null, initialViewMode = 'normal' }) => {
   const { trades, refresh, add, update, remove, setAll, exportJSON, exportCSV } = useTrades(symbol);
   const [page, setPage] = useState(0);
-  const [viewMode, setViewMode] = useState<ViewMode>('normal');
+  const [viewMode, setViewMode] = useState<ViewMode>(initialViewMode);
   const [history, setHistory] = useState<HistoricalPoint[]>([]);
   const [editingId, setEditingId] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);

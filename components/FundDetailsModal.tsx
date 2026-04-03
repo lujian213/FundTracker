@@ -36,9 +36,10 @@ interface FundDetailsModalProps {
   recommendedStrategy?: RecommendedStrategy | null;  // AI 推荐策略
   initialTab?: 'intraday' | 'history';  // 初始显示的标签页
   profile?: FundProfile;  // 基金基本信息
+  fromDraft?: boolean;  // 是否从草稿窗口打开
 }
 
-export const FundDetailsModal: React.FC<FundDetailsModalProps> = ({ data, onClose, fetchHistory, position = 'center', animateSlide = false, skipExitAnimation = false, recommendedStrategy, initialTab = 'intraday', profile }) => {
+export const FundDetailsModal: React.FC<FundDetailsModalProps> = ({ data, onClose, fetchHistory, position = 'center', animateSlide = false, skipExitAnimation = false, recommendedStrategy, initialTab = 'intraday', profile, fromDraft = false }) => {
   const [history, setHistory] = useState<HistoricalPoint[]>([]);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<'intraday' | 'history'>(initialTab);
@@ -1415,9 +1416,9 @@ export const FundDetailsModal: React.FC<FundDetailsModalProps> = ({ data, onClos
                )}
                {/* Trade manager modal rendered into document.body to avoid z-index issues */}
                {showTrade && (typeof document !== 'undefined' && document.body ? createPortal(
-                 <TradeManager name={valuationData.name} symbol={data.symbol} currentPrice={valuationData.currentPrice} previousPrice={valuationData.previousPrice} realtimeDate={valuationData.realtimeDate} netWorthDate={valuationData.netWorthDate} initialPosition={initialPosition} initialPrice={initialPrice} startDate={startDate} onClose={() => setShowTrade(false)} zIndex={SUBMODAL_Z_INDEX} />,
+                 <TradeManager name={valuationData.name} symbol={data.symbol} currentPrice={valuationData.currentPrice} previousPrice={valuationData.previousPrice} realtimeDate={valuationData.realtimeDate} netWorthDate={valuationData.netWorthDate} initialPosition={initialPosition} initialPrice={initialPrice} startDate={startDate} onClose={() => setShowTrade(false)} zIndex={SUBMODAL_Z_INDEX} initialViewMode={fromDraft ? 'lifo' : 'normal'} />,
                  document.body
-               ) : <TradeManager name={valuationData.name} symbol={data.symbol} currentPrice={valuationData.currentPrice} previousPrice={valuationData.previousPrice} realtimeDate={valuationData.realtimeDate} netWorthDate={valuationData.netWorthDate} onClose={() => setShowTrade(false)} zIndex={SUBMODAL_Z_INDEX} />)}
+               ) : <TradeManager name={valuationData.name} symbol={data.symbol} currentPrice={valuationData.currentPrice} previousPrice={valuationData.previousPrice} realtimeDate={valuationData.realtimeDate} netWorthDate={valuationData.netWorthDate} onClose={() => setShowTrade(false)} zIndex={SUBMODAL_Z_INDEX} initialViewMode={fromDraft ? 'lifo' : 'normal'} />)}
                {showVirtual && (typeof document !== 'undefined' && document.body ? createPortal(
                  <VirtualTradeModal symbol={data.symbol} fundName={valuationData.name} history={history} valuation={valuationData} recommendedStrategy={recommendedStrategy} onClose={() => setShowVirtual(false)} zIndex={SUBMODAL_Z_INDEX} />,
                  document.body

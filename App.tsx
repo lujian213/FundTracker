@@ -1284,6 +1284,7 @@ const AppContent: React.FC = () => {
               position={viewingFund.fromDraft ? 'right' : 'center'}
               animateSlide={shouldAnimate}
               initialTab={viewingFund.fromDraft ? 'history' : 'intraday'}
+              fromDraft={viewingFund.fromDraft}
             />
           );
         })()}
