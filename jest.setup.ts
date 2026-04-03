@@ -34,7 +34,9 @@ console.error = (...args: unknown[]) => {
         message.includes('[StrategyRecommendation] Failed to parse AI response') ||
         message.includes('Check the render method of `VirtualTradeModal`') ||
         message.includes('See https://reactjs.org/link/warning-keys') ||
-        message.includes('Failed to load portfolio templates')) {
+        message.includes('Failed to load portfolio templates') ||
+        message.includes('[Calendar] Failed to load calendar data') ||
+        message.includes('[TimerJob]')) {
       return;
     }
   }

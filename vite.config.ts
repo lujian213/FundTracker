@@ -20,13 +20,14 @@ export default defineConfig({
   build: {
     outDir: 'dist',
     sourcemap: false,
+    chunkSizeWarningLimit: 600,
     rollupOptions: {
       output: {
         manualChunks: {
           // React 核心
           'react-vendor': ['react', 'react-dom'],
           // Markdown 渲染
-          'markdown': ['react-markdown', 'remark-gfm'],
+          'markdown': ['react-markdown', 'remark-gfm', 'rehype-raw'],
           // UI 组件
           'ui': ['react-day-picker', 'dompurify'],
           // 定时任务解析器

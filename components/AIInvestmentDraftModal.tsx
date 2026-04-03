@@ -339,7 +339,7 @@ const AIInvestmentDraftModal: React.FC<AIInvestmentDraftModalProps> = ({
         tabIndex={-1}
         className="relative bg-white rounded-2xl w-full shadow-2xl animate-in zoom-in-95 duration-200 flex flex-col outline-none"
         style={{
-          maxWidth: '56rem',
+          maxWidth: '62rem',
           height: '70vh',
           transform: `translate(${position.x}px, ${position.y}px)`,
           transition: isDragging ? 'none' : 'transform 0.1s ease-out'
