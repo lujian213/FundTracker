@@ -781,7 +781,7 @@ export async function fetchSingleIndex(symbol: string, ignoreCache: boolean = fa
   return currentData;
 }
 
-export async function fetchMarketIndices(symbols: string[], ignoreCache: boolean = false): Promise<JobResult<MarketIndex[]>> {
+export async function fetchMarketIndices(symbols: string[], ignoreCache: boolean = false, onProgress?: () => void): Promise<JobResult<MarketIndex[]>> {
   if (symbols.length === 0) return { success: true, data: [] };
 
   const results: MarketIndex[] = [];
@@ -798,6 +798,8 @@ export async function fetchMarketIndices(symbols: string[], ignoreCache: boolean
     } catch (e) {
       errors.push(`${sym}: ${(e as Error).message || '未知错误'}`);
     }
+    // 每个指数完成后调用进度回调
+    if (onProgress) onProgress();
   }
 
   const successCount = results.length;
@@ -856,7 +858,7 @@ export async function forceFetchFundHistory(symbol: string): Promise<HistoricalP
  * - 支持部分失败：成功的数据写入缓存，失败的会在 message 中报告
  * - 返回 JobResult<void>，不返回具体数据（数据已在缓存中）
  */
-export async function forceFetchFundHistories(symbols: string[]): Promise<JobResult<void>> {
+export async function forceFetchFundHistories(symbols: string[], onProgress?: () => void): Promise<JobResult<void>> {
   if (symbols.length === 0) return { success: true, data: undefined };
 
   const errors: string[] = [];
@@ -873,6 +875,8 @@ export async function forceFetchFundHistories(symbols: string[]): Promise<JobRes
     } catch (e) {
       errors.push(`${sym}: ${(e as Error).message || '未知错误'}`);
     }
+    // 每个基金历史完成后调用进度回调
+    if (onProgress) onProgress();
   }
 
   const failCount = errors.length;
@@ -939,7 +943,7 @@ export async function fetchIndexHistory(symbol: string, ignoreCache: boolean = f
  * - 支持部分失败：成功的数据写入缓存，失败的会在 message 中报告
  * - 返回 JobResult<void>，不返回具体数据（数据已在缓存中）
  */
-export async function fetchIndexHistories(symbols: string[], ignoreCache: boolean = false): Promise<JobResult<void>> {
+export async function fetchIndexHistories(symbols: string[], ignoreCache: boolean = false, onProgress?: () => void): Promise<JobResult<void>> {
   if (symbols.length === 0) return { success: true, data: undefined };
 
   const errors: string[] = [];
@@ -956,6 +960,8 @@ export async function fetchIndexHistories(symbols: string[], ignoreCache: boolea
     } catch (e) {
       errors.push(`${sym}: ${(e as Error).message || '未知错误'}`);
     }
+    // 每个指数历史完成后调用进度回调
+    if (onProgress) onProgress();
   }
 
   const failCount = errors.length;

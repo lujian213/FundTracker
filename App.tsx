@@ -574,7 +574,7 @@ const AppContent: React.FC = () => {
     if (validKeys.size === 0) clearSelectionMode();
   }, [portfolio, indicesConfig, globalIndicesConfig, isSelectionMode, clearSelectionMode]);
 
-  const updateSingleFund = useCallback(async (symbol: string): Promise<ValuationData | null> => {
+  const updateSingleFund = useCallback(async (symbol: string, onProgress?: () => void): Promise<ValuationData | null> => {
     try {
       const data = await fetchFundData(symbol);
       if (data) {
@@ -590,36 +590,41 @@ const AppContent: React.FC = () => {
         setFundStatuses(prev => ({ ...prev, [symbol]: 'ok' }));
 
         // 自动历史补全：当估值返回的 netWorthDate 比本地缓存的历史最后日期更新时，触发对该 symbol 的强制历史刷新
+        // 注意：这个历史刷新是独立任务，不计入 refreshAll 的总任务数
         try {
-          // increment backgroundTasks optimistically and call helper; helper does fire-and-forget fetch
           setBackgroundTasks(prev => prev + 1);
           maybeTriggerHistoryRefresh(symbol, enhancedData.netWorthDate).finally(() => {
             setBackgroundTasks(prev => Math.max(0, prev - 1));
           });
         } catch (e) { setBackgroundTasks(prev => Math.max(0, prev - 1)); }
+
+        // 调用进度回调（如果提供）
+        if (onProgress) onProgress();
         return enhancedData;
       } else {
         setFundStatuses(prev => ({ ...prev, [symbol]: 'error' }));
+        if (onProgress) onProgress();
         return null;
       }
     } catch {
       setFundStatuses(prev => ({ ...prev, [symbol]: 'error' }));
+      if (onProgress) onProgress();
       return null;
-    } finally { setBackgroundTasks(prev => Math.max(0, prev - 1)); }
+    }
   }, []);
 
-  const runBatchUpdate = useCallback(async (targets: Ticker[]): Promise<JobResult<void>> => {
+  const runBatchUpdate = useCallback(async (targets: Ticker[], onProgress?: () => void): Promise<JobResult<void>> => {
     if (targets.length === 0) return { success: true, data: undefined };
 
     const symbols = targets.map(t => t.symbol);
     const errors: string[] = [];
     let successCount = 0;
 
-    setBackgroundTasks(prev => prev + targets.length);
+    // 不在这里设置 backgroundTasks，由调用者（refreshAll 或定时任务）预先设置
 
     for (const sym of symbols) {
       try {
-        const data = await updateSingleFund(sym);
+        const data = await updateSingleFund(sym, onProgress);
         if (!data) {
           errors.push(`${sym}: API返回空数据`);
         } else {
@@ -627,6 +632,7 @@ const AppContent: React.FC = () => {
         }
       } catch (e) {
         errors.push(`${sym}: ${(e as Error).message || '未知错误'}`);
+        if (onProgress) onProgress();
       }
     }
 
@@ -645,14 +651,14 @@ const AppContent: React.FC = () => {
     return { success: true, data: undefined, message: `成功更新 ${successCount} 只基金估值` };
   }, [updateSingleFund]);
 
-  const runBatchHistoryUpdate = useCallback(async (targets: Ticker[]): Promise<JobResult<void>> => {
+  const runBatchHistoryUpdate = useCallback(async (targets: Ticker[], onProgress?: () => void): Promise<JobResult<void>> => {
     if (targets.length === 0) return { success: true, data: undefined };
 
     const symbols = targets.map(t => t.symbol);
-    return await forceFetchFundHistories(symbols);
+    return await forceFetchFundHistories(symbols, onProgress);
   }, []);
 
-  const refreshMarketIndicesAsync = useCallback(async (ignoreCache: boolean = false): Promise<JobResult<MarketIndex[]>> => {
+  const refreshMarketIndicesAsync = useCallback(async (ignoreCache: boolean = false, onProgress?: () => void): Promise<JobResult<MarketIndex[]>> => {
     const errors: string[] = [];
 
     // 合并所有指数配置，统一获取
@@ -663,8 +669,8 @@ const AppContent: React.FC = () => {
       return { success: true, data: [] };
     }
 
-    // 统一获取所有指数数据
-    const result = await fetchMarketIndices(allSymbols, ignoreCache);
+    // 统一获取所有指数数据，传入进度回调
+    const result = await fetchMarketIndices(allSymbols, ignoreCache, onProgress);
     const data = result.data || [];
 
     if (!result.success && result.message) {
@@ -727,11 +733,11 @@ const AppContent: React.FC = () => {
   }, [indicesConfig, globalIndicesConfig]);
 
   // 刷新指数历史数据
-  const refreshIndexHistoryAsync = useCallback(async (ignoreCache: boolean = false): Promise<JobResult<void>> => {
+  const refreshIndexHistoryAsync = useCallback(async (ignoreCache: boolean = false, onProgress?: () => void): Promise<JobResult<void>> => {
     const allIndexSymbols = [...indicesConfig, ...globalIndicesConfig];
     if (allIndexSymbols.length === 0) return { success: true, data: undefined };
 
-    return await fetchIndexHistories(allIndexSymbols, ignoreCache);
+    return await fetchIndexHistories(allIndexSymbols, ignoreCache, onProgress);
   }, [indicesConfig, globalIndicesConfig]);
 
   const displayDomesticIndices = useMemo(
@@ -747,20 +753,35 @@ const AppContent: React.FC = () => {
   const refreshAll = useCallback(async () => {
     if (isRefreshing) return;
     setIsRefreshing(true);
+
+    // 计算总任务数：基金估值 + 基金历史 + 指数实时 + 指数历史
+    const indexCount = indicesConfig.length + globalIndicesConfig.length;
+    const totalCount = portfolio.length * 2 + indexCount * 2;
+
+    // 预设置总任务数
+    setBackgroundTasks(totalCount);
+
+    // 进度回调：每完成一个子任务减一
+    const onProgress = () => setBackgroundTasks(prev => Math.max(0, prev - 1));
+
     try {
       await Promise.allSettled([
-        runBatchUpdate(portfolio),
-        refreshMarketIndicesAsync(true),
-        runBatchHistoryUpdate(portfolio),
-        refreshIndexHistoryAsync(true),
+        runBatchUpdate(portfolio, onProgress),
+        refreshMarketIndicesAsync(true, onProgress),
+        runBatchHistoryUpdate(portfolio, onProgress),
+        refreshIndexHistoryAsync(true, onProgress),
       ]);
     } finally { setIsRefreshing(false); }
-  }, [portfolio, isRefreshing, runBatchUpdate, refreshMarketIndicesAsync, runBatchHistoryUpdate, refreshIndexHistoryAsync]);
+  }, [portfolio, indicesConfig, globalIndicesConfig, isRefreshing, runBatchUpdate, refreshMarketIndicesAsync, runBatchHistoryUpdate, refreshIndexHistoryAsync]);
 
   useEffect(() => {
     if (portfolio.length > 0) {
       const targets = portfolio.filter(p => !marketData[p.symbol]);
-      if (targets.length > 0) runBatchUpdate(targets);
+      if (targets.length > 0) {
+        setBackgroundTasks(targets.length);
+        const onProgress = () => setBackgroundTasks(prev => Math.max(0, prev - 1));
+        runBatchUpdate(targets, onProgress);
+      }
     }
   }, [portfolio.length]);
 
@@ -785,20 +806,30 @@ const AppContent: React.FC = () => {
 
     // Register job handlers
     scheduler.registerHandler('fund-valuation-refresh', async () => {
-      return await runBatchUpdate(portfolio);
+      // 设置初始任务数
+      setBackgroundTasks(portfolio.length);
+      const onProgress = () => setBackgroundTasks(prev => Math.max(0, prev - 1));
+      return await runBatchUpdate(portfolio, onProgress);
     });
 
     scheduler.registerHandler('fund-history-refresh', async () => {
-      return await runBatchHistoryUpdate(portfolio);
+      setBackgroundTasks(portfolio.length);
+      const onProgress = () => setBackgroundTasks(prev => Math.max(0, prev - 1));
+      return await runBatchHistoryUpdate(portfolio, onProgress);
     });
 
     scheduler.registerHandler('market-index-refresh', async () => {
-      // refreshMarketIndicesAsync 内部已经调用了 fetchMarketIndices，直接使用其返回值
-      return await refreshMarketIndicesAsync(true);
+      const indexCount = indicesConfig.length + globalIndicesConfig.length;
+      setBackgroundTasks(indexCount);
+      const onProgress = () => setBackgroundTasks(prev => Math.max(0, prev - 1));
+      return await refreshMarketIndicesAsync(true, onProgress);
     });
 
     scheduler.registerHandler('index-history-refresh', async () => {
-      return await refreshIndexHistoryAsync(true);
+      const indexCount = indicesConfig.length + globalIndicesConfig.length;
+      setBackgroundTasks(indexCount);
+      const onProgress = () => setBackgroundTasks(prev => Math.max(0, prev - 1));
+      return await refreshIndexHistoryAsync(true, onProgress);
     });
 
     scheduler.registerHandler('news-refresh', async () => {
