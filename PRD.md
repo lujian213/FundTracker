@@ -1,7 +1,7 @@
 # FundTracker — 产品需求文档 (PRD)
 
-版本：1.37
-最后更新：2026-04-01
+版本：1.38
+最后更新：2026-04-03
 
 ---
 
@@ -195,6 +195,16 @@ interface ComboTrade {
 * `strategy_id`：交易策略的唯一标识符，可以用来在系统内查找这个策略的具体内容。
 * `reason`：推荐这个交易策略的理由，可以是一些简短的文本说明。
 
+#### profile字段 (v1.38)
+在基金Ticker中增加一个字段，叫做`profile`，存储基金的基本信息。包含以下内容：
+* `stock_positions`：股票持仓列表，每个元素包含：
+  * `stock_name`：股票名称
+  * `percentage`：持仓占比（如 9.45 表示 9.45%）
+* `stage_increase`：阶段盈亏列表，每个元素包含：
+  * `stage`：阶段名称，可选值为 `近1周`、`近1月`、`近3月`、`近6月`
+  * `increase_percentage`：盈亏百分比
+* `fetched_at`：系统抓取时间（ISO 格式）
+
 后台任务会定时更新这些字段里的信息。
 
 ### 界面显示
@@ -236,6 +246,23 @@ interface ComboTrade {
 * 信息对象填充：直接将AI获取到的推荐交易策略的唯一标识符填充到`recommended_strategy`字段的`strategy_id`中，将推荐理由填充到`reason`中。
 * 错误处理：如果后台任务出错或未配置AI或没有API-Key，保留已有的推荐策略信息，不进行更新。错误信息在市场热点区域显示。
 
+#### 基金基本信息获取 (v1.38)
+* 后台任务信息类型：`fund_profile`
+* 执行频率：每天执行一次。页面刷新时也会触发一次。
+* 数据来源：从东方财富网站 `https://fund.eastmoney.com/{code}.html` 获取
+* 获取方式：
+  * 通过 CORS 代理服务器抓取网页内容
+  * 支持多种代理格式（HTML 和 Markdown）
+  * 解析网页中的股票持仓和阶段涨幅数据
+* 信息对象填充：
+  * `stock_positions`：股票持仓列表，从"股票持仓"表格解析
+  * `stage_increase`：阶段盈亏列表，从"阶段涨幅"表格解析（近1周、近1月、近3月、近6月）
+  * `fetched_at`：系统抓取时间
+* 任务状态：
+  * 部分成功/失败时任务状态为失败，但成功的基金信息仍会更新
+  * 失败原因记录第一个失败的基金信息
+* 服务：`services/fundProfileService.ts`
+
 ### 实现细节
 * 提示词模板放在一个配置文件中（`public/assets/config/background-job-prompts.json`），方便将来的修改和扩展。模板中可以使用一些预定义好的变量：如基金代码列表（code_list）、当前日期（current_date）、交易策略列表（strategy_list）等。
   * strategy_list中的每个交易策略应该包含策略id、策略名称、策略描述等信息，以便在提示词中使用。
@@ -243,6 +270,9 @@ interface ComboTrade {
 * 类型定义：
   * `TickerAlert { type: 'holiday' | 'delivery'; date: string; content: string }`
   * `RecommendedStrategy { strategy_id: string; reason: string }`
+  * `StockPosition { stock_name: string; percentage: number }` - 股票持仓
+  * `StageIncrease { stage: '近1周' | '近1月' | '近3月' | '近6月'; increase_percentage: number }` - 阶段盈亏
+  * `FundProfile { stock_positions: StockPosition[]; stage_increase: StageIncrease[]; fetched_at: string }` - 基金基本信息
 * 组件：
   * `AlertTooltip` - 显示alert图标的tooltip
   * `SimpleTooltip` - 显示推荐策略理由的tooltip
@@ -1295,6 +1325,14 @@ export type CardStatus = 'ok' | 'error' | 'unknown';
     - 无有效估值（`currentPrice <= 0` 且 `previousPrice <= 0`）时：输出框显示"无法计算"（红色字体）
     - 弹窗底部显示"参考估值"：若 `currentPrice > 0` 展示实时估值；否则若 `previousPrice > 0` 展示"确认净值"；均无则展示"暂无数据"
     - 关闭弹窗时清空输入（`calcAmount` 重置为 `''`）
+  - **基金详情弹窗**（v1.38）：
+    - 在基金详情页底部，外部链接右侧显示"基金详情"按钮（蓝色边框）
+    - 仅当 `profile` 字段有数据时显示
+    - 点击后弹出模态窗口（`FundProfileModal`），显示：
+      - 股票持仓表格：股票名称、持仓占比
+      - 阶段盈亏表格：近1周、近1月、近3月、近6月的盈亏百分比
+      - 数据更新时间
+    - 盈亏百分比正数红色、负数绿色
 
 - TradeManager（交易管理）
   - 弹窗包含：表单（date, type, shares, fee, price(只读按日期), computed total(只读)）、交易记录列表（分页）、导入/导出按钮

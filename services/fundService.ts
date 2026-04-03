@@ -465,6 +465,7 @@ export async function fetchFundDatas(symbols: string[]): Promise<JobResult<void>
   if (symbols.length === 0) return { success: true, data: undefined };
 
   const errors: string[] = [];
+  let successCount = 0;
 
   for (const sym of symbols) {
     try {
@@ -475,23 +476,26 @@ export async function fetchFundDatas(symbols: string[]): Promise<JobResult<void>
         // 写入缓存
         cacheService.setValuation(sym, res);
         try { cacheService.appendIntradayPoint(sym, res); } catch (e) { /* ignore */ }
+        successCount++;
       }
     } catch (e) {
       errors.push(`${sym}: ${(e as Error).message || '未知错误'}`);
     }
   }
 
+  const failCount = errors.length;
+
   // 全部失败
-  if (errors.length === symbols.length) {
-    return { success: false, message: `获取基金估值数据全部失败: ${errors[0]}` };
+  if (failCount === symbols.length) {
+    return { success: false, message: `${failCount} 只基金估值更新失败` };
   }
 
-  // 部分失败
-  if (errors.length > 0) {
-    return { success: false, data: undefined, message: `部分基金估值刷新失败: ${errors[0]}` };
+  // 部分失败：返回 success: false
+  if (failCount > 0) {
+    return { success: false, data: undefined, message: `成功更新 ${successCount} 只基金估值，${failCount} 只更新失败` };
   }
 
-  return { success: true, data: undefined };
+  return { success: true, data: undefined, message: `成功更新 ${successCount} 只基金估值` };
 }
 
 // helper to format timestamp as yyyyMMddHHmmss
@@ -796,17 +800,20 @@ export async function fetchMarketIndices(symbols: string[], ignoreCache: boolean
     }
   }
 
+  const successCount = results.length;
+  const failCount = errors.length;
+
   // 如果全部失败
-  if (results.length === 0) {
-    return { success: false, message: `获取指数数据全部失败: ${errors[0]}` };
+  if (successCount === 0) {
+    return { success: false, message: `${failCount} 只指数更新失败` };
   }
 
-  // 部分失败：返回成功数据，但在 message 中只包含第一个失败信息
-  if (errors.length > 0) {
-    return { success: false, data: results, message: `部分指数刷新失败: ${errors[0]}` };
+  // 部分失败：返回 success: false
+  if (failCount > 0) {
+    return { success: false, data: results, message: `成功更新 ${successCount} 只指数，${failCount} 只更新失败` };
   }
 
-  return { success: true, data: results };
+  return { success: true, data: results, message: `成功更新 ${successCount} 只指数` };
 }
 
 export async function fetchFundHistory(symbol: string): Promise<HistoricalPoint[]> {
@@ -853,29 +860,34 @@ export async function forceFetchFundHistories(symbols: string[]): Promise<JobRes
   if (symbols.length === 0) return { success: true, data: undefined };
 
   const errors: string[] = [];
+  let successCount = 0;
 
   for (const sym of symbols) {
     try {
       const res = await historyLoadQueue.add(() => forceFetchFundHistory(sym));
       if (!res || res.length === 0) {
         errors.push(`${sym}: API返回空数据`);
+      } else {
+        successCount++;
       }
     } catch (e) {
       errors.push(`${sym}: ${(e as Error).message || '未知错误'}`);
     }
   }
 
+  const failCount = errors.length;
+
   // 全部失败
-  if (errors.length === symbols.length) {
-    return { success: false, message: `获取基金历史数据全部失败: ${errors[0]}` };
+  if (failCount === symbols.length) {
+    return { success: false, message: `${failCount} 只基金历史净值更新失败` };
   }
 
-  // 部分失败
-  if (errors.length > 0) {
-    return { success: false, data: undefined, message: `部分基金历史刷新失败: ${errors[0]}` };
+  // 部分失败：返回 success: false
+  if (failCount > 0) {
+    return { success: false, data: undefined, message: `成功更新 ${successCount} 只基金历史净值，${failCount} 只更新失败` };
   }
 
-  return { success: true, data: undefined };
+  return { success: true, data: undefined, message: `成功更新 ${successCount} 只基金历史净值` };
 }
 
 // Index history: fetch Kline data for indices via push2his and convert to HistoricalPoint[]
@@ -931,29 +943,34 @@ export async function fetchIndexHistories(symbols: string[], ignoreCache: boolea
   if (symbols.length === 0) return { success: true, data: undefined };
 
   const errors: string[] = [];
+  let successCount = 0;
 
   for (const sym of symbols) {
     try {
       const res = await indexQueue.add(() => fetchIndexHistory(sym, ignoreCache));
       if (!res || res.length === 0) {
         errors.push(`${sym}: API返回空数据`);
+      } else {
+        successCount++;
       }
     } catch (e) {
       errors.push(`${sym}: ${(e as Error).message || '未知错误'}`);
     }
   }
 
+  const failCount = errors.length;
+
   // 全部失败
-  if (errors.length === symbols.length) {
-    return { success: false, message: `获取指数历史数据全部失败: ${errors[0]}` };
+  if (failCount === symbols.length) {
+    return { success: false, message: `${failCount} 只指数历史更新失败` };
   }
 
-  // 部分失败
-  if (errors.length > 0) {
-    return { success: false, data: undefined, message: `部分指数历史刷新失败: ${errors[0]}` };
+  // 部分失败：返回 success: false
+  if (failCount > 0) {
+    return { success: false, data: undefined, message: `成功更新 ${successCount} 只指数历史，${failCount} 只更新失败` };
   }
 
-  return { success: true, data: undefined };
+  return { success: true, data: undefined, message: `成功更新 ${successCount} 只指数历史` };
 }
 
 // 新增：根据历史净值计算每日净值变化（每份的日盈亏）并返回可供前端展示的数据

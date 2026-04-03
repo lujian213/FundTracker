@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { createPortal } from 'react-dom';
-import { ValuationData, HistoricalPoint, IntradayPoint, TradeRecord, RecommendedStrategy } from '../types';
+import { ValuationData, HistoricalPoint, IntradayPoint, TradeRecord, RecommendedStrategy, FundProfile } from '../types';
 import { fetchFundHistory as defaultFetchFundHistory } from '../services/fundService';
 import * as cacheService from '../services/cacheService';
 import { MA_COLORS } from '../utils/movingAverage';
@@ -12,6 +12,7 @@ import TradeManager from './TradeManager';
 import useTrades, { getTradesForSymbol } from '../hooks/useTrades';
 import ProfitModal from './ProfitModal';
 import VirtualTradeModal from './VirtualTradeModal';
+import FundProfileModal from './FundProfileModal';
 import { resolvePreferredPrice, toLocalDateKey } from '../utils/priceResolver';
 import { localDateKey, AggregatedMarker, aggregateTradesByDate, generatePositionStartMarker } from '../utils/tradeAggregation';
 import IntradayChart from './IntradayChart';
@@ -34,9 +35,10 @@ interface FundDetailsModalProps {
   skipExitAnimation?: boolean;  // 是否跳过退出动画（草稿窗口关闭时）
   recommendedStrategy?: RecommendedStrategy | null;  // AI 推荐策略
   initialTab?: 'intraday' | 'history';  // 初始显示的标签页
+  profile?: FundProfile;  // 基金基本信息
 }
 
-export const FundDetailsModal: React.FC<FundDetailsModalProps> = ({ data, onClose, fetchHistory, position = 'center', animateSlide = false, skipExitAnimation = false, recommendedStrategy, initialTab = 'intraday' }) => {
+export const FundDetailsModal: React.FC<FundDetailsModalProps> = ({ data, onClose, fetchHistory, position = 'center', animateSlide = false, skipExitAnimation = false, recommendedStrategy, initialTab = 'intraday', profile }) => {
   const [history, setHistory] = useState<HistoricalPoint[]>([]);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<'intraday' | 'history'>(initialTab);
@@ -66,6 +68,8 @@ export const FundDetailsModal: React.FC<FundDetailsModalProps> = ({ data, onClos
   const [shouldResetAIChat, setShouldResetAIChat] = useState(false);
   // 初始价格调整弹窗控制
   const [showPriceAdjust, setShowPriceAdjust] = useState(false);
+  // 基金详情弹窗控制
+  const [showProfileModal, setShowProfileModal] = useState(false);
 
   // AI Assistant state variables
   interface Message {
@@ -1258,9 +1262,30 @@ export const FundDetailsModal: React.FC<FundDetailsModalProps> = ({ data, onClos
                  </div>
               </div>
 
-              <a href={data.sourceUrl} target="_blank" rel="noreferrer" className="block w-full py-3 text-center text-xs font-bold text-gray-400 border border-gray-100 rounded-2xl hover:bg-gray-50 transition-colors">
-                在天天基金查看详细页 <i className="fas fa-external-link-alt ml-1"></i>
-              </a>
+              {/* 外部链接和基金详情并排显示 */}
+              <div className="flex gap-2">
+                <a href={data.sourceUrl} target="_blank" rel="noreferrer" className="flex-1 py-3 text-center text-xs font-bold text-gray-400 border border-gray-100 rounded-2xl hover:bg-gray-50 transition-colors">
+                  在天天基金查看详细页 <i className="fas fa-external-link-alt ml-1"></i>
+                </a>
+                {profile && (
+                  <button
+                    onClick={() => setShowProfileModal(true)}
+                    className="flex-1 py-3 text-center text-xs font-bold text-blue-600 border border-blue-100 rounded-2xl hover:bg-blue-50 transition-colors"
+                  >
+                    <i className="fas fa-info-circle mr-1" />
+                    基金详情
+                  </button>
+                )}
+              </div>
+
+              {/* 基金详情弹窗 */}
+              {showProfileModal && profile && (
+                <FundProfileModal
+                  profile={profile}
+                  fundName={valuationData.name}
+                  onClose={() => setShowProfileModal(false)}
+                />
+              )}
 
                {/* 基金份额计算器弹窗 */}
                {showCalculator && (

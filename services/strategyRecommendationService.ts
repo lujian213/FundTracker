@@ -129,8 +129,6 @@ export async function refreshStrategyRecommendations(
     .replace('{strategy_list}', formatStrategyListForPrompt())
     .replace('{strategy_keys}', getStrategyKeysForPrompt());
 
-  console.log(`[StrategyRecommendation] Starting refresh for ${portfolio.length} funds`);
-
   // 调用 AI
   const response: AIResponse = await queryAI(aiConfig, filledPrompt);
   if (!response.success) {
@@ -155,5 +153,4 @@ export async function refreshStrategyRecommendations(
   }
 
   onPortfolioUpdate(updatedPortfolio);
-  console.log(`[StrategyRecommendation] Refresh completed, updated ${results.length} funds`);
 }

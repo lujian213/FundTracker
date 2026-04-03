@@ -35,6 +35,25 @@ export interface RecommendedStrategy {
   reason: string;         // 推荐理由
 }
 
+// StockPosition - 股票持仓
+export interface StockPosition {
+  stock_name: string;      // 股票名称
+  percentage: number;      // 持仓占比 (如 9.45 表示 9.45%)
+}
+
+// StageIncrease - 阶段盈亏
+export interface StageIncrease {
+  stage: '近1周' | '近1月' | '近3月' | '近6月';
+  increase_percentage: number;  // 盈亏百分比
+}
+
+// FundProfile - 基金基本信息
+export interface FundProfile {
+  stock_positions: StockPosition[];    // 股票持仓列表
+  stage_increase: StageIncrease[];     // 阶段盈亏列表
+  fetched_at: string;                  // 系统抓取时间 (ISO 格式)
+}
+
 export interface Ticker {
   id: string;
   symbol: string;
@@ -42,6 +61,7 @@ export interface Ticker {
   market: MarketType;
   alert_list?: TickerAlert[];     // 提示信息列表
   recommended_strategy?: RecommendedStrategy;  // 推荐交易策略
+  profile?: FundProfile;  // 基金基本信息
 }
 
 export interface ValuationData {

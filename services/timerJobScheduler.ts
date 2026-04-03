@@ -85,7 +85,6 @@ class TimerJobSchedulerImpl implements TimerJobScheduler {
       setTimeout(() => {
         const handler = this.handlers.get(job.id);
         if (handler) {
-          console.log(`[TimerJob] Initial trigger for ${job.name} after ${job.initialDelay}ms delay`);
           this.executeJob(job);
         }
       }, job.initialDelay);

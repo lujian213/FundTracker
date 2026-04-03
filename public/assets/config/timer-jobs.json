@@ -87,6 +87,13 @@
       "cron": "0 0 * * *",
       "enabled": true,
       "initialDelay": 7000
+    },
+    {
+      "id": "fund-profile-refresh",
+      "name": "基金基本信息刷新",
+      "cron": "0 0 * * *",
+      "enabled": true,
+      "initialDelay": 8000
     }
   ]
 }

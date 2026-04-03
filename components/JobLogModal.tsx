@@ -141,7 +141,13 @@ const JobLogModal: React.FC<JobLogModalProps> = ({ onClose }) => {
                       <div>耗时: {durationText}</div>
                     )}
                     {log.message && (
-                      <div className="text-gray-400 truncate">{log.message}</div>
+                      <div className={`mt-1 p-1 rounded text-xs ${
+                        log.status === 'success' ? 'bg-green-50 text-green-700' :
+                        log.status === 'failure' ? 'bg-red-50 text-red-700' :
+                        'text-gray-400'
+                      }`}>
+                        {log.message}
+                      </div>
                     )}
                   </div>
                 </div>

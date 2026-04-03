@@ -39,6 +39,7 @@ import { refreshTickerAlerts, loadBackgroundJobPrompts } from './services/backgr
 import { queryAI, AIResponse } from './services/aiService';
 import { getAIConfig } from './services/aiConfigService';
 import { refreshStrategyRecommendations } from './services/strategyRecommendationService';
+import { refreshFundProfiles } from './services/fundProfileService';
 import { updateCalendarData, getEventsForYear, getUpcomingEvents, loadCalendarData } from './services/calendarService';
 import { formatDateDisplay } from './utils/dateFormat';
 
@@ -198,7 +199,6 @@ async function fetchWebContent(url: string, logPrefix: string): Promise<string> 
         throw new Error(`HTTP ${response.status}`);
       }
       const content = await response.text();
-      console.log(`[Calendar] ${logPrefix}成功获取网站内容（代理${i + 1}），长度:`, content.length);
       return content;
     } catch (e) {
       lastError = e as Error;
@@ -632,6 +632,7 @@ const AppContent: React.FC = () => {
 
     const symbols = targets.map(t => t.symbol);
     const errors: string[] = [];
+    let successCount = 0;
 
     setBackgroundTasks(prev => prev + targets.length);
 
@@ -640,23 +641,27 @@ const AppContent: React.FC = () => {
         const data = await updateSingleFund(sym);
         if (!data) {
           errors.push(`${sym}: API返回空数据`);
+        } else {
+          successCount++;
         }
       } catch (e) {
         errors.push(`${sym}: ${(e as Error).message || '未知错误'}`);
       }
     }
 
+    const failCount = errors.length;
+
     // 全部失败
-    if (errors.length === symbols.length) {
-      return { success: false, message: `获取基金估值数据全部失败: ${errors[0]}` };
+    if (failCount === symbols.length) {
+      return { success: false, message: `${failCount} 只基金估值更新失败` };
     }
 
     // 部分失败
-    if (errors.length > 0) {
-      return { success: false, data: undefined, message: `部分基金估值刷新失败: ${errors[0]}` };
+    if (failCount > 0) {
+      return { success: false, data: undefined, message: `成功更新 ${successCount} 只基金估值，${failCount} 只更新失败` };
     }
 
-    return { success: true, data: undefined };
+    return { success: true, data: undefined, message: `成功更新 ${successCount} 只基金估值` };
   }, [updateSingleFund]);
 
   const runBatchHistoryUpdate = useCallback(async (targets: Ticker[]): Promise<JobResult<void>> => {
@@ -737,7 +742,7 @@ const AppContent: React.FC = () => {
     if (errors.length > 0) {
       return { success: false, message: errors[0] };
     }
-    return { success: true, data };
+    return { success: true, data, message: `成功更新 ${data.length} 只指数` };
   }, [indicesConfig, globalIndicesConfig]);
 
   // 刷新指数历史数据
@@ -848,6 +853,11 @@ const AppContent: React.FC = () => {
 
     scheduler.registerHandler('calendar_holiday_sg', async () => {
       await refreshCalendarHolidaysSG();
+    });
+
+    // 注册基金基本信息刷新任务
+    scheduler.registerHandler('fund-profile-refresh', async () => {
+      return await refreshFundProfiles(() => portfolio, setPortfolio);
     });
 
     // Set context with current portfolio
@@ -1261,6 +1271,7 @@ const AppContent: React.FC = () => {
               key={modalKey}
               data={marketData[viewingFund.symbol]}
               recommendedStrategy={fund?.recommended_strategy}
+              profile={fund?.profile}
               onClose={() => { setViewingFund(null); }}
               position={viewingFund.fromDraft ? 'right' : 'center'}
               animateSlide={shouldAnimate}
