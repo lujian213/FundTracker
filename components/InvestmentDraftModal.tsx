@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { Ticker, ValuationData, BackupPosition, HistoricalPoint, MarketIndex } from '../types';
 import { fetchFundData } from '../services/fundService';  // Import fetchFundData
@@ -10,6 +10,7 @@ import { getActiveAIConfig, hasUsableAIConfig } from '../services/aiConfigServic
 import { ConfirmDialog } from './ConfirmDialog';
 import SimpleTooltip from './SimpleTooltip';
 import { formatMoneyWithSeparators } from '../utils/format';
+import { getDraftModalHeight, saveDraftModalHeight } from '../services/userPreferenceService';
 
 interface InvestmentDraftModalProps {
   portfolio: Ticker[];
@@ -42,18 +43,10 @@ const InvestmentDraftModal: React.FC<InvestmentDraftModalProps> = ({
   const [showErrorDialog, setShowErrorDialog] = useState(false);
   const [errorDialogMessage, setErrorDialogMessage] = useState('');
   const [aiAdviceLoading, setAIAdviceLoading] = useState(false);
-  const MODAL_HEIGHT_CACHE_KEY = 'draft_modal_matched_height';
 
-  const [modalHeight, setModalHeight] = useState<number | null>(() => {
-    // 初始化时从 localStorage 读取缓存的高度
-    try {
-      const cached = localStorage.getItem(MODAL_HEIGHT_CACHE_KEY);
-      return cached ? parseFloat(cached) : null;
-    } catch {
-      return null;
-    }
-  }); // 动态高度
+  const [modalHeight, setModalHeight] = useState<number | null>(() => getDraftModalHeight());
   const [showAIAnalysis, setShowAIAnalysis] = useState(false);
+  const modalHeightRef = useRef<number | null>(null);
 
   // 监听详情窗口高度变化
   useEffect(() => {
@@ -61,12 +54,7 @@ const InvestmentDraftModal: React.FC<InvestmentDraftModalProps> = ({
       const detailHeight = (window as any).__detailModalHeight;
       if (detailHeight && Math.abs(detailHeight - (modalHeight || 0)) > 0.5) {
         setModalHeight(detailHeight);
-        // 缓存高度到 localStorage（有差异时更新）
-        try {
-          localStorage.setItem(MODAL_HEIGHT_CACHE_KEY, String(detailHeight));
-        } catch {
-          // 忽略存储错误
-        }
+        modalHeightRef.current = detailHeight;
       }
     };
 
@@ -75,7 +63,13 @@ const InvestmentDraftModal: React.FC<InvestmentDraftModalProps> = ({
 
     // 定期检查（在详情窗口打开后）
     const interval = setInterval(checkHeight, 100);
-    return () => clearInterval(interval);
+    return () => {
+      clearInterval(interval);
+      // 仅在组件卸载时保存最终高度
+      if (modalHeightRef.current !== null) {
+        saveDraftModalHeight(modalHeightRef.current);
+      }
+    };
   }, [modalHeight]);
 
   // Initialize draft data from localStorage and filter for funds with fullCapacity

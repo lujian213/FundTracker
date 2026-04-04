@@ -2,7 +2,6 @@
  * services/systemConfigService.ts
  *
  * 系统配置服务 - 统一管理所有系统级配置的读写
- * 将分散的多个 localStorage key 整合为单一 key: 'fund_system_config'
  */
 
 import {
@@ -15,10 +14,9 @@ import {
   AIConfigProfileSection,
   FeatureConfigSection,
   DEFAULT_SYSTEM_CONFIG,
-  OLD_KEYS,
 } from '../types/systemConfigTypes';
+import { STORAGE_KEYS, OLD_STORAGE_KEYS } from './localStorageService';
 
-// 重新导出类型，供其他模块使用
 export type {
   BackupConfigSection,
   SyncConfigSection,
@@ -29,22 +27,18 @@ export type {
   FeatureConfigSection,
 };
 
-const STORAGE_KEY = 'fund_system_config';
 const CONFIG_VERSION = 1;
 
-// ─── 核心接口 ──────────────────────────────────────────────────────────────────
+// 便捷访问
+const STORAGE_KEY = STORAGE_KEYS.SYSTEM_CONFIG;
+const OLD_KEYS = OLD_STORAGE_KEYS.SYSTEM_CONFIG;
 
-/**
- * 获取完整系统配置
- */
 export function getSystemConfig(): SystemConfig {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (raw) {
       const parsed = JSON.parse(raw);
-      // 检查版本，必要时迁移
       if (parsed.version !== CONFIG_VERSION) {
-        // 未来版本迁移逻辑
         return { ...DEFAULT_SYSTEM_CONFIG, ...parsed, version: CONFIG_VERSION };
       }
       return { ...DEFAULT_SYSTEM_CONFIG, ...parsed };
@@ -55,9 +49,6 @@ export function getSystemConfig(): SystemConfig {
   return { ...DEFAULT_SYSTEM_CONFIG };
 }
 
-/**
- * 保存完整系统配置
- */
 export function saveSystemConfig(config: SystemConfig): void {
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify({ ...config, version: CONFIG_VERSION }));
@@ -66,121 +57,77 @@ export function saveSystemConfig(config: SystemConfig): void {
   }
 }
 
-// ─── 分区读写接口 ──────────────────────────────────────────────────────────────
-
-/**
- * 验证备份时间格式 (HH:mm)
- */
 function isValidTimeFormat(time: string): boolean {
   return /^\d{2}:\d{2}$/.test(time);
 }
 
-/**
- * 获取备份配置
- */
 export function getBackupConfig(): BackupConfigSection {
   const config = getSystemConfig();
   const autoExportTime = config.backup?.autoExportTime ?? DEFAULT_SYSTEM_CONFIG.backup.autoExportTime;
   const autoBackupEnabled = config.backup?.autoBackupEnabled ?? DEFAULT_SYSTEM_CONFIG.backup.autoBackupEnabled;
 
-  // 验证时间格式，无效则返回默认值
   return {
     autoExportTime: isValidTimeFormat(autoExportTime) ? autoExportTime : DEFAULT_SYSTEM_CONFIG.backup.autoExportTime,
     autoBackupEnabled,
   };
 }
 
-/**
- * 保存备份配置
- */
 export function saveBackupConfig(cfg: BackupConfigSection): void {
   const config = getSystemConfig();
   config.backup = cfg;
   saveSystemConfig(config);
 }
 
-/**
- * 获取同步配置
- */
 export function getSyncConfig(): SyncConfigSection {
   const config = getSystemConfig();
   return config.sync;
 }
 
-/**
- * 保存同步配置
- */
 export function saveSyncConfig(cfg: SyncConfigSection): void {
   const config = getSystemConfig();
   config.sync = cfg;
   saveSystemConfig(config);
 }
 
-/**
- * 获取同步过滤配置
- */
 export function getSyncFilterConfig(): SyncFilterConfigSection | undefined {
   const config = getSystemConfig();
   return config.sync.filter;
 }
 
-/**
- * 保存同步过滤配置
- */
 export function saveSyncFilterConfig(cfg: SyncFilterConfigSection): void {
   const config = getSystemConfig();
   config.sync.filter = cfg;
   saveSystemConfig(config);
 }
 
-/**
- * 获取 AI 配置
- */
 export function getAIConfig(): AIConfigSection {
   const config = getSystemConfig();
   return config.ai;
 }
 
-/**
- * 保存 AI 配置
- */
 export function saveAIConfig(ai: AIConfigSection): void {
   const config = getSystemConfig();
   config.ai = ai;
   saveSystemConfig(config);
 }
 
-/**
- * 获取 AI 配置管理器
- */
 export function getAIConfigManager(): AIConfigManagerSection {
   const config = getSystemConfig();
   return config.ai.manager;
 }
 
-/**
- * 保存 AI 配置管理器
- */
 export function saveAIConfigManager(manager: AIConfigManagerSection): void {
   const config = getSystemConfig();
   config.ai.manager = manager;
   saveSystemConfig(config);
 }
 
-/**
- * 获取当前激活的 AI 配置
- */
 export function getActiveAIConfig(): AIConfigProfileSection | null {
   const manager = getAIConfigManager();
-  if (!manager.activeConfigId) {
-    return null;
-  }
+  if (!manager.activeConfigId) return null;
   return manager.configs.find(c => c.id === manager.activeConfigId) || null;
 }
 
-/**
- * 获取系统功能开关
- */
 export function getFeatureConfig(): FeatureConfigSection {
   const config = getSystemConfig();
   return {
@@ -189,56 +136,41 @@ export function getFeatureConfig(): FeatureConfigSection {
   };
 }
 
-/**
- * 保存系统功能开关
- */
 export function saveFeatureConfig(cfg: FeatureConfigSection): void {
   const config = getSystemConfig();
   config.features = cfg;
   saveSystemConfig(config);
 }
 
-/**
- * 检查单个功能是否启用
- */
 export function isFeatureEnabled(featureKey: keyof FeatureConfigSection): boolean {
   const features = getFeatureConfig();
   return features[featureKey] === true;
 }
 
-/**
- * 更新单个功能开关
- */
 export function setFeatureEnabled(featureKey: keyof FeatureConfigSection, enabled: boolean): void {
   const features = getFeatureConfig();
   features[featureKey] = enabled;
   saveFeatureConfig(features);
 }
 
-// ─── 迁移接口 ──────────────────────────────────────────────────────────────────
+// ─── 迁移接口（由 localStorageService 统一调用，迁移完成后可删除）────────────────
 
-/**
- * 检查是否需要迁移
- */
-export function needsMigration(): boolean {
-  // 如果新 key 已存在，则不需要迁移
-  if (localStorage.getItem(STORAGE_KEY)) {
-    return false;
-  }
-  // 检查是否存在旧 key
-  return Object.values(OLD_KEYS).some(key => {
-    if (key === OLD_KEYS.AI_API_CONFIG) return false; // 废弃的 key，不检查
+export function needsSystemConfigMigration(): boolean {
+  if (localStorage.getItem(STORAGE_KEY)) return false;
+  return Object.entries(OLD_KEYS).some(([name, key]) => {
+    if (name === 'AI_API_CONFIG') return false;
     return localStorage.getItem(key) !== null;
   });
 }
 
-/**
- * 从旧 key 迁移数据到新结构
- */
-export function migrateFromOldKeys(): void {
-  if (!needsMigration()) {
-    return;
-  }
+export function ensureSystemConfigMigration(): void {
+  if (localStorage.getItem(STORAGE_KEY)) return;
+
+  const hasOldKeys = Object.entries(OLD_KEYS).some(([name, key]) => {
+    if (name === 'AI_API_CONFIG') return false;
+    return localStorage.getItem(key) !== null;
+  });
+  if (!hasOldKeys) return;
 
   const newConfig: SystemConfig = { ...DEFAULT_SYSTEM_CONFIG };
 
@@ -256,12 +188,10 @@ export function migrateFromOldKeys(): void {
     }
   } catch { /* ignore */ }
 
-  // 迁移同步配置（优先使用 eggfund_sync_config，因为它使用更广泛）
+  // 迁移同步配置
   try {
     const eggfundRaw = localStorage.getItem(OLD_KEYS.EGGFUND_SYNC_CONFIG);
     const syncRaw = localStorage.getItem(OLD_KEYS.SYNC_CONFIG);
-
-    // 优先使用 eggfund_sync_config
     const syncSource = eggfundRaw || syncRaw;
     if (syncSource) {
       const parsed = JSON.parse(syncSource);
@@ -317,33 +247,28 @@ export function migrateFromOldKeys(): void {
   } catch { /* ignore */ }
 
   // 保存新配置
-  saveSystemConfig(newConfig);
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({ ...newConfig, version: CONFIG_VERSION }));
+  } catch (e) {
+    console.error('Error saving system config during migration:', e);
+  }
 
   // 清理旧 key
-  cleanupOldKeys();
-}
-
-/**
- * 清理旧 key（迁移成功后调用）
- */
-export function cleanupOldKeys(): void {
   Object.values(OLD_KEYS).forEach(key => {
-    try {
-      localStorage.removeItem(key);
-    } catch { /* ignore */ }
+    try { localStorage.removeItem(key); } catch { /* ignore */ }
   });
 }
 
-// ─── 兼容旧版接口 ──────────────────────────────────────────────────────────────
-
 /**
- * 获取当前 AI 配置（旧版兼容接口）
- * 用于保持与现有 aiConfigService 的兼容性
+ * @deprecated 使用 ensureSystemConfigMigration 代替
  */
+export function migrateFromOldKeys(): void {
+  ensureSystemConfigMigration();
+}
+
 export function getAIConfiguration(): { apiEndpoint: string; apiKey: string; model: string } | null {
   const activeConfig = getActiveAIConfig();
   if (!activeConfig) return null;
-
   return {
     apiEndpoint: activeConfig.apiEndpoint,
     apiKey: activeConfig.apiKey,

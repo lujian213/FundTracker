@@ -1,25 +1,28 @@
-import {
-  addAIConfig,
-  getAIConfigManager,
-  setActiveAIConfig,
-  createAIConfigBackup,
-  restoreAIConfigBackup,
-  deleteAIConfig
-} from '../../services/aiConfigService';
 import { AIConfigProfile } from '../../types/aiConfigTypes';
 
 describe('AI Configuration Backup and Restore', () => {
   beforeEach(() => {
-    // 清空localStorage中的AI配置
-    localStorage.removeItem('ai_configs');
+    // 清空localStorage中的AI配置（整合后的统一key）
+    localStorage.removeItem('fund_system_config');
+    localStorage.removeItem('ai_configs'); // 兼容旧key
+    jest.resetModules();
   });
 
   afterEach(() => {
     // 清空localStorage中的AI配置
-    localStorage.removeItem('ai_configs');
+    localStorage.removeItem('fund_system_config');
+    localStorage.removeItem('ai_configs'); // 兼容旧key
   });
 
   test('should backup AI configuration without API keys and restore without API keys', () => {
+    const {
+      addAIConfig,
+      getAIConfigManager,
+      setActiveAIConfig,
+      createAIConfigBackup,
+      restoreAIConfigBackup
+    } = require('../../services/aiConfigService');
+
     // 创建几个测试配置
     const config1 = addAIConfig({
       name: 'Test Config 1',
@@ -72,13 +75,17 @@ describe('AI Configuration Backup and Restore', () => {
     expect(backup.activeConfigId).toBe(config2.id);
 
     // 清空当前配置（模拟恢复过程）
-    localStorage.removeItem('ai_configs');
+    localStorage.removeItem('fund_system_config');
+
+    // 重新导入模块以获取清空后的状态
+    jest.resetModules();
+    const { restoreAIConfigBackup: restoreBackup, getAIConfigManager: getManagerAfter } = require('../../services/aiConfigService');
 
     // 尝试从备份恢复配置
-    restoreAIConfigBackup(backup);
+    restoreBackup(backup);
 
     // 验证恢复后的配置
-    const managerAfter = getAIConfigManager();
+    const managerAfter = getManagerAfter();
     expect(managerAfter.configs).toHaveLength(2);
     expect(managerAfter.activeConfigId).toBe(config2.id);
 
@@ -106,6 +113,8 @@ describe('AI Configuration Backup and Restore', () => {
   });
 
   test('should handle empty configurations during backup and restore', () => {
+    const { createAIConfigBackup, restoreAIConfigBackup, getAIConfigManager } = require('../../services/aiConfigService');
+
     // 测试没有任何配置的情况
     const backup = createAIConfigBackup();
     expect(backup.configs).toHaveLength(0);
@@ -120,6 +129,8 @@ describe('AI Configuration Backup and Restore', () => {
   });
 
   test('should handle invalid backup data', () => {
+    const { restoreAIConfigBackup } = require('../../services/aiConfigService');
+
     // 测试传入无效备份数据时的行为
     expect(restoreAIConfigBackup(null)).toBe(false);
     expect(restoreAIConfigBackup({})).toBe(false);
@@ -127,6 +138,14 @@ describe('AI Configuration Backup and Restore', () => {
   });
 
   test('should maintain config relationships after restore', () => {
+    const {
+      addAIConfig,
+      setActiveAIConfig,
+      createAIConfigBackup,
+      restoreAIConfigBackup,
+      getAIConfigManager
+    } = require('../../services/aiConfigService');
+
     // 创建测试配置
     const config = addAIConfig({
       name: 'Config With Special Chars',
@@ -146,11 +165,13 @@ describe('AI Configuration Backup and Restore', () => {
     expect(backupConfig.apiKey).toBeUndefined(); // 备份中不应该包含apiKey字段
 
     // 恢复
-    localStorage.removeItem('ai_configs');
-    restoreAIConfigBackup(backup);
+    localStorage.removeItem('fund_system_config');
+    jest.resetModules();
+    const { restoreAIConfigBackup: restoreBackup, getAIConfigManager: getManagerAfter } = require('../../services/aiConfigService');
+    restoreBackup(backup);
 
     // 验证恢复后的状态
-    const managerAfter = getAIConfigManager();
+    const managerAfter = getManagerAfter();
     const restoredConfig = managerAfter.configs.find(c => c.id === config.id);
 
     expect(restoredConfig).toBeDefined();

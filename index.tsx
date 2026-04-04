@@ -1,7 +1,12 @@
-
 import 'react-day-picker/dist/style.css';
 import React from 'react';
 import ReactDOM from 'react-dom/client';
+
+// 在 React 渲染前执行 localStorage 数据迁移
+// 确保任何组件读取数据前，迁移已完成
+import { ensureMigration } from './services/localStorageService';
+ensureMigration();
+
 import App from './App';
 
 const rootElement = document.getElementById('root');

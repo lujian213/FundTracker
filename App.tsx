@@ -3,7 +3,8 @@ import { Ticker, ValuationData, MarketType, MarketIndex, BackupData, CardStatus,
 import { fetchFundData, fetchFundDatas, forceFetchFundHistories, fetchMarketIndices, fetchIndexHistories, maybeTriggerHistoryRefresh } from './services/fundService';
 import { toLocalDateKey } from './utils/priceResolver';
 import * as cacheService from './services/cacheService';
-import { isFeatureEnabled, getSyncConfig, saveSyncConfig, migrateFromOldKeys } from './services/systemConfigService';
+import { isFeatureEnabled, getSyncConfig, saveSyncConfig } from './services/systemConfigService';
+import { getSortOrder, saveSortOrder, SortOrder } from './services/userPreferenceService';
 import { TickerCard } from './components/TickerCard';
 import IndexCard from './components/IndexCard';
 import { AddTickerModal } from './components/AddTickerModal';
@@ -43,8 +44,6 @@ import { refreshStrategyRecommendations } from './services/strategyRecommendatio
 import { refreshFundProfiles } from './services/fundProfileService';
 import { updateCalendarData, getEventsForYear, getUpcomingEvents, loadCalendarData, getFirstEventInWorkdays } from './services/calendarService';
 import { formatDateDisplay } from './utils/dateFormat';
-
-type SortOrder = 'asc' | 'desc';
 
 const DEFAULT_INDICES = ['1.000001', '0.399001', '0.399006'];
 const DEFAULT_GLOBAL_INDICES = ['100.NDX', '100.SPX', '100.HSI'];
@@ -460,10 +459,7 @@ const AppContent: React.FC = () => {
     } catch (e) { return []; }
   });
 
-  const [sortOrder, setSortOrder] = useState<SortOrder>(() => {
-    const saved = localStorage.getItem('fund_sort_order');
-    return (saved === 'asc' || saved === 'desc') ? saved : 'desc';
-  });
+  const [sortOrder, setSortOrder] = useState<SortOrder>(() => getSortOrder());
 
   const [isRefreshing, setIsRefreshing] = useState<boolean>(false);
   const [isModalOpen, setIsModalOpen] = useState<boolean>(false);
@@ -485,11 +481,6 @@ const AppContent: React.FC = () => {
   const [viewingFund, setViewingFund] = useState<{ symbol: string; fromDraft: boolean } | null>(null);
   // 跟踪上一次 viewingFund 是否为非 null，用于判断是否需要进场动画
   const wasViewingFundOpenRef = useRef<boolean>(false);
-
-  // 应用启动时执行一次性迁移（将旧 localStorage key 迁移到新的统一配置）
-  useEffect(() => {
-    migrateFromOldKeys();
-  }, []);
 
   // 更新 ref：每次 viewingFund 变化后，将当前值同步到 ref，供下一次渲染使用
   useEffect(() => {
@@ -559,7 +550,7 @@ const AppContent: React.FC = () => {
   useEffect(() => { localStorage.setItem('fund_indices_config', JSON.stringify(indicesConfig)); }, [indicesConfig]);
   useEffect(() => { localStorage.setItem('fund_global_indices_config', JSON.stringify(globalIndicesConfig)); }, [globalIndicesConfig]);
   // fund_market_data 由 cacheService.setValuation() 写入，此处不重复同步
-  useEffect(() => { localStorage.setItem('fund_sort_order', sortOrder); }, [sortOrder]);
+  useEffect(() => { saveSortOrder(sortOrder); }, [sortOrder]);
   useEffect(() => { localStorage.setItem('fund_market_indices_cache', JSON.stringify(marketIndices)); }, [marketIndices]);
   useEffect(() => { localStorage.setItem('fund_global_indices_cache', JSON.stringify(globalIndices)); }, [globalIndices]);
 
