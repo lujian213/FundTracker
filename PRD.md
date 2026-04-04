@@ -1760,7 +1760,7 @@ export type CardStatus = 'ok' | 'error' | 'unknown';
   - `accept: application/json`
   - `Authorization: Basic {base64(username:password)}`
 - 返回格式: 数组，元素结构:
-  ```typescript
+  ```text
   {
     type: string,      // "LOCAL_FUND"
     id: string,        // 基金代码
@@ -1786,7 +1786,7 @@ export type CardStatus = 'ok' | 'error' | 'unknown';
   - `accept: application/json`
   - `Authorization: Basic {base64(username:password)}`
 - 返回格式: 数组，元素结构:
-  ```typescript
+  ```text
   {
     day: string,         // 交易日期，格式为 yyyy-MM-dd
     type: string,        // "trade"

@@ -580,7 +580,7 @@ export async function generateAIInvestmentAdvice(
     .replace(/{json_content}/g, jsonContent);
 
   // 调用AI（增加maxTokens避免响应被截断）
-  const result = await queryAI(config, prompt, undefined, 4000);
+  const result = await queryAI(config, prompt, undefined, undefined, 4000);
 
   if (!result.success) {
     return {
