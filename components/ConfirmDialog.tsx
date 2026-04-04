@@ -10,6 +10,7 @@ interface ConfirmDialogProps {
   confirmText?: string;
   cancelText?: string;
   type?: 'danger' | 'info';
+  singleButton?: boolean;
 }
 
 export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
@@ -20,7 +21,8 @@ export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
   onCancel,
   confirmText = '确认删除',
   cancelText = '取消',
-  type = 'danger'
+  type = 'danger',
+  singleButton = false
 }) => {
   if (!isOpen) return null;
 
@@ -48,21 +50,33 @@ export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
         </div>
 
         <div className="flex border-t border-gray-100">
-          <button
-            onClick={onCancel}
-            className="flex-1 py-4 text-sm font-bold text-gray-400 hover:bg-gray-50 transition-colors"
-            aria-label="取消"
-          >
-            {cancelText}
-          </button>
-          <div className="w-px bg-gray-100"></div>
-          <button
-            onClick={onConfirm}
-            className={`flex-1 py-4 text-sm font-bold transition-colors ${type === 'danger' ? 'text-red-600 hover:bg-red-50' : 'text-blue-600 hover:bg-blue-50'}`}
-            aria-label="确认"
-          >
-            {confirmText}
-          </button>
+          {singleButton ? (
+            <button
+              onClick={onConfirm}
+              className={`flex-1 py-4 text-sm font-bold transition-colors ${type === 'danger' ? 'text-red-600 hover:bg-red-50' : 'text-blue-600 hover:bg-blue-50'}`}
+              aria-label="确认"
+            >
+              {confirmText}
+            </button>
+          ) : (
+            <>
+              <button
+                onClick={onCancel}
+                className="flex-1 py-4 text-sm font-bold text-gray-400 hover:bg-gray-50 transition-colors"
+                aria-label="取消"
+              >
+                {cancelText}
+              </button>
+              <div className="w-px bg-gray-100"></div>
+              <button
+                onClick={onConfirm}
+                className={`flex-1 py-4 text-sm font-bold transition-colors ${type === 'danger' ? 'text-red-600 hover:bg-red-50' : 'text-blue-600 hover:bg-blue-50'}`}
+                aria-label="确认"
+              >
+                {confirmText}
+              </button>
+            </>
+          )}
         </div>
       </div>
     </div>,

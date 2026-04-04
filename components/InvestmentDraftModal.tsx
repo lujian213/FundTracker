@@ -5,7 +5,10 @@ import { fetchFundData } from '../services/fundService';  // Import fetchFundDat
 import { toLocalDateKey } from '../utils/priceResolver';
 import * as cacheService from '../services/cacheService';  // Import cacheService for enhanced valuation
 import AIInvestmentDraftModal from './AIInvestmentDraftModal';
-import { DraftEntry } from '../services/aiInvestmentDraftService';
+import { DraftEntry, AIAdviceEntry, generateAIInvestmentAdvice, hasDraftAction } from '../services/aiInvestmentDraftService';
+import { getActiveAIConfig, hasUsableAIConfig } from '../services/aiConfigService';
+import { ConfirmDialog } from './ConfirmDialog';
+import SimpleTooltip from './SimpleTooltip';
 import { formatMoneyWithSeparators } from '../utils/format';
 
 interface InvestmentDraftModalProps {
@@ -34,6 +37,11 @@ const InvestmentDraftModal: React.FC<InvestmentDraftModalProps> = ({
   const [draftData, setDraftData] = useState<Record<string, DraftEntry>>({});
   const [copied, setCopied] = useState(false);
   const [selectedFunds, setSelectedFunds] = useState<Set<string>>(new Set()); // 选中的基金
+  const [aiAdvice, setAIAdvice] = useState<Record<string, AIAdviceEntry>>({});
+  const [showConfirmDialog, setShowConfirmDialog] = useState(false);
+  const [showErrorDialog, setShowErrorDialog] = useState(false);
+  const [errorDialogMessage, setErrorDialogMessage] = useState('');
+  const [aiAdviceLoading, setAIAdviceLoading] = useState(false);
   const MODAL_HEIGHT_CACHE_KEY = 'draft_modal_matched_height';
 
   const [modalHeight, setModalHeight] = useState<number | null>(() => {
@@ -235,6 +243,115 @@ const InvestmentDraftModal: React.FC<InvestmentDraftModalProps> = ({
       }
 
       return newData;
+    });
+  };
+
+  const hasTableData = () => {
+    return Object.values(draftData).some(hasDraftAction);
+  };
+
+  const handleAIAdviceClick = () => {
+    if (hasTableData()) {
+      setShowConfirmDialog(true);
+    } else {
+      executeAIAdvice();
+    }
+  };
+
+  const handleConfirmClear = () => {
+    setShowConfirmDialog(false);
+    executeAIAdvice();
+  };
+
+  const executeAIAdvice = async () => {
+    // 检查AI配置
+    if (!hasUsableAIConfig()) {
+      setErrorDialogMessage('AI未配置，请在系统设置中配置AI参数');
+      setShowErrorDialog(true);
+      return;
+    }
+
+    const config = getActiveAIConfig();
+    if (!config) {
+      setErrorDialogMessage('未找到激活的AI配置');
+      setShowErrorDialog(true);
+      return;
+    }
+
+    setAIAdviceLoading(true);
+
+    // 清空表格数据
+    const clearedDraftData: Record<string, DraftEntry> = {};
+    fundsWithPositions.forEach(fund => {
+      clearedDraftData[fund.symbol] = {
+        fundSymbol: fund.symbol,
+        operation: '不操作',
+        amount: '',
+        note: ''
+      };
+    });
+    setDraftData(clearedDraftData);
+    setAIAdvice({});
+    setSelectedFunds(new Set());
+
+    try {
+      const result = await generateAIInvestmentAdvice(
+        config,
+        portfolio,
+        fundHistories || {},
+        indexHistories || {},
+        marketIndices || [],
+        globalIndices || [],
+        marketData
+      );
+
+      if (!result.success) {
+        setErrorDialogMessage(result.error || 'AI调用失败');
+        setShowErrorDialog(true);
+        return;
+      }
+
+      // 填充AI建议到表格
+      const newDraftData: Record<string, DraftEntry> = { ...clearedDraftData };
+      const newAIAdvice: Record<string, AIAdviceEntry> = {};
+
+      for (const advice of result.advice) {
+        const symbol = advice.fundCode;
+        if (newDraftData[symbol]) {
+          // 获取涨跌幅填充到注释
+          const valuation = marketData[symbol];
+          const changePercent = valuation?.changePercentage;
+          const noteValue = typeof changePercent === 'number'
+            ? `${changePercent >= 0 ? '+' : ''}${changePercent.toFixed(2)}%`
+            : '';
+
+          newDraftData[symbol] = {
+            fundSymbol: symbol,
+            operation: advice.operation,
+            amount: String(advice.amount),
+            note: noteValue
+          };
+          newAIAdvice[symbol] = advice;
+        }
+      }
+
+      setDraftData(newDraftData);
+      setAIAdvice(newAIAdvice);
+    } catch (e) {
+      setErrorDialogMessage('AI调用失败，请检查网络连接或稍后重试');
+      setShowErrorDialog(true);
+    } finally {
+      setAIAdviceLoading(false);
+    }
+  };
+
+  // 修改重置函数，清除AI建议
+  const handleResetWithAIAdvice = (fundSymbol: string) => {
+    handleReset(fundSymbol);
+    setAIAdvice(prev => {
+      const newAdvice = { ...prev };
+      delete newAdvice[fundSymbol];
+      return newAdvice;
     });
   };
 
@@ -451,22 +568,33 @@ const InvestmentDraftModal: React.FC<InvestmentDraftModalProps> = ({
           <h3 className="text-lg font-bold">投资计划草稿</h3>
           <div className="flex items-center gap-2">
             <button
+              onClick={handleAIAdviceClick}
+              disabled={aiAdviceLoading}
+              className={`w-8 h-8 rounded-full flex items-center justify-center ${aiAdviceLoading ? 'bg-blue-100 text-blue-400' : 'bg-gray-50 text-gray-400 hover:bg-gray-100'}`}
+              title="AI辅助"
+            >
+              <i className={`fas ${aiAdviceLoading ? 'fa-spinner fa-spin' : 'fa-wand-magic-sparkles'}`}></i>
+            </button>
+            <button
               onClick={() => setShowAIAnalysis(true)}
-              className="w-8 h-8 rounded-full bg-gray-50 flex items-center justify-center text-gray-400 hover:bg-gray-100"
+              disabled={aiAdviceLoading}
+              className={`w-8 h-8 rounded-full flex items-center justify-center ${aiAdviceLoading ? 'bg-gray-100 text-gray-300 cursor-not-allowed' : 'bg-gray-50 text-gray-400 hover:bg-gray-100'}`}
               title="AI分析"
             >
               <i className="fas fa-robot"></i>
             </button>
             <button
               onClick={handleCopyToClipboard}
-              className="w-8 h-8 rounded-full bg-gray-50 flex items-center justify-center text-gray-400 hover:bg-gray-100"
+              disabled={aiAdviceLoading}
+              className={`w-8 h-8 rounded-full flex items-center justify-center ${aiAdviceLoading ? 'bg-gray-100 text-gray-300 cursor-not-allowed' : 'bg-gray-50 text-gray-400 hover:bg-gray-100'}`}
               title={copied ? '已复制' : '复制内容到剪贴板'}
             >
               <i className={`fas fa-${copied ? 'check text-green-500' : 'copy'}`}></i>
             </button>
             <button
               aria-label="关闭投资计划窗口"
-              className="w-8 h-8 rounded-full bg-gray-50 flex items-center justify-center text-gray-400 hover:bg-gray-100"
+              disabled={aiAdviceLoading}
+              className={`w-8 h-8 rounded-full flex items-center justify-center ${aiAdviceLoading ? 'bg-gray-100 text-gray-300 cursor-not-allowed' : 'bg-gray-50 text-gray-400 hover:bg-gray-100'}`}
               onClick={onClose}
             >
               <i className="fas fa-times" />
@@ -501,6 +629,7 @@ const InvestmentDraftModal: React.FC<InvestmentDraftModalProps> = ({
                         title="全选/取消全选有金额的记录"
                       />
                     </th>
+                    <th className="px-1 py-1 text-center text-xs font-semibold text-gray-500 min-w-[20px] w-[20px]"></th>
                     <th className="px-2 py-1 text-left text-xs font-semibold text-gray-500 min-w-[140px] w-[140px]">基金名称</th>
                     <th className="px-2 py-1 text-left text-xs font-semibold text-gray-500 min-w-[90px] w-[90px]">实时估值</th>
                     <th className="px-2 py-1 text-left text-xs font-semibold text-gray-500 min-w-[90px] w-[90px]">前值</th>
@@ -530,15 +659,25 @@ const InvestmentDraftModal: React.FC<InvestmentDraftModalProps> = ({
                                 type="checkbox"
                                 checked={selectedFunds.has(fund.symbol)}
                                 onChange={() => toggleFundSelection(fund.symbol)}
-                                className="w-3 h-3 cursor-pointer"
+                                disabled={aiAdviceLoading}
+                                className={`w-3 h-3 ${aiAdviceLoading ? 'cursor-not-allowed opacity-50' : 'cursor-pointer'}`}
                               />
                             ) : (
                               <span className="text-gray-300 text-xs">-</span>
                             )}
                           </td>
+                          {/* 提示列 */}
+                          <td className="px-1 py-1 text-center">
+                            {aiAdvice[fund.symbol] && (
+                              <SimpleTooltip content={aiAdvice[fund.symbol].reason}>
+                                <i className="fas fa-info-circle text-blue-500 text-xs cursor-pointer"></i>
+                              </SimpleTooltip>
+                            )}
+                          </td>
                           <td
-                            className="px-2 py-1 text-left text-xs text-gray-700 cursor-pointer hover:underline truncate max-w-[140px] overflow-hidden"
+                            className={`px-2 py-1 text-left text-xs text-gray-700 truncate max-w-[140px] overflow-hidden ${aiAdviceLoading ? '' : 'cursor-pointer hover:underline'}`}
                             onClick={() => {
+                              if (aiAdviceLoading) return;
                               // Save current state before navigating
                               const today = toLocalDateKey(new Date());
                               const storedKey = `investment_draft_${today}`;
@@ -618,7 +757,8 @@ const InvestmentDraftModal: React.FC<InvestmentDraftModalProps> = ({
                             <select
                               value={entry.operation}
                               onChange={(e) => handleOperationChange(fund.symbol, e.target.value as '买入' | '卖出' | '不操作')}
-                              className="w-[70px] p-1 text-xs border border-gray-200 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500 bg-white"
+                              disabled={aiAdviceLoading}
+                              className={`w-[70px] p-1 text-xs border border-gray-200 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500 bg-white ${aiAdviceLoading ? 'opacity-50 cursor-not-allowed' : ''}`}
                             >
                               <option value="不操作">不操作</option>
                               <option value="买入">买入</option>
@@ -636,7 +776,8 @@ const InvestmentDraftModal: React.FC<InvestmentDraftModalProps> = ({
                                   value={entry.amount}
                                   onChange={(e) => handleAmountChange(fund.symbol, e.target.value)}
                                   placeholder="金额"
-                                  className="w-full p-1 text-xs border border-gray-200 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500"
+                                  disabled={aiAdviceLoading}
+                                  className={`w-full p-1 text-xs border border-gray-200 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500 ${aiAdviceLoading ? 'opacity-50 cursor-not-allowed' : ''}`}
                                 />
                               )}
                             </div>
@@ -654,7 +795,8 @@ const InvestmentDraftModal: React.FC<InvestmentDraftModalProps> = ({
                               value={entry.note || ''}
                               onChange={(e) => handleNoteChange(fund.symbol, e.target.value)}
                               placeholder="注释"
-                              className="w-full p-1 text-xs border border-gray-200 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500"
+                              disabled={aiAdviceLoading}
+                              className={`w-full p-1 text-xs border border-gray-200 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500 ${aiAdviceLoading ? 'opacity-50 cursor-not-allowed' : ''}`}
                             />
                           </td>
 
@@ -662,14 +804,16 @@ const InvestmentDraftModal: React.FC<InvestmentDraftModalProps> = ({
                             <div className="flex flex-row items-center justify-center gap-1">
                               <button
                                 onClick={() => handleAddValuationToNote(fund.symbol)}
-                                className="w-6 h-6 flex items-center justify-center text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded transition-colors"
+                                disabled={aiAdviceLoading}
+                                className={`w-6 h-6 flex items-center justify-center rounded transition-colors ${aiAdviceLoading ? 'text-gray-300 cursor-not-allowed' : 'text-gray-500 hover:text-gray-700 hover:bg-gray-100'}`}
                                 title="添加涨跌幅到注释"
                               >
                                 <i className="fas fa-plus text-xs"></i>
                               </button>
                               <button
-                                onClick={() => handleReset(fund.symbol)}
-                                className="w-6 h-6 flex items-center justify-center text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded transition-colors"
+                                onClick={() => handleResetWithAIAdvice(fund.symbol)}
+                                disabled={aiAdviceLoading}
+                                className={`w-6 h-6 flex items-center justify-center rounded transition-colors ${aiAdviceLoading ? 'text-gray-300 cursor-not-allowed' : 'text-gray-500 hover:text-gray-700 hover:bg-gray-100'}`}
                                 title="重置"
                               >
                                 <i className="fas fa-undo text-xs"></i>
@@ -681,7 +825,7 @@ const InvestmentDraftModal: React.FC<InvestmentDraftModalProps> = ({
                     })
                   ) : (
                     <tr>
-                      <td colSpan={10} className="px-4 py-2 text-center text-sm text-gray-500" style={{ height: '40px' }}>
+                      <td colSpan={11} className="px-4 py-2 text-center text-sm text-gray-500" style={{ height: '40px' }}>
                         没有配置仓位的基金
                       </td>
                     </tr>
@@ -722,6 +866,32 @@ const InvestmentDraftModal: React.FC<InvestmentDraftModalProps> = ({
     <>
       {createPortal(content, document.body)}
       {createPortal(aiModalContent, document.body)}
+      {createPortal(
+        <ConfirmDialog
+          isOpen={showConfirmDialog}
+          title="清空数据警告"
+          message="表格中已有数据，执行AI辅助将清空所有数据。是否继续？"
+          onConfirm={handleConfirmClear}
+          onCancel={() => setShowConfirmDialog(false)}
+          confirmText="继续"
+          cancelText="取消"
+          type="info"
+        />,
+        document.body
+      )}
+      {createPortal(
+        <ConfirmDialog
+          isOpen={showErrorDialog}
+          title="AI辅助失败"
+          message={errorDialogMessage}
+          onConfirm={() => setShowErrorDialog(false)}
+          onCancel={() => setShowErrorDialog(false)}
+          confirmText="关闭"
+          singleButton
+          type="info"
+        />,
+        document.body
+      )}
     </>
   );
 };

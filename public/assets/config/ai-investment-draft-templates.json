@@ -6,6 +6,13 @@
       "description": "分析今日投资计划的合理性和风险",
       "enabled": true,
       "template": "请分析我今天的基金投资计划。以下是结构化数据（JSON格式），请自行联网搜索获取的今日及近期重大财经新闻、宏观事件，给出操作合理性分析和风险提示。\n\n输出：以表格形式给出每个基金的名称（不包含基金代码），操作（买入为绿色，卖出为红色），份额，估算金额，合理性（合理/不合理/中性）、建议，风险提示（如有）。\n\n## JSON数据说明\n{json_schema}\n\n## 我的投资计划数据\n```json\n{json_content}\n```"
+    },
+    {
+      "id": "ai-investment-advice",
+      "name": "AI投资辅助",
+      "description": "根据持仓情况自动生成投资建议",
+      "enabled": true,
+      "template": "请给出我今天的基金投资计划。以下是我的持仓结构化数据（JSON格式），请自行联网搜索获取的今日及近期重大财经新闻、宏观事件，给出操作建议。\n\n重要要求：\n1. 只返回需要交易的基金（买入或卖出操作）\n2. 不需要交易的基金不要包含在输出中\n3. 操作只能是 buy（买入）或 sell（卖出）\n\n输出格式：纯JSON数组（不要嵌套在代码块里），每个元素包含：\n- fund_code: 基金代码\n- operation: 操作类型，只能是 \"buy\" 或 \"sell\"\n- amount: 建议金额（单位：元）\n- reason: 简短的操作理由（100字以内）\n\n示例：\n[\n  {\"fund_code\": \"000001\", \"operation\": \"buy\", \"amount\": 1000, \"reason\": \"短期看好，建议逢低买入\"},\n  {\"fund_code\": \"000002\", \"operation\": \"sell\", \"amount\": 500, \"reason\": \"获利了结，落袋为安\"}\n]\n\n## JSON数据说明\n{json_schema}\n\n## 我的持仓信息\n{json_content}"
     }
   ]
 }

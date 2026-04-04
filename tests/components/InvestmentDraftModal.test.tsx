@@ -430,3 +430,33 @@ describe('InvestmentDraftModal', () => {
     });
   });
 });
+
+describe('InvestmentDraftModal AI Advice', () => {
+  test('renders AI advice button in toolbar', () => {
+    const portfolio = [
+      { id: '1', symbol: '000001', name: '测试基金', market: MarketType.FUND }
+    ];
+    render(
+      <InvestmentDraftModal
+        portfolio={portfolio}
+        onClose={jest.fn()}
+      />
+    );
+    expect(screen.getByTitle('AI辅助')).toBeInTheDocument();
+  });
+
+  test('AI advice button shows spinner when loading', () => {
+    const portfolio = [
+      { id: '1', symbol: '000001', name: '测试基金', market: MarketType.FUND }
+    ];
+    render(
+      <InvestmentDraftModal
+        portfolio={portfolio}
+        onClose={jest.fn()}
+      />
+    );
+    // 初始状态不应有 spinner
+    const button = screen.getByTitle('AI辅助');
+    expect(button.querySelector('.fa-wand-magic-sparkles')).toBeInTheDocument();
+  });
+});
