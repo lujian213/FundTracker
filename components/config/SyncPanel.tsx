@@ -6,11 +6,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { testConnection } from '../../services/eggfundService';
-
-interface SyncConfig {
-  eggfundUsername: string;
-  eggfundPassword: string;
-}
+import { getSyncConfig, saveSyncConfig } from '../../services/systemConfigService';
 
 interface SyncPanelProps {
   onSyncNow?: () => void;
@@ -25,15 +21,10 @@ const SyncPanel: React.FC<SyncPanelProps> = ({ onSyncNow }) => {
 
   // 加载已保存的配置
   useEffect(() => {
-    const savedConfig = localStorage.getItem('eggfund_sync_config');
-    if (savedConfig) {
-      try {
-        const config: SyncConfig = JSON.parse(savedConfig);
-        setUsername(config.eggfundUsername || '');
-        setPassword(config.eggfundPassword || '');
-      } catch {
-        // ignore parse errors
-      }
+    const savedConfig = getSyncConfig();
+    if (savedConfig.eggfundUsername || savedConfig.eggfundPassword) {
+      setUsername(savedConfig.eggfundUsername || '');
+      setPassword(savedConfig.eggfundPassword || '');
     }
   }, []);
 
@@ -55,11 +46,10 @@ const SyncPanel: React.FC<SyncPanelProps> = ({ onSyncNow }) => {
 
     setIsSaving(true);
     try {
-      const config: SyncConfig = {
+      saveSyncConfig({
         eggfundUsername: username.trim(),
         eggfundPassword: password,
-      };
-      localStorage.setItem('eggfund_sync_config', JSON.stringify(config));
+      });
       setTestResult({ success: true, message: '配置已保存' });
     } catch {
       setTestResult({ success: false, message: '保存失败' });
@@ -92,19 +82,9 @@ const SyncPanel: React.FC<SyncPanelProps> = ({ onSyncNow }) => {
 
   const handleSyncNowClick = () => {
     // 检查配置是否完整
-    const configStr = localStorage.getItem('eggfund_sync_config');
-    if (!configStr) {
+    const config = getSyncConfig();
+    if (!config.eggfundUsername || !config.eggfundPassword) {
       setTestResult({ success: false, message: '请先保存同步配置' });
-      return;
-    }
-    try {
-      const config = JSON.parse(configStr);
-      if (!config.eggfundUsername || !config.eggfundPassword) {
-        setTestResult({ success: false, message: '同步配置信息不完整，请检查用户名和密码' });
-        return;
-      }
-    } catch {
-      setTestResult({ success: false, message: '同步配置格式错误' });
       return;
     }
 

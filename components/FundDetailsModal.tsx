@@ -23,7 +23,7 @@ import { formatMoneyWithSeparators, fmtNav, fmtNumber, formatPercent } from '../
 import { getAIConfig, AIConfiguration } from '../services/aiConfigService';
 import { prepareChartData } from '../utils/chartDataHelper';
 import { computePositionSharesByDate, prepareVolumeBars } from '../utils/tradeVolumeHelper';
-import { isFeatureEnabled } from '../services/systemSettingsService';
+import { isFeatureEnabled } from '../services/systemConfigService';
 import InitialPriceAdjustModal from './InitialPriceAdjustModal';
 
 interface FundDetailsModalProps {

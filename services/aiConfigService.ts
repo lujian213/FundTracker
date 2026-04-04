@@ -1,74 +1,64 @@
-// Updated services/aiConfigService.ts
+/**
+ * aiConfigService.ts
+ *
+ * AI 配置服务 - 管理 AI 配置的 CRUD 操作
+ * 底层存储使用 systemConfigService
+ */
+
 import { AIConfigProfile, AIConfigManager, AITemplate } from '../types/aiConfigTypes';
 import { getAITemplatesSync, getAITemplatesAsync } from './dynamicAITemplateService';
+import {
+  getAIConfigManager as getAIManagerFromStorage,
+  saveAIConfigManager as saveAIManagerToStorage,
+  getActiveAIConfig as getActiveConfigFromStorage,
+} from './systemConfigService';
 
-const AI_CONFIG_KEY = 'ai_configs';
+// ─── 核心接口 ──────────────────────────────────────────────────────────────────
 
 /**
  * 获取AI配置管理器
  */
 export function getAIConfigManager(): AIConfigManager {
-  try {
-    const configStr = localStorage.getItem(AI_CONFIG_KEY);
-    if (!configStr) {
-      // 初始化默认配置
-      const defaultManager: AIConfigManager = {
-        configs: [],
-        activeConfigId: null
-      };
-      return defaultManager;
-    }
-
-    const stored = JSON.parse(configStr);
-    // 确保日期对象被正确重建
-    const configs = stored.configs.map((config: any) => ({
+  const manager = getAIManagerFromStorage();
+  // 转换日期字符串为 Date 对象
+  return {
+    configs: manager.configs.map(config => ({
       ...config,
       createdAt: new Date(config.createdAt),
-      updatedAt: new Date(config.updatedAt)
-    }));
-
-    return {
-      configs,
-      activeConfigId: stored.activeConfigId
-    };
-  } catch (e) {
-    console.error('Error reading AI config manager:', e);
-    return { configs: [], activeConfigId: null };
-  }
+      updatedAt: new Date(config.updatedAt),
+    })),
+    activeConfigId: manager.activeConfigId,
+  };
 }
 
 /**
  * 保存AI配置管理器
  */
 export function saveAIConfigManager(manager: AIConfigManager): void {
-  try {
-    // 转换日期对象为字符串以安全存储
-    const serialized = {
-      ...manager,
-      configs: manager.configs.map(config => ({
-        ...config,
-        createdAt: config.createdAt.toISOString(),
-        updatedAt: config.updatedAt.toISOString()
-      }))
-    };
-
-    localStorage.setItem(AI_CONFIG_KEY, JSON.stringify(serialized));
-  } catch (e) {
-    console.error('Error saving AI config manager:', e);
-    throw e;
-  }
+  // 转换 Date 对象为 ISO 字符串
+  const serialized = {
+    configs: manager.configs.map(config => ({
+      ...config,
+      createdAt: config.createdAt.toISOString(),
+      updatedAt: config.updatedAt.toISOString(),
+    })),
+    activeConfigId: manager.activeConfigId,
+  };
+  saveAIManagerToStorage(serialized);
 }
 
 /**
  * 获取当前激活的配置
  */
 export function getActiveAIConfig(): AIConfigProfile | null {
-  const manager = getAIConfigManager();
-  if (!manager.activeConfigId) {
-    return null;
-  }
+  const config = getActiveConfigFromStorage();
+  if (!config) return null;
 
-  return manager.configs.find(config => config.id === manager.activeConfigId) || null;
+  return {
+    ...config,
+    createdAt: new Date(config.createdAt),
+    updatedAt: new Date(config.updatedAt),
+  };
 }
 
 /**
@@ -81,7 +71,7 @@ export function setActiveAIConfig(configId: string | null): boolean {
     // 清除激活配置
     manager.configs = manager.configs.map(config => ({
       ...config,
-      isActive: false
+      isActive: false,
     }));
     manager.activeConfigId = null;
     saveAIConfigManager(manager);
@@ -97,7 +87,7 @@ export function setActiveAIConfig(configId: string | null): boolean {
   // 先将所有配置设为非激活
   manager.configs = manager.configs.map(config => ({
     ...config,
-    isActive: config.id === configId
+    isActive: config.id === configId,
   }));
 
   manager.activeConfigId = configId;
@@ -115,7 +105,7 @@ export function addAIConfig(config: Omit<AIConfigProfile, 'id' | 'isActive' | 'c
     ...config,
     isActive: false,
     createdAt: new Date(),
-    updatedAt: new Date()
+    updatedAt: new Date(),
   };
 
   manager.configs.push(newConfig);
@@ -137,7 +127,7 @@ export function updateAIConfig(id: string, updates: Partial<Omit<AIConfigProfile
   manager.configs[index] = {
     ...manager.configs[index],
     ...updates,
-    updatedAt: new Date()
+    updatedAt: new Date(),
   };
 
   // 如果正在激活的配置被更新且被禁用，清除激活ID
@@ -174,7 +164,6 @@ export function deleteAIConfig(id: string): boolean {
  * 获取预设模板
  */
 export function getAITemplates(): AITemplate[] {
-  // 使用同步版本获取模板，以保持与现有代码的兼容性
   return getAITemplatesSync();
 }
 
@@ -200,7 +189,7 @@ export function createConfigFromTemplate(templateId: string, name: string, apiKe
     name,
     apiEndpoint: template.apiEndpoint,
     apiKey,
-    model: template.model
+    model: template.model,
   });
 }
 
@@ -219,7 +208,7 @@ export async function createConfigFromTemplateAsync(templateId: string, name: st
     name,
     apiEndpoint: template.apiEndpoint,
     apiKey,
-    model: template.model
+    model: template.model,
   });
 }
 
@@ -276,7 +265,7 @@ export function createAIConfigBackup(): any {
   const manager = getAIConfigManager();
 
   // 备份时排除API密钥
-  const backup = {
+  return {
     configs: manager.configs.map(config => ({
       id: config.id,
       name: config.name,
@@ -284,12 +273,10 @@ export function createAIConfigBackup(): any {
       model: config.model,
       isActive: config.isActive,
       createdAt: config.createdAt,
-      updatedAt: config.updatedAt
+      updatedAt: config.updatedAt,
     })),
-    activeConfigId: manager.activeConfigId
+    activeConfigId: manager.activeConfigId,
   };
-
-  return backup;
 }
 
 /**
@@ -305,23 +292,19 @@ export function restoreAIConfigBackup(backup: any): boolean {
   const newManager: AIConfigManager = {
     configs: backup.configs.map((config: any) => ({
       ...config,
-      apiKey: ''  // API密钥必须重新输入
+      apiKey: '',  // API密钥必须重新输入
+      createdAt: new Date(config.createdAt),
+      updatedAt: new Date(config.updatedAt),
     })),
-    activeConfigId: backup.activeConfigId
+    activeConfigId: backup.activeConfigId,
   };
-
-  // 确保日期对象被正确重建
-  newManager.configs = newManager.configs.map((config: any) => ({
-    ...config,
-    createdAt: new Date(config.createdAt),
-    updatedAt: new Date(config.updatedAt)
-  }));
 
   saveAIConfigManager(newManager);
   return true;
 }
 
-// 保留旧版兼容的类型定义和函数
+// ─── 旧版兼容接口 ──────────────────────────────────────────────────────────────
+
 export interface AIConfiguration {
   apiEndpoint: string;
   apiKey: string;
@@ -338,7 +321,7 @@ export function getAIConfig(): AIConfiguration | null {
   return {
     apiEndpoint: activeConfig.apiEndpoint,
     apiKey: activeConfig.apiKey,
-    model: activeConfig.model
+    model: activeConfig.model,
   };
 }
 
@@ -346,14 +329,14 @@ export function getAIConfig(): AIConfiguration | null {
  * 保存AI配置（旧版兼容）
  */
 export function saveAIConfig(config: AIConfiguration): void {
-  // 如果没有活动配置，创建一个新配置并激活它
   const manager = getAIConfigManager();
   if (manager.configs.length === 0) {
+    // 如果没有配置，创建一个新配置并激活它
     const newConfig = addAIConfig({
       name: config.model || 'Default Config',
       apiEndpoint: config.apiEndpoint,
       apiKey: config.apiKey,
-      model: config.model || 'gpt-4'
+      model: config.model || 'gpt-4',
     });
     setActiveAIConfig(newConfig.id);
   } else if (manager.activeConfigId) {
@@ -361,7 +344,7 @@ export function saveAIConfig(config: AIConfiguration): void {
     updateAIConfig(manager.activeConfigId, {
       apiEndpoint: config.apiEndpoint,
       apiKey: config.apiKey,
-      model: config.model
+      model: config.model,
     });
   }
 }

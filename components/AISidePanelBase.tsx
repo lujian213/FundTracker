@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { queryAI, queryAIWithMarketTemplate, AIResponse, StreamCallback } from '../services/aiService';
-import { getAIConfig, hasValidAIConfig, hasUsableAIConfig } from '../services/aiConfigService';
+import { getAIConfig, saveAIConfig, hasValidAIConfig, hasUsableAIConfig } from '../services/aiConfigService';
 import { AIConfiguration } from '../types/aiConfigTypes';
 import { aiAssistantStateManager } from '../services/aiAssistantStateManager';
 import { AIAssistantMessage, AIAssistantState } from '../types/aiAssistantTypes';
@@ -1001,7 +1001,7 @@ const AISidePanelBase: React.FC<AISidePanelBaseProps> = ({
       model
     };
 
-    localStorage.setItem('ai_api_config', JSON.stringify(newConfig));
+    saveAIConfig(newConfig);
     setConfig(newConfig);
     setShowConfig(false);
 

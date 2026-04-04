@@ -66,6 +66,8 @@ const BASE_BACKUP: BackupData = {
 // ─── readBackupConfig / writeBackupConfig ─────────────────────────────────────
 
 describe('readBackupConfig', () => {
+  const STORAGE_KEY = 'fund_system_config';
+
   beforeEach(() => { localStorage.clear(); });
   afterEach(() => { localStorage.clear(); jest.resetModules(); });
 
@@ -75,48 +77,61 @@ describe('readBackupConfig', () => {
   });
 
   test('returns stored config when valid with autoBackupEnabled', () => {
-    localStorage.setItem('fund_backup_config', JSON.stringify({ autoExportTime: '09:30', autoBackupEnabled: true }));
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({
+      version: 1,
+      backup: { autoExportTime: '09:30', autoBackupEnabled: true }
+    }));
     const bs = loadBackupService();
     expect(bs.readBackupConfig()).toEqual({ autoExportTime: '09:30', autoBackupEnabled: true });
   });
 
   test('defaults to false when autoBackupEnabled is not present', () => {
-    localStorage.setItem('fund_backup_config', JSON.stringify({ autoExportTime: '09:30' }));
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({
+      version: 1,
+      backup: { autoExportTime: '09:30' }
+    }));
     const bs = loadBackupService();
     expect(bs.readBackupConfig()).toEqual({ autoExportTime: '09:30', autoBackupEnabled: false });
   });
 
   test('returns default when stored value has invalid format', () => {
-    localStorage.setItem('fund_backup_config', JSON.stringify({ autoExportTime: 'invalid' }));
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({
+      version: 1,
+      backup: { autoExportTime: 'invalid' }
+    }));
     const bs = loadBackupService();
     expect(bs.readBackupConfig()).toEqual({ autoExportTime: '16:00', autoBackupEnabled: false });
   });
 
   test('returns default when localStorage contains malformed JSON', () => {
-    localStorage.setItem('fund_backup_config', '{broken json');
+    localStorage.setItem(STORAGE_KEY, '{broken json');
     const bs = loadBackupService();
     expect(bs.readBackupConfig()).toEqual({ autoExportTime: '16:00', autoBackupEnabled: false });
   });
 });
 
 describe('writeBackupConfig', () => {
+  const STORAGE_KEY = 'fund_system_config';
+
   beforeEach(() => { localStorage.clear(); });
   afterEach(() => { localStorage.clear(); jest.resetModules(); });
 
-  test('persists config to fund_backup_config with autoBackupEnabled', () => {
+  test('persists config to fund_system_config with autoBackupEnabled', () => {
     const bs = loadBackupService();
     bs.writeBackupConfig({ autoExportTime: '08:00', autoBackupEnabled: true });
-    const raw = localStorage.getItem('fund_backup_config');
+    const raw = localStorage.getItem(STORAGE_KEY);
     expect(raw).not.toBeNull();
-    expect(JSON.parse(raw!)).toEqual({ autoExportTime: '08:00', autoBackupEnabled: true });
+    const parsed = JSON.parse(raw!);
+    expect(parsed.backup).toEqual({ autoExportTime: '08:00', autoBackupEnabled: true });
   });
 
-  test('persists config to fund_backup_config with autoBackupEnabled disabled', () => {
+  test('persists config to fund_system_config with autoBackupEnabled disabled', () => {
     const bs = loadBackupService();
     bs.writeBackupConfig({ autoExportTime: '08:00', autoBackupEnabled: false });
-    const raw = localStorage.getItem('fund_backup_config');
+    const raw = localStorage.getItem(STORAGE_KEY);
     expect(raw).not.toBeNull();
-    expect(JSON.parse(raw!)).toEqual({ autoExportTime: '08:00', autoBackupEnabled: false });
+    const parsed = JSON.parse(raw!);
+    expect(parsed.backup).toEqual({ autoExportTime: '08:00', autoBackupEnabled: false });
   });
 });
 
@@ -179,9 +194,12 @@ describe('buildBackupData', () => {
     });
   });
 
-  test('reads autoExportTime and autoBackupEnabled from fund_backup_config', async () => {
+  test('reads autoExportTime and autoBackupEnabled from fund_system_config', async () => {
     const { bs } = loadBoth();
-    localStorage.setItem('fund_backup_config', JSON.stringify({ autoExportTime: '09:30', autoBackupEnabled: true }));
+    localStorage.setItem('fund_system_config', JSON.stringify({
+      version: 1,
+      backup: { autoExportTime: '09:30', autoBackupEnabled: true }
+    }));
     const result = await bs.buildBackupData([], [], [], [], []);
     expect(result.config.autoExportTime).toBe('09:30');
     expect(result.config.autoBackupEnabled).toBe(true);
@@ -409,13 +427,14 @@ describe('applyBackupData', () => {
     expect(cs.getValuation('000001')!.previousPrice).toBeCloseTo(9.99);
   });
 
-  test('writes config.autoExportTime and autoBackupEnabled to fund_backup_config', async () => {
+  test('writes config.autoExportTime and autoBackupEnabled to fund_system_config', async () => {
     const { bs } = loadBoth();
     const backup = { ...BASE_BACKUP, config: { autoExportTime: '08:30', autoBackupEnabled: true } };
     await bs.applyBackupData(backup);
 
-    const raw = localStorage.getItem('fund_backup_config');
-    expect(JSON.parse(raw!)).toEqual({ autoExportTime: '08:30', autoBackupEnabled: true });
+    const raw = localStorage.getItem('fund_system_config');
+    const parsed = JSON.parse(raw!);
+    expect(parsed.backup).toEqual({ autoExportTime: '08:30', autoBackupEnabled: true });
   });
 
   test('writes config with autoBackupEnabled as false', async () => {
@@ -423,8 +442,9 @@ describe('applyBackupData', () => {
     const backup = { ...BASE_BACKUP, config: { autoExportTime: '08:30', autoBackupEnabled: false } };
     await bs.applyBackupData(backup);
 
-    const raw = localStorage.getItem('fund_backup_config');
-    expect(JSON.parse(raw!)).toEqual({ autoExportTime: '08:30', autoBackupEnabled: false });
+    const raw = localStorage.getItem('fund_system_config');
+    const parsed = JSON.parse(raw!);
+    expect(parsed.backup).toEqual({ autoExportTime: '08:30', autoBackupEnabled: false });
   });
 
   test('handles missing autoBackupEnabled during import by defaulting to false', async () => {
@@ -432,8 +452,9 @@ describe('applyBackupData', () => {
     const backup = { ...BASE_BACKUP, config: { autoExportTime: '08:30' } }; // No autoBackupEnabled
     await bs.applyBackupData(backup);
 
-    const raw = localStorage.getItem('fund_backup_config');
-    expect(JSON.parse(raw!)).toEqual({ autoExportTime: '08:30', autoBackupEnabled: false });
+    const raw = localStorage.getItem('fund_system_config');
+    const parsed = JSON.parse(raw!);
+    expect(parsed.backup).toEqual({ autoExportTime: '08:30', autoBackupEnabled: false });
   });
 
   test('normalizes missing trade price to 0', async () => {

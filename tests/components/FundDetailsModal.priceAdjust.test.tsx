@@ -2,11 +2,11 @@
 import React from 'react';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { FundDetailsModal } from '../../components/FundDetailsModal';
-import * as systemSettingsService from '../../services/systemSettingsService';
+import * as systemConfigService from '../../services/systemConfigService';
 
-jest.mock('../../services/systemSettingsService');
+jest.mock('../../services/systemConfigService');
 
-const mockIsFeatureEnabled = systemSettingsService.isFeatureEnabled as jest.MockedFunction<typeof systemSettingsService.isFeatureEnabled>;
+const mockIsFeatureEnabled = systemConfigService.isFeatureEnabled as jest.MockedFunction<typeof systemConfigService.isFeatureEnabled>;
 
 describe('FundDetailsModal - 初始价格调整按钮', () => {
   const mockData = {

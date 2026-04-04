@@ -5,10 +5,10 @@
  */
 
 import React, { useState, useEffect } from 'react';
-import { getSystemSettings, setFeatureEnabled, SystemSettings } from '../../services/systemSettingsService';
+import { getFeatureConfig, setFeatureEnabled, FeatureConfigSection } from '../../services/systemConfigService';
 
 interface SwitchConfig {
-  key: keyof SystemSettings;
+  key: keyof FeatureConfigSection;
   label: string;
   description: string;
 }
@@ -27,16 +27,16 @@ const SWITCH_CONFIGS: SwitchConfig[] = [
 ];
 
 const SystemPanel: React.FC = () => {
-  const [settings, setSettings] = useState<SystemSettings>(() => getSystemSettings());
+  const [settings, setSettings] = useState<FeatureConfigSection>(() => getFeatureConfig());
 
   useEffect(() => {
-    const allSettings = getSystemSettings();
+    const allSettings = getFeatureConfig();
     setSettings(allSettings);
   }, []);
 
-  const handleToggle = (key: keyof SystemSettings) => {
+  const handleToggle = (key: keyof FeatureConfigSection) => {
     const newValue = !settings[key];
-    setSettings(prev => ({ ...prev, [key]: newValue }));
+    setSettings((prev: FeatureConfigSection) => ({ ...prev, [key]: newValue }));
     setFeatureEnabled(key, newValue);
   };
 

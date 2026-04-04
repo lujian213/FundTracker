@@ -3,7 +3,7 @@ import { Ticker, ValuationData, MarketType, MarketIndex, BackupData, CardStatus,
 import { fetchFundData, fetchFundDatas, forceFetchFundHistories, fetchMarketIndices, fetchIndexHistories, maybeTriggerHistoryRefresh } from './services/fundService';
 import { toLocalDateKey } from './utils/priceResolver';
 import * as cacheService from './services/cacheService';
-import { isFeatureEnabled } from './services/systemSettingsService';
+import { isFeatureEnabled, getSyncConfig, saveSyncConfig, migrateFromOldKeys } from './services/systemConfigService';
 import { TickerCard } from './components/TickerCard';
 import IndexCard from './components/IndexCard';
 import { AddTickerModal } from './components/AddTickerModal';
@@ -485,6 +485,12 @@ const AppContent: React.FC = () => {
   const [viewingFund, setViewingFund] = useState<{ symbol: string; fromDraft: boolean } | null>(null);
   // 跟踪上一次 viewingFund 是否为非 null，用于判断是否需要进场动画
   const wasViewingFundOpenRef = useRef<boolean>(false);
+
+  // 应用启动时执行一次性迁移（将旧 localStorage key 迁移到新的统一配置）
+  useEffect(() => {
+    migrateFromOldKeys();
+  }, []);
+
   // 更新 ref：每次 viewingFund 变化后，将当前值同步到 ref，供下一次渲染使用
   useEffect(() => {
     wasViewingFundOpenRef.current = viewingFund !== null;
@@ -962,19 +968,9 @@ const AppContent: React.FC = () => {
   // 处理数据同步点击，先检查配置
   const handleDataSyncClick = () => {
     setIsMenuOpen(false);
-    const configStr = localStorage.getItem('eggfund_sync_config');
-    if (!configStr) {
+    const syncConfig = getSyncConfig();
+    if (!syncConfig.eggfundUsername || !syncConfig.eggfundPassword) {
       setSyncErrorMessage('请先在"同步配置"中设置 Eggfund 账户信息');
-      return;
-    }
-    try {
-      const config = JSON.parse(configStr);
-      if (!config.eggfundUsername || !config.eggfundPassword) {
-        setSyncErrorMessage('同步配置信息不完整，请检查用户名和密码');
-        return;
-      }
-    } catch (e) {
-      setSyncErrorMessage('同步配置格式错误，请重新配置');
       return;
     }
     setShowSyncConfirmation(true);
@@ -1356,11 +1352,17 @@ const AppContent: React.FC = () => {
           isOpen={showSyncManagement}
           onClose={() => setShowSyncManagement(false)}
           onSave={(config) => {
-            // Save the sync configuration to localStorage
-            localStorage.setItem('eggfund_sync_config', JSON.stringify(config));
+            // Save the sync configuration
+            saveSyncConfig({
+              eggfundUsername: config.eggfundUsername,
+              eggfundPassword: config.eggfundPassword,
+            });
             setShowSyncManagement(false);
           }}
-          initialConfig={JSON.parse(localStorage.getItem('eggfund_sync_config') || '{}')}
+          initialConfig={{
+            eggfundUsername: getSyncConfig().eggfundUsername || '',
+            eggfundPassword: getSyncConfig().eggfundPassword || '',
+          }}
         />
       )}
       {showAIConfig && (

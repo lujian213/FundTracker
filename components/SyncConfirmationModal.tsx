@@ -6,6 +6,7 @@ import { getEggfundFunds, getHistoricalTrades } from '../services/eggfundService
 import { getTradesForFund } from '../utils/realProfitCalculator';
 import TradeManager from '../components/TradeManager';
 import { ValuationData } from '../types';
+import { getSyncConfig, getSyncFilterConfig, saveSyncFilterConfig } from '../services/systemConfigService';
 
 interface Props {
   isOpen: boolean;
@@ -73,18 +74,17 @@ const SyncConfirmationModal: React.FC<Props> = ({
   useEffect(() => {
     if (isOpen) {
       // Load saved filter configuration
-      const savedFilterConfig = localStorage.getItem('sync_filter_config');
+      const savedFilterConfig = getSyncFilterConfig();
       if (savedFilterConfig) {
-        try {
-          const parsedConfig = JSON.parse(savedFilterConfig);
-          setFilterConfig(parsedConfig);
-          // Apply the saved filters
-          setSelectedFunds(parsedConfig.selectedFunds || []);
-          setFilterDate(parsedConfig.filterDate || '');
-          setSelectedTypes(parsedConfig.selectedTypes || []);
-        } catch (e) {
-          console.error('Failed to parse saved filter config', e);
-        }
+        setFilterConfig({
+          selectedFunds: savedFilterConfig.selectedFunds,
+          filterDate: savedFilterConfig.filterDate,
+          selectedTypes: savedFilterConfig.selectedTypes as SyncDifferenceType[]
+        });
+        // Apply the saved filters
+        setSelectedFunds(savedFilterConfig.selectedFunds || []);
+        setFilterDate(savedFilterConfig.filterDate || '');
+        setSelectedTypes((savedFilterConfig.selectedTypes || []) as SyncDifferenceType[]);
       }
 
       loadDifferences();
@@ -105,8 +105,8 @@ const SyncConfirmationModal: React.FC<Props> = ({
       setLoading(true);
 
       // Get sync configuration
-      const configStr = localStorage.getItem('eggfund_sync_config');
-      if (!configStr) {
+      const syncConfig = getSyncConfig();
+      if (!syncConfig.eggfundUsername || !syncConfig.eggfundPassword) {
         setSyncMessage('请先在"同步配置"中设置 Eggfund 账户信息');
         setLoading(false);
         // 延迟关闭窗口，让用户看到错误信息
@@ -114,15 +114,7 @@ const SyncConfirmationModal: React.FC<Props> = ({
         return;
       }
 
-      const config = JSON.parse(configStr);
-      if (!config.eggfundUsername || !config.eggfundPassword) {
-        setSyncMessage('同步配置信息不完整，请检查用户名和密码');
-        setLoading(false);
-        setTimeout(() => onClose(), 1500);
-        return;
-      }
-
-      const { eggfundUsername, eggfundPassword } = config;
+      const { eggfundUsername, eggfundPassword } = syncConfig;
 
       // Step 1: Get all funds from eggfund
       setLoadingMessage('正在获取 Eggfund 基金列表...');
@@ -242,7 +234,7 @@ const SyncConfirmationModal: React.FC<Props> = ({
       filterDate,
       selectedTypes
     };
-    localStorage.setItem('sync_filter_config', JSON.stringify(configToSave));
+    saveSyncFilterConfig(configToSave);
     setSyncMessage('过滤条件已保存');
 
     // Clear the message after 2 seconds
@@ -299,21 +291,14 @@ const SyncConfirmationModal: React.FC<Props> = ({
       setSyncMessage(''); // 清空之前的同步消息
 
       // Get sync configuration
-      const configStr = localStorage.getItem('eggfund_sync_config');
-      if (!configStr) {
+      const syncConfig = getSyncConfig();
+      if (!syncConfig.eggfundUsername || !syncConfig.eggfundPassword) {
         setSyncMessage('请先在"同步配置"中设置 Eggfund 账户信息');
         setLoading(false);
         return;
       }
 
-      const config = JSON.parse(configStr);
-      if (!config.eggfundUsername || !config.eggfundPassword) {
-        setSyncMessage('同步配置信息不完整，请检查用户名和密码');
-        setLoading(false);
-        return;
-      }
-
-      const { eggfundUsername, eggfundPassword } = config;
+      const { eggfundUsername, eggfundPassword } = syncConfig;
 
       // Step 1: Get all funds from eggfund
       setLoadingMessage('正在重新获取 Eggfund 基金列表...');

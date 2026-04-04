@@ -13,71 +13,22 @@ import {
 import * as cacheService from '../services/cacheService';
 import { readAll as readAllTrades } from '../hooks/useTrades';
 import { normalizeComboTrades } from './comboTradeService';
-
-// ─── Constants ────────────────────────────────────────────────────────────────
-const BACKUP_CONFIG_KEY = 'fund_backup_config';
-const SYNC_CONFIG_KEY = 'fund_sync_config';  // 同步配置存储键（不备份敏感信息）
-const DEFAULT_AUTO_EXPORT_TIME = '16:00';
+import {
+  getBackupConfig,
+  saveBackupConfig,
+  getSyncConfig,
+  saveSyncConfig,
+  getSyncFilterConfig,
+  saveSyncFilterConfig,
+} from '../services/systemConfigService';
+import type { BackupConfigSection, SyncFilterConfigSection } from '../types/systemConfigTypes';
 
 // ─── Config helpers ───────────────────────────────────────────────────────────
-export function readBackupConfig(): BackupConfig {
-  try {
-    const raw = localStorage.getItem(BACKUP_CONFIG_KEY);
-    if (raw) {
-      const cfg = JSON.parse(raw);
-      if (typeof cfg.autoExportTime === 'string' && /^\d{2}:\d{2}$/.test(cfg.autoExportTime)) {
-        return {
-          autoExportTime: cfg.autoExportTime,
-          autoBackupEnabled: cfg.autoBackupEnabled !== undefined ? cfg.autoBackupEnabled : false,
-          syncConfig: cfg.syncConfig  // 包含同步配置
-        };
-      }
-    }
-  } catch { /* ignore */ }
-  return { autoExportTime: DEFAULT_AUTO_EXPORT_TIME, autoBackupEnabled: false };
-}
+// 配置读写已迁移到 systemConfigService，这里仅保留兼容导出
 
-export function writeBackupConfig(cfg: BackupConfig): void {
-  try {
-    localStorage.setItem(BACKUP_CONFIG_KEY, JSON.stringify(cfg));
-  } catch { /* ignore */ }
-}
-
-// ─── Sync Config helpers ──────────────────────────────────────────────────────
-export function readSyncConfig(): { eggfundUsername?: string; eggfundPassword?: string } {
-  try {
-    const raw = localStorage.getItem(SYNC_CONFIG_KEY);
-    if (raw) {
-      return JSON.parse(raw);
-    }
-  } catch { /* ignore */ }
-  return { eggfundUsername: undefined, eggfundPassword: undefined };
-}
-
-export function writeSyncConfig(syncCfg: { eggfundUsername?: string; eggfundPassword?: string }): void {
-  try {
-    localStorage.setItem(SYNC_CONFIG_KEY, JSON.stringify(syncCfg));
-  } catch { /* ignore */ }
-}
-
-// ─── Sync Filter Config helpers ───────────────────────────────────────────────
-const SYNC_FILTER_CONFIG_KEY = 'sync_filter_config';
-
-export function readSyncFilterConfig(): { selectedFunds: string[]; filterDate: string; selectedTypes: string[] } | null {
-  try {
-    const raw = localStorage.getItem(SYNC_FILTER_CONFIG_KEY);
-    if (raw) {
-      return JSON.parse(raw);
-    }
-  } catch { /* ignore */ }
-  return null;
-}
-
-export function writeSyncFilterConfig(filterCfg: { selectedFunds: string[]; filterDate: string; selectedTypes: string[] }): void {
-  try {
-    localStorage.setItem(SYNC_FILTER_CONFIG_KEY, JSON.stringify(filterCfg));
-  } catch { /* ignore */ }
-}
+export { getBackupConfig as readBackupConfig, saveBackupConfig as writeBackupConfig } from '../services/systemConfigService';
+export { getSyncConfig as readSyncConfig, saveSyncConfig as writeSyncConfig } from '../services/systemConfigService';
+export { getSyncFilterConfig as readSyncFilterConfig, saveSyncFilterConfig as writeSyncFilterConfig } from '../services/systemConfigService';
 
 // ─── Build ────────────────────────────────────────────────────────────────────
 
@@ -170,8 +121,8 @@ export async function buildBackupData(
   });
 
   // 5. config - including sync filter config (not sync credentials)
-  const backupConfig = readBackupConfig();
-  const syncFilterConfig = readSyncFilterConfig();
+  const backupConfig = getBackupConfig();
+  const syncFilterConfig = getSyncFilterConfig();
 
   // 合并配置
   const config: BackupConfig = {
@@ -353,21 +304,20 @@ export async function applyBackupData(imported: BackupData): Promise<AppliedData
 
   // ── 9. Write config including sync filter config ────────────────────────────────────
   if (imported.config) {
-    const configToSave: any = {
-      autoExportTime: imported.config.autoExportTime,
-      autoBackupEnabled: imported.config.autoBackupEnabled !== undefined ? imported.config.autoBackupEnabled : false
-    };
+    // 保存备份配置到新的统一配置服务
+    try {
+      saveBackupConfig({
+        autoExportTime: imported.config.autoExportTime,
+        autoBackupEnabled: imported.config.autoBackupEnabled !== undefined ? imported.config.autoBackupEnabled : false,
+      });
+    } catch { /* ignore */ }
 
     // 恢复同步过滤条件配置
     if (imported.config.syncFilterConfig) {
       try {
-        writeSyncFilterConfig(imported.config.syncFilterConfig);
+        saveSyncFilterConfig(imported.config.syncFilterConfig);
       } catch { /* ignore */ }
     }
-
-    try {
-      localStorage.setItem('fund_backup_config', JSON.stringify(configToSave));
-    } catch { /* ignore */ }
   }
 
   // ── 10. Write comboTrades ──────────────────────────────────────────────────────
