@@ -59,6 +59,7 @@ const createPlaceholderIndex = (symbol: string): MarketIndex => {
       changePercent: 0,
       lastUpdated: '等待更新',
     },
+    intraday: [],
     history: [],
   };
 };
@@ -79,6 +80,7 @@ const mergeIndicesForDisplay = (
     if (item.info) {
       return {
         info: { ...item.info, symbol: normalizeIndexSymbol(item.info.symbol) },
+        intraday: item.intraday || [],
         history: item.history || []
       };
     }
@@ -97,6 +99,7 @@ const mergeIndicesForDisplay = (
           volume: item.volume,
           amount: item.amount,
         },
+        intraday: [],
         history: []
       };
     }
@@ -585,10 +588,9 @@ const AppContent: React.FC = () => {
   }, []);
 
   useEffect(() => { localStorage.setItem('fund_portfolio', JSON.stringify(portfolio)); }, [portfolio]);
-  useEffect(() => { localStorage.setItem('fund_indices_config', JSON.stringify(indicesConfig)); }, [indicesConfig]);
   // fund_market_data 由 cacheService.setValuation() 写入，此处不重复同步
+  // indicesConfig 由 indexService 管理，写入 fund_all_indices_info，此处不再单独同步
   useEffect(() => { saveSortOrder(sortOrder); }, [sortOrder]);
-  useEffect(() => { localStorage.setItem('fund_market_indices_cache', JSON.stringify(marketIndices)); }, [marketIndices]);
 
   useEffect(() => {
     if (!isSelectionMode) return;
@@ -713,7 +715,14 @@ const AppContent: React.FC = () => {
       const normalized = normalizeIndexSymbol(item.info.symbol);
       fetchedMap.set(normalized, item);
       try {
-        cacheService.appendIntradayPoint(item.info.symbol, { value: item.info.current, lastUpdated: item.info.lastUpdated, equityReturn: item.info.changePercent, tradeDate: item.info.tradeDate });
+        // 使用 indexService 管理指数日内数据
+        indexService.appendIntradayPoint(
+          item.info.symbol,
+          item.info.current,
+          item.info.changePercent,
+          item.info.lastUpdated,
+          item.info.tradeDate
+        );
       } catch (e) { /* ignore */ }
     });
 

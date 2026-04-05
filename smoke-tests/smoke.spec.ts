@@ -113,11 +113,11 @@ test.describe('Smoke Tests', () => {
         return false;
       };
 
-      // 读取统一的指数存储（新key）
-      const indicesRaw = localStorage.getItem('fund_all_indices_info');
+      // 读取统一的指数存储（新key：fund_all_indices_data，存储 MarketIndex[]）
+      const indicesRaw = localStorage.getItem('fund_all_indices_data');
       if (indicesRaw) {
         const items = JSON.parse(indicesRaw);
-        data.allSymbols = items.map((i: any) => i.symbol);
+        data.allSymbols = items.map((m: any) => m.info.symbol);
         data.count = items.length;
         // 动态分类
         data.domestic = data.allSymbols.filter((s: string) => isDomesticIndex(s));

@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { MarketIndex, HistoricalPoint, VolumeData } from '../types';
 import { fetchIndexHistory } from '../services/fundService';
 import * as cacheService from '../services/cacheService';
+import * as indexService from '../services/indexService';
 import IntradayChart from './IntradayChart';
 import HistoryChart from './HistoryChart';
 import { MA_COLORS } from '../utils/movingAverage';
@@ -57,11 +58,15 @@ export const IndexDetailsModal: React.FC<IndexDetailsModalProps> = ({ data, onCl
 
   useEffect(() => {
     try {
-      const code = data.info.symbol;
-      const pts = cacheService.getIntradayPoints(code);
-      setIntradayPoints(pts);
+      // 优先使用 MarketIndex 中的 intraday 数据，否则从 indexService 获取
+      if (data.intraday && data.intraday.length > 0) {
+        setIntradayPoints(data.intraday);
+      } else {
+        const pts = indexService.getIntraday(data.info.symbol);
+        setIntradayPoints(pts);
+      }
     } catch (e) { setIntradayPoints([]); }
-  }, [data.info.symbol, data.info.lastUpdated]);
+  }, [data.info.symbol, data.info.lastUpdated, data.intraday]);
 
   // 合并当前点到历史数据
   const chartData = useMemo(() => {

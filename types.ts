@@ -93,9 +93,10 @@ export interface IndexInfo {
   amount?: number; // 成交额（元）
 }
 
-// 指数完整数据（运行时，包含历史）
+// 指数完整数据（运行时，包含日内和历史）
 export interface MarketIndex {
   info: IndexInfo;              // 基本信息 + 实时数据
+  intraday: IntradayPoint[];    // 日内数据点数组
   history: HistoricalPoint[];   // 历史数据点数组
 }
 
@@ -240,6 +241,8 @@ export interface IntradayPoint {
   timestamp: number; // floored to minute (ms)
   value: number;
   equityReturn: number; // percent
+  volume?: number; // 成交量（手），仅指数有效
+  amount?: number; // 成交额（元），仅指数有效
 }
 
 // --- Virtual trade types ---

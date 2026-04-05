@@ -369,8 +369,10 @@ describe('applyBackupData', () => {
     seedOldData();
     await bs.applyBackupData(BASE_BACKUP);
 
-    const idx = JSON.parse(localStorage.getItem('fund_indices_config')!);
-    expect(idx).toEqual(['1.000001', '100.NDX']);
+    // 检查新 key: fund_all_indices_data（完整 MarketIndex[]）
+    const idx = JSON.parse(localStorage.getItem('fund_all_indices_data')!);
+    const symbols = idx.map((m: any) => m.info.symbol);
+    expect(symbols).toEqual(['1.000001', '100.NDX']);
   });
 
   test('evicts old valuations from cacheService for removed symbols', async () => {

@@ -159,7 +159,7 @@ describe('App manage mode', () => {
     expect(screen.queryByText('Sample Fund')).not.toBeInTheDocument();
 
     // 验证 localStorage 已重置为默认指数（6个）- 使用新的统一key
-    const storedIndices = JSON.parse(localStorage.getItem('fund_all_indices_info') || '[]');
+    const storedIndices = JSON.parse(localStorage.getItem('fund_all_indices_data') || '[]');
     expect(storedIndices.length).toBe(6);
 
     // 删除后 App 会使用默认指数（DEFAULT_INDICES 包含上证指数和纳斯达克100）

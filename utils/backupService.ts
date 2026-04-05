@@ -22,6 +22,8 @@ import {
   saveSyncFilterConfig,
 } from '../services/systemConfigService';
 import type { BackupConfigSection, SyncFilterConfigSection } from '../types/systemConfigTypes';
+import { INDEX_NAME_MAP, saveAllIndexInfos } from '../services/indexService';
+import { STORAGE_KEYS } from '../services/storageKeys';
 
 // ─── Config helpers ───────────────────────────────────────────────────────────
 // 配置读写已迁移到 systemConfigService，这里仅保留兼容导出
@@ -194,9 +196,9 @@ export interface AppliedData {
  * Completely replace all user data with the contents of `imported`.
  *
  * Storage actions:
- *   - CLEAR: fund_portfolio, fund_trades, all fund_position_*, fund_indices_config
+ *   - CLEAR: fund_portfolio, fund_trades, all fund_position_*
  *   - PRESERVE: fund_history_*, fund_market_data (managed via cacheService.evictValuations)
- *   - WRITE:  new portfolio, trades, positions, indices
+ *   - WRITE:  new portfolio, trades, positions, indices (via indexService)
  *   - FALLBACK: optional fields are written to cacheService only if the symbol
  *               is not already cached (setValuationIfAbsent / setHistoryIfAbsent)
  *
@@ -242,8 +244,6 @@ export async function applyBackupData(imported: BackupData): Promise<AppliedData
   // ── 4. Clear old localStorage keys ────────────────────────────────────────
   try { localStorage.removeItem('fund_portfolio'); } catch { /* ignore */ }
   try { localStorage.removeItem('fund_trades'); } catch { /* ignore */ }
-  try { localStorage.removeItem('fund_indices_config'); } catch { /* ignore */ }
-  try { localStorage.removeItem('fund_global_indices_config'); } catch { /* ignore */ }
 
   // Remove all fund_position_* keys
   try {
@@ -260,15 +260,41 @@ export async function applyBackupData(imported: BackupData): Promise<AppliedData
   // ── 6. Write new indices config (unified) ───────────────────────────────────
   // Compatibility: old format stored indices as string[], new format as BackupIndex[]
   // Also compatibility: old format had separate indices/globalIndices fields
-  const toSymbol = (item: any): string =>
-    typeof item === 'string' ? item : (typeof item?.symbol === 'string' ? item.symbol : '');
+  const toIndexInfo = (item: any): { symbol: string; name: string; current: number; change: number; changePercent: number; lastUpdated: string } | null => {
+    if (typeof item === 'string') {
+      return {
+        symbol: item,
+        name: INDEX_NAME_MAP[item] || item,
+        current: 0,
+        change: 0,
+        changePercent: 0,
+        lastUpdated: '',
+      };
+    }
+    if (typeof item?.symbol === 'string') {
+      return {
+        symbol: item.symbol,
+        name: item.name || INDEX_NAME_MAP[item.symbol] || item.symbol,
+        current: item.current || 0,
+        change: item.change || 0,
+        changePercent: item.changePercent || 0,
+        lastUpdated: item.lastUpdated || '',
+      };
+    }
+    return null;
+  };
 
   // 合并 indices 和 globalIndices（兼容旧格式）
-  const mainIndices = (imported.indices || []).map(toSymbol).filter(Boolean);
-  const oldGlobalIndices = (imported.globalIndices || []).map(toSymbol).filter(Boolean);
-  const newIndicesConfig = [...mainIndices, ...oldGlobalIndices];
+  const mainIndices = (imported.indices || []).map(toIndexInfo).filter(Boolean) as Array<{ symbol: string; name: string; current: number; change: number; changePercent: number; lastUpdated: string }>;
+  const oldGlobalIndices = (imported.globalIndices || []).map(toIndexInfo).filter(Boolean) as Array<{ symbol: string; name: string; current: number; change: number; changePercent: number; lastUpdated: string }>;
+  const allIndexInfos = [...mainIndices, ...oldGlobalIndices];
 
-  try { localStorage.setItem('fund_indices_config', JSON.stringify(newIndicesConfig)); } catch { /* ignore */ }
+  // 使用 indexService 保存到新 key (fund_all_indices_info)
+  if (allIndexInfos.length > 0) {
+    saveAllIndexInfos(allIndexInfos);
+  }
+
+  const newIndicesConfig = allIndexInfos.map(i => i.symbol);
 
   // ── 7. Write positions ─────────────────────────────────────────────────────
   const positions: Record<string, any> = imported.positions || {};
