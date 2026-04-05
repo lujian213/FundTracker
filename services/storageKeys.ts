@@ -24,6 +24,9 @@ export const STORAGE_KEYS = {
 
   /** 组合交易 */
   COMBO_TRADE: 'fund_combo_trade',
+
+  /** 指数配置（统一存储所有指数） */
+  INDEX_INFO: 'fund_all_indices_info',
 } as const;
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -53,5 +56,24 @@ export const OLD_STORAGE_KEYS = {
     AI_TEMPLATES_CACHE: 'ai_templates_cached_data',
     INVESTMENT_DRAFT_PREFIX: 'investment_draft_',
     COMBO_TRADE: 'fund_combo_trades',
+  },
+
+  INDEX: {
+    /** 旧版国内指数配置 */
+    INDICES_CONFIG: 'fund_indices_config',
+    /** 旧版全球指数配置 */
+    GLOBAL_INDICES_CONFIG: 'fund_global_indices_config',
+    /** 旧版国内指数实时数据缓存 */
+    MARKET_INDICES_CACHE: 'fund_market_indices_cache',
+    /** 旧版全球指数实时数据缓存 */
+    GLOBAL_INDICES_CACHE: 'fund_global_indices_cache',
+    /** cacheService 中的指数数据 */
+    INDEX_MARKET_DATA: 'fund_index_market_data',
+    /** 历史数据 key 前缀 */
+    HISTORY_PREFIX: 'fund_history_',
+    /** 旧版分开存储的国内指数key（合并迁移源） */
+    INDEX_INFO_DOMESTIC: 'fund_indices_info',
+    /** 旧版分开存储的全球指数key（合并迁移源） */
+    INDEX_INFO_GLOBAL: 'fund_global_indices_info',
   },
 } as const;

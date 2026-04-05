@@ -79,9 +79,10 @@ export interface ValuationData {
   equityReturn?: number;
 }
 
-export interface MarketIndex {
-  name: string;
+// 指数基本信息 + 实时数据（持久化到 localStorage）
+export interface IndexInfo {
   symbol: string;
+  name: string;
   current: number;
   change: number;
   changePercent: number;
@@ -90,6 +91,12 @@ export interface MarketIndex {
   previousClose?: number; // 前收盘价
   volume?: number; // 成交量（手）
   amount?: number; // 成交额（元）
+}
+
+// 指数完整数据（运行时，包含历史）
+export interface MarketIndex {
+  info: IndexInfo;              // 基本信息 + 实时数据
+  history: HistoricalPoint[];   // 历史数据点数组
 }
 
 export interface HistoricalPoint {
@@ -220,8 +227,8 @@ export interface BackupConfig {
 
 export interface BackupData {
   portfolio: BackupFund[];
-  indices: BackupIndex[];
-  globalIndices: BackupIndex[];
+  indices: BackupIndex[];        // 所有指数（统一存储）
+  globalIndices?: BackupIndex[]; // 已废弃，仅为向后兼容保留
   positions: Record<string, BackupPosition>;
   trades: Record<string, BackupTrade[]>;
   comboTrades: Record<string, ComboTrade>;

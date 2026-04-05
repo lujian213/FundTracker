@@ -9,14 +9,13 @@ interface AddTickerModalProps {
   progress?: string;
 }
 
-type TabType = 'fund' | 'domestic' | 'global';
+type TabType = 'fund' | 'index';
 
 export const AddTickerModal: React.FC<AddTickerModalProps> = ({ onClose, onAdd, isLoading, progress }) => {
   const [activeTab, setActiveTab] = useState<TabType>('fund');
   const [tabInputs, setTabInputs] = useState<Record<TabType, string>>({
     fund: '',
-    domestic: '',
-    global: ''
+    index: ''
   });
   const [alertInfo, setAlertInfo] = useState<{ isOpen: boolean; message: string }>({
     isOpen: false,
@@ -37,10 +36,7 @@ export const AddTickerModal: React.FC<AddTickerModalProps> = ({ onClose, onAdd, 
 
     const parts = rawValue.split(/[\s,\n,，]+/).map(p => p.trim()).filter(p => p.length > 0);
 
-    const looksLikeIndex = (s: string) => /[A-Za-z\.]/.test(s);
-    const isActuallyIndexSearch = activeTab !== 'fund' || parts.some(looksLikeIndex);
-
-    if (!isActuallyIndexSearch) {
+    if (activeTab === 'fund') {
       // Allow 4-6 digit codes from UI and normalize them to 6 digits before calling onAdd
       const rawCodes = parts.filter(c => /^\d{4,6}$/.test(c));
       const codes = rawCodes.map(c => c.padStart(6, '0'));
@@ -50,10 +46,19 @@ export const AddTickerModal: React.FC<AddTickerModalProps> = ({ onClose, onAdd, 
         setAlertInfo({ isOpen: true, message: "请输入有效的基金代码（4-6位数字）" });
       }
     } else {
+      // Index tab
       const codes = parts.map(c => {
         let code = c;
         if (!code.includes('.')) {
-          const globalDict: Record<string, string> = {
+          const indexDict: Record<string, string> = {
+            // 国内指数
+            '000001': '1.000001',
+            '399001': '0.399001',
+            '399006': '0.399006',
+            '000300': '1.000300',
+            '000688': '1.000688',
+            '000852': '1.000852',
+            // 全球指数
             'NDX': '100.NDX',
             'NDX100': '100.NDX100',
             'IXIC': '100.IXIC',
@@ -65,11 +70,8 @@ export const AddTickerModal: React.FC<AddTickerModalProps> = ({ onClose, onAdd, 
             'HSI': '100.HSI'
           };
           const upper = code.toUpperCase();
-          if (globalDict[upper]) return globalDict[upper];
-
-          if (code === '000001') return '1.000001';
-          if (code === '399001') return '0.399001';
-          if (code === '399006') return '0.399006';
+          if (indexDict[upper]) return indexDict[upper];
+          if (indexDict[code]) return indexDict[code];
         }
         return code;
       });
@@ -112,21 +114,15 @@ export const AddTickerModal: React.FC<AddTickerModalProps> = ({ onClose, onAdd, 
       { name: '招商白酒', code: '161725' },
       { name: '中欧医疗', code: '003095' },
     ],
-    domestic: [
+    index: [
+      // 国内指数
       { name: '上证指数', code: '1.000001' },
       { name: '深证成指', code: '0.399001' },
       { name: '创业板指', code: '0.399006' },
-      { name: '沪深300', code: '1.000300' },
-      { name: '科创50', code: '1.000688' },
-      { name: '中证1000', code: '1.000852' },
-    ],
-    global: [
+      { name: '恒生指数', code: '100.HSI' },
+      // 全球指数
       { name: '纳斯达克', code: '100.NDX' },
-      { name: '纳指100', code: '100.NDX100' },
       { name: '标普500', code: '100.SPX' },
-      { name: '道琼斯', code: '100.DJI' },
-      { name: 'COMEX金', code: '101.GC00Y' },
-      { name: 'WTI原油', code: '102.CL00Y' },
     ]
   };
 
@@ -135,10 +131,10 @@ export const AddTickerModal: React.FC<AddTickerModalProps> = ({ onClose, onAdd, 
   return (
     <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4 backdrop-blur-sm animate-in fade-in duration-200">
       <div className="bg-white rounded-3xl w-full max-w-sm overflow-hidden shadow-2xl transition-all scale-in duration-200">
-        <div className={`px-6 py-4 flex justify-between items-center transition-colors ${activeTab === 'fund' ? 'bg-red-600' : activeTab === 'domestic' ? 'bg-blue-600' : 'bg-indigo-600'}`}>
+        <div className={`px-6 py-4 flex justify-between items-center transition-colors ${activeTab === 'fund' ? 'bg-red-600' : 'bg-blue-600'}`}>
           <div>
             <h3 className="text-white font-bold">
-              {activeTab === 'fund' ? '添加自选' : activeTab === 'domestic' ? '添加国内指数' : '添加全球行情'}
+              {activeTab === 'fund' ? '添加基金' : '添加指数'}
             </h3>
             <p className="text-[10px] text-white/60">实时同步 东方财富/天天基金</p>
           </div>
@@ -158,17 +154,10 @@ export const AddTickerModal: React.FC<AddTickerModalProps> = ({ onClose, onAdd, 
             </button>
             <button
               type="button"
-              onClick={() => setActiveTab('domestic')}
-              className={`flex-1 py-2 text-[11px] font-bold rounded-lg transition-all ${activeTab === 'domestic' ? 'bg-white shadow-sm text-blue-600' : 'text-gray-500 hover:text-gray-700'}`}
+              onClick={() => setActiveTab('index')}
+              className={`flex-1 py-2 text-[11px] font-bold rounded-lg transition-all ${activeTab === 'index' ? 'bg-white shadow-sm text-blue-600' : 'text-gray-500 hover:text-gray-700'}`}
             >
-              指数看板
-            </button>
-            <button
-              type="button"
-              onClick={() => setActiveTab('global')}
-              className={`flex-1 py-2 text-[11px] font-bold rounded-lg transition-all ${activeTab === 'global' ? 'bg-white shadow-sm text-indigo-600' : 'text-gray-500 hover:text-gray-700'}`}
-            >
-              全球市场
+              指数行情
             </button>
           </div>
 
@@ -182,7 +171,7 @@ export const AddTickerModal: React.FC<AddTickerModalProps> = ({ onClose, onAdd, 
                 autoFocus
                 value={tabInputs[activeTab]}
                 onChange={(e) => updateCurrentInput(e.target.value)}
-                placeholder={activeTab === 'fund' ? "例如: 000001 012345" : "例如: 100.NDX 100.NDX100"}
+                placeholder={activeTab === 'fund' ? "例如: 000001 012345" : "例如: 100.NDX 1.000001"}
                 rows={2}
                 className="w-full px-4 py-3 rounded-xl border-2 border-gray-100 focus:border-gray-300 outline-none transition-all text-sm font-mono leading-relaxed bg-gray-50/30"
               />
@@ -195,7 +184,7 @@ export const AddTickerModal: React.FC<AddTickerModalProps> = ({ onClose, onAdd, 
                       key={idx.code}
                       type="button"
                       onClick={() => handleSuggestionClick(idx.code)}
-                      className={`flex flex-col items-center justify-center py-2 px-1 rounded-xl border transition-all text-center group ${activeTab === 'fund' ? 'bg-red-50 text-red-600 border-red-100 hover:bg-red-100' : activeTab === 'domestic' ? 'bg-blue-50 text-blue-600 border-blue-100 hover:bg-blue-100' : 'bg-indigo-50 text-indigo-600 border-indigo-100 hover:bg-indigo-100'}`}
+                      className={`flex flex-col items-center justify-center py-2 px-1 rounded-xl border transition-all text-center group ${activeTab === 'fund' ? 'bg-red-50 text-red-600 border-red-100 hover:bg-red-100' : 'bg-blue-50 text-blue-600 border-blue-100 hover:bg-blue-100'}`}
                     >
                       <span className="text-[10px] font-bold truncate w-full">{idx.name}</span>
                       <span className="text-[8px] opacity-60 font-mono mt-0.5">{idx.code}</span>
@@ -208,7 +197,7 @@ export const AddTickerModal: React.FC<AddTickerModalProps> = ({ onClose, onAdd, 
             <button
               type="submit"
               disabled={isLoading || !tabInputs[activeTab].trim()}
-              className={`w-full text-white font-bold py-4 rounded-xl disabled:opacity-50 transition-all shadow-lg flex items-center justify-center space-x-2 ${activeTab === 'fund' ? 'bg-red-600 hover:bg-red-700' : activeTab === 'domestic' ? 'bg-blue-600 hover:bg-blue-700' : 'bg-indigo-600 hover:bg-indigo-700'}`}
+              className={`w-full text-white font-bold py-4 rounded-xl disabled:opacity-50 transition-all shadow-lg flex items-center justify-center space-x-2 ${activeTab === 'fund' ? 'bg-red-600 hover:bg-red-700' : 'bg-blue-600 hover:bg-blue-700'}`}
             >
               {isLoading ? (
                 <i className="fas fa-circle-notch animate-spin"></i>

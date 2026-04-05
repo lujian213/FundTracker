@@ -80,8 +80,8 @@ describe('aiInvestmentDraftService', () => {
 
     test('processes indices data', () => {
       const marketIndices: MarketIndex[] = [
-        { name: '上证指数', symbol: 'sh000001', current: 3250, change: 10, changePercent: 0.31,
-          lastUpdated: '2026-04-03 15:00', volume: 123456789 }
+        { info: { name: '上证指数', symbol: 'sh000001', current: 3250, change: 10, changePercent: 0.31,
+          lastUpdated: '2026-04-03 15:00', volume: 123456789 }, history: [] }
       ];
       const indexHistories: Record<string, HistoricalPoint[]> = {
         'sh000001': Array.from({ length: 15 }, (_, i) => ({

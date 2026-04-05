@@ -39,10 +39,8 @@ export { getSyncFilterConfig as readSyncFilterConfig, saveSyncFilterConfig as wr
  */
 export async function buildBackupData(
   portfolio: any[],  // 使用 any 类型避免复杂类型导入
-  indicesConfig: string[],
-  globalIndicesConfig: string[],
-  marketIndices: any[],
-  globalIndices: any[],
+  indicesConfig: string[],  // 所有指数符号（统一）
+  marketIndices: any[],     // 所有指数数据（统一）
 ): Promise<BackupData> {
   // 获取缓存的估值数据
   let valuations: any = {};
@@ -63,24 +61,22 @@ export async function buildBackupData(
     };
   });
 
-  // 2. indices → BackupIndex[]
-  const indexMap = new Map<string, any>(marketIndices.map((i: any) => [i.symbol, i]));
-  const globalIndexMap = new Map<string, any>(globalIndices.map((i: any) => [i.symbol, i]));
+  // 2. indices → BackupIndex[] (统一存储)
+  const indexMap = new Map<string, any>(marketIndices.map((i: any) => [i.info?.symbol, i]));
 
-  const toBackupIndex = (sym: string, map: Map<string, any>): BackupIndex => {
-    const idx = map.get(sym);
+  const toBackupIndex = (sym: string): BackupIndex => {
+    const idx = indexMap.get(sym);
     return {
       symbol: sym,
-      name: idx?.name,
-      current: idx?.current,
-      change: idx?.change,
-      changePercent: idx?.changePercent,
-      lastUpdated: idx?.lastUpdated,
+      name: idx?.info?.name,
+      current: idx?.info?.current,
+      change: idx?.info?.change,
+      changePercent: idx?.info?.changePercent,
+      lastUpdated: idx?.info?.lastUpdated,
     };
   };
 
-  const backupIndices: BackupIndex[] = indicesConfig.map(s => toBackupIndex(s, indexMap));
-  const backupGlobalIndices: BackupIndex[] = globalIndicesConfig.map(s => toBackupIndex(s, globalIndexMap));
+  const backupIndices: BackupIndex[] = indicesConfig.map(s => toBackupIndex(s));
 
   // 3. positions — one entry per fund_position_* key
   const positions: Record<string, BackupPosition> = {};
@@ -147,7 +143,6 @@ export async function buildBackupData(
   return {
     portfolio: backupPortfolio,
     indices: backupIndices,
-    globalIndices: backupGlobalIndices,
     positions,
     trades,
     comboTrades: comboTrades,
@@ -192,16 +187,14 @@ export function downloadBackupFile(data: BackupData, isAuto: boolean): void {
 
 export interface AppliedData {
   portfolio: any[];  // 使用 any 类型避免复杂类型导入
-  indicesConfig: string[];
-  globalIndicesConfig: string[];
+  indicesConfig: string[];  // 所有指数符号（统一）
 }
 
 /**
  * Completely replace all user data with the contents of `imported`.
  *
  * Storage actions:
- *   - CLEAR: fund_portfolio, fund_trades, all fund_position_*, fund_indices_config,
- *            fund_global_indices_config
+ *   - CLEAR: fund_portfolio, fund_trades, all fund_position_*, fund_indices_config
  *   - PRESERVE: fund_history_*, fund_market_data (managed via cacheService.evictValuations)
  *   - WRITE:  new portfolio, trades, positions, indices
  *   - FALLBACK: optional fields are written to cacheService only if the symbol
@@ -264,15 +257,18 @@ export async function applyBackupData(imported: BackupData): Promise<AppliedData
     localStorage.setItem('fund_portfolio', JSON.stringify(newPortfolio));
   } catch { /* ignore */ }
 
-  // ── 6. Write new indices config ────────────────────────────────────────────
+  // ── 6. Write new indices config (unified) ───────────────────────────────────
   // Compatibility: old format stored indices as string[], new format as BackupIndex[]
+  // Also compatibility: old format had separate indices/globalIndices fields
   const toSymbol = (item: any): string =>
     typeof item === 'string' ? item : (typeof item?.symbol === 'string' ? item.symbol : '');
 
-  const newIndicesConfig = (imported.indices || []).map(toSymbol).filter(Boolean);
-  const newGlobalIndicesConfig = (imported.globalIndices || []).map(toSymbol).filter(Boolean);
+  // 合并 indices 和 globalIndices（兼容旧格式）
+  const mainIndices = (imported.indices || []).map(toSymbol).filter(Boolean);
+  const oldGlobalIndices = (imported.globalIndices || []).map(toSymbol).filter(Boolean);
+  const newIndicesConfig = [...mainIndices, ...oldGlobalIndices];
+
   try { localStorage.setItem('fund_indices_config', JSON.stringify(newIndicesConfig)); } catch { /* ignore */ }
-  try { localStorage.setItem('fund_global_indices_config', JSON.stringify(newGlobalIndicesConfig)); } catch { /* ignore */ }
 
   // ── 7. Write positions ─────────────────────────────────────────────────────
   const positions: Record<string, any> = imported.positions || {};
@@ -335,7 +331,6 @@ export async function applyBackupData(imported: BackupData): Promise<AppliedData
   return {
     portfolio: newPortfolio,
     indicesConfig: newIndicesConfig,
-    globalIndicesConfig: newGlobalIndicesConfig,
   };
 }
 

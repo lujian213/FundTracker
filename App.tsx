@@ -1,8 +1,10 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { Ticker, ValuationData, MarketType, MarketIndex, BackupData, CardStatus, ManageItemType, ManageSelectionKey, JobResult, HistoricalPoint } from './types';
-import { fetchFundData, fetchFundDatas, forceFetchFundHistories, fetchMarketIndices, fetchIndexHistories, maybeTriggerHistoryRefresh } from './services/fundService';
+import { fetchFundData, fetchFundDatas, forceFetchFundHistories, fetchMarketIndices, fetchIndexHistories, maybeTriggerHistoryRefresh, normalizeIndexSymbol } from './services/fundService';
 import { toLocalDateKey } from './utils/priceResolver';
 import * as cacheService from './services/cacheService';
+import * as indexService from './services/indexService';
+import { INDEX_NAME_MAP, isDomesticIndex, isGlobalIndex, DEFAULT_INDEX_SYMBOLS, DEFAULT_INDICES } from './services/indexService';
 import { isFeatureEnabled, getSyncConfig, saveSyncConfig } from './services/systemConfigService';
 import { getSortOrder, saveSortOrder, SortOrder } from './services/userPreferenceService';
 import { TickerCard } from './components/TickerCard';
@@ -44,40 +46,20 @@ import { refreshStrategyRecommendations } from './services/strategyRecommendatio
 import { refreshFundProfiles } from './services/fundProfileService';
 import { updateCalendarData, getEventsForYear, getUpcomingEvents, loadCalendarData, getFirstEventInWorkdays } from './services/calendarService';
 import { formatDateDisplay } from './utils/dateFormat';
-
-const DEFAULT_INDICES = ['1.000001', '0.399001', '0.399006'];
-const DEFAULT_GLOBAL_INDICES = ['100.NDX', '100.SPX', '100.HSI'];
-
-const INDEX_SYMBOL_ALIASES: Record<string, string> = {
-  NDX: '100.NDX',
-  SPX: '100.SPX',
-  HSI: '100.HSI',
-};
-
-const INDEX_NAME_HINTS: Record<string, string> = {
-  '1.000001': '上证指数',
-  '0.399001': '深证成指',
-  '0.399006': '创业板指',
-  '100.NDX': '纳斯达克',
-  '100.SPX': '标普500',
-  '100.HSI': '恒生指数',
-};
-
-const normalizeIndexSymbol = (symbol: string): string => {
-  const normalized = (symbol || '').trim().toUpperCase();
-  if (INDEX_SYMBOL_ALIASES[normalized]) return INDEX_SYMBOL_ALIASES[normalized];
-  return normalized;
-};
+import { verifyStorageMigration } from './services/localStorageService';
 
 const createPlaceholderIndex = (symbol: string): MarketIndex => {
   const normalized = normalizeIndexSymbol(symbol);
   return {
-    symbol: normalized,
-    name: INDEX_NAME_HINTS[normalized] || `指数 ${normalized}`,
-    current: 0,
-    change: 0,
-    changePercent: 0,
-    lastUpdated: '等待更新',
+    info: {
+      symbol: normalized,
+      name: INDEX_NAME_MAP[normalized] || `指数 ${normalized}`,
+      current: 0,
+      change: 0,
+      changePercent: 0,
+      lastUpdated: '等待更新',
+    },
+    history: [],
   };
 };
 
@@ -89,8 +71,51 @@ const mergeIndicesForDisplay = (
   if (configSymbols.length === 0) return [];
 
   const bySymbol = new Map<string, MarketIndex>();
-  previous.forEach(item => bySymbol.set(normalizeIndexSymbol(item.symbol), { ...item, symbol: normalizeIndexSymbol(item.symbol) }));
-  incoming.forEach(item => bySymbol.set(normalizeIndexSymbol(item.symbol), { ...item, symbol: normalizeIndexSymbol(item.symbol) }));
+
+  // 辅助函数：将任意格式的指数数据转换为 MarketIndex
+  const toMarketIndex = (item: any): MarketIndex | null => {
+    if (!item) return null;
+    // 新格式：有 info 属性
+    if (item.info) {
+      return {
+        info: { ...item.info, symbol: normalizeIndexSymbol(item.info.symbol) },
+        history: item.history || []
+      };
+    }
+    // 旧格式兼容：直接有 symbol 属性
+    if (item.symbol) {
+      return {
+        info: {
+          symbol: normalizeIndexSymbol(item.symbol),
+          name: item.name || '',
+          current: item.current || 0,
+          change: item.change || 0,
+          changePercent: item.changePercent || 0,
+          lastUpdated: item.lastUpdated || '',
+          tradeDate: item.tradeDate,
+          previousClose: item.previousClose,
+          volume: item.volume,
+          amount: item.amount,
+        },
+        history: []
+      };
+    }
+    return null;
+  };
+
+  previous.forEach(item => {
+    const normalized = toMarketIndex(item);
+    if (normalized) {
+      bySymbol.set(normalizeIndexSymbol(normalized.info.symbol), normalized);
+    }
+  });
+
+  incoming.forEach(item => {
+    const normalized = toMarketIndex(item);
+    if (normalized) {
+      bySymbol.set(normalizeIndexSymbol(normalized.info.symbol), normalized);
+    }
+  });
 
   return configSymbols.map(sym => {
     const normalized = normalizeIndexSymbol(sym);
@@ -422,19 +447,11 @@ const AppContent: React.FC = () => {
     } catch (e) { return []; }
   });
 
-  const [indicesConfig, setIndicesConfig] = useState<string[]>(() => {
-    try {
-      const saved = localStorage.getItem('fund_indices_config');
-      return saved ? JSON.parse(saved) : DEFAULT_INDICES;
-    } catch (e) { return DEFAULT_INDICES; }
-  });
+  const initialIndexSymbols = indexService.getAllIndexSymbols();
 
-  const [globalIndicesConfig, setGlobalIndicesConfig] = useState<string[]>(() => {
-    try {
-      const saved = localStorage.getItem('fund_global_indices_config');
-      return saved ? JSON.parse(saved) : DEFAULT_GLOBAL_INDICES;
-    } catch (e) { return DEFAULT_GLOBAL_INDICES; }
-  });
+  const [indicesConfig, setIndicesConfig] = useState<string[]>(
+    initialIndexSymbols.length > 0 ? initialIndexSymbols : DEFAULT_INDEX_SYMBOLS
+  );
 
   const [marketData, setMarketData] = useState<Record<string, ValuationData>>(() => {
     const fromCache = cacheService.getAllValuations();
@@ -446,17 +463,8 @@ const AppContent: React.FC = () => {
   });
 
   const [marketIndices, setMarketIndices] = useState<MarketIndex[]>(() => {
-    try {
-      const saved = localStorage.getItem('fund_market_indices_cache');
-      return saved ? JSON.parse(saved) : [];
-    } catch (e) { return []; }
-  });
-
-  const [globalIndices, setGlobalIndices] = useState<MarketIndex[]>(() => {
-    try {
-      const saved = localStorage.getItem('fund_global_indices_cache');
-      return saved ? JSON.parse(saved) : [];
-    } catch (e) { return []; }
+    // 使用 indexService 获取所有指数数据
+    return indexService.getAllMarketIndices();
   });
 
   const [sortOrder, setSortOrder] = useState<SortOrder>(() => getSortOrder());
@@ -504,7 +512,7 @@ const AppContent: React.FC = () => {
   const [autoBackupStatus, setAutoBackupStatus] = useState<'pending' | 'done' | null>(null);
   const [deepToast, setDeepToast] = useState<{ message: string, visible: boolean } | undefined>(undefined);
 
-  const manageableItemCount = portfolio.length + indicesConfig.length + globalIndicesConfig.length;
+  const manageableItemCount = portfolio.length + indicesConfig.length;
 
   const clearSelectionMode = useCallback(() => {
     setSelectedItems(new Set());
@@ -524,12 +532,42 @@ const AppContent: React.FC = () => {
     if (selectedItems.size === 0) return;
 
     setPortfolio(prev => prev.filter(t => !selectedItems.has(createManageSelectionKey('fund', t.id))));
-    setIndicesConfig(prev => prev.filter(symbol => !selectedItems.has(createManageSelectionKey('index', normalizeIndexSymbol(symbol)))));
-    setGlobalIndicesConfig(prev => prev.filter(symbol => !selectedItems.has(createManageSelectionKey('global_index', normalizeIndexSymbol(symbol)))));
+
+    // 单次遍历：分离要删除和保留的指数
+    const toDelete: string[] = [];
+    const remaining = indicesConfig.filter(symbol => {
+      const normalSymbol = normalizeIndexSymbol(symbol);
+      const shouldDelete = selectedItems.has(createManageSelectionKey('index', normalSymbol)) ||
+                           selectedItems.has(createManageSelectionKey('global_index', normalSymbol));
+      if (shouldDelete) {
+        toDelete.push(symbol);
+        return false;
+      }
+      return true;
+    });
+
+    // 执行删除
+    if (toDelete.length > 0) {
+      indexService.removeIndexInfos(toDelete.map(normalizeIndexSymbol));
+    }
+
+    // 更新状态
+    if (remaining.length === 0) {
+      indexService.resetToDefaults();
+      setIndicesConfig(DEFAULT_INDEX_SYMBOLS);
+    } else {
+      setIndicesConfig(remaining);
+    }
+
     clearSelectionMode();
-  }, [selectedItems, clearSelectionMode]);
+  }, [selectedItems, clearSelectionMode, indicesConfig]);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // 应用初始化时验证 localStorage 迁移状态
+  useEffect(() => {
+    verifyStorageMigration(false);
+  }, []);
 
   // 监听从 SystemConfigModal 触发的备份导入事件
   useEffect(() => {
@@ -548,11 +586,9 @@ const AppContent: React.FC = () => {
 
   useEffect(() => { localStorage.setItem('fund_portfolio', JSON.stringify(portfolio)); }, [portfolio]);
   useEffect(() => { localStorage.setItem('fund_indices_config', JSON.stringify(indicesConfig)); }, [indicesConfig]);
-  useEffect(() => { localStorage.setItem('fund_global_indices_config', JSON.stringify(globalIndicesConfig)); }, [globalIndicesConfig]);
   // fund_market_data 由 cacheService.setValuation() 写入，此处不重复同步
   useEffect(() => { saveSortOrder(sortOrder); }, [sortOrder]);
   useEffect(() => { localStorage.setItem('fund_market_indices_cache', JSON.stringify(marketIndices)); }, [marketIndices]);
-  useEffect(() => { localStorage.setItem('fund_global_indices_cache', JSON.stringify(globalIndices)); }, [globalIndices]);
 
   useEffect(() => {
     if (!isSelectionMode) return;
@@ -560,7 +596,6 @@ const AppContent: React.FC = () => {
     const validKeys = new Set<ManageSelectionKey>([
       ...portfolio.map(item => createManageSelectionKey('fund', item.id)),
       ...indicesConfig.map(symbol => createManageSelectionKey('index', normalizeIndexSymbol(symbol))),
-      ...globalIndicesConfig.map(symbol => createManageSelectionKey('global_index', normalizeIndexSymbol(symbol))),
     ]);
 
     setSelectedItems(prev => {
@@ -569,7 +604,7 @@ const AppContent: React.FC = () => {
     });
 
     if (validKeys.size === 0) clearSelectionMode();
-  }, [portfolio, indicesConfig, globalIndicesConfig, isSelectionMode, clearSelectionMode]);
+  }, [portfolio, indicesConfig, isSelectionMode, clearSelectionMode]);
 
   const updateSingleFund = useCallback(async (symbol: string, onProgress?: () => void): Promise<ValuationData | null> => {
     try {
@@ -658,67 +693,37 @@ const AppContent: React.FC = () => {
   const refreshMarketIndicesAsync = useCallback(async (ignoreCache: boolean = false, onProgress?: () => void): Promise<JobResult<MarketIndex[]>> => {
     const errors: string[] = [];
 
-    // 合并所有指数配置，统一获取
-    const allSymbols = [...indicesConfig, ...globalIndicesConfig];
-    if (allSymbols.length === 0) {
+    // 使用统一的指数配置
+    if (indicesConfig.length === 0) {
       setMarketIndices([]);
-      setGlobalIndices([]);
       return { success: true, data: [] };
     }
 
     // 统一获取所有指数数据，传入进度回调
-    const result = await fetchMarketIndices(allSymbols, ignoreCache, onProgress);
+    const result = await fetchMarketIndices(indicesConfig, ignoreCache, onProgress);
     const data = result.data || [];
 
     if (!result.success && result.message) {
       errors.push(result.message);
     }
 
-    // 根据配置的 symbol 分离国内和全球指数
-    const domesticData: MarketIndex[] = [];
-    const globalData: MarketIndex[] = [];
-
+    // 单次遍历：构建查找表并写入缓存
     const fetchedMap = new Map<string, MarketIndex>();
-    data.forEach(d => fetchedMap.set(normalizeIndexSymbol(d.symbol), d));
-
-    // 处理国内指数
-    const domesticFetched: string[] = [];
-    indicesConfig.forEach(sym => {
-      const n = normalizeIndexSymbol(sym);
-      const item = fetchedMap.get(n);
-      if (item) {
-        domesticData.push(item);
-        domesticFetched.push(n);
-        try {
-          cacheService.appendIntradayPoint(item.symbol, { value: item.current, lastUpdated: item.lastUpdated, equityReturn: item.changePercent, tradeDate: item.tradeDate });
-        } catch (e) { /* ignore */ }
-      }
-    });
-
-    // 处理全球指数
-    const globalFetched: string[] = [];
-    globalIndicesConfig.forEach(sym => {
-      const n = normalizeIndexSymbol(sym);
-      const item = fetchedMap.get(n);
-      if (item) {
-        globalData.push(item);
-        globalFetched.push(n);
-        try {
-          cacheService.appendIntradayPoint(item.symbol, { value: item.current, lastUpdated: item.lastUpdated, equityReturn: item.changePercent, tradeDate: item.tradeDate });
-        } catch (e) { /* ignore */ }
-      }
+    data.forEach(item => {
+      const normalized = normalizeIndexSymbol(item.info.symbol);
+      fetchedMap.set(normalized, item);
+      try {
+        cacheService.appendIntradayPoint(item.info.symbol, { value: item.info.current, lastUpdated: item.info.lastUpdated, equityReturn: item.info.changePercent, tradeDate: item.info.tradeDate });
+      } catch (e) { /* ignore */ }
     });
 
     // 更新状态
-    setMarketIndices(prev => mergeIndicesForDisplay(indicesConfig, domesticData, prev));
-    setGlobalIndices(prev => mergeIndicesForDisplay(globalIndicesConfig, globalData, prev));
+    setMarketIndices(prev => mergeIndicesForDisplay(indicesConfig, data, prev));
     setIndexStatuses(prev => {
       const next = { ...prev };
       indicesConfig.forEach(sym => {
-        next[normalizeIndexSymbol(sym)] = domesticFetched.includes(normalizeIndexSymbol(sym)) ? 'ok' : 'error';
-      });
-      globalIndicesConfig.forEach(sym => {
-        next[normalizeIndexSymbol(sym)] = globalFetched.includes(normalizeIndexSymbol(sym)) ? 'ok' : 'error';
+        const normalized = normalizeIndexSymbol(sym);
+        next[normalized] = fetchedMap.has(normalized) ? 'ok' : 'error';
       });
       return next;
     });
@@ -727,24 +732,23 @@ const AppContent: React.FC = () => {
       return { success: false, message: errors[0] };
     }
     return { success: true, data, message: `成功更新 ${data.length} 只指数` };
-  }, [indicesConfig, globalIndicesConfig]);
+  }, [indicesConfig]);
 
   // 刷新指数历史数据
   const refreshIndexHistoryAsync = useCallback(async (ignoreCache: boolean = false, onProgress?: () => void): Promise<JobResult<void>> => {
-    const allIndexSymbols = [...indicesConfig, ...globalIndicesConfig];
-    if (allIndexSymbols.length === 0) return { success: true, data: undefined };
+    if (indicesConfig.length === 0) return { success: true, data: undefined };
 
-    return await fetchIndexHistories(allIndexSymbols, ignoreCache, onProgress);
-  }, [indicesConfig, globalIndicesConfig]);
+    return await fetchIndexHistories(indicesConfig, ignoreCache, onProgress);
+  }, [indicesConfig]);
 
   const displayDomesticIndices = useMemo(
-    () => mergeIndicesForDisplay(indicesConfig, marketIndices, marketIndices),
-    [indicesConfig, marketIndices]
+    () => marketIndices.filter(m => isDomesticIndex(m.info.symbol)),
+    [marketIndices]
   );
 
   const displayGlobalIndices = useMemo(
-    () => mergeIndicesForDisplay(globalIndicesConfig, globalIndices, globalIndices),
-    [globalIndicesConfig, globalIndices]
+    () => marketIndices.filter(m => isGlobalIndex(m.info.symbol)),
+    [marketIndices]
   );
 
   const refreshAll = useCallback(async () => {
@@ -752,8 +756,7 @@ const AppContent: React.FC = () => {
     setIsRefreshing(true);
 
     // 计算总任务数：基金估值 + 基金历史 + 指数实时 + 指数历史
-    const indexCount = indicesConfig.length + globalIndicesConfig.length;
-    const totalCount = portfolio.length * 2 + indexCount * 2;
+    const totalCount = portfolio.length * 2 + indicesConfig.length * 2;
 
     // 预设置总任务数
     setBackgroundTasks(totalCount);
@@ -769,7 +772,7 @@ const AppContent: React.FC = () => {
         refreshIndexHistoryAsync(true, onProgress),
       ]);
     } finally { setIsRefreshing(false); }
-  }, [portfolio, indicesConfig, globalIndicesConfig, isRefreshing, runBatchUpdate, refreshMarketIndicesAsync, runBatchHistoryUpdate, refreshIndexHistoryAsync]);
+  }, [portfolio, indicesConfig, isRefreshing, runBatchUpdate, refreshMarketIndicesAsync, runBatchHistoryUpdate, refreshIndexHistoryAsync]);
 
   useEffect(() => {
     if (portfolio.length > 0) {
@@ -783,7 +786,7 @@ const AppContent: React.FC = () => {
   }, [portfolio.length]);
 
   // 指数刷新由定时任务统一管理，不再在这里单独触发
-  // useEffect(() => { refreshMarketIndicesAsync(); }, [indicesConfig, globalIndicesConfig]);
+  // useEffect(() => { refreshMarketIndicesAsync(); }, [indicesConfig]);
 
   // Timer Job Scheduler: handles fund valuation, history, and market index refresh
   const { addError } = useTimerJobErrors();
@@ -816,15 +819,13 @@ const AppContent: React.FC = () => {
     });
 
     scheduler.registerHandler('market-index-refresh', async () => {
-      const indexCount = indicesConfig.length + globalIndicesConfig.length;
-      setBackgroundTasks(indexCount);
+      setBackgroundTasks(indicesConfig.length);
       const onProgress = () => setBackgroundTasks(prev => Math.max(0, prev - 1));
       return await refreshMarketIndicesAsync(true, onProgress);
     });
 
     scheduler.registerHandler('index-history-refresh', async () => {
-      const indexCount = indicesConfig.length + globalIndicesConfig.length;
-      setBackgroundTasks(indexCount);
+      setBackgroundTasks(indicesConfig.length);
       const onProgress = () => setBackgroundTasks(prev => Math.max(0, prev - 1));
       return await refreshIndexHistoryAsync(true, onProgress);
     });
@@ -897,7 +898,7 @@ const AppContent: React.FC = () => {
       preBannerTimer = setTimeout(() => {
         setAutoBackupStatus('pending');
         exportTimer = setTimeout(async () => {
-          const data = await buildBackupData(portfolio, indicesConfig, globalIndicesConfig, marketIndices, globalIndices);
+          const data = await buildBackupData(portfolio, indicesConfig, marketIndices);
           downloadBackupFile(data, true);
           setAutoBackupStatus('done');
           setTimeout(() => setAutoBackupStatus(null), 3000);
@@ -951,7 +952,7 @@ const AppContent: React.FC = () => {
   }, [portfolio, marketData, sortOrder]);
 
   const handleExport = async () => {
-    const data = await buildBackupData(portfolio, indicesConfig, globalIndicesConfig, marketIndices, globalIndices);
+    const data = await buildBackupData(portfolio, indicesConfig, marketIndices);
     downloadBackupFile(data, false);
     setIsMenuOpen(false);
   };
@@ -1002,7 +1003,6 @@ const AppContent: React.FC = () => {
     const applied = await applyBackupData(pendingImportData);
     setPortfolio(applied.portfolio);
     setIndicesConfig(applied.indicesConfig);
-    setGlobalIndicesConfig(applied.globalIndicesConfig);
     if (pendingImportData.config?.autoExportTime) {
       setAutoExportTime(pendingImportData.config.autoExportTime);
     }
@@ -1015,19 +1015,19 @@ const AppContent: React.FC = () => {
   }, [pendingImportData, runBatchUpdate, refreshMarketIndicesAsync]);
 
   const renderIndexCard = (idx: MarketIndex, type: 'index' | 'global_index', status: CardStatus = 'unknown') => {
-    const selectionKey = createManageSelectionKey(type, normalizeIndexSymbol(idx.symbol));
+    const selectionKey = createManageSelectionKey(type, normalizeIndexSymbol(idx.info.symbol));
     const isSelected = selectedItems.has(selectionKey);
 
     return (
       <IndexCard
-        key={idx.symbol}
+        key={idx.info.symbol}
         idx={idx}
         type={type}
         status={status}
         isSelectionMode={isSelectionMode}
         isSelected={isSelected}
         onSelect={toggleSelection}
-        onClick={() => setViewingIndexSymbol(normalizeIndexSymbol(idx.symbol))}
+        onClick={() => setViewingIndexSymbol(normalizeIndexSymbol(idx.info.symbol))}
         selectionKey={selectionKey}
       />
     );
@@ -1037,7 +1037,7 @@ const AppContent: React.FC = () => {
   const viewingIndex = useMemo(() => {
     if (!viewingIndexSymbol) return null;
     const allIndices = [...displayDomesticIndices, ...displayGlobalIndices];
-    return allIndices.find(idx => normalizeIndexSymbol(idx.symbol) === viewingIndexSymbol) || null;
+    return allIndices.find(idx => normalizeIndexSymbol(idx.info.symbol) === viewingIndexSymbol) || null;
   }, [viewingIndexSymbol, displayDomesticIndices, displayGlobalIndices]);
 
   // 从 cacheService 获取基金历史数据
@@ -1057,8 +1057,7 @@ const AppContent: React.FC = () => {
   const indexHistories = useMemo(() => {
     const allHistories = cacheService.getAllHistories();
     const result: Record<string, HistoricalPoint[]> = {};
-    const allIndexSymbols = [...indicesConfig, ...globalIndicesConfig];
-    allIndexSymbols.forEach(symbol => {
+    indicesConfig.forEach(symbol => {
       const normalized = normalizeIndexSymbol(symbol);
       const history = allHistories.get(normalized);
       if (history) {
@@ -1066,7 +1065,7 @@ const AppContent: React.FC = () => {
       }
     });
     return result;
-  }, [indicesConfig, globalIndicesConfig]);
+  }, [indicesConfig]);
 
   return (
     <div className={`min-h-screen pb-32 transition-colors duration-300 ${isSelectionMode ? 'bg-blue-50/50' : 'bg-gray-50'}`}>
@@ -1223,7 +1222,7 @@ const AppContent: React.FC = () => {
       <div className="max-w-6xl mx-auto px-4 py-3 grid grid-cols-1 lg:grid-cols-[200px_1fr_200px] gap-2.5 items-start">
         <aside className="space-y-1.5">
           <div className="flex lg:flex-col overflow-x-auto lg:overflow-visible gap-1.5 pb-2 no-scrollbar">
-            {displayDomesticIndices.map(idx => renderIndexCard(idx, 'index', indexStatuses[normalizeIndexSymbol(idx.symbol)] ?? 'unknown'))}
+            {displayDomesticIndices.map(idx => renderIndexCard(idx, 'index', indexStatuses[normalizeIndexSymbol(idx.info.symbol)] ?? 'unknown'))}
           </div>
         </aside>
 
@@ -1249,7 +1248,7 @@ const AppContent: React.FC = () => {
 
         <aside className="space-y-1.5">
           <div className="flex lg:flex-col overflow-x-auto lg:overflow-visible gap-1.5 pb-2 no-scrollbar">
-            {displayGlobalIndices.map(idx => renderIndexCard(idx, 'global_index', indexStatuses[normalizeIndexSymbol(idx.symbol)] ?? 'unknown'))}
+            {displayGlobalIndices.map(idx => renderIndexCard(idx, 'global_index', indexStatuses[normalizeIndexSymbol(idx.info.symbol)] ?? 'unknown'))}
           </div>
         </aside>
       </div>
@@ -1258,7 +1257,26 @@ const AppContent: React.FC = () => {
         <button onClick={() => setIsModalOpen(true)} className="fixed bottom-8 right-8 bg-red-600 text-white w-14 h-14 rounded-full shadow-2xl flex items-center justify-center hover:scale-110 active:scale-90 transition-all z-30"><i className="fas fa-plus text-xl"></i></button>
       )}
 
-      {isModalOpen && <AddTickerModal onClose={() => setIsModalOpen(false)} onAdd={async (symbols, type) => { if (type === MarketType.INDEX) { const isGlobal = (s: string) => /[A-Za-z]/.test(s) || /^(100|101|102)\./.test(s); const newDomestic = symbols.filter(s => !isGlobal(s) && !indicesConfig.includes(s)); const newGlobal = symbols.filter(s => isGlobal(s) && !globalIndicesConfig.includes(s)); if (newDomestic.length) setIndicesConfig(p => [...p, ...newDomestic]); if (newGlobal.length) setGlobalIndicesConfig(p => [...p, ...newGlobal]); } else { const existing = new Set(portfolio.map(p => p.symbol)); const news = symbols.filter(s => !existing.has(s)).map(s => ({ id: Math.random().toString(36).substr(2, 9), symbol: s, name: '', market: MarketType.FUND })); if (news.length) { setPortfolio(p => [...p, ...news]); runBatchUpdate(news); } } setIsModalOpen(false); }} isLoading={false} />}
+      {isModalOpen && <AddTickerModal onClose={() => setIsModalOpen(false)} onAdd={async (symbols, type) => {
+          if (type === MarketType.INDEX) {
+            // 直接添加到统一配置，显示时会自动分类
+            const newSymbols = symbols.filter(s => !indicesConfig.includes(s));
+            if (newSymbols.length) setIndicesConfig(p => [...p, ...newSymbols]);
+          } else {
+            const existing = new Set(portfolio.map(p => p.symbol));
+            const news = symbols.filter(s => !existing.has(s)).map(s => ({
+              id: Math.random().toString(36).substr(2, 9),
+              symbol: s,
+              name: '',
+              market: MarketType.FUND
+            }));
+            if (news.length) {
+              setPortfolio(p => [...p, ...news]);
+              runBatchUpdate(news);
+            }
+          }
+          setIsModalOpen(false);
+        }} isLoading={false} />}
       {showOverallProfit && <OverallProfitModal onClose={() => setShowOverallProfit(false)} onSelectFund={(sym) => { setShowOverallProfit(false); setViewingFund({ symbol: sym, fromDraft: false }); }} />}
       {showPositions && <PositionsModal portfolio={portfolio} marketData={marketData} onClose={() => setShowPositions(false)} onSelectFund={(sym) => { setShowPositions(false); setViewingFund({ symbol: sym, fromDraft: false }); }} />}
       {showTransactions && <TransactionsModal portfolio={portfolio} marketData={marketData} onClose={() => setShowTransactions(false)} onSelectFund={(sym) => { setShowTransactions(false); setViewingFund({ symbol: sym, fromDraft: false }); }} />}
@@ -1282,7 +1300,7 @@ const AppContent: React.FC = () => {
       }} marketData={marketData} />}
       {isInvestmentDraftModalOpen && <InvestmentDraftModal portfolio={portfolio} onClose={() => { setIsInvestmentDraftModalOpen(false); setViewingFund(null); }} onSelectFund={(sym) => {
         setViewingFund({ symbol: sym, fromDraft: true });
-      }} marketData={marketData} sideBySide={viewingFund?.fromDraft} fundHistories={fundHistories} indexHistories={indexHistories} marketIndices={marketIndices} globalIndices={globalIndices} />}
+      }} marketData={marketData} sideBySide={viewingFund?.fromDraft} fundHistories={fundHistories} indexHistories={indexHistories} marketIndices={marketIndices} />}
       {viewingFund && marketData[viewingFund.symbol] && (() => {
           const fund = portfolio.find(f => f.symbol === viewingFund.symbol);
           // 使用 useRef 来跟踪上一次 viewingFund 的值，判断是否是从关闭到打开的过渡
@@ -1381,9 +1399,7 @@ const AppContent: React.FC = () => {
           }}
           portfolio={portfolio}
           indicesConfig={indicesConfig}
-          globalIndicesConfig={globalIndicesConfig}
           marketIndices={marketIndices}
-          globalIndices={globalIndices}
           onBackupSettingsChange={(time, enabled) => {
             setAutoExportTime(time);
             setAutoBackupEnabled(enabled);

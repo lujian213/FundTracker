@@ -13,9 +13,7 @@ interface BackupPanelProps {
   onClose: () => void;
   portfolio: Ticker[];
   indicesConfig: string[];
-  globalIndicesConfig: string[];
   marketIndices: MarketIndex[];
-  globalIndices: MarketIndex[];
   onBackupSettingsChange?: (time: string, enabled: boolean) => void;
 }
 
@@ -23,9 +21,7 @@ const BackupPanel: React.FC<BackupPanelProps> = ({
   onClose,
   portfolio,
   indicesConfig,
-  globalIndicesConfig,
   marketIndices,
-  globalIndices,
   onBackupSettingsChange,
 }) => {
   const [tmpTime, setTmpTime] = useState(() => readBackupConfig().autoExportTime);
@@ -93,7 +89,7 @@ const BackupPanel: React.FC<BackupPanelProps> = ({
   const handleExport = async () => {
     setIsExporting(true);
     try {
-      const data = await buildBackupData(portfolio, indicesConfig, globalIndicesConfig, marketIndices, globalIndices);
+      const data = await buildBackupData(portfolio, indicesConfig, marketIndices);
       downloadBackupFile(data, false);
     } catch (err) {
       console.error('导出备份失败:', err);

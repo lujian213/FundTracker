@@ -35,18 +35,17 @@ export const IndexDetailsModal: React.FC<IndexDetailsModalProps> = ({ data, onCl
   useEffect(() => {
     let mounted = true;
     const load = async () => {
-      // 先查缓存，命中则秒开无需网络请求
-      const cached = cacheService.getHistory(data.symbol);
-      if (cached && cached.length > 0) {
+      // 使用 MarketIndex 中的 history 数据
+      if (data.history && data.history.length > 0) {
         if (mounted) {
-          setHistory(cached.slice(-365));
+          setHistory(data.history.slice(-365));
           setLoading(false);
         }
         return;
       }
-      // 缓存未命中，走网络请求
+      // 如果没有历史数据，走网络请求
       setLoading(true);
-      const points = await fetchIndexHistory(data.symbol);
+      const points = await fetchIndexHistory(data.info.symbol);
       if (mounted) {
         setHistory(points);
         setLoading(false);
@@ -54,25 +53,25 @@ export const IndexDetailsModal: React.FC<IndexDetailsModalProps> = ({ data, onCl
     };
     load();
     return () => { mounted = false; };
-  }, [data.symbol]);
+  }, [data.info.symbol, data.history]);
 
   useEffect(() => {
     try {
-      const code = data.symbol;
+      const code = data.info.symbol;
       const pts = cacheService.getIntradayPoints(code);
       setIntradayPoints(pts);
     } catch (e) { setIntradayPoints([]); }
-  }, [data.symbol, data.lastUpdated]);
+  }, [data.info.symbol, data.info.lastUpdated]);
 
   // 合并当前点到历史数据
   const chartData = useMemo(() => {
     if (!history || history.length === 0) return history;
 
     // 检查是否有有效的交易日期和当前值
-    if (!data.tradeDate || data.current == null) return history;
+    if (!data.info.tradeDate || data.info.current == null) return history;
 
     // 解析交易日期为时间戳
-    const tradeTs = new Date(`${data.tradeDate} 15:00`).getTime();
+    const tradeTs = new Date(`${data.info.tradeDate} 15:00`).getTime();
     if (!Number.isFinite(tradeTs)) return history;
 
     // 检查历史数据最后一条的日期
@@ -85,10 +84,10 @@ export const IndexDetailsModal: React.FC<IndexDetailsModalProps> = ({ data, onCl
     if (tradeDayKey > lastDayKey) {
       return [...history, {
         date: tradeTs,
-        value: data.current,
-        equityReturn: data.changePercent || 0,
-        volume: data.volume,
-        amount: data.amount
+        value: data.info.current,
+        equityReturn: data.info.changePercent || 0,
+        volume: data.info.volume,
+        amount: data.info.amount
       }];
     }
 
@@ -96,13 +95,13 @@ export const IndexDetailsModal: React.FC<IndexDetailsModalProps> = ({ data, onCl
     const updated = [...history];
     updated[updated.length - 1] = {
       ...lastHist,
-      value: data.current,
-      equityReturn: data.changePercent || 0,
-      volume: data.volume ?? lastHist.volume,
-      amount: data.amount ?? lastHist.amount
+      value: data.info.current,
+      equityReturn: data.info.changePercent || 0,
+      volume: data.info.volume ?? lastHist.volume,
+      amount: data.info.amount ?? lastHist.amount
     };
     return updated;
-  }, [history, data.tradeDate, data.current, data.changePercent, data.volume, data.amount]);
+  }, [history, data.info.tradeDate, data.info.current, data.info.changePercent, data.info.volume, data.info.amount]);
 
   const { path, area, points, viewBox, yLabels, xLabels, maPaths, maValues, volumeData } = useMemo(() => {
     // 使用公共函数准备数据（包含MA计算和截取）
@@ -201,16 +200,16 @@ export const IndexDetailsModal: React.FC<IndexDetailsModalProps> = ({ data, onCl
         <div className="px-6 pt-3 pb-1 border-b border-gray-50 flex justify-between items-start">
           <div>
             <div className="flex items-center space-x-2 mb-1">
-               <h2 className="text-lg font-black text-gray-800 leading-tight">{data.name}</h2>
-               <span className="px-2 py-0.5 bg-gray-100 text-gray-500 rounded text-[10px] font-mono">{data.symbol}</span>
+               <h2 className="text-lg font-black text-gray-800 leading-tight">{data.info.name}</h2>
+               <span className="px-2 py-0.5 bg-gray-100 text-gray-500 rounded text-[10px] font-mono">{data.info.symbol}</span>
             </div>
             <div className="flex items-baseline space-x-3">
-              <span className={`text-2xl font-normal ${data.changePercent >= 0 ? 'text-red-600' : 'text-green-600'}`}>
-                {data.current.toLocaleString()}
+              <span className={`text-2xl font-normal ${data.info.changePercent >= 0 ? 'text-red-600' : 'text-green-600'}`}>
+                {data.info.current.toLocaleString()}
               </span>
-              <span className={`text-sm font-medium ${data.changePercent >= 0 ? 'text-red-500' : 'text-green-500'}`}>
-                {data.changePercent >= 0 ? '+' : ''}{data.changePercent.toFixed(2)}%
-                <span className="ml-2">({data.change >= 0 ? '+' : ''}{data.change.toFixed(2)})</span>
+              <span className={`text-sm font-medium ${data.info.changePercent >= 0 ? 'text-red-500' : 'text-green-500'}`}>
+                {data.info.changePercent >= 0 ? '+' : ''}{data.info.changePercent.toFixed(2)}%
+                <span className="ml-2">({data.info.change >= 0 ? '+' : ''}{data.info.change.toFixed(2)})</span>
               </span>
             </div>
           </div>
@@ -345,8 +344,8 @@ export const IndexDetailsModal: React.FC<IndexDetailsModalProps> = ({ data, onCl
                         // 最新点直接使用 data 中的值，历史点使用 equityReturn 计算
                         if (isLastPoint) {
                           // 最新点：以窗口显示的实时数据为准
-                          const changePct = data.changePercent;
-                          const changeAbs = data.change;
+                          const changePct = data.info.changePercent;
+                          const changeAbs = data.info.change;
                           if (typeof changePct === 'number') {
                             changeText = `${changeAbs >= 0 ? '+' : ''}${changeAbs.toFixed(2)} (${changePct >= 0 ? '+' : ''}${changePct.toFixed(2)}%)`;
                             changeClass = changePct >= 0 ? 'text-red-600' : 'text-green-600';
@@ -381,8 +380,8 @@ export const IndexDetailsModal: React.FC<IndexDetailsModalProps> = ({ data, onCl
                         dateLabel = formatDateDisplay(new Date(last.data.date));
                         valueLabel = last.data.value.toFixed(4);
                         // 最新点：以窗口显示的实时数据为准
-                        const changePct = data.changePercent;
-                        const changeAbs = data.change;
+                        const changePct = data.info.changePercent;
+                        const changeAbs = data.info.change;
                         if (typeof changePct === 'number') {
                           changeText = `${changeAbs >= 0 ? '+' : ''}${changeAbs.toFixed(2)} (${changePct >= 0 ? '+' : ''}${changePct.toFixed(2)}%)`;
                           changeClass = changePct >= 0 ? 'text-red-600' : 'text-green-600';
@@ -411,7 +410,7 @@ export const IndexDetailsModal: React.FC<IndexDetailsModalProps> = ({ data, onCl
 
               <div className="p-2 bg-gray-50 rounded-lg">
                 <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">行情更新时间</p>
-                <p className="text-xs font-bold text-gray-700">{data.lastUpdated}</p>
+                <p className="text-xs font-bold text-gray-700">{data.info.lastUpdated}</p>
               </div>
             </div>
           )}
@@ -420,8 +419,8 @@ export const IndexDetailsModal: React.FC<IndexDetailsModalProps> = ({ data, onCl
       <IndexAISidePanel
         isVisible={showAI}
         onClose={() => setShowAI(false)}
-        indexSymbol={data.symbol}
-        indexName={data.name}
+        indexSymbol={data.info.symbol}
+        indexName={data.info.name}
         history={chartData}
         maValues={maValues}
         volumeData={volumeData}

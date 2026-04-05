@@ -55,6 +55,7 @@ jest.mock('../../services/fundService', () => ({
   fetchFundData: (...args: unknown[]) => fetchFundDataMock(...args),
   fetchMarketIndices: (...args: unknown[]) => fetchMarketIndicesMock(...args),
   forceFetchFundHistory: (...args: unknown[]) => forceFetchFundHistoryMock(...args),
+  normalizeIndexSymbol: (symbol: string) => symbol,
 }));
 
 describe('App - 系统配置', () => {

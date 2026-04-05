@@ -281,7 +281,7 @@ export function formatFundBaseContextData(
   const allIndices = [...marketIndices, ...globalIndices];
 
   for (const idx of allIndices) {
-    const history = indexHistories[idx.symbol] || [];
+    const history = indexHistories[idx.info.symbol] || [];
     const sortedHistory = [...history].sort((a, b) => (a.date as number) - (b.date as number));
 
     // 过滤掉今日数据，使用全部历史数据计算均值
@@ -308,9 +308,9 @@ export function formatFundBaseContextData(
     const ma20Last10 = ma20.slice(-10).reverse().map(v => v ?? 0);
 
     indices.push({
-      index_name: idx.name,
-      current_value: idx.current,
-      current_volume: idx.volume || 0,
+      index_name: idx.info.name,
+      current_value: idx.info.current,
+      current_volume: idx.info.volume || 0,
       values_last_10_days: [...valuesLast10Days].reverse(),
       volume_last_10_days: [...volumeLast10Days].reverse(),
       ma5_last_10_days: ma5Last10,

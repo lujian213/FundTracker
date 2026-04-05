@@ -1,8 +1,9 @@
-import { ValuationData, MarketIndex, HistoricalPoint, OverallProfitSummary, OverallFundRow, ProfitPoint, JobResult } from "../types";
+import { ValuationData, MarketIndex, IndexInfo, HistoricalPoint, OverallProfitSummary, OverallFundRow, ProfitPoint, JobResult } from "../types";
 import { computeProfitTimeline } from '../utils/profitCalculator';
 import { toLocalDateKey, resolvePreferredPrice, ResolvedPrice } from '../utils/priceResolver';
 import { getTradesForSymbol } from '../hooks/useTrades';
 import * as cacheService from './cacheService';
+import * as indexService from './indexService';
 
 /**
  * 准备用于盈亏计算的历史数据
@@ -704,7 +705,7 @@ export async function fetchSingleIndex(symbol: string, ignoreCache: boolean = fa
   // 0. 检查缓存
   const normalizedSymbol = normalizeIndexSymbol(symbol);
 
-  const cached = cacheService.getIndexMarketData(normalizedSymbol);
+  const cached = indexService.getMarketIndex(normalizedSymbol);
 
   // 默认返回缓存数据（ignoreCache为false时），由后台定时任务负责更新缓存
   // 这样做的好处是：界面始终有数据显示，不会因为API失败而空白
@@ -721,7 +722,7 @@ export async function fetchSingleIndex(symbol: string, ignoreCache: boolean = fa
   const realtimeUrl = `https://push2delay.eastmoney.com/api/qt/stock/get?ut=${ut}&fltt=2&invt=2&secid=${secid}&fields=${fields}&_=${Date.now()}`;
 
   // 1. 获取实时数据（队列控制在 fetchMarketIndices 中处理）
-  let currentData: MarketIndex | null = null;
+  let currentInfo: IndexInfo | null = null;
   try {
     // 使用 fetchJson 直接获取（push2delay 返回普通 JSON）
     const response: any = await fetchJson(realtimeUrl);
@@ -742,7 +743,7 @@ export async function fetchSingleIndex(symbol: string, ignoreCache: boolean = fa
         } catch (e) {}
       }
 
-      currentData = {
+      currentInfo = {
         symbol: secid,
         name: item.f14 || item.f58 || "指数",
         current: parseFloat(item.f43) || 0,
@@ -758,27 +759,29 @@ export async function fetchSingleIndex(symbol: string, ignoreCache: boolean = fa
   } catch (e) {}
 
   // 2. 从历史数据获取成交量和成交额（仅当有实时数据时才处理）
-  // 如果API调用失败（currentData为null），不写入任何缓存，直接返回null
-  if (currentData) {
+  // 如果API调用失败（currentInfo为null），不写入任何缓存，直接返回null
+  if (currentInfo) {
     try {
       const history = await fetchIndexHistory(symbol);
       if (history && history.length > 0) {
         const lastPoint = history[history.length - 1];
-        // 合并成交量和成交额，写入缓存
-        const result = {
-          ...currentData,
+        // 合并成交量和成交额
+        const info: IndexInfo = {
+          ...currentInfo,
           volume: lastPoint.volume || 0,
           amount: lastPoint.amount || 0,
         };
-        cacheService.setIndexMarketData(normalizedSymbol, result);
-        return result;
+        // 更新 indexService
+        indexService.updateRealtimeData(normalizedSymbol, info);
+        indexService.updateHistory(normalizedSymbol, history);
+        return indexService.getMarketIndex(normalizedSymbol);
       }
     } catch (e) {}
   }
 
   // API失败时，直接返回null，不写入任何缓存
   // 这样界面会显示已有的旧缓存（正确的名称）
-  return currentData;
+  return cached;
 }
 
 export async function fetchMarketIndices(symbols: string[], ignoreCache: boolean = false, onProgress?: () => void): Promise<JobResult<MarketIndex[]>> {
@@ -897,9 +900,9 @@ export async function forceFetchFundHistories(symbols: string[], onProgress?: ()
 // Index history: fetch Kline data for indices via push2his and convert to HistoricalPoint[]
 export async function fetchIndexHistory(symbol: string, ignoreCache: boolean = false): Promise<HistoricalPoint[]> {
    // 1. 先检查缓存
-   const cached = cacheService.getHistory(symbol);
-   if (cached && cached.length > 0 && !ignoreCache) {
-     return cached;
+   const marketIndex = indexService.getMarketIndex(symbol);
+   if (marketIndex && marketIndex.history.length > 0 && !ignoreCache) {
+     return marketIndex.history;
    }
 
    let secid = symbol;
@@ -929,8 +932,8 @@ export async function fetchIndexHistory(symbol: string, ignoreCache: boolean = f
         } as unknown) as Partial<HistoricalPoint>;
       });
       const normalized = normalizeHistoryPoints(raw as Array<Partial<HistoricalPoint>>);
-      // 写入缓存（使用 symbol 作为 key，与 FundDetailsModal 保持一致）
-      cacheService.setHistory(symbol, normalized);
+      // 写入 indexService（指数历史数据）
+      indexService.updateHistory(symbol, normalized);
       return normalized;
      }
    } catch (e) {}

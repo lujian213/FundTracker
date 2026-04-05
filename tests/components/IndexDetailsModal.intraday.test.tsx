@@ -8,13 +8,16 @@ jest.mock('../../services/fundService', () => ({ fetchIndexHistory: jest.fn().mo
 
 describe('IndexDetailsModal intraday tab', () => {
   const data: MarketIndex = {
-    symbol: 'IDX001',
-    name: 'Test Index',
-    current: 1234.5,
-    change: 10,
-    changePercent: 0.8,
-    lastUpdated: '2026-03-09 10:05:00',
-  } as any;
+    info: {
+      symbol: 'IDX001',
+      name: 'Test Index',
+      current: 1234.5,
+      change: 10,
+      changePercent: 0.8,
+      lastUpdated: '2026-03-09 10:05:00',
+    },
+    history: [],
+  };
 
   beforeEach(() => { jest.resetAllMocks(); });
 

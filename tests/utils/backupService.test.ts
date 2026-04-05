@@ -50,8 +50,10 @@ const SAMPLE_HISTORY: HistoricalPoint[] = [
 
 const BASE_BACKUP: BackupData = {
   portfolio: [{ symbol: '000001', name: '华夏成长混合' }],
-  indices: [{ symbol: '1.000001', name: '上证指数', current: 3200, change: 10, changePercent: 0.31, lastUpdated: '15:00' }],
-  globalIndices: [{ symbol: '100.NDX', name: '纳斯达克', current: 18000, change: -50, changePercent: -0.28, lastUpdated: '22:00' }],
+  indices: [
+    { symbol: '1.000001', name: '上证指数', current: 3200, change: 10, changePercent: 0.31, lastUpdated: '15:00' },
+    { symbol: '100.NDX', name: '纳斯达克', current: 18000, change: -50, changePercent: -0.28, lastUpdated: '22:00' }
+  ],
   positions: {
     '000001': { fullCapacity: 10000, initialPosition: 2000, startDate: '2025-01-01', initialPrice: 1.48 },
   },
@@ -141,14 +143,17 @@ describe('buildBackupData', () => {
   beforeEach(() => { localStorage.clear(); });
   afterEach(() => { localStorage.clear(); jest.resetModules(); });
 
-  test('basic structure: portfolio, indices, globalIndices, config', async () => {
+  test('basic structure: portfolio, indices, config', async () => {
     const { bs } = loadBoth();
     const portfolio = [{ id: 'a1', symbol: '000001', name: '华夏成长', market: MarketType.FUND }];
-    const result = await bs.buildBackupData(portfolio, ['1.000001'], ['100.NDX'], [], []);
+    const indicesConfig = ['1.000001', '100.NDX'];
+    const result = await bs.buildBackupData(portfolio, indicesConfig, []);
     expect(result.portfolio).toHaveLength(1);
     expect(result.portfolio[0].symbol).toBe('000001');
-    expect(result.indices).toEqual([{ symbol: '1.000001', name: undefined, current: undefined, change: undefined, changePercent: undefined, lastUpdated: undefined }]);
-    expect(result.globalIndices).toEqual([{ symbol: '100.NDX', name: undefined, current: undefined, change: undefined, changePercent: undefined, lastUpdated: undefined }]);
+    expect(result.indices).toEqual([
+      { symbol: '1.000001', name: undefined, current: undefined, change: undefined, changePercent: undefined, lastUpdated: undefined },
+      { symbol: '100.NDX', name: undefined, current: undefined, change: undefined, changePercent: undefined, lastUpdated: undefined }
+    ]);
   });
 
   test('fills optional valuation fields from cacheService when available', async () => {
@@ -156,7 +161,7 @@ describe('buildBackupData', () => {
     cs.setValuation('000001', SAMPLE_VALUATION);
 
     const portfolio = [{ id: 'a1', symbol: '000001', name: '', market: MarketType.FUND }];
-    const result = await bs.buildBackupData(portfolio, [], [], [], []);
+    const result = await bs.buildBackupData(portfolio, [], []);
 
     const fund = result.portfolio[0];
     expect(fund.previousPrice).toBeCloseTo(1.48);
@@ -167,8 +172,9 @@ describe('buildBackupData', () => {
 
   test('fills index optional fields from marketIndices state', async () => {
     const { bs } = loadBoth();
-    const marketIndices = [{ symbol: '1.000001', name: '上证指数', current: 3200, change: 10, changePercent: 0.31, lastUpdated: '15:00' }];
-    const result = await bs.buildBackupData([], ['1.000001'], [], marketIndices, []);
+    const indicesConfig = ['1.000001'];
+    const marketIndices = [{ info: { symbol: '1.000001', name: '上证指数', current: 3200, change: 10, changePercent: 0.31, lastUpdated: '15:00' }, history: [] }];
+    const result = await bs.buildBackupData([], indicesConfig, marketIndices);
     expect(result.indices[0].name).toBe('上证指数');
     expect(result.indices[0].current).toBe(3200);
   });
@@ -178,7 +184,7 @@ describe('buildBackupData', () => {
     localStorage.setItem('fund_trades', JSON.stringify({
       '000001': [{ id: 't1', date: '2026-01-01', type: 'buy', shares: 500, price: 1.48, fee: 0.5 }],
     }));
-    const result = await bs.buildBackupData([], [], [], [], []);
+    const result = await bs.buildBackupData([], [], []);
     expect(result.trades['000001']).toHaveLength(1);
     expect(result.trades['000001'][0].shares).toBe(500);
   });
@@ -188,7 +194,7 @@ describe('buildBackupData', () => {
     localStorage.setItem('fund_position_000001', JSON.stringify({
       fullCapacity: 10000, initialPosition: 2000, startDate: '2025-01-01', initialPrice: 1.48,
     }));
-    const result = await bs.buildBackupData([], [], [], [], []);
+    const result = await bs.buildBackupData([], [], []);
     expect(result.positions['000001']).toEqual({
       fullCapacity: 10000, initialPosition: 2000, startDate: '2025-01-01', initialPrice: 1.48,
     });
@@ -200,14 +206,14 @@ describe('buildBackupData', () => {
       version: 1,
       backup: { autoExportTime: '09:30', autoBackupEnabled: true }
     }));
-    const result = await bs.buildBackupData([], [], [], [], []);
+    const result = await bs.buildBackupData([], [], []);
     expect(result.config.autoExportTime).toBe('09:30');
     expect(result.config.autoBackupEnabled).toBe(true);
   });
 
   test('uses default autoBackupEnabled when config not stored', async () => {
     const { bs } = loadBoth();
-    const result = await bs.buildBackupData([], [], [], [], []);
+    const result = await bs.buildBackupData([], [], []);
     expect(result.config.autoExportTime).toBe('16:00');
     expect(result.config.autoBackupEnabled).toBe(false);
   });
@@ -303,14 +309,13 @@ describe('applyBackupData', () => {
     localStorage.setItem('fund_history_999999', JSON.stringify([{ date: 1000000, value: 1, equityReturn: 0 }]));
   }
 
-  test('returns correct portfolio, indicesConfig, globalIndicesConfig', async () => {
+  test('returns correct portfolio, indicesConfig', async () => {
     const { bs } = loadBoth();
     const result = await bs.applyBackupData(BASE_BACKUP);
     expect(result.portfolio).toHaveLength(1);
     expect(result.portfolio[0].symbol).toBe('000001');
     expect(result.portfolio[0].market).toBe(MarketType.FUND);
-    expect(result.indicesConfig).toEqual(['1.000001']);
-    expect(result.globalIndicesConfig).toEqual(['100.NDX']);
+    expect(result.indicesConfig).toEqual(['1.000001', '100.NDX']);
   });
 
   test('completely overwrites old portfolio in localStorage', async () => {
@@ -365,9 +370,7 @@ describe('applyBackupData', () => {
     await bs.applyBackupData(BASE_BACKUP);
 
     const idx = JSON.parse(localStorage.getItem('fund_indices_config')!);
-    expect(idx).toEqual(['1.000001']);
-    const gidx = JSON.parse(localStorage.getItem('fund_global_indices_config')!);
-    expect(gidx).toEqual(['100.NDX']);
+    expect(idx).toEqual(['1.000001', '100.NDX']);
   });
 
   test('evicts old valuations from cacheService for removed symbols', async () => {
@@ -493,8 +496,8 @@ describe('applyBackupData', () => {
       globalIndices: ['100.NDX'] as any,
     };
     const result = await bs.applyBackupData(oldFormat);
-    expect(result.indicesConfig).toEqual(['1.000001', '0.399001']);
-    expect(result.globalIndicesConfig).toEqual(['100.NDX']);
+    // Should merge indices and globalIndices
+    expect(result.indicesConfig).toEqual(['1.000001', '0.399001', '100.NDX']);
   });
 
   test('compat: old format portfolio as plain array without optional fields', async () => {
@@ -502,7 +505,6 @@ describe('applyBackupData', () => {
     const oldFormat: BackupData = {
       portfolio: [{ symbol: '000001' } as any],
       indices: [],
-      globalIndices: [],
       positions: {},
       trades: {},
       config: { autoExportTime: '16:00' },
@@ -525,14 +527,12 @@ describe('applyBackupData', () => {
     const result = await bs.applyBackupData({
       portfolio: [],
       indices: [],
-      globalIndices: [],
       positions: {},
       trades: {},
       config: { autoExportTime: '16:00' },
     });
     expect(result.portfolio).toEqual([]);
     expect(result.indicesConfig).toEqual([]);
-    expect(result.globalIndicesConfig).toEqual([]);
   });
 
   test('compat: indices array with mixed string and object entries', async () => {
@@ -546,6 +546,3 @@ describe('applyBackupData', () => {
     expect(result.indicesConfig).toContain('0.399001');
   });
 });
-
-
-

@@ -20,9 +20,7 @@ interface SystemConfigModalProps {
   onSyncNow?: () => void;
   portfolio?: Ticker[];
   indicesConfig?: string[];
-  globalIndicesConfig?: string[];
   marketIndices?: MarketIndex[];
-  globalIndices?: MarketIndex[];
   onBackupSettingsChange?: (time: string, enabled: boolean) => void;
 }
 
@@ -45,9 +43,7 @@ const SystemConfigModal: React.FC<SystemConfigModalProps> = ({
   onSyncNow,
   portfolio = [],
   indicesConfig = [],
-  globalIndicesConfig = [],
   marketIndices = [],
-  globalIndices = [],
   onBackupSettingsChange,
 }) => {
   const [activeSection, setActiveSection] = useState<ConfigSection>('backup');
@@ -126,9 +122,7 @@ const SystemConfigModal: React.FC<SystemConfigModalProps> = ({
                 onClose={onClose}
                 portfolio={portfolio}
                 indicesConfig={indicesConfig}
-                globalIndicesConfig={globalIndicesConfig}
                 marketIndices={marketIndices}
-                globalIndices={globalIndices}
                 onBackupSettingsChange={onBackupSettingsChange}
               />
             )}

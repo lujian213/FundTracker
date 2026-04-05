@@ -26,14 +26,10 @@ describe('AddTickerModal', () => {
     const onAdd = jest.fn().mockResolvedValue(undefined);
     render(<AddTickerModal onClose={onClose} onAdd={onAdd} isLoading={false} />);
 
-    // click '指数看板' tab
-    const domTab = screen.getByText('指数看板');
-    fireEvent.click(domTab);
+    // click '指数行情' tab
+    const indexTab = screen.getByText('指数行情');
+    fireEvent.click(indexTab);
     expect(screen.getByPlaceholderText(/例如: 100.NDX/)).toBeInTheDocument();
-
-    const globalTab = screen.getByText('全球市场');
-    fireEvent.click(globalTab);
-    expect(screen.getByText('全球市场')).toBeInTheDocument();
   });
 
   test('handleSuggestionClick appends suggestion to textarea', () => {
@@ -69,7 +65,11 @@ describe('AddTickerModal', () => {
     const onAdd = jest.fn().mockResolvedValue(undefined);
     render(<AddTickerModal onClose={onClose} onAdd={onAdd} isLoading={false} />);
 
-    const textarea = screen.getByPlaceholderText(/例如/);
+    // Switch to index tab first
+    const indexTab = screen.getByText('指数行情');
+    fireEvent.click(indexTab);
+
+    const textarea = screen.getByPlaceholderText(/例如: 100.NDX/);
     // input invalid index code like "abc"
     fireEvent.change(textarea, { target: { value: 'abc' } });
     const addButton = screen.getByText('添加代码');
@@ -99,5 +99,24 @@ describe('AddTickerModal', () => {
         expect(onClose).toHaveBeenCalled();
       }
     }
+  });
+
+  test('adds index codes from index tab', async () => {
+    const onClose = jest.fn();
+    const onAdd = jest.fn().mockResolvedValue(undefined);
+    render(<AddTickerModal onClose={onClose} onAdd={onAdd} isLoading={false} />);
+
+    // Switch to index tab
+    const indexTab = screen.getByText('指数行情');
+    fireEvent.click(indexTab);
+
+    const textarea = screen.getByPlaceholderText(/例如: 100.NDX/);
+    fireEvent.change(textarea, { target: { value: '100.NDX 1.000001' } });
+
+    const addButton = screen.getByText('添加代码');
+    fireEvent.click(addButton);
+
+    // onAdd should be called with index codes
+    expect(onAdd).toHaveBeenCalledWith(expect.arrayContaining(['100.NDX', '1.000001']), MarketType.INDEX);
   });
 });
