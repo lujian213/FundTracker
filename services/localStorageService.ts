@@ -22,6 +22,9 @@ export const STORAGE_KEYS = {
 
   /** 投资草稿 */
   INVESTMENT_DRAFT: 'fund_investment_draft',
+
+  /** 组合交易 */
+  COMBO_TRADE: 'fund_combo_trade',
 } as const;
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -50,6 +53,7 @@ export const OLD_STORAGE_KEYS = {
     CALENDAR: 'fund_tracker_calendar',
     AI_TEMPLATES_CACHE: 'ai_templates_cached_data',
     INVESTMENT_DRAFT_PREFIX: 'investment_draft_',
+    COMBO_TRADE: 'fund_combo_trades',
   },
 } as const;
 

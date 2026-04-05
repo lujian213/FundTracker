@@ -5,6 +5,13 @@
  */
 
 import { ComboTrade, ComboTradeRecord } from '../types';
+import {
+  loadComboTrades,
+  loadComboTradeList,
+  saveComboTrade as saveComboTradeToCache,
+  deleteComboTrade as deleteComboTradeFromCache,
+  saveAllComboTradesToStorage,
+} from '../services/appDataService';
 
 /**
  * 校验单条组合交易记录是否合法
@@ -89,27 +96,35 @@ export function normalizeComboTrades(comboTrades: Record<string, any>): Record<s
  * 从 localStorage 加载组合交易数据
  */
 export function loadComboTradesFromStorage(): ComboTrade[] {
-  try {
-    const data = localStorage.getItem('fund_combo_trades');
-    if (!data) return [];
-
-    const parsed = JSON.parse(data);
-    const normalized = normalizeComboTrades(parsed);
-    return Object.values(normalized);
-  } catch {
-    return [];
-  }
+  return loadComboTradeList();
 }
 
 /**
  * 保存组合交易数据到 localStorage
  */
 export function saveComboTradesToStorage(comboTrades: Record<string, ComboTrade>): void {
-  try {
-    localStorage.setItem('fund_combo_trades', JSON.stringify(comboTrades));
-  } catch {
-    /* ignore */
-  }
+  // 更新内存缓存
+  Object.entries(comboTrades).forEach(([id, combo]) => {
+    saveComboTradeToCache(id, combo);
+  });
+  // 写入 localStorage
+  saveAllComboTradesToStorage();
+}
+
+/**
+ * 保存单个组合交易
+ */
+export function saveComboTrade(id: string, combo: ComboTrade): void {
+  saveComboTradeToCache(id, combo);
+  saveAllComboTradesToStorage();
+}
+
+/**
+ * 删除单个组合交易
+ */
+export function deleteComboTrade(id: string): void {
+  deleteComboTradeFromCache(id);
+  saveAllComboTradesToStorage();
 }
 
 /**

@@ -4,7 +4,7 @@
  * 应用数据类型定义
  */
 
-import { CalendarEvent, CalendarData } from '../types';
+import { CalendarEvent, CalendarData, ComboTrade } from '../types';
 
 export type { CalendarData };
 
@@ -15,6 +15,7 @@ export type { CalendarData };
 export interface AppData {
   calendar: CalendarData;
   investmentDrafts: InvestmentDrafts;
+  comboTrades: ComboTrades;
 }
 
 export interface InvestmentDrafts {
@@ -28,7 +29,12 @@ export interface DraftEntry {
   note: string;
 }
 
+export interface ComboTrades {
+  [id: string]: ComboTrade;
+}
+
 export const DEFAULT_APP_DATA: AppData = {
   calendar: {},
   investmentDrafts: {},
+  comboTrades: {},
 };

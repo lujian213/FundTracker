@@ -11,8 +11,10 @@ import {
   CalendarData,
   InvestmentDrafts,
   DraftEntry,
+  ComboTrades,
   DEFAULT_APP_DATA,
 } from '../types/appDataTypes';
+import { ComboTrade } from '../types';
 import { STORAGE_KEYS, OLD_STORAGE_KEYS } from './localStorageService';
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -51,6 +53,14 @@ function loadFromStorage(): AppData {
     const draftRaw = localStorage.getItem(STORAGE_KEYS.INVESTMENT_DRAFT);
     if (draftRaw) {
       data.investmentDrafts = JSON.parse(draftRaw);
+    }
+  } catch { /* ignore */ }
+
+  // 加载组合交易
+  try {
+    const comboRaw = localStorage.getItem(STORAGE_KEYS.COMBO_TRADE);
+    if (comboRaw) {
+      data.comboTrades = JSON.parse(comboRaw);
     }
   } catch { /* ignore */ }
 
@@ -104,6 +114,41 @@ export function saveAllDraftsToStorage(): void {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
+// 组合交易 - 独立存储
+// ═══════════════════════════════════════════════════════════════════════════════
+
+export function loadComboTrades(): ComboTrades {
+  return getAppDataCache().comboTrades || {};
+}
+
+export function loadComboTradeList(): ComboTrade[] {
+  return Object.values(getAppDataCache().comboTrades || {});
+}
+
+export function saveComboTrade(id: string, combo: ComboTrade): void {
+  const data = getAppDataCache();
+  if (!data.comboTrades) {
+    data.comboTrades = {};
+  }
+  data.comboTrades[id] = combo;
+}
+
+export function deleteComboTrade(id: string): void {
+  const data = getAppDataCache();
+  if (data.comboTrades && data.comboTrades[id]) {
+    delete data.comboTrades[id];
+  }
+}
+
+export function saveAllComboTradesToStorage(): void {
+  try {
+    localStorage.setItem(STORAGE_KEYS.COMBO_TRADE, JSON.stringify(getAppDataCache().comboTrades));
+  } catch (e) {
+    console.error('Error saving combo trades:', e);
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
 // 迁移接口（由 localStorageService 统一调用）
 // ═══════════════════════════════════════════════════════════════════════════════
 
@@ -111,7 +156,9 @@ const OLD_KEYS = OLD_STORAGE_KEYS.APP_DATA;
 
 export function needsAppDataMigration(): boolean {
   // 新 key 已存在则无需迁移
-  if (localStorage.getItem(STORAGE_KEYS.CALENDAR) && localStorage.getItem(STORAGE_KEYS.INVESTMENT_DRAFT)) {
+  if (localStorage.getItem(STORAGE_KEYS.CALENDAR) &&
+      localStorage.getItem(STORAGE_KEYS.INVESTMENT_DRAFT) &&
+      localStorage.getItem(STORAGE_KEYS.COMBO_TRADE)) {
     return false;
   }
 
@@ -119,6 +166,7 @@ export function needsAppDataMigration(): boolean {
   if (localStorage.getItem(OLD_KEYS.CALENDAR)) return true;
   if (localStorage.getItem(OLD_KEYS.APP_DATA)) return true;
   if (localStorage.getItem(OLD_KEYS.AI_TEMPLATES_CACHE)) return true;
+  if (localStorage.getItem(OLD_KEYS.COMBO_TRADE)) return true;
 
   for (let i = 0; i < localStorage.length; i++) {
     const key = localStorage.key(i);
@@ -132,7 +180,9 @@ export function needsAppDataMigration(): boolean {
 
 export function ensureAppDataMigration(): void {
   // 已有新 key 则跳过
-  if (localStorage.getItem(STORAGE_KEYS.CALENDAR) || localStorage.getItem(STORAGE_KEYS.INVESTMENT_DRAFT)) {
+  if (localStorage.getItem(STORAGE_KEYS.CALENDAR) &&
+      localStorage.getItem(STORAGE_KEYS.INVESTMENT_DRAFT) &&
+      localStorage.getItem(STORAGE_KEYS.COMBO_TRADE)) {
     return;
   }
 
@@ -173,10 +223,21 @@ export function ensureAppDataMigration(): void {
     }
   }
 
+  // 迁移组合交易
+  if (!Object.keys(newData.comboTrades).length) {
+    try {
+      const comboRaw = localStorage.getItem(OLD_KEYS.COMBO_TRADE);
+      if (comboRaw) {
+        newData.comboTrades = JSON.parse(comboRaw);
+      }
+    } catch { /* ignore */ }
+  }
+
   // 保存到新 key
   try {
     localStorage.setItem(STORAGE_KEYS.CALENDAR, JSON.stringify(newData.calendar));
     localStorage.setItem(STORAGE_KEYS.INVESTMENT_DRAFT, JSON.stringify(newData.investmentDrafts));
+    localStorage.setItem(STORAGE_KEYS.COMBO_TRADE, JSON.stringify(newData.comboTrades));
   } catch (e) {
     console.error('Error during migration:', e);
   }
@@ -188,6 +249,7 @@ export function ensureAppDataMigration(): void {
   try { localStorage.removeItem(OLD_KEYS.APP_DATA); } catch { /* ignore */ }
   try { localStorage.removeItem(OLD_KEYS.CALENDAR); } catch { /* ignore */ }
   try { localStorage.removeItem(OLD_KEYS.AI_TEMPLATES_CACHE); } catch { /* ignore */ }
+  try { localStorage.removeItem(OLD_KEYS.COMBO_TRADE); } catch { /* ignore */ }
 
   const keysToRemove: string[] = [];
   for (let i = 0; i < localStorage.length; i++) {
