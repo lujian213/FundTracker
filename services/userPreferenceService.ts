@@ -9,7 +9,7 @@ import {
   SortOrder,
   DEFAULT_USER_PREFERENCE,
 } from '../types/userPreferenceTypes';
-import { STORAGE_KEYS, OLD_STORAGE_KEYS } from './localStorageService';
+import { STORAGE_KEYS, OLD_STORAGE_KEYS } from './storageKeys';
 
 export type { UserPreference, SortOrder };
 

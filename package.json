@@ -10,6 +10,8 @@
     "test": "jest",
     "test:watch": "jest --watch",
     "test:coverage": "jest --coverage",
+    "smoke": "playwright test",
+    "smoke:ui": "playwright test --ui",
     "check:version": "node scripts/validate-version.cjs"
   },
   "dependencies": {
@@ -23,6 +25,7 @@
     "remark-gfm": "^4.0.1"
   },
   "devDependencies": {
+    "@playwright/test": "^1.59.1",
     "@testing-library/jest-dom": "^6.0.0",
     "@testing-library/react": "^14.0.0",
     "@testing-library/user-event": "^14.5.0",
@@ -34,6 +37,7 @@
     "identity-obj-proxy": "^3.0.0",
     "jest": "^30.3.0",
     "jest-environment-jsdom": "^30.3.0",
+    "playwright": "^1.59.1",
     "rollup-plugin-visualizer": "^7.0.1",
     "ts-jest": "^29.1.0",
     "typescript": "^5.7.3",

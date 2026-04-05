@@ -15,7 +15,7 @@ import {
   DEFAULT_APP_DATA,
 } from '../types/appDataTypes';
 import { ComboTrade } from '../types';
-import { STORAGE_KEYS, OLD_STORAGE_KEYS } from './localStorageService';
+import { STORAGE_KEYS, OLD_STORAGE_KEYS } from './storageKeys';
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // 内存缓存

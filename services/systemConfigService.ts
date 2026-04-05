@@ -15,7 +15,7 @@ import {
   FeatureConfigSection,
   DEFAULT_SYSTEM_CONFIG,
 } from '../types/systemConfigTypes';
-import { STORAGE_KEYS, OLD_STORAGE_KEYS } from './localStorageService';
+import { STORAGE_KEYS, OLD_STORAGE_KEYS } from './storageKeys';
 
 export type {
   BackupConfigSection,
