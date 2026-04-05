@@ -710,12 +710,43 @@ export function verifyIndexMigration(deleteOldKeys: boolean = false): {
 
   // 删除旧 key
   if (deleteOldKeys && success) {
+    // 删除固定的旧 key
     oldKeysFound.forEach(key => {
       try {
         localStorage.removeItem(key);
       } catch { /* ignore */ }
     });
-    details.push(`已删除旧 key: ${oldKeysFound.join(', ')}`);
+    if (oldKeysFound.length > 0) {
+      details.push(`已删除旧 key: ${oldKeysFound.join(', ')}`);
+    }
+
+    // 删除指数历史数据动态 key: fund_index_history_{symbol}
+    const historyKeysToDelete: string[] = [];
+    Object.keys(localStorage)
+      .filter(k => k.startsWith('fund_index_history_'))
+      .forEach(k => {
+        historyKeysToDelete.push(k);
+        try { localStorage.removeItem(k); } catch { /* ignore */ }
+      });
+    if (historyKeysToDelete.length > 0) {
+      details.push(`已删除指数历史 key: ${historyKeysToDelete.length} 个`);
+    }
+
+    // 删除指数日内数据动态 key: fund_intraday_{symbol}（只删除指数符号的，保留基金的）
+    const intradayKeysToDelete: string[] = [];
+    Object.keys(localStorage)
+      .filter(k => k.startsWith('fund_intraday_'))
+      .forEach(k => {
+        const symbol = k.replace('fund_intraday_', '');
+        // 判断是否为指数符号（已迁移的指数列表或符合指数格式）
+        if (newIndexSymbols.includes(symbol) || isDomesticIndex(symbol) || isGlobalIndex(symbol)) {
+          intradayKeysToDelete.push(k);
+          try { localStorage.removeItem(k); } catch { /* ignore */ }
+        }
+      });
+    if (intradayKeysToDelete.length > 0) {
+      details.push(`已删除指数日内 key: ${intradayKeysToDelete.length} 个`);
+    }
   }
 
   console.log('[IndexMigration] 验证结果:', { success, oldKeysFound, newIndexCount: newIndexSymbols.length, details });
