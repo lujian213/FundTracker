@@ -24,14 +24,12 @@ describe('userPreferenceService', () => {
     test('should return default config when no saved data', () => {
       const { getUserPreference } = require('../../services/userPreferenceService');
       const pref = getUserPreference();
-      expect(pref.version).toBe(1);
       expect(pref.sortOrder).toBe(DEFAULT_USER_PREFERENCE.sortOrder);
       expect(pref.draftModalHeight).toBe(DEFAULT_USER_PREFERENCE.draftModalHeight);
     });
 
     test('should return saved config', () => {
       localStorage.setItem(STORAGE_KEY, JSON.stringify({
-        version: 1,
         sortOrder: 'asc',
         draftModalHeight: 450,
       }));
@@ -53,7 +51,6 @@ describe('userPreferenceService', () => {
     test('should save config correctly', () => {
       const { saveUserPreference, getUserPreference } = require('../../services/userPreferenceService');
       saveUserPreference({
-        version: 1,
         sortOrder: 'asc',
         draftModalHeight: 500,
       });

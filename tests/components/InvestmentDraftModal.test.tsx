@@ -213,7 +213,7 @@ describe('InvestmentDraftModal', () => {
     });
   });
 
-  test('saves data to localStorage when fields change', async () => {
+  test('saves data to localStorage with debounce', async () => {
     render(
       <InvestmentDraftModal
         portfolio={mockPortfolio}
@@ -229,16 +229,16 @@ describe('InvestmentDraftModal', () => {
     const amountInput = screen.getAllByRole('textbox')[0];
     fireEvent.change(amountInput, { target: { value: '1000' } });
 
-    // Check if data is saved to localStorage
+    // 等待防抖完成后检查 localStorage
     await waitFor(() => {
-      const todayKey = `investment_draft_2026-03-17`;
-      const savedData = localStorage.getItem(todayKey);
+      const savedData = localStorage.getItem('fund_investment_draft');
       expect(savedData).not.toBeNull();
 
       const parsedData = JSON.parse(savedData!);
-      expect(parsedData['000001'].operation).toBe('买入');
-      expect(parsedData['000001'].amount).toBe('1000');
-    });
+      expect(parsedData['2026-03-17']).toBeDefined();
+      expect(parsedData['2026-03-17']['000001'].operation).toBe('买入');
+      expect(parsedData['2026-03-17']['000001'].amount).toBe('1000');
+    }, { timeout: 1000 }); // 防抖 500ms + buffer
   });
 
   describe('排序算法', () => {

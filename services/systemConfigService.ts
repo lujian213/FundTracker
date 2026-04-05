@@ -27,9 +27,6 @@ export type {
   FeatureConfigSection,
 };
 
-const CONFIG_VERSION = 1;
-
-// 便捷访问
 const STORAGE_KEY = STORAGE_KEYS.SYSTEM_CONFIG;
 const OLD_KEYS = OLD_STORAGE_KEYS.SYSTEM_CONFIG;
 
@@ -38,9 +35,6 @@ export function getSystemConfig(): SystemConfig {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (raw) {
       const parsed = JSON.parse(raw);
-      if (parsed.version !== CONFIG_VERSION) {
-        return { ...DEFAULT_SYSTEM_CONFIG, ...parsed, version: CONFIG_VERSION };
-      }
       return { ...DEFAULT_SYSTEM_CONFIG, ...parsed };
     }
   } catch (e) {
@@ -51,7 +45,7 @@ export function getSystemConfig(): SystemConfig {
 
 export function saveSystemConfig(config: SystemConfig): void {
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify({ ...config, version: CONFIG_VERSION }));
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(config));
   } catch (e) {
     console.error('Error saving system config:', e);
   }
@@ -174,7 +168,6 @@ export function ensureSystemConfigMigration(): void {
 
   const newConfig: SystemConfig = { ...DEFAULT_SYSTEM_CONFIG };
 
-  // 迁移备份配置
   try {
     const backupRaw = localStorage.getItem(OLD_KEYS.BACKUP_CONFIG);
     if (backupRaw) {
@@ -188,7 +181,6 @@ export function ensureSystemConfigMigration(): void {
     }
   } catch { /* ignore */ }
 
-  // 迁移同步配置
   try {
     const eggfundRaw = localStorage.getItem(OLD_KEYS.EGGFUND_SYNC_CONFIG);
     const syncRaw = localStorage.getItem(OLD_KEYS.SYNC_CONFIG);
@@ -200,7 +192,6 @@ export function ensureSystemConfigMigration(): void {
     }
   } catch { /* ignore */ }
 
-  // 迁移同步过滤配置
   try {
     const filterRaw = localStorage.getItem(OLD_KEYS.SYNC_FILTER_CONFIG);
     if (filterRaw) {
@@ -213,7 +204,6 @@ export function ensureSystemConfigMigration(): void {
     }
   } catch { /* ignore */ }
 
-  // 迁移 AI 配置
   try {
     const aiRaw = localStorage.getItem(OLD_KEYS.AI_CONFIGS);
     if (aiRaw) {
@@ -234,7 +224,6 @@ export function ensureSystemConfigMigration(): void {
     }
   } catch { /* ignore */ }
 
-  // 迁移系统功能开关
   try {
     const settingsRaw = localStorage.getItem(OLD_KEYS.SYSTEM_SETTINGS);
     if (settingsRaw) {
@@ -246,14 +235,8 @@ export function ensureSystemConfigMigration(): void {
     }
   } catch { /* ignore */ }
 
-  // 保存新配置
-  try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify({ ...newConfig, version: CONFIG_VERSION }));
-  } catch (e) {
-    console.error('Error saving system config during migration:', e);
-  }
+  saveSystemConfig(newConfig);
 
-  // 清理旧 key
   Object.values(OLD_KEYS).forEach(key => {
     try { localStorage.removeItem(key); } catch { /* ignore */ }
   });

@@ -13,9 +13,6 @@ import { STORAGE_KEYS, OLD_STORAGE_KEYS } from './localStorageService';
 
 export type { UserPreference, SortOrder };
 
-const CONFIG_VERSION = 1;
-
-// 便捷访问
 const STORAGE_KEY = STORAGE_KEYS.USER_PREFERENCE;
 const OLD_KEYS = OLD_STORAGE_KEYS.USER_PREFERENCE;
 
@@ -24,9 +21,6 @@ export function getUserPreference(): UserPreference {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (raw) {
       const parsed = JSON.parse(raw);
-      if (parsed.version !== CONFIG_VERSION) {
-        return { ...DEFAULT_USER_PREFERENCE, ...parsed, version: CONFIG_VERSION };
-      }
       return { ...DEFAULT_USER_PREFERENCE, ...parsed };
     }
   } catch (e) {
@@ -37,7 +31,7 @@ export function getUserPreference(): UserPreference {
 
 export function saveUserPreference(pref: UserPreference): void {
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify({ ...pref, version: CONFIG_VERSION }));
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(pref));
   } catch (e) {
     console.error('Error saving user preference:', e);
   }
@@ -105,11 +99,7 @@ export function ensureUserPreferenceMigration(): void {
     }
   } catch { /* ignore */ }
 
-  try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify({ ...newPref, version: CONFIG_VERSION }));
-  } catch (e) {
-    console.error('Error saving user preference during migration:', e);
-  }
+  saveUserPreference(newPref);
 
   // 清理旧 key
   Object.values(OLD_KEYS).forEach(key => {

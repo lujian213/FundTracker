@@ -6,6 +6,10 @@ import { getTradesForSymbol } from '../hooks/useTrades';
 import { computeAvgCostPrice } from '../utils/positionHelper';
 import { toLocalDateKey } from '../utils/priceResolver';
 import { computeSMA } from '../utils/movingAverage';
+import { DraftEntry } from '../types/appDataTypes';
+
+// Re-export DraftEntry type for backward compatibility
+export type { DraftEntry };
 
 // 最近交易记录格式
 export interface LastTrade {
@@ -71,14 +75,6 @@ export interface AIAdviceEntry {
   operation: '买入' | '卖出';
   amount: number;
   reason: string;
-}
-
-// 草稿条目类型（与 InvestmentDraftModal 中定义一致）
-export interface DraftEntry {
-  fundSymbol: string;
-  operation: '买入' | '卖出' | '不操作';
-  amount: string;
-  note: string;
 }
 
 /**

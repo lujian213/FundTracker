@@ -5,7 +5,6 @@
  */
 
 export interface SystemConfig {
-  version: number;
   backup: BackupConfigSection;
   sync: SyncConfigSection;
   ai: AIConfigSection;
@@ -55,7 +54,6 @@ export interface FeatureConfigSection {
 }
 
 export const DEFAULT_SYSTEM_CONFIG: SystemConfig = {
-  version: 1,
   backup: {
     autoExportTime: '16:00',
     autoBackupEnabled: false,

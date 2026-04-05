@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { Ticker, ValuationData, BackupPosition, HistoricalPoint, MarketIndex } from '../types';
 import { fetchFundData } from '../services/fundService';  // Import fetchFundData
@@ -11,6 +11,10 @@ import { ConfirmDialog } from './ConfirmDialog';
 import SimpleTooltip from './SimpleTooltip';
 import { formatMoneyWithSeparators } from '../utils/format';
 import { getDraftModalHeight, saveDraftModalHeight } from '../services/userPreferenceService';
+import { loadInvestmentDraft, saveInvestmentDraft, saveAllDraftsToStorage } from '../services/appDataService';
+
+// 防抖延迟时间（毫秒）
+const DEBOUNCE_DELAY = 500;
 
 interface InvestmentDraftModalProps {
   portfolio: Ticker[];
@@ -75,11 +79,9 @@ const InvestmentDraftModal: React.FC<InvestmentDraftModalProps> = ({
   // Initialize draft data from localStorage and filter for funds with fullCapacity
   useEffect(() => {
     const today = toLocalDateKey(new Date());
-    const storedKey = `investment_draft_${today}`;
 
     try {
-      const stored = localStorage.getItem(storedKey);
-      const existingData = stored ? JSON.parse(stored) : {};
+      const existingData = loadInvestmentDraft(today);
 
       // Filter portfolio to only include funds that have position configuration with fullCapacity
       const fundsWithPositions = portfolio.filter(fund => {
@@ -115,16 +117,34 @@ const InvestmentDraftModal: React.FC<InvestmentDraftModalProps> = ({
     }
   }, [portfolio]);
 
-  // Save draft data to localStorage whenever it changes
+  // Save draft data with debounce
+  // 内存缓存即时更新，localStorage 写入防抖
+  const draftSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const draftDataRef = useRef(draftData);
+  draftDataRef.current = draftData;
+
   useEffect(() => {
     const today = toLocalDateKey(new Date());
-    const storedKey = `investment_draft_${today}`;
 
-    try {
-      localStorage.setItem(storedKey, JSON.stringify(draftData));
-    } catch (e) {
-      console.error('Error saving draft data:', e);
+    // 即时更新内存缓存
+    saveInvestmentDraft(today, draftData);
+
+    // 防抖写入 localStorage
+    if (draftSaveTimerRef.current) {
+      clearTimeout(draftSaveTimerRef.current);
     }
+
+    draftSaveTimerRef.current = setTimeout(() => {
+      saveAllDraftsToStorage();
+    }, DEBOUNCE_DELAY);
+
+    return () => {
+      if (draftSaveTimerRef.current) {
+        clearTimeout(draftSaveTimerRef.current);
+        // 组件卸载时立即保存
+        saveAllDraftsToStorage();
+      }
+    };
   }, [draftData]);
 
   // Filter portfolio to only include funds with fullCapacity and sort by gain/loss percentage
@@ -222,21 +242,10 @@ const InvestmentDraftModal: React.FC<InvestmentDraftModalProps> = ({
         note: ''
       };
 
-      const newData = {
+      return {
         ...prev,
         [fundSymbol]: resetEntry
       };
-
-      // Also save to localStorage immediately to ensure consistency
-      const today = toLocalDateKey(new Date());
-      const storedKey = `investment_draft_${today}`;
-      try {
-        localStorage.setItem(storedKey, JSON.stringify(newData));
-      } catch (e) {
-        console.error('Error saving draft data after reset:', e);
-      }
-
-      return newData;
     });
   };
 
@@ -674,12 +683,8 @@ const InvestmentDraftModal: React.FC<InvestmentDraftModalProps> = ({
                               if (aiAdviceLoading) return;
                               // Save current state before navigating
                               const today = toLocalDateKey(new Date());
-                              const storedKey = `investment_draft_${today}`;
-                              try {
-                                localStorage.setItem(storedKey, JSON.stringify(draftData));
-                              } catch (e) {
-                                console.error('Error saving draft data:', e);
-                              }
+                              saveInvestmentDraft(today, draftData);
+                              saveAllDraftsToStorage();
 
                               // Trigger the callback to select the fund, which will open fund details
                               if (onSelectFund) {

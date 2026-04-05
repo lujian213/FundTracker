@@ -27,14 +27,12 @@ describe('systemConfigService', () => {
     test('should return default config when no saved data', () => {
       const { getSystemConfig } = require('../../services/systemConfigService');
       const config = getSystemConfig();
-      expect(config.version).toBe(1);
       expect(config.backup).toEqual(DEFAULT_SYSTEM_CONFIG.backup);
       expect(config.features).toEqual(DEFAULT_SYSTEM_CONFIG.features);
     });
 
     test('should return saved config', () => {
       localStorage.setItem(STORAGE_KEY, JSON.stringify({
-        version: 1,
         features: { initialPriceAdjustmentEnabled: true, jobLogEnabled: false }
       }));
       const { getSystemConfig } = require('../../services/systemConfigService');

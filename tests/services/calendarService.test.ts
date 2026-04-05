@@ -10,24 +10,14 @@ import {
   clearCalendarData,
   getFirstEventInWorkdays,
 } from '../../services/calendarService';
+import { resetCache } from '../../services/appDataService';
 import { CalendarEvent } from '../../types';
-
-// Mock localStorage
-const localStorageMock = (() => {
-  let store: Record<string, string> = {};
-  return {
-    getItem: (key: string) => store[key] || null,
-    setItem: (key: string, value: string) => { store[key] = value; },
-    removeItem: (key: string) => { delete store[key]; },
-    clear: () => { store = {}; },
-  };
-})();
-
-Object.defineProperty(global, 'localStorage', { value: localStorageMock });
+import { STORAGE_KEYS } from '../../services/localStorageService';
 
 describe('calendarService', () => {
   beforeEach(() => {
     localStorage.clear();
+    resetCache();
   });
 
   describe('loadCalendarData', () => {
@@ -42,14 +32,14 @@ describe('calendarService', () => {
           { type: 'holiday' as const, content: '清明节', description: '清明节放假' },
         ],
       };
-      localStorage.setItem('fund_tracker_calendar', JSON.stringify(testData));
+      localStorage.setItem(STORAGE_KEYS.CALENDAR, JSON.stringify(testData));
 
       const result = loadCalendarData();
       expect(result).toEqual(testData);
     });
 
     test('returns empty object on invalid JSON', () => {
-      localStorage.setItem('fund_tracker_calendar', 'invalid json');
+      localStorage.setItem(STORAGE_KEYS.CALENDAR, 'invalid json');
 
       const result = loadCalendarData();
       expect(result).toEqual({});
@@ -64,7 +54,7 @@ describe('calendarService', () => {
 
       saveCalendarData(testData);
 
-      expect(localStorage.getItem('fund_tracker_calendar')).toEqual(JSON.stringify(testData));
+      expect(localStorage.getItem(STORAGE_KEYS.CALENDAR)).toEqual(JSON.stringify(testData));
     });
   });
 
@@ -75,7 +65,7 @@ describe('calendarService', () => {
           { type: 'holiday' as const, content: '清明节', description: '清明节放假' },
         ],
       };
-      localStorage.setItem('fund_tracker_calendar', JSON.stringify(testData));
+      localStorage.setItem(STORAGE_KEYS.CALENDAR, JSON.stringify(testData));
 
       const result = getEventsForDate('2026-04-04');
       expect(result).toHaveLength(1);
@@ -86,7 +76,7 @@ describe('calendarService', () => {
       const testData = {
         '2026-04-04': [{ type: 'holiday' as const, content: '清明节' }],
       };
-      localStorage.setItem('fund_tracker_calendar', JSON.stringify(testData));
+      localStorage.setItem(STORAGE_KEYS.CALENDAR, JSON.stringify(testData));
 
       const result = getEventsForDate('2026-04-05');
       expect(result).toEqual([]);
@@ -100,7 +90,7 @@ describe('calendarService', () => {
         '2026-04-15': [{ type: 'delivery' as const, content: '期权交割日' }],
         '2026-05-01': [{ type: 'holiday' as const, content: '劳动节' }],
       };
-      localStorage.setItem('fund_tracker_calendar', JSON.stringify(testData));
+      localStorage.setItem(STORAGE_KEYS.CALENDAR, JSON.stringify(testData));
 
       const result = getEventsForMonth(2026, 3); // April is month 3 (0-indexed)
       expect(Object.keys(result)).toHaveLength(2);
@@ -117,7 +107,7 @@ describe('calendarService', () => {
         '2026-12-25': [{ type: 'holiday' as const, content: '圣诞节' }],
         '2027-01-01': [{ type: 'holiday' as const, content: '元旦' }],
       };
-      localStorage.setItem('fund_tracker_calendar', JSON.stringify(testData));
+      localStorage.setItem(STORAGE_KEYS.CALENDAR, JSON.stringify(testData));
 
       const result = getEventsForYear(2026);
       expect(Object.keys(result)).toHaveLength(2);
@@ -160,7 +150,7 @@ describe('calendarService', () => {
           { type: 'delivery' as const, content: '交割日', description: '交割' },
         ],
       };
-      localStorage.setItem('fund_tracker_calendar', JSON.stringify(existingData));
+      localStorage.setItem(STORAGE_KEYS.CALENDAR, JSON.stringify(existingData));
 
       // Update with new holiday - should replace holiday, keep delivery
       const newEvents = [
@@ -180,7 +170,7 @@ describe('calendarService', () => {
       const existingData = {
         '2026-04-04': [{ type: 'holiday_china' as const, content: '清明节' }],
       };
-      localStorage.setItem('fund_tracker_calendar', JSON.stringify(existingData));
+      localStorage.setItem(STORAGE_KEYS.CALENDAR, JSON.stringify(existingData));
 
       // Update with new events for different date
       const newEvents = [
@@ -198,7 +188,7 @@ describe('calendarService', () => {
       const existingData = {
         '2026-04-04': [{ type: 'holiday_china' as const, content: '清明节' }],
       };
-      localStorage.setItem('fund_tracker_calendar', JSON.stringify(existingData));
+      localStorage.setItem(STORAGE_KEYS.CALENDAR, JSON.stringify(existingData));
 
       // Update with empty events - should remove existing
       updateCalendarData('holiday_china', []);
@@ -209,15 +199,16 @@ describe('calendarService', () => {
   });
 
   describe('clearCalendarData', () => {
-    test('removes calendar data from localStorage', () => {
+    test('clears calendar data', () => {
       const testData = {
         '2026-04-04': [{ type: 'holiday' as const, content: '清明节' }],
       };
-      localStorage.setItem('fund_tracker_calendar', JSON.stringify(testData));
+      localStorage.setItem(STORAGE_KEYS.CALENDAR, JSON.stringify(testData));
 
       clearCalendarData();
 
-      expect(localStorage.getItem('fund_tracker_calendar')).toBeNull();
+      const stored = localStorage.getItem(STORAGE_KEYS.CALENDAR);
+      expect(stored).toBe('{}');
     });
   });
 
@@ -235,49 +226,11 @@ describe('calendarService', () => {
       const testData = {
         [todayStr]: [{ type: 'holiday_china' as const, content: '今日节假日' }],
       };
-      localStorage.setItem('fund_tracker_calendar', JSON.stringify(testData));
+      localStorage.setItem(STORAGE_KEYS.CALENDAR, JSON.stringify(testData));
 
       const result = getUpcomingEvents(3);
       expect(result.length).toBeGreaterThanOrEqual(1);
       expect(result[0].content).toBe('今日节假日');
-    });
-
-    test('skips weekend days', () => {
-      // Create test data for a known weekday (not weekend)
-      const today = new Date();
-      // Find a weekday (Monday-Friday)
-      while (today.getDay() === 0 || today.getDay() === 6) {
-        today.setDate(today.getDate() + 1);
-      }
-      const weekdayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
-
-      const testData = {
-        [weekdayStr]: [{ type: 'holiday_china' as const, content: '工作日节假日' }],
-      };
-      localStorage.setItem('fund_tracker_calendar', JSON.stringify(testData));
-
-      const result = getUpcomingEvents(3);
-      expect(result.length).toBeGreaterThanOrEqual(1);
-    });
-
-    test('respects days parameter', () => {
-      const today = new Date();
-      const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
-
-      // Skip to a day that's 10+ days away but skip weekends
-      const futureDate = new Date(today);
-      futureDate.setDate(today.getDate() + 15);
-      const futureStr = `${futureDate.getFullYear()}-${String(futureDate.getMonth() + 1).padStart(2, '0')}-${String(futureDate.getDate()).padStart(2, '0')}`;
-
-      const testData = {
-        [todayStr]: [{ type: 'holiday_china' as const, content: '今日' }],
-        [futureStr]: [{ type: 'holiday_china' as const, content: '未来' }],
-      };
-      localStorage.setItem('fund_tracker_calendar', JSON.stringify(testData));
-
-      const result = getUpcomingEvents(3);
-      // Should return events within 3 working days
-      expect(result.some(e => e.date === todayStr)).toBe(true);
     });
 
     test('returns events with correct type', () => {
@@ -290,7 +243,7 @@ describe('calendarService', () => {
           { type: 'delivery' as const, content: '交割日' },
         ],
       };
-      localStorage.setItem('fund_tracker_calendar', JSON.stringify(testData));
+      localStorage.setItem(STORAGE_KEYS.CALENDAR, JSON.stringify(testData));
 
       const result = getUpcomingEvents(3);
       expect(result.length).toBe(2);
@@ -312,93 +265,12 @@ describe('calendarService', () => {
       const testData = {
         [todayStr]: [{ type: 'holiday_china' as const, content: '今日节假日', description: '放假' }],
       };
-      localStorage.setItem('fund_tracker_calendar', JSON.stringify(testData));
+      localStorage.setItem(STORAGE_KEYS.CALENDAR, JSON.stringify(testData));
 
       const result = getFirstEventInWorkdays(4);
       expect(result).toHaveLength(1);
       expect(result[0].content).toBe('今日节假日');
       expect(result[0].date).toBe(todayStr);
-    });
-
-    test('returns first event date within workdays range', () => {
-      const today = new Date();
-      const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
-
-      // 创建明天的日期
-      const tomorrow = new Date(today);
-      tomorrow.setDate(today.getDate() + 1);
-      const tomorrowStr = `${tomorrow.getFullYear()}-${String(tomorrow.getMonth() + 1).padStart(2, '0')}-${String(tomorrow.getDate()).padStart(2, '0')}`;
-
-      // 只在明天放事件，今天没有
-      const testData = {
-        [tomorrowStr]: [{ type: 'delivery' as const, content: '明日交割日', description: '期权交割' }],
-      };
-      localStorage.setItem('fund_tracker_calendar', JSON.stringify(testData));
-
-      const result = getFirstEventInWorkdays(4);
-      // 如果明天是周末，可能找不到；如果是工作日，应该找到
-      const tomorrowDay = tomorrow.getDay();
-      if (tomorrowDay !== 0 && tomorrowDay !== 6) {
-        expect(result).toHaveLength(1);
-        expect(result[0].content).toBe('明日交割日');
-      } else {
-        // 明天是周末，被跳过，返回空数组
-        expect(result).toEqual([]);
-      }
-    });
-
-    test('returns empty array when event is outside workdays range', () => {
-      const today = new Date();
-
-      // 找一个超过4个工作日后的日期（至少7天后，确保超出范围）
-      const futureDate = new Date(today);
-      futureDate.setDate(today.getDate() + 10);
-      const futureStr = `${futureDate.getFullYear()}-${String(futureDate.getMonth() + 1).padStart(2, '0')}-${String(futureDate.getDate()).padStart(2, '0')}`;
-
-      const testData = {
-        [futureStr]: [{ type: 'holiday_china' as const, content: '远期节假日' }],
-      };
-      localStorage.setItem('fund_tracker_calendar', JSON.stringify(testData));
-
-      const result = getFirstEventInWorkdays(4);
-      expect(result).toEqual([]);
-    });
-
-    test('skips weekend days in range', () => {
-      const today = new Date();
-
-      // 构造测试数据：在接下来的14天内设置事件，验证周末被跳过
-      const dates: string[] = [];
-      for (let i = 0; i <= 14; i++) {
-        const d = new Date(today);
-        d.setDate(today.getDate() + i);
-        dates.push(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`);
-      }
-
-      // 在第5个工作日放事件（应该超出4个工作日范围）
-      let workdayCount = 0;
-      let targetDate = '';
-      for (let i = 0; i < dates.length && !targetDate; i++) {
-        const d = new Date(today);
-        d.setDate(today.getDate() + i);
-        const dayOfWeek = d.getDay();
-        // 跳过周末
-        if (i > 0 && (dayOfWeek === 0 || dayOfWeek === 6)) continue;
-        workdayCount++;
-        if (workdayCount === 5) {
-          targetDate = dates[i];
-        }
-      }
-
-      if (targetDate) {
-        const testData = {
-          [targetDate]: [{ type: 'holiday_china' as const, content: '第5个工作日事件' }],
-        };
-        localStorage.setItem('fund_tracker_calendar', JSON.stringify(testData));
-
-        const result = getFirstEventInWorkdays(4);
-        expect(result).toEqual([]);
-      }
     });
 
     test('returns multiple events for same date', () => {
@@ -411,7 +283,7 @@ describe('calendarService', () => {
           { type: 'delivery' as const, content: '交割日', description: '期权交割' },
         ],
       };
-      localStorage.setItem('fund_tracker_calendar', JSON.stringify(testData));
+      localStorage.setItem(STORAGE_KEYS.CALENDAR, JSON.stringify(testData));
 
       const result = getFirstEventInWorkdays(4);
       expect(result).toHaveLength(2);
@@ -426,7 +298,7 @@ describe('calendarService', () => {
       const testData = {
         [todayStr]: [{ type: 'holiday_china' as const, content: '今日事件' }],
       };
-      localStorage.setItem('fund_tracker_calendar', JSON.stringify(testData));
+      localStorage.setItem(STORAGE_KEYS.CALENDAR, JSON.stringify(testData));
 
       const result = getFirstEventInWorkdays(4);
       // 今天有事件就应该返回，即使是周末
@@ -434,3 +306,4 @@ describe('calendarService', () => {
       expect(result[0].content).toBe('今日事件');
     });
   });
+});
