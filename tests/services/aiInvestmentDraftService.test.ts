@@ -6,6 +6,10 @@ import {
   generateAIInvestmentAdvice,
   hasDraftAction,
   DraftEntry,
+  parseAIAdviceWithScoreJSON,
+  AIAdviceWithScore,
+  SCORE_THRESHOLD,
+  MAX_ITERATIONS,
 } from '../../services/aiInvestmentDraftService';
 import { Ticker, ValuationData, HistoricalPoint, MarketIndex } from '../../types';
 import * as marketFundService from '../../services/marketFundService';
@@ -341,6 +345,54 @@ describe('aiInvestmentDraftService', () => {
       expect(result.length).toBe(2);
       expect(result[0].fundCode).toBe('000001');
       expect(result[1].fundCode).toBe('000003');
+    });
+  });
+
+  describe('parseAIAdviceWithScoreJSON', () => {
+    test('parses clean JSON response with scores', () => {
+      const response = `[
+        {"fund_code": "000001", "operation": "buy", "amount": 1000, "score": 0.8, "reason": "看好短期走势"},
+        {"fund_code": "000002", "operation": "sell", "amount": 500, "score": 0.6, "reason": "风险提示"}
+      ]`;
+      const result = parseAIAdviceWithScoreJSON(response);
+      expect(result.length).toBe(2);
+      expect(result[0].fundCode).toBe('000001');
+      expect(result[0].score).toBe(0.8);
+      expect(result[1].score).toBe(0.6);
+    });
+
+    test('parses JSON wrapped in code block with scores', () => {
+      const response = `\`\`\`json
+    [
+      {"fund_code": "000001", "operation": "buy", "amount": 1000, "score": 0.9, "reason": "测试"}
+    ]
+    \`\`\``;
+      const result = parseAIAdviceWithScoreJSON(response);
+      expect(result.length).toBe(1);
+      expect(result[0].score).toBe(0.9);
+    });
+
+    test('defaults score to 0 when missing', () => {
+      const response = `[
+        {"fund_code": "000001", "operation": "buy", "amount": 1000, "reason": "无得分"}
+      ]`;
+      const result = parseAIAdviceWithScoreJSON(response);
+      expect(result[0].score).toBe(0);
+    });
+
+    test('throws error for invalid JSON', () => {
+      const response = 'not a json';
+      expect(() => parseAIAdviceWithScoreJSON(response)).toThrow('AI返回格式解析失败');
+    });
+  });
+
+  describe('Constants', () => {
+    test('SCORE_THRESHOLD is 0.7', () => {
+      expect(SCORE_THRESHOLD).toBe(0.7);
+    });
+
+    test('MAX_ITERATIONS is 3', () => {
+      expect(MAX_ITERATIONS).toBe(3);
     });
   });
 
