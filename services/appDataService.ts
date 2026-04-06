@@ -244,21 +244,5 @@ export function ensureAppDataMigration(): void {
 
   // 更新内存缓存
   cachedData = newData;
-
-  // 清理旧 key
-  try { localStorage.removeItem(OLD_KEYS.APP_DATA); } catch { /* ignore */ }
-  try { localStorage.removeItem(OLD_KEYS.CALENDAR); } catch { /* ignore */ }
-  try { localStorage.removeItem(OLD_KEYS.AI_TEMPLATES_CACHE); } catch { /* ignore */ }
-  try { localStorage.removeItem(OLD_KEYS.COMBO_TRADE); } catch { /* ignore */ }
-
-  const keysToRemove: string[] = [];
-  for (let i = 0; i < localStorage.length; i++) {
-    const key = localStorage.key(i);
-    if (key && key.startsWith(OLD_KEYS.INVESTMENT_DRAFT_PREFIX)) {
-      keysToRemove.push(key);
-    }
-  }
-  keysToRemove.forEach(key => {
-    try { localStorage.removeItem(key); } catch { /* ignore */ }
-  });
+  // 不删除旧 key，由 verifyStorageMigration() 决定是否删除
 }

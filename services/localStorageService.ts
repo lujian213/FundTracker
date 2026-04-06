@@ -106,15 +106,22 @@ function verifyUserPreferenceMigration(deleteOldKeys: boolean): MigrationCheckRe
     DRAFT_MODAL_HEIGHT: 'draft_modal_matched_height',
   };
 
-  // 读取旧数据
-  const oldSortOrder = localStorage.getItem(OLD_KEYS.SORT_ORDER);
-  const oldDraftModalHeight = localStorage.getItem(OLD_KEYS.DRAFT_MODAL_HEIGHT);
-
+  // 检查旧key是否存在
   for (const [, key] of Object.entries(OLD_KEYS)) {
     if (localStorage.getItem(key) !== null) {
       oldKeysFound.push(key);
     }
   }
+
+  // 如果旧key不存在，跳过验证
+  if (oldKeysFound.length === 0) {
+    details.push('老的key已经不存在，无需验证');
+    return { success: true, oldKeysFound, newKeysData: {}, details };
+  }
+
+  // 读取旧数据
+  const oldSortOrder = localStorage.getItem(OLD_KEYS.SORT_ORDER);
+  const oldDraftModalHeight = localStorage.getItem(OLD_KEYS.DRAFT_MODAL_HEIGHT);
 
   // 读取新数据
   const newDataRaw = localStorage.getItem('fund_user_preference');
@@ -151,21 +158,20 @@ function verifyUserPreferenceMigration(deleteOldKeys: boolean): MigrationCheckRe
       }
     }
 
-    details.push('用户偏好迁移成功');
-  } else if (oldKeysFound.length === 0) {
-    details.push('无旧数据需要迁移');
+    details.push('用户偏好迁移验证完成');
   } else {
-    details.push('用户偏好迁移失败：有旧数据但新 key 无数据');
+    details.push('用户偏好迁移验证失败：有旧数据但新 key 无数据');
   }
 
   if (contentMismatches.length > 0) {
     details.push(`内容不一致: ${contentMismatches.join('; ')}`);
   }
 
-  // 成功条件：有新数据且内容一致，或无旧数据
-  const success = (newData !== null && contentMismatches.length === 0) || oldKeysFound.length === 0;
+  // 成功条件：有新数据且内容一致
+  const success = newData !== null && contentMismatches.length === 0;
 
-  if (deleteOldKeys && success && oldKeysFound.length > 0) {
+  // 删除旧key只取决于deleteOldKeys参数，与验证结果无关
+  if (deleteOldKeys && oldKeysFound.length > 0) {
     oldKeysFound.forEach(key => {
       try { localStorage.removeItem(key); } catch { /* ignore */ }
     });
@@ -191,6 +197,19 @@ function verifySystemConfigMigration(deleteOldKeys: boolean): MigrationCheckResu
     SYSTEM_SETTINGS: 'fund_system_settings',
   };
 
+  // 检查旧key是否存在
+  for (const [, key] of Object.entries(OLD_KEYS)) {
+    if (localStorage.getItem(key) !== null) {
+      oldKeysFound.push(key);
+    }
+  }
+
+  // 如果旧key不存在，跳过验证
+  if (oldKeysFound.length === 0) {
+    details.push('老的key已经不存在，无需验证');
+    return { success: true, oldKeysFound, newKeysData: {}, details };
+  }
+
   // 读取旧数据
   const oldBackupRaw = localStorage.getItem(OLD_KEYS.BACKUP_CONFIG);
   const oldSyncRaw = localStorage.getItem(OLD_KEYS.SYNC_CONFIG);
@@ -198,12 +217,6 @@ function verifySystemConfigMigration(deleteOldKeys: boolean): MigrationCheckResu
   const oldSyncFilterRaw = localStorage.getItem(OLD_KEYS.SYNC_FILTER_CONFIG);
   const oldAIRaw = localStorage.getItem(OLD_KEYS.AI_CONFIGS);
   const oldSettingsRaw = localStorage.getItem(OLD_KEYS.SYSTEM_SETTINGS);
-
-  for (const [, key] of Object.entries(OLD_KEYS)) {
-    if (localStorage.getItem(key) !== null) {
-      oldKeysFound.push(key);
-    }
-  }
 
   // 读取新数据
   const newDataRaw = localStorage.getItem('fund_system_config');
@@ -295,21 +308,20 @@ function verifySystemConfigMigration(deleteOldKeys: boolean): MigrationCheckResu
       }
     }
 
-    details.push('系统配置迁移成功');
-  } else if (oldKeysFound.length === 0) {
-    details.push('无旧数据需要迁移');
+    details.push('系统配置迁移验证完成');
   } else {
-    details.push('系统配置迁移失败：有旧数据但新 key 无数据');
+    details.push('系统配置迁移验证失败：有旧数据但新 key 无数据');
   }
 
   if (contentMismatches.length > 0) {
     details.push(`内容不一致: ${contentMismatches.join('; ')}`);
   }
 
-  // 成功条件：有新数据且内容一致，或无旧数据
-  const success = (newData !== null && contentMismatches.length === 0) || oldKeysFound.length === 0;
+  // 成功条件：有新数据且内容一致
+  const success = newData !== null && contentMismatches.length === 0;
 
-  if (deleteOldKeys && success && oldKeysFound.length > 0) {
+  // 删除旧key只取决于deleteOldKeys参数，与验证结果无关
+  if (deleteOldKeys && oldKeysFound.length > 0) {
     oldKeysFound.forEach(key => {
       try { localStorage.removeItem(key); } catch { /* ignore */ }
     });
@@ -334,6 +346,7 @@ function verifyAppDataMigration(deleteOldKeys: boolean): MigrationCheckResult {
     INVESTMENT_DRAFT_PREFIX: 'investment_draft_',
   };
 
+  // 检查旧key是否存在
   for (const [, key] of Object.entries(OLD_KEYS)) {
     if (key === OLD_KEYS.INVESTMENT_DRAFT_PREFIX) continue; // prefix 不直接检查
     if (localStorage.getItem(key) !== null) {
@@ -349,6 +362,12 @@ function verifyAppDataMigration(deleteOldKeys: boolean): MigrationCheckResult {
       oldKeysFound.push(key);
       oldDraftKeys.push(key);
     }
+  }
+
+  // 如果旧key不存在，跳过验证
+  if (oldKeysFound.length === 0) {
+    details.push('老的key已经不存在，无需验证');
+    return { success: true, oldKeysFound, newKeysData: {}, details };
   }
 
   // 读取旧数据
@@ -442,21 +461,20 @@ function verifyAppDataMigration(deleteOldKeys: boolean): MigrationCheckResult {
       }
     }
 
-    details.push('应用数据迁移成功');
-  } else if (oldKeysFound.length === 0) {
-    details.push('无旧数据需要迁移');
+    details.push('应用数据迁移验证完成');
   } else {
-    details.push('应用数据迁移失败：有旧数据但新 key 无数据');
+    details.push('应用数据迁移验证失败：有旧数据但新 key 无数据');
   }
 
   if (contentMismatches.length > 0) {
     details.push(`内容不一致: ${contentMismatches.join('; ')}`);
   }
 
-  // 成功条件：有新数据且内容一致，或无旧数据
-  const success = (hasNewData && contentMismatches.length === 0) || oldKeysFound.length === 0;
+  // 成功条件：有新数据且内容一致
+  const success = hasNewData && contentMismatches.length === 0;
 
-  if (deleteOldKeys && success && oldKeysFound.length > 0) {
+  // 删除旧key只取决于deleteOldKeys参数，与验证结果无关
+  if (deleteOldKeys && oldKeysFound.length > 0) {
     oldKeysFound.forEach(key => {
       try { localStorage.removeItem(key); } catch { /* ignore */ }
     });

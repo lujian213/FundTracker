@@ -100,11 +100,7 @@ export function ensureUserPreferenceMigration(): void {
   } catch { /* ignore */ }
 
   saveUserPreference(newPref);
-
-  // 清理旧 key
-  Object.values(OLD_KEYS).forEach(key => {
-    try { localStorage.removeItem(key); } catch { /* ignore */ }
-  });
+  // 不删除旧 key，由 verifyStorageMigration() 决定是否删除
 }
 
 /**

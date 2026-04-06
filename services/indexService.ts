@@ -686,6 +686,12 @@ export function verifyIndexMigration(deleteOldKeys: boolean = false): {
     }
   }
 
+  // 如果旧key不存在，跳过验证
+  if (oldKeysFound.length === 0) {
+    details.push('老的key已经不存在，无需验证');
+    return { success: true, oldKeysFound, newIndexCount: 0, details };
+  }
+
   // 读取旧 IndexInfo 数据
   let oldIndexInfos: IndexInfo[] = [];
   // 优先从统一 key 读取
@@ -910,8 +916,8 @@ export function verifyIndexMigration(deleteOldKeys: boolean = false): {
     details.push(`内容不一致: ${contentMismatches.join('; ')}`);
   }
 
-  // 删除旧 key
-  if (deleteOldKeys && success) {
+  // 删除旧 key（只取决于deleteOldKeys参数，与验证结果无关）
+  if (deleteOldKeys) {
     // 删除固定的旧 key
     oldKeysFound.forEach(key => {
       try {
@@ -950,8 +956,6 @@ export function verifyIndexMigration(deleteOldKeys: boolean = false): {
       details.push(`已删除指数日内 key: ${intradayKeysToDelete.length} 个`);
     }
   }
-
-  console.log('[IndexMigration] 验证结果:', { success, oldKeysFound, newIndexCount: newIndexSymbols.length, details });
 
   return {
     success,

@@ -29,9 +29,6 @@ const funds = new Map<string, MarketFund>();
  * 从 localStorage 加载数据并初始化缓存
  */
 function init(): void {
-  console.log('[FundMigration] init() 开始执行');
-  console.log(`[FundMigration] ${STORAGE_KEYS.FUND_DATA} 存在: ${localStorage.getItem(STORAGE_KEYS.FUND_DATA) !== null}`);
-
   // 检查新 key 数据格式是否正确
   let needsMigration = true;
   try {
@@ -44,10 +41,8 @@ function init(): void {
         if (first.info?.ticker?.symbol) {
           // 新格式，不需要迁移
           needsMigration = false;
-          console.log(`[FundMigration] 新 key 数据格式正确，${items.length} 个基金`);
         } else {
           // 旧格式（info 直接包含 symbol/name 等），需要迁移
-          console.log('[FundMigration] 新 key 数据格式为旧版，需要重新迁移');
           // 删除旧格式的新 key，让迁移重新执行
           localStorage.removeItem(STORAGE_KEYS.FUND_DATA);
         }
@@ -61,7 +56,6 @@ function init(): void {
 
   // 执行迁移（如果需要）
   if (needsMigration) {
-    console.log('[FundMigration] 执行迁移...');
     migrateFromOldKeys();
   }
 
@@ -70,7 +64,6 @@ function init(): void {
     const raw = localStorage.getItem(STORAGE_KEYS.FUND_DATA);
     if (raw) {
       const marketFunds: MarketFund[] = JSON.parse(raw);
-      console.log(`[FundMigration] 从新 key 加载 ${marketFunds.length} 个基金`);
       marketFunds.forEach(m => {
         // 确保每个 MarketFund 都有完整字段
         funds.set(m.info.ticker.symbol, {
@@ -80,9 +73,6 @@ function init(): void {
           history: m.history || [],
         });
       });
-      console.log(`[FundMigration] 成功加载 ${funds.size} 个基金到内存`);
-    } else {
-      console.log('[FundMigration] 新 key 无数据');
     }
   } catch (e) {
     console.error('[FundMigration] 加载新 key 失败:', e);
@@ -95,7 +85,6 @@ function init(): void {
  */
 function migrateFromOldKeys(): void {
   const OLD_KEYS = OLD_STORAGE_KEYS.FUND;
-  console.log('[FundMigration] 开始迁移...');
 
   // 收集 Ticker 数据
   const tickerMap = new Map<string, Ticker>();
@@ -103,13 +92,11 @@ function migrateFromOldKeys(): void {
   // 1. 从 fund_portfolio 读取 Ticker[]
   try {
     const portfolioRaw = localStorage.getItem(OLD_KEYS.PORTFOLIO);
-    console.log(`[FundMigration] ${OLD_KEYS.PORTFOLIO} 存在: ${portfolioRaw !== null}`);
     if (portfolioRaw) {
       const tickers: Ticker[] = JSON.parse(portfolioRaw);
       tickers.forEach(t => {
         tickerMap.set(t.symbol, t);
       });
-      console.log(`[FundMigration] 从 ${OLD_KEYS.PORTFOLIO} 读取 ${tickers.length} 个 Ticker`);
     }
   } catch (e) {
     console.error('[FundMigration] 读取 fund_portfolio 失败:', e);
@@ -121,7 +108,6 @@ function migrateFromOldKeys(): void {
   // 2. 从 fund_market_data 读取 ValuationData
   try {
     const marketDataRaw = localStorage.getItem(OLD_KEYS.MARKET_DATA);
-    console.log(`[FundMigration] ${OLD_KEYS.MARKET_DATA} 存在: ${marketDataRaw !== null}`);
     if (marketDataRaw) {
       const valuations: Record<string, ValuationData> = JSON.parse(marketDataRaw);
       Object.entries(valuations).forEach(([symbol, v]) => {
@@ -136,7 +122,6 @@ function migrateFromOldKeys(): void {
           });
         }
       });
-      console.log(`[FundMigration] 从 ${OLD_KEYS.MARKET_DATA} 读取 ${valuationMap.size} 个估值`);
     }
   } catch (e) {
     console.error('[FundMigration] 读取 fund_market_data 失败:', e);
@@ -148,7 +133,6 @@ function migrateFromOldKeys(): void {
   // 3. 从 fund_position_{symbol} 读取持仓配置
   try {
     const positionKeys = Object.keys(localStorage).filter(k => k.startsWith(OLD_KEYS.POSITION_PREFIX));
-    console.log(`[FundMigration] 找到 ${positionKeys.length} 个 ${OLD_KEYS.POSITION_PREFIX}* key`);
     positionKeys.forEach(k => {
         const symbol = k.replace(OLD_KEYS.POSITION_PREFIX, '');
         try {
@@ -197,8 +181,6 @@ function migrateFromOldKeys(): void {
     ...positionMap.keys(),
   ]);
 
-  console.log(`[FundMigration] allSymbols 数量: ${allSymbols.size}, ticker=${tickerMap.size}, valuation=${valuationMap.size}, position=${positionMap.size}`);
-
   for (const symbol of allSymbols) {
     const ticker = tickerMap.get(symbol);
     const valuation = valuationMap.get(symbol);
@@ -242,18 +224,13 @@ function migrateFromOldKeys(): void {
     marketFunds.push({ info, trades, intraday, history });
   }
 
-  console.log(`[FundMigration] 构建了 ${marketFunds.length} 个 MarketFund`);
-
   // 6. 保存到新 key
   if (marketFunds.length > 0) {
     try {
       localStorage.setItem(STORAGE_KEYS.FUND_DATA, JSON.stringify(marketFunds));
-      console.log(`[FundMigration] 成功保存 ${marketFunds.length} 个基金到 ${STORAGE_KEYS.FUND_DATA}`);
     } catch (e) {
       console.error('[FundMigration] 保存失败:', e);
     }
-  } else {
-    console.log('[FundMigration] marketFunds 为空，跳过保存');
   }
 }
 
@@ -884,15 +861,13 @@ export function verifyFundMigration(deleteOldKeys: boolean = false): {
 
   if (oldCount === 0 && newCount === 0) {
     // 无旧数据无新数据
-    details.push('无旧数据需要迁移');
-    console.log('[FundMigration] 验证结果:', { success: true, oldKeysFound: 0, newFundCount: 0, details });
+    details.push('老的key已经不存在，无需验证');
     return { success: true, oldKeysFound: [], newFundCount: 0, details };
   }
 
   if (oldCount > 0 && newCount === 0) {
     // 有旧数据但无新数据
     details.push(`迁移失败：有 ${oldCount} 个旧基金但新 key 无数据`);
-    console.log('[FundMigration] 验证结果:', { success: false, oldKeysFound: oldKeysFound.length, newFundCount: 0, details });
     return { success: false, oldKeysFound, newFundCount: 0, details };
   }
 
@@ -1027,8 +1002,8 @@ export function verifyFundMigration(deleteOldKeys: boolean = false): {
     }
   }
 
-  // 删除旧 key
-  if (deleteOldKeys && success && oldKeysFound.length > 0) {
+  // 删除旧 key（只取决于deleteOldKeys参数，与验证结果无关）
+  if (deleteOldKeys && oldKeysFound.length > 0) {
     oldKeysFound.forEach(key => {
       try {
         localStorage.removeItem(key);
@@ -1036,8 +1011,6 @@ export function verifyFundMigration(deleteOldKeys: boolean = false): {
     });
     details.push(`已删除旧 key: ${oldKeysFound.length} 个`);
   }
-
-  console.log('[FundMigration] 验证结果:', { success, oldKeysFound: oldKeysFound.length, newFundCount: newCount, details, errors });
 
   return {
     success,

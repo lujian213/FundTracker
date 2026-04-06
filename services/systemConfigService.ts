@@ -236,10 +236,7 @@ export function ensureSystemConfigMigration(): void {
   } catch { /* ignore */ }
 
   saveSystemConfig(newConfig);
-
-  Object.values(OLD_KEYS).forEach(key => {
-    try { localStorage.removeItem(key); } catch { /* ignore */ }
-  });
+  // 不删除旧 key，由 verifyStorageMigration() 决定是否删除
 }
 
 /**
