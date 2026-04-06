@@ -126,7 +126,8 @@ describe('appDataService', () => {
       const stored = localStorage.getItem(STORAGE_KEYS.CALENDAR);
       expect(stored).toBeTruthy();
       expect(JSON.parse(stored!)).toEqual(oldCalendar);
-      expect(localStorage.getItem('fund_tracker_calendar')).toBeNull();
+      // 旧 key 由 verifyStorageMigration() 统一删除，迁移后仍然存在
+      expect(localStorage.getItem('fund_tracker_calendar')).toBeTruthy();
     });
 
     test('ensureAppDataMigration 正确迁移投资草稿', () => {
@@ -139,7 +140,8 @@ describe('appDataService', () => {
       expect(stored).toBeTruthy();
       const parsed = JSON.parse(stored!);
       expect(parsed['2026-04-01']).toEqual(oldDraft);
-      expect(localStorage.getItem('investment_draft_2026-04-01')).toBeNull();
+      // 旧 key 由 verifyStorageMigration() 统一删除，迁移后仍然存在
+      expect(localStorage.getItem('investment_draft_2026-04-01')).toBeTruthy();
     });
 
     test('ensureAppDataMigration 从旧的统一存储迁移', () => {
@@ -154,7 +156,8 @@ describe('appDataService', () => {
 
       expect(localStorage.getItem(STORAGE_KEYS.CALENDAR)).toBeTruthy();
       expect(localStorage.getItem(STORAGE_KEYS.INVESTMENT_DRAFT)).toBeTruthy();
-      expect(localStorage.getItem('fund_app_data')).toBeNull();
+      // 旧 key 由 verifyStorageMigration() 统一删除，迁移后仍然存在
+      expect(localStorage.getItem('fund_app_data')).toBeTruthy();
     });
   });
 });

@@ -131,8 +131,9 @@ describe('userPreferenceService', () => {
       expect(pref.sortOrder).toBe('asc');
       expect(pref.draftModalHeight).toBe(450);
 
-      expect(localStorage.getItem(OLD_KEYS.SORT_ORDER)).toBeNull();
-      expect(localStorage.getItem(OLD_KEYS.DRAFT_MODAL_HEIGHT)).toBeNull();
+      // 旧 key 由 verifyStorageMigration() 统一删除，迁移后仍然存在
+      expect(localStorage.getItem(OLD_KEYS.SORT_ORDER)).toBe('asc');
+      expect(localStorage.getItem(OLD_KEYS.DRAFT_MODAL_HEIGHT)).toBe('450');
     });
 
     test('should ignore invalid old data', () => {
