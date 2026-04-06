@@ -5,7 +5,7 @@ import { fetchFundData } from '../services/fundService';  // Import fetchFundDat
 import { toLocalDateKey } from '../utils/priceResolver';
 import * as cacheService from '../services/cacheService';  // Import cacheService for enhanced valuation
 import AIInvestmentDraftModal from './AIInvestmentDraftModal';
-import { DraftEntry, AIAdviceEntry, generateAIInvestmentAdvice, hasDraftAction } from '../services/aiInvestmentDraftService';
+import { DraftEntry, AIAdviceWithScore, AIAdviceIterationResult, generateAIAdviceWithValidation, hasDraftAction } from '../services/aiInvestmentDraftService';
 import { getActiveAIConfig, hasUsableAIConfig } from '../services/aiConfigService';
 import { ConfirmDialog } from './ConfirmDialog';
 import SimpleTooltip from './SimpleTooltip';
@@ -43,11 +43,13 @@ const InvestmentDraftModal: React.FC<InvestmentDraftModalProps> = ({
   const [draftData, setDraftData] = useState<Record<string, DraftEntry>>({});
   const [copied, setCopied] = useState(false);
   const [selectedFunds, setSelectedFunds] = useState<Set<string>>(new Set()); // 选中的基金
-  const [aiAdvice, setAIAdvice] = useState<Record<string, AIAdviceEntry>>({});
+  const [aiAdvice, setAIAdvice] = useState<Record<string, AIAdviceWithScore>>({});
   const [showConfirmDialog, setShowConfirmDialog] = useState(false);
   const [showErrorDialog, setShowErrorDialog] = useState(false);
   const [errorDialogMessage, setErrorDialogMessage] = useState('');
   const [aiAdviceLoading, setAIAdviceLoading] = useState(false);
+  const [showResultDialog, setShowResultDialog] = useState(false);
+  const [resultSummary, setResultSummary] = useState('');
 
   const [modalHeight, setModalHeight] = useState<number | null>(() => getDraftModalHeight());
   const [showAIAnalysis, setShowAIAnalysis] = useState(false);
@@ -279,7 +281,7 @@ const InvestmentDraftModal: React.FC<InvestmentDraftModalProps> = ({
     setSelectedFunds(new Set());
 
     try {
-      const result = await generateAIInvestmentAdvice(
+      const result = await generateAIAdviceWithValidation(
         config,
         portfolio,
         fundHistories || {},
@@ -289,7 +291,7 @@ const InvestmentDraftModal: React.FC<InvestmentDraftModalProps> = ({
         marketData
       );
 
-      if (!result.success) {
+      if (!result.success && result.advice.length === 0) {
         setErrorDialogMessage(result.error || 'AI调用失败');
         setShowErrorDialog(true);
         return;
@@ -297,7 +299,7 @@ const InvestmentDraftModal: React.FC<InvestmentDraftModalProps> = ({
 
       // 填充AI建议到表格
       const newDraftData: Record<string, DraftEntry> = { ...clearedDraftData };
-      const newAIAdvice: Record<string, AIAdviceEntry> = {};
+      const newAIAdvice: Record<string, AIAdviceWithScore> = {};
 
       for (const advice of result.advice) {
         const symbol = advice.fundCode;
@@ -321,6 +323,10 @@ const InvestmentDraftModal: React.FC<InvestmentDraftModalProps> = ({
 
       setDraftData(newDraftData);
       setAIAdvice(newAIAdvice);
+
+      // 显示结果对话框
+      setResultSummary(result.summary);
+      setShowResultDialog(true);
     } catch (e) {
       setErrorDialogMessage('AI调用失败，请检查网络连接或稍后重试');
       setShowErrorDialog(true);
