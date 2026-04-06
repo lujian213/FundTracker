@@ -165,6 +165,87 @@ async function fetchWithRetry(
 export type StreamCallback = (chunk: string, fullContent: string) => void;
 
 /**
+ * 对话消息类型
+ */
+export interface ChatMessage {
+  role: 'system' | 'user' | 'assistant';
+  content: string;
+}
+
+/**
+ * 处理流式响应的私有辅助函数
+ * 负责读取流、解析SSE格式、调用回调并返回结果
+ */
+async function processStreamResponse(
+  response: Response,
+  onChunk?: StreamCallback
+): Promise<AIResponse> {
+  const reader = response.body?.getReader();
+  if (!reader) {
+    return {
+      content: 'Failed to get response stream',
+      success: false,
+      error: 'No stream'
+    };
+  }
+
+  const decoder = new TextDecoder();
+  let fullContent = '';
+
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+
+      const chunk = decoder.decode(value, { stream: true });
+      // 解析 SSE 格式: data: {...}\n\n
+      const lines = chunk.split('\n');
+      for (const line of lines) {
+        if (line.startsWith('data: ')) {
+          const data = line.slice(6);
+          if (data === '[DONE]') continue;
+          try {
+            const json = JSON.parse(data);
+            const content = json.choices?.[0]?.delta?.content;
+            if (content) {
+              fullContent += content;
+              // 调用流式回调
+              if (onChunk) {
+                onChunk(content, fullContent);
+              }
+            }
+          } catch {
+            // 忽略解析错误
+          }
+        }
+      }
+    }
+  } catch (streamError: any) {
+    // 如果已有部分内容，返回它
+    if (fullContent) {
+      return {
+        content: fullContent,
+        success: true
+      };
+    }
+    throw streamError;
+  }
+
+  if (fullContent) {
+    return {
+      content: fullContent,
+      success: true
+    };
+  } else {
+    return {
+      content: 'No response content received',
+      success: false,
+      error: 'Empty response'
+    };
+  }
+}
+
+/**
  * Queries the AI model with the provided query and context
  * @param onChunk 可选的流式回调，每次收到新内容时调用
  * @param maxTokens 可选的最大token数，默认2000
@@ -230,70 +311,50 @@ export async function queryAI(
       body: JSON.stringify(requestBody)
     });
 
-    // 读取流式响应
-    const reader = response.body?.getReader();
-    if (!reader) {
-      return {
-        content: 'Failed to get response stream',
-        success: false,
-        error: 'No stream'
-      };
-    }
+    // 处理流式响应
+    return processStreamResponse(response, onChunk);
+  } catch (error: any) {
+    return {
+      content: `Error communicating with AI service: ${error.message}`,
+      success: false,
+      error: error.message
+    };
+  }
+}
 
-    const decoder = new TextDecoder();
-    let fullContent = '';
+/**
+ * 使用消息历史查询AI模型
+ * @param config AI配置
+ * @param messages 对话消息历史
+ * @param onChunk 可选的流式回调
+ * @param maxTokens 最大token数
+ */
+export async function queryAIWithMessages(
+  config: AIConfiguration,
+  messages: ChatMessage[],
+  onChunk?: StreamCallback,
+  maxTokens: number = 4000
+): Promise<AIResponse> {
+  try {
+    const requestBody = {
+      model: config.model || 'gpt-4',
+      messages: messages,
+      temperature: 0.7,
+      max_tokens: maxTokens,
+      stream: true
+    };
 
-    try {
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
+    const response = await fetchWithRetry(config.apiEndpoint, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${config.apiKey}`,
+      },
+      body: JSON.stringify(requestBody)
+    });
 
-        const chunk = decoder.decode(value, { stream: true });
-        // 解析 SSE 格式: data: {...}\n\n
-        const lines = chunk.split('\n');
-        for (const line of lines) {
-          if (line.startsWith('data: ')) {
-            const data = line.slice(6);
-            if (data === '[DONE]') continue;
-            try {
-      const json = JSON.parse(data);
-              const content = json.choices?.[0]?.delta?.content;
-              if (content) {
-                fullContent += content;
-                // 调用流式回调
-                if (onChunk) {
-                  onChunk(content, fullContent);
-                }
-              }
-            } catch {
-              // 忽略解析错误
-            }
-          }
-        }
-      }
-    } catch (streamError: any) {
-      // 如果已有部分内容，返回它
-      if (fullContent) {
-        return {
-          content: fullContent,
-          success: true
-        };
-      }
-      throw streamError;
-    }
-
-    if (fullContent) {
-      return {
-        content: fullContent,
-        success: true
-      };
-    } else {
-      return {
-        content: 'No response content received',
-        success: false,
-        error: 'Empty response'
-      };
-    }
+    // 处理流式响应
+    return processStreamResponse(response, onChunk);
   } catch (error: any) {
     return {
       content: `Error communicating with AI service: ${error.message}`,
