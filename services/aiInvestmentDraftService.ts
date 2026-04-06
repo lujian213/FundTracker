@@ -381,6 +381,43 @@ export function parseAIAdviceJSON(response: string): AIAdviceEntry[] {
 }
 
 /**
+ * 解析带得分的AI建议JSON响应
+ * 支持纯JSON和被代码块包裹的JSON格式
+ */
+export function parseAIAdviceWithScoreJSON(response: string): AIAdviceWithScore[] {
+  // 尝试提取JSON内容
+  let jsonContent = response.trim();
+
+  // 检查是否被代码块包裹
+  const codeBlockMatch = jsonContent.match(/```(?:json)?\s*\n?([\s\S]*?)\n?```/);
+  if (codeBlockMatch) {
+    jsonContent = codeBlockMatch[1].trim();
+  }
+
+  try {
+    const parsed = JSON.parse(jsonContent);
+
+    if (!Array.isArray(parsed)) {
+      throw new Error(`AI返回的不是数组格式，而是: ${typeof parsed}`);
+    }
+
+    // 过滤并转换结果，只保留 buy/sell 操作
+    return parsed
+      .filter((item: any) => item.operation === 'buy' || item.operation === 'sell')
+      .map((item: any) => ({
+        fundCode: item.fund_code || '',
+        operation: item.operation === 'buy' ? '买入' as const : '卖出' as const,
+        amount: Number(item.amount) || 0,
+        reason: item.reason || '',
+        score: typeof item.score === 'number' ? item.score : 0
+      }));
+  } catch (e) {
+    const preview = jsonContent.length > 200 ? jsonContent.slice(0, 200) + '...' : jsonContent;
+    throw new Error(`AI返回格式解析失败: ${(e as Error).message}\n响应预览: ${preview}`);
+  }
+}
+
+/**
  * 格式化投资计划数据为JSON结构（含用户计划）
  * 基于公共数据准备函数，添加用户计划相关字段
  */
