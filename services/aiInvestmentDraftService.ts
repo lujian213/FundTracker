@@ -78,6 +78,28 @@ export interface AIAdviceEntry {
   reason: string;
 }
 
+// AI建议条目（带得分）
+export interface AIAdviceWithScore {
+  fundCode: string;
+  operation: '买入' | '卖出';
+  amount: number;
+  reason: string;
+  score: number;  // 0-1 的合理性得分
+}
+
+// 迭代验证结果
+export interface AIAdviceIterationResult {
+  advice: AIAdviceWithScore[];
+  success: boolean;
+  summary: string;  // "辅助决策成功" 或 "辅助决策部分成功，达到最大尝试轮数"
+  iterations: number;  // 实际迭代次数（1、2或3）
+  error?: string;
+}
+
+// 迭代验证常量（导出供UI层使用）
+export const SCORE_THRESHOLD = 0.7;      // 合理性得分阈值
+export const MAX_ITERATIONS = 3;         // 最大迭代轮数
+
 /**
  * 检查草稿条目是否有有效操作
  */
