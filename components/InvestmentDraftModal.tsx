@@ -5,7 +5,7 @@ import { fetchFundData } from '../services/fundService';  // Import fetchFundDat
 import { toLocalDateKey } from '../utils/priceResolver';
 import * as cacheService from '../services/cacheService';  // Import cacheService for enhanced valuation
 import AIInvestmentDraftModal from './AIInvestmentDraftModal';
-import { DraftEntry, AIAdviceWithScore, AIAdviceIterationResult, generateAIAdviceWithValidation, hasDraftAction } from '../services/aiInvestmentDraftService';
+import { DraftEntry, AIAdviceWithScore, AIAdviceIterationResult, generateAIAdviceWithValidation, hasDraftAction, SCORE_THRESHOLD } from '../services/aiInvestmentDraftService';
 import { getActiveAIConfig, hasUsableAIConfig } from '../services/aiConfigService';
 import { ConfirmDialog } from './ConfirmDialog';
 import SimpleTooltip from './SimpleTooltip';
@@ -651,7 +651,17 @@ const InvestmentDraftModal: React.FC<InvestmentDraftModalProps> = ({
                           {/* 提示列 */}
                           <td className="px-1 py-1 text-center">
                             {aiAdvice[fund.symbol] && (
-                              <SimpleTooltip content={aiAdvice[fund.symbol].reason} boundarySelector=".investment-draft-modal-content">
+                              <SimpleTooltip
+                                content={
+                                  <div className="text-gray-700">
+                                    <span>{aiAdvice[fund.symbol].reason}</span>
+                                    <span style={{ color: aiAdvice[fund.symbol].score >= SCORE_THRESHOLD ? 'inherit' : 'red' }}>
+                                      {' '}(得分: {aiAdvice[fund.symbol].score.toFixed(2)})
+                                    </span>
+                                  </div>
+                                }
+                                boundarySelector=".investment-draft-modal-content"
+                              >
                                 <i className="fas fa-info-circle text-blue-500 text-xs cursor-pointer"></i>
                               </SimpleTooltip>
                             )}
@@ -867,6 +877,19 @@ const InvestmentDraftModal: React.FC<InvestmentDraftModalProps> = ({
           confirmText="关闭"
           singleButton
           type="info"
+        />,
+        document.body
+      )}
+      {createPortal(
+        <ConfirmDialog
+          isOpen={showResultDialog}
+          title="辅助决策结束"
+          message={resultSummary}
+          onConfirm={() => setShowResultDialog(false)}
+          onCancel={() => setShowResultDialog(false)}
+          confirmText="确认"
+          singleButton
+          type="success"
         />,
         document.body
       )}

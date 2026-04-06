@@ -9,7 +9,7 @@ interface ConfirmDialogProps {
   onCancel: () => void;
   confirmText?: string;
   cancelText?: string;
-  type?: 'danger' | 'info';
+  type?: 'danger' | 'info' | 'success';
   singleButton?: boolean;
 }
 
@@ -42,8 +42,8 @@ export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
       {/* Dialog Body */}
       <div className="relative bg-white rounded-3xl w-full max-w-xs overflow-hidden shadow-2xl animate-in zoom-in-95 duration-200">
         <div className="p-6 text-center">
-          <div className={`w-12 h-12 rounded-full mx-auto flex items-center justify-center mb-4 ${type === 'danger' ? 'bg-red-50 text-red-600' : 'bg-blue-50 text-blue-600'}`}>
-            <i className={`fas ${type === 'danger' ? 'fa-trash-can' : 'fa-info-circle'} text-xl`}></i>
+          <div className={`w-12 h-12 rounded-full mx-auto flex items-center justify-center mb-4 ${type === 'danger' ? 'bg-red-50 text-red-600' : type === 'success' ? 'bg-green-50 text-green-600' : 'bg-blue-50 text-blue-600'}`}>
+            <i className={`fas ${type === 'danger' ? 'fa-trash-can' : type === 'success' ? 'fa-check-circle' : 'fa-info-circle'} text-xl`}></i>
           </div>
           <h3 id="confirm-title" className="text-lg font-bold text-gray-800 mb-2">{title}</h3>
           <p className="text-sm text-gray-500 leading-relaxed">{message}</p>
@@ -53,7 +53,7 @@ export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
           {singleButton ? (
             <button
               onClick={onConfirm}
-              className={`flex-1 py-4 text-sm font-bold transition-colors ${type === 'danger' ? 'text-red-600 hover:bg-red-50' : 'text-blue-600 hover:bg-blue-50'}`}
+              className={`flex-1 py-4 text-sm font-bold transition-colors ${type === 'danger' ? 'text-red-600 hover:bg-red-50' : type === 'success' ? 'text-green-600 hover:bg-green-50' : 'text-blue-600 hover:bg-blue-50'}`}
               aria-label="确认"
             >
               {confirmText}
@@ -70,7 +70,7 @@ export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
               <div className="w-px bg-gray-100"></div>
               <button
                 onClick={onConfirm}
-                className={`flex-1 py-4 text-sm font-bold transition-colors ${type === 'danger' ? 'text-red-600 hover:bg-red-50' : 'text-blue-600 hover:bg-blue-50'}`}
+                className={`flex-1 py-4 text-sm font-bold transition-colors ${type === 'danger' ? 'text-red-600 hover:bg-red-50' : type === 'success' ? 'text-green-600 hover:bg-green-50' : 'text-blue-600 hover:bg-blue-50'}`}
                 aria-label="确认"
               >
                 {confirmText}
