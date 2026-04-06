@@ -645,7 +645,7 @@ const InvestmentDraftModal: React.FC<InvestmentDraftModalProps> = ({
                           {/* 提示列 */}
                           <td className="px-1 py-1 text-center">
                             {aiAdvice[fund.symbol] && (
-                              <SimpleTooltip content={aiAdvice[fund.symbol].reason}>
+                              <SimpleTooltip content={aiAdvice[fund.symbol].reason} boundarySelector=".investment-draft-modal-content">
                                 <i className="fas fa-info-circle text-blue-500 text-xs cursor-pointer"></i>
                               </SimpleTooltip>
                             )}

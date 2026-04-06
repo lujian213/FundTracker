@@ -6,9 +6,11 @@ interface Props {
   content?: string | React.ReactNode | StrategyReason;
   children: React.ReactNode;
   alignRight?: boolean;
+  /** CSS selector for boundary container. Tooltip will be constrained within this container. */
+  boundarySelector?: string;
 }
 
-export const SimpleTooltip: React.FC<Props> = ({ content, children, alignRight = true }) => {
+export const SimpleTooltip: React.FC<Props> = ({ content, children, alignRight = true, boundarySelector }) => {
   const [open, setOpen] = useState(false);
   const triggerRef = useRef<HTMLSpanElement | null>(null);
   const tooltipRef = useRef<HTMLDivElement | null>(null);
@@ -31,18 +33,33 @@ export const SimpleTooltip: React.FC<Props> = ({ content, children, alignRight =
       const vw = window.innerWidth;
       const vh = window.innerHeight;
 
+      // Find boundary container if specified
+      let boundaryRect: DOMRect | null = null;
+      if (boundarySelector) {
+        const boundaryEl = trigger.closest(boundarySelector);
+        if (boundaryEl) {
+          boundaryRect = boundaryEl.getBoundingClientRect();
+        }
+      }
+
+      // Use boundary or viewport for constraints
+      const minX = boundaryRect ? boundaryRect.left + PADDING : PADDING;
+      const maxX = boundaryRect ? boundaryRect.right - PADDING : vw - PADDING;
+      const minY = boundaryRect ? boundaryRect.top + PADDING : PADDING;
+      const maxY = boundaryRect ? boundaryRect.bottom - PADDING : vh - PADDING;
+
       // preferred left: alignRight -> align tooltip right edge to trigger.right; else align left edge to trigger.left
       let left = alignRight ? (tr.right - tipRect.width) : tr.left;
-      // clamp horizontally within viewport
-      left = Math.max(PADDING, Math.min(left, vw - tipRect.width - PADDING));
+      // clamp horizontally within boundary
+      left = Math.max(minX, Math.min(left, maxX - tipRect.width));
 
       // preferred below the trigger
       let top = tr.bottom + 8;
       // if not enough space below, try above
-      if (top + tipRect.height + PADDING > vh) {
+      if (top + tipRect.height > maxY) {
         const altTop = tr.top - tipRect.height - 8;
-        if (altTop >= PADDING) top = altTop;
-        else top = Math.max(PADDING, vh - tipRect.height - PADDING);
+        if (altTop >= minY) top = altTop;
+        else top = Math.max(minY, maxY - tipRect.height);
       }
 
       if (mounted) setPos({ left, top });
@@ -63,7 +80,7 @@ export const SimpleTooltip: React.FC<Props> = ({ content, children, alignRight =
       window.removeEventListener('scroll', onScroll, true);
       window.removeEventListener('resize', onResize);
     };
-  }, [open, alignRight]);
+  }, [open, alignRight, boundarySelector]);
 
   if (!content) return <>{children}</>;
 

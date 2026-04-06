@@ -23,15 +23,34 @@ export default defineConfig({
     chunkSizeWarningLimit: 600,
     rollupOptions: {
       output: {
-        manualChunks: {
+        manualChunks(id) {
           // React 核心
-          'react-vendor': ['react', 'react-dom'],
-          // Markdown 渲染
-          'markdown': ['react-markdown', 'remark-gfm', 'rehype-raw'],
-          // UI 组件
-          'ui': ['react-day-picker', 'dompurify'],
+          if (id.includes('react/') || id.includes('react-dom/') || id.includes('scheduler')) {
+            return 'react-vendor';
+          }
+          // Markdown 渲染及其依赖
+          if (id.includes('react-markdown') || id.includes('remark-gfm') ||
+              id.includes('rehype-raw') || id.includes('unified') ||
+              id.includes('remark') || id.includes('rehype') ||
+              id.includes('micromark') || id.includes('mdast')) {
+            return 'markdown';
+          }
+          // UI 组件库
+          if (id.includes('react-day-picker') || id.includes('dompurify')) {
+            return 'ui';
+          }
           // 定时任务解析器
-          'cron-parser': ['cron-parser'],
+          if (id.includes('cron-parser')) {
+            return 'cron-parser';
+          }
+          // AI 侧边栏组件（包含大量 markdown 渲染）
+          if (id.includes('AISidePanelBase') || id.includes('AIPortfolioAnalysisModal')) {
+            return 'ai-panels';
+          }
+          // 详情模态框（大组件）
+          if (id.includes('FundDetailsModal') || id.includes('IndexDetailsModal')) {
+            return 'detail-modals';
+          }
         },
       },
     },

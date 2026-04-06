@@ -73,6 +73,8 @@ function applyAccuracyEnhancements(
   const latestHistoryDate = toLocalDateKey(latestHistory.date);
   const valuationDate = valuation.valuationDate?.split(' ')[0] || valuation.realtimeDate;
 
+  let rule1Applied = false;
+
   if (valuationDate && latestHistoryDate && valuationDate <= latestHistoryDate) {
     // Use the most recent historical data as the valuation data
     result = {
@@ -84,24 +86,29 @@ function applyAccuracyEnhancements(
       previousPrice: previousHistory ? previousHistory.value : valuation.previousPrice,
       netWorthDate: previousHistory ? toLocalDateKey(previousHistory.date) : valuation.netWorthDate,
     };
+    rule1Applied = true;
   }
 
   // Rule 2: Compare valuationDate and netWorthDate
-  const netWorthDate = valuation.netWorthDate;
-  if (valuationDate && netWorthDate && valuationDate <= netWorthDate) {
+  // 注意：如果 Rule 1 已生效，使用更新后的 result 中的日期，而非原始日期
+  const currentValuationDate = result.valuationDate?.split(' ')[0] || result.realtimeDate;
+  const currentNetWorthDate = result.netWorthDate;
+
+  // 如果 Rule 1 已生效，跳过 Rule 2（因为数据已经是最新历史数据）
+  if (!rule1Applied && currentValuationDate && currentNetWorthDate && currentValuationDate <= currentNetWorthDate) {
     // Find the historical net worth on or before the valuation date
     const sortedHistoryDesc = [...sortedHistory].sort((a, b) => (b.date as number) - (a.date as number));
-    const closestHistory = sortedHistoryDesc.find(h => toLocalDateKey(h.date) <= valuationDate);
+    const closestHistory = sortedHistoryDesc.find(h => toLocalDateKey(h.date) <= currentValuationDate);
 
     if (closestHistory) {
       // If valuationDate equals netWorthDate, use that day's NAV to replace the valuation
-      if (valuationDate === netWorthDate) {
+      if (currentValuationDate === currentNetWorthDate) {
         result = {
           ...result,
           currentPrice: closestHistory.value,
           realtimeDate: toLocalDateKey(closestHistory.date),
           valuationDate: toLocalDateKey(closestHistory.date),
-          previousPrice: sortedHistoryDesc.find(h => toLocalDateKey(h.date) < valuationDate)?.value || valuation.previousPrice,
+          previousPrice: sortedHistoryDesc.find(h => toLocalDateKey(h.date) < currentValuationDate)?.value || valuation.previousPrice,
           netWorthDate: toLocalDateKey(closestHistory.date),
         };
       } else {
