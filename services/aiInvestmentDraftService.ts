@@ -1,7 +1,7 @@
 // services/aiInvestmentDraftService.ts
 import { Ticker, ValuationData, HistoricalPoint, MarketIndex, TradeRecord } from '../types';
 import { AIConfiguration } from './aiConfigService';
-import { queryAI, StreamCallback, PromptTemplate } from './aiService';
+import { queryAI, StreamCallback, PromptTemplate, ChatMessage, queryAIWithMessages } from './aiService';
 import { getTradesForSymbol } from '../hooks/useTrades';
 import { computeAvgCostPrice } from '../utils/positionHelper';
 import { toLocalDateKey } from '../utils/priceResolver';
@@ -415,6 +415,218 @@ export function parseAIAdviceWithScoreJSON(response: string): AIAdviceWithScore[
     const preview = jsonContent.length > 200 ? jsonContent.slice(0, 200) + '...' : jsonContent;
     throw new Error(`AI返回格式解析失败: ${(e as Error).message}\n响应预览: ${preview}`);
   }
+}
+
+/**
+ * 检查是否所有得分都达标
+ */
+function allScoresPass(advice: AIAdviceWithScore[]): boolean {
+  return advice.every(item => item.score >= SCORE_THRESHOLD);
+}
+
+/**
+ * 生成AI投资建议（带迭代验证）
+ * 通过评分-修正-再评分的循环提高建议质量
+ */
+export async function generateAIAdviceWithValidation(
+  config: AIConfiguration,
+  portfolio: Ticker[],
+  fundHistories: Record<string, HistoricalPoint[]>,
+  indexHistories: Record<string, HistoricalPoint[]>,
+  marketIndices: MarketIndex[],
+  globalIndices: MarketIndex[],
+  marketData: Record<string, ValuationData>
+): Promise<AIAdviceIterationResult> {
+  // 加载模板配置
+  let template1: PromptTemplate | null = null;  // 投资建议模板
+  let template2: PromptTemplate | null = null;  // 评分模板
+  let template3: PromptTemplate | null = null;  // 修正模板
+
+  try {
+    const response = await fetch('./assets/config/ai-investment-draft-templates.json', { cache: 'no-store' });
+    const data = await response.json();
+
+    if (data && data.templates && Array.isArray(data.templates)) {
+      template1 = data.templates.find((t: PromptTemplate) => t.id === 'ai-investment-advice' && t.enabled) || null;
+      template2 = data.templates.find((t: PromptTemplate) => t.id === 'ai-investment-advice-score' && t.enabled) || null;
+      template3 = data.templates.find((t: PromptTemplate) => t.id === 'ai-investment-advice-refine' && t.enabled) || null;
+    }
+  } catch (e) {
+    console.error('Failed to load AI advice templates:', e);
+  }
+
+  if (!template1 || !template2 || !template3) {
+    return {
+      advice: [],
+      success: false,
+      summary: 'AI辅助模板配置不完整',
+      iterations: 0,
+      error: 'AI辅助模板配置不完整，请检查配置文件'
+    };
+  }
+
+  // 格式化数据（不含用户计划）
+  const analysisData = formatFundBaseContextData(
+    portfolio,
+    fundHistories,
+    indexHistories,
+    marketIndices,
+    globalIndices,
+    marketData
+  );
+
+  const jsonContent = JSON.stringify(analysisData, null, 2);
+
+  // 构建初始消息
+  const messages: ChatMessage[] = [
+    { role: 'system', content: '你是一名资深基金投资顾问，拥有丰富的投资经验和敏锐的市场洞察力。' }
+  ];
+
+  // 第1步：模板1 → 获取投资建议
+  const prompt1 = template1.template
+    .replace(/{json_schema}/g, AI_ADVICE_JSON_SCHEMA)
+    .replace(/{json_content}/g, jsonContent);
+
+  messages.push({ role: 'user', content: prompt1 });
+
+  const result1 = await queryAIWithMessages(config, messages, undefined, 4000);
+
+  if (!result1.success) {
+    return {
+      advice: [],
+      success: false,
+      summary: 'AI调用失败',
+      iterations: 0,
+      error: result1.error || 'AI调用失败'
+    };
+  }
+
+  messages.push({ role: 'assistant', content: result1.content });
+
+  // 解析投资建议
+  let investList: AIAdviceEntry[];
+  try {
+    investList = parseAIAdviceJSON(result1.content);
+  } catch (e) {
+    return {
+      advice: [],
+      success: false,
+      summary: 'AI返回格式解析失败',
+      iterations: 1,
+      error: (e as Error).message
+    };
+  }
+
+  // 第2步：模板2 → 获取评分
+  const prompt2 = template2.template;
+  messages.push({ role: 'user', content: prompt2 });
+
+  const result2 = await queryAIWithMessages(config, messages, undefined, 4000);
+
+  if (!result2.success) {
+    return {
+      advice: [],
+      success: false,
+      summary: 'AI评分调用失败',
+      iterations: 1,
+      error: result2.error || 'AI评分调用失败'
+    };
+  }
+
+  messages.push({ role: 'assistant', content: result2.content });
+
+  // 解析评分结果
+  let investWithScore: AIAdviceWithScore[];
+  try {
+    investWithScore = parseAIAdviceWithScoreJSON(result2.content);
+  } catch (e) {
+    return {
+      advice: [],
+      success: false,
+      summary: 'AI评分格式解析失败',
+      iterations: 1,
+      error: (e as Error).message
+    };
+  }
+
+  let iterations = 1;
+
+  // 循环检查得分，必要时修正
+  while (!allScoresPass(investWithScore) && iterations < MAX_ITERATIONS) {
+    // 模板3 → 修正投资建议
+    const prompt3 = template3.template;
+    messages.push({ role: 'user', content: prompt3 });
+
+    const result3 = await queryAIWithMessages(config, messages, undefined, 4000);
+
+    if (!result3.success) {
+      // 修正失败，返回当前结果
+      return {
+        advice: investWithScore,
+        success: false,
+        summary: '辅助决策部分成功，AI修正调用失败',
+        iterations,
+        error: result3.error
+      };
+    }
+
+    messages.push({ role: 'assistant', content: result3.content });
+
+    // 解析修正后的投资建议
+    try {
+      investList = parseAIAdviceJSON(result3.content);
+    } catch (e) {
+      return {
+        advice: investWithScore,
+        success: false,
+        summary: '辅助决策部分成功，修正结果解析失败',
+        iterations,
+        error: (e as Error).message
+      };
+    }
+
+    // 再次评分
+    messages.push({ role: 'user', content: prompt2 });
+
+    const result4 = await queryAIWithMessages(config, messages, undefined, 4000);
+
+    if (!result4.success) {
+      return {
+        advice: investWithScore,
+        success: false,
+        summary: '辅助决策部分成功，再次评分调用失败',
+        iterations,
+        error: result4.error
+      };
+    }
+
+    messages.push({ role: 'assistant', content: result4.content });
+
+    try {
+      investWithScore = parseAIAdviceWithScoreJSON(result4.content);
+    } catch (e) {
+      return {
+        advice: investWithScore,
+        success: false,
+        summary: '辅助决策部分成功，评分解析失败',
+        iterations,
+        error: (e as Error).message
+      };
+    }
+
+    iterations++;
+  }
+
+  // 判断最终结果
+  const allPass = allScoresPass(investWithScore);
+  const summary = allPass ? '辅助决策成功' : '辅助决策部分成功，达到最大尝试轮数';
+
+  return {
+    advice: investWithScore,
+    success: allPass,
+    summary,
+    iterations
+  };
 }
 
 /**
