@@ -4,6 +4,7 @@ import { toLocalDateKey, resolvePreferredPrice, ResolvedPrice } from '../utils/p
 import { getTradesForSymbol } from '../hooks/useTrades';
 import * as cacheService from './cacheService';
 import * as indexService from './indexService';
+import * as marketFundService from './marketFundService';
 
 /**
  * 准备用于盈亏计算的历史数据
@@ -1118,7 +1119,7 @@ export async function fetchMarketNews(): Promise<JobResult<NewsItem[]>> {
 
 /**
  * 计算整体盈亏：对一组基金按日期对各基金的累计盈亏求和，返回按日的累计与当日盈利，以及按基金的区间盈亏对比
- * - 如果没有提供 symbols，则会从 localStorage 的 'fund_portfolio' 中读取（与 App.tsx 的存储保持一致）
+ * - 如果没有提供 symbols，则会从 marketFundService 中读取
  * - 只有持仓起始日期位于用户选择范围内的基金会被纳入计算（若该配置不存在，则以历史净值最早日期为起始）
  */
 export async function computeOverallProfit(opts: { symbols?: string[]; fromDate?: string | null; toDate?: string | null }): Promise<OverallProfitSummary> {
@@ -1126,18 +1127,12 @@ export async function computeOverallProfit(opts: { symbols?: string[]; fromDate?
 
   const todayLocal = toLocalDateKey(new Date());
 
- // if no symbols provided, try read portfolio from localStorage (same key used in App.tsx)
+ // if no symbols provided, try read portfolio from marketFundService
   let syms: string[] = [];
-  let portfolioArr: any[] = [];
   if (Array.isArray(symbols) && symbols.length > 0) syms = symbols;
   else {
     try {
-      const raw = localStorage.getItem('fund_portfolio');
-      if (raw) {
-        const arr = JSON.parse(raw) as any[];
-        portfolioArr = Array.isArray(arr) ? arr : [];
-        syms = portfolioArr.map(a => a.symbol).filter(Boolean);
-      }
+      syms = marketFundService.getAllFundSymbols();
     } catch (e) { syms = []; }
   }
 
@@ -1155,22 +1150,11 @@ export async function computeOverallProfit(opts: { symbols?: string[]; fromDate?
       // trades from local storage helper
       const trades = getTradesForSymbol(sym) || [];
 
-      // read stored position config if exists
-      let startDateFromStorage: string | null = null;
-      let initialPosition = 0;
-      let initialPrice: number | null = null;
-      try {
-        const key = `fund_position_${sym}`;
-        const raw = localStorage.getItem(key);
-        if (raw) {
-          const cfg = JSON.parse(raw);
-          if (cfg) {
-            if (typeof cfg.startDate === 'string') startDateFromStorage = cfg.startDate;
-            if (typeof cfg.initialPosition === 'number') initialPosition = Number(cfg.initialPosition) || 0;
-            if (cfg.initialPrice !== undefined) initialPrice = cfg.initialPrice === null ? null : Number(cfg.initialPrice);
-          }
-        }
-      } catch (e) {}
+      // read stored position config from marketFundService
+      const position = marketFundService.getPosition(sym);
+      let startDateFromStorage: string | null = position?.startDate || null;
+      let initialPosition = position?.initialPosition || 0;
+      let initialPrice: number | null = position?.initialPrice ?? null;
 
       // determine fund start date (use stored startDate if present, otherwise earliest history date)
       const sortedHistoryForPrice = [...history].sort((a, b) => (a.date as number) - (b.date as number));
@@ -1205,12 +1189,9 @@ export async function computeOverallProfit(opts: { symbols?: string[]; fromDate?
           initialPrice = resolved;
           // write back so subsequent exports and reads get the correct value
           try {
-            const key = `fund_position_${sym}`;
-            const raw = localStorage.getItem(key);
-            if (raw) {
-              const cfg = JSON.parse(raw);
-              cfg.initialPrice = resolved;
-              localStorage.setItem(key, JSON.stringify(cfg));
+            const existingPos = marketFundService.getPosition(sym);
+            if (existingPos) {
+              marketFundService.updatePosition(sym, { ...existingPos, initialPrice: resolved });
             }
           } catch (_) { /* ignore */ }
         }
@@ -1271,10 +1252,11 @@ export async function computeOverallProfit(opts: { symbols?: string[]; fromDate?
       }
       const profitTo = timeline[timeline.length - 1].cumulativeProfit || 0;
 
-      
+
       // record whether startDate came from storage and the configured initialPosition
       const hasStoredStartDate = !!startDateFromStorage;
-      const displayName = portfolioArr.find(p => p && p.symbol === sym)?.name || undefined;
+      const fundInfo = marketFundService.getFundInfo(sym);
+      const displayName = fundInfo?.ticker.name || undefined;
       perFundRows.push({ symbol: sym, name: displayName, startDate: fundStartDate || null, profitFrom, profitTo, profitDiff: Number((profitTo - profitFrom).toFixed(4)), initialPosition: initialPosition || 0, hasStoredStartDate });
     } catch (e) {
       // skip failing fund

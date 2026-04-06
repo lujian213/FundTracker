@@ -8,6 +8,7 @@ const { getTradesForSymbol } = require('../../hooks/useTrades');
 import * as fundService from '../../services/fundService';
 import { _deps } from '../../services/fundService';
 import { computeProfitTimeline } from '../../utils/profitCalculator';
+import * as marketFundService from '../../services/marketFundService';
 
 describe('computeOverallProfit', () => {
   // Save and restore _deps so each test gets a clean slate
@@ -18,6 +19,7 @@ describe('computeOverallProfit', () => {
     origFetchHistory = _deps.fetchFundHistory;
     origFetchData    = _deps.fetchFundData;
     localStorage.clear();
+    marketFundService.resetCache();
     jest.resetAllMocks();
     document.head.innerHTML = '';
   });
@@ -32,13 +34,21 @@ describe('computeOverallProfit', () => {
   }
 
   test('excludes funds without stored startDate and uses stored startDate to zero equal date', async () => {
-    const portfolio = [
-      { symbol: '270023', name: 'Fund A' },
-      { symbol: '300000', name: 'Fund B' }
-    ];
-    localStorage.setItem('fund_portfolio', JSON.stringify(portfolio));
-    localStorage.setItem('fund_position_270023', JSON.stringify({ startDate: '2026-02-11', initialPosition: 1 }));
-    localStorage.setItem('fund_position_300000', JSON.stringify({ startDate: '2026-02-13', initialPosition: 2 }));
+    // 使用 marketFundService 设置测试数据
+    marketFundService.addFund('270023', 'Fund A');
+    marketFundService.updatePosition('270023', {
+      fullCapacity: 0,
+      startDate: '2026-02-11',
+      initialPosition: 1,
+      initialPrice: null
+    });
+    marketFundService.addFund('300000', 'Fund B');
+    marketFundService.updatePosition('300000', {
+      fullCapacity: 0,
+      startDate: '2026-02-13',
+      initialPosition: 2,
+      initialPrice: null
+    });
 
     // Replace _deps directly — zero RequestQueue delay, no timers needed
     _deps.fetchFundHistory = jest.fn().mockImplementation(async (sym: string) => {
@@ -115,12 +125,21 @@ describe('computeOverallProfit', () => {
   });
 
   test('funds with startDate later than toDate are excluded', async () => {
-    localStorage.setItem('fund_portfolio', JSON.stringify([
-      { symbol: '111111', name: 'Late' },
-      { symbol: '222222', name: 'Early' }
-    ]));
-    localStorage.setItem('fund_position_111111', JSON.stringify({ startDate: '2026-03-02', initialPosition: 1 }));
-    localStorage.setItem('fund_position_222222', JSON.stringify({ startDate: '2026-02-01', initialPosition: 1 }));
+    // 使用 marketFundService 设置测试数据
+    marketFundService.addFund('111111', 'Late');
+    marketFundService.updatePosition('111111', {
+      fullCapacity: 0,
+      startDate: '2026-03-02',
+      initialPosition: 1,
+      initialPrice: null
+    });
+    marketFundService.addFund('222222', 'Early');
+    marketFundService.updatePosition('222222', {
+      fullCapacity: 0,
+      startDate: '2026-02-01',
+      initialPosition: 1,
+      initialPrice: null
+    });
 
     _deps.fetchFundHistory = jest.fn().mockResolvedValue([
       { date: mkTs('2026-02-28'), value: 1.0, equityReturn: 0 },
@@ -143,12 +162,14 @@ describe('computeOverallProfit', () => {
     // (because hasPointOnDate compared timestamps).  After the deduplication fix the trade on
     // 2026-03-03 must be applied exactly once.
 
-    localStorage.setItem('fund_portfolio', JSON.stringify([{ symbol: '023832', name: 'Test' }]));
-    localStorage.setItem('fund_position_023832', JSON.stringify({
+    // 使用 marketFundService 设置测试数据
+    marketFundService.addFund('023832', 'Test');
+    marketFundService.updatePosition('023832', {
+      fullCapacity: 0,
       startDate: '2026-02-13',
       initialPosition: 13831.32,
-      initialPrice: 1.3737,
-    }));
+      initialPrice: 1.3737
+    });
 
     // Simulate history API: returns 2026-03-02 and 2026-03-03 at midnight UTC
     // (which in UTC+8 is 2026-03-03 08:00 — same local date as the synthetic 15:00 point)
@@ -215,8 +236,14 @@ describe('computeOverallProfit', () => {
     const d = new Date();
     const today = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 
-    localStorage.setItem('fund_portfolio', JSON.stringify([{ symbol: '111111', name: 'A' }]));
-    localStorage.setItem('fund_position_111111', JSON.stringify({ startDate: '2026-02-01', initialPosition: 10, initialPrice: 1 }));
+    // 使用 marketFundService 设置测试数据
+    marketFundService.addFund('111111', 'A');
+    marketFundService.updatePosition('111111', {
+      fullCapacity: 0,
+      startDate: '2026-02-01',
+      initialPosition: 10,
+      initialPrice: 1
+    });
 
     _deps.fetchFundHistory = jest.fn().mockResolvedValue([
       { date: new Date('2026-03-01 15:00').getTime(), value: 1.1, equityReturn: 0 },
@@ -399,6 +426,7 @@ describe('computeOverallProfit — perFund startDate exposed for chart x-axis', 
     origFetchHistory = _deps.fetchFundHistory;
     origFetchData    = _deps.fetchFundData;
     localStorage.clear();
+    marketFundService.resetCache();
     jest.resetAllMocks();
   });
 
@@ -414,12 +442,21 @@ describe('computeOverallProfit — perFund startDate exposed for chart x-axis', 
   test('perFund rows carry correct startDates so UI can derive minimum for chart x-axis', async () => {
     // Fund A started 2026-01-10, Fund B started 2026-02-05
     // The chart x-axis should start at 2026-01-10 (min of the two), NOT at the earliest history date
-    localStorage.setItem('fund_portfolio', JSON.stringify([
-      { symbol: '100001', name: 'Fund A' },
-      { symbol: '100002', name: 'Fund B' },
-    ]));
-    localStorage.setItem('fund_position_100001', JSON.stringify({ startDate: '2026-01-10', initialPosition: 1 }));
-    localStorage.setItem('fund_position_100002', JSON.stringify({ startDate: '2026-02-05', initialPosition: 1 }));
+    // 使用 marketFundService 设置测试数据
+    marketFundService.addFund('100001', 'Fund A');
+    marketFundService.updatePosition('100001', {
+      fullCapacity: 0,
+      startDate: '2026-01-10',
+      initialPosition: 1,
+      initialPrice: null
+    });
+    marketFundService.addFund('100002', 'Fund B');
+    marketFundService.updatePosition('100002', {
+      fullCapacity: 0,
+      startDate: '2026-02-05',
+      initialPosition: 1,
+      initialPrice: null
+    });
 
     _deps.fetchFundHistory = jest.fn().mockImplementation(async (sym: string) => {
       // history extends before either startDate to simulate older raw data
@@ -479,6 +516,7 @@ describe('computeOverallProfit — fee-deferral matches single-fund computeProfi
     origFetchHistory = _deps.fetchFundHistory;
     origFetchData    = _deps.fetchFundData;
     localStorage.clear();
+    marketFundService.resetCache();
     jest.resetAllMocks();
   });
 
@@ -495,12 +533,14 @@ describe('computeOverallProfit — fee-deferral matches single-fund computeProfi
     // One fund, one sell trade with fee. The overall timeline dailyProfit on trade day and next day
     // must match what computeProfitTimeline produces (fee deferred to next day).
     const SYM = '888001';
-    localStorage.setItem('fund_portfolio', JSON.stringify([{ symbol: SYM, name: 'Test Fund' }]));
-    localStorage.setItem(`fund_position_${SYM}`, JSON.stringify({
+    // 使用 marketFundService 设置测试数据
+    marketFundService.addFund(SYM, 'Test Fund');
+    marketFundService.updatePosition(SYM, {
+      fullCapacity: 0,
       startDate: '2026-02-20',
       initialPosition: 100,
-      initialPrice: 1.0,
-    }));
+      initialPrice: 1.0
+    });
 
     const history = [
       { date: mkTs('2026-02-20'), value: 1.0, equityReturn: 0 },
@@ -562,16 +602,21 @@ describe('computeOverallProfit — fee-deferral matches single-fund computeProfi
     // Overall day2 daily = fundA_daily_day2 + fundB_daily_day2
     const SYM_A = '888002';
     const SYM_B = '888003';
-    localStorage.setItem('fund_portfolio', JSON.stringify([
-      { symbol: SYM_A, name: 'Fund A' },
-      { symbol: SYM_B, name: 'Fund B' },
-    ]));
-    localStorage.setItem(`fund_position_${SYM_A}`, JSON.stringify({
-      startDate: '2026-02-20', initialPosition: 100, initialPrice: 1.0,
-    }));
-    localStorage.setItem(`fund_position_${SYM_B}`, JSON.stringify({
-      startDate: '2026-02-20', initialPosition: 200, initialPrice: 2.0,
-    }));
+    // 使用 marketFundService 设置测试数据
+    marketFundService.addFund(SYM_A, 'Fund A');
+    marketFundService.updatePosition(SYM_A, {
+      fullCapacity: 0,
+      startDate: '2026-02-20',
+      initialPosition: 100,
+      initialPrice: 1.0
+    });
+    marketFundService.addFund(SYM_B, 'Fund B');
+    marketFundService.updatePosition(SYM_B, {
+      fullCapacity: 0,
+      startDate: '2026-02-20',
+      initialPosition: 200,
+      initialPrice: 2.0
+    });
 
     const histA = [
       { date: mkTs('2026-02-20'), value: 1.0, equityReturn: 0 },

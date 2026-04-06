@@ -7,6 +7,7 @@ import { getTradesForFund } from '../utils/realProfitCalculator';
 import TradeManager from '../components/TradeManager';
 import { ValuationData } from '../types';
 import { getSyncConfig, getSyncFilterConfig, saveSyncFilterConfig } from '../services/systemConfigService';
+import * as marketFundService from '../services/marketFundService';
 
 interface Props {
   isOpen: boolean;
@@ -45,24 +46,16 @@ const SyncConfirmationModal: React.FC<Props> = ({
 
   // Initialize the earliest date on component mount
   useEffect(() => {
-    const portfolioStr = localStorage.getItem('fund_portfolio');
-    const portfolio = portfolioStr ? JSON.parse(portfolioStr) : [];
+    // 使用 marketFundService 获取基金列表和持仓数据
+    const fundInfos = marketFundService.getAllFundInfos();
 
-    // Find the earliest start date across all funds by checking each fund's position config
+    // Find the earliest start date across all funds
     let earliest = '';
-    for (const fund of portfolio) {
-      try {
-        const positionStr = localStorage.getItem(`fund_position_${fund.symbol}`);
-        if (positionStr) {
-          const position = JSON.parse(positionStr);
-          if (position && position.startDate) {
-            if (!earliest || position.startDate < earliest) {
-              earliest = position.startDate;
-            }
-          }
+    for (const info of fundInfos) {
+      if (info.position?.startDate) {
+        if (!earliest || info.position.startDate < earliest) {
+          earliest = info.position.startDate;
         }
-      } catch (e) {
-        // ignore errors reading position config
       }
     }
 
@@ -120,19 +113,18 @@ const SyncConfirmationModal: React.FC<Props> = ({
       setLoadingMessage('正在获取 Eggfund 基金列表...');
       const eggfundFunds = await getEggfundFunds(eggfundUsername, eggfundPassword);
 
-      // Step 2: Get current portfolio from local storage
-      const portfolioStr = localStorage.getItem('fund_portfolio');
-      const portfolio = portfolioStr ? JSON.parse(portfolioStr) : [];
+      // Step 2: Get current portfolio from marketFundService
+      const tickers = marketFundService.getAllTickers();
 
       // Create mapping of fund code to name from portfolio
       const fundCodeToNameMap: Record<string, string> = {};
-      portfolio.forEach((fund: any) => {
+      tickers.forEach((fund) => {
         fundCodeToNameMap[fund.symbol] = fund.name;
       });
 
       // Step 3: Find intersection of funds
       const intersectingFunds = eggfundFunds.filter((fund: any) =>
-        portfolio.some((pf: any) => pf.symbol === fund.id)
+        tickers.some((pf) => pf.symbol === fund.id)
       ).map((fund: any) => ({ code: fund.id, name: fund.name }));
 
       if (intersectingFunds.length === 0) {
@@ -304,19 +296,18 @@ const SyncConfirmationModal: React.FC<Props> = ({
       setLoadingMessage('正在重新获取 Eggfund 基金列表...');
       const eggfundFunds = await getEggfundFunds(eggfundUsername, eggfundPassword);
 
-      // Step 2: Get current portfolio from local storage
-      const portfolioStr = localStorage.getItem('fund_portfolio');
-      const portfolio = portfolioStr ? JSON.parse(portfolioStr) : [];
+      // Step 2: Get current portfolio from marketFundService
+      const tickers = marketFundService.getAllTickers();
 
       // Create mapping of fund code to name from portfolio
       const fundCodeToNameMap: Record<string, string> = {};
-      portfolio.forEach((fund: any) => {
+      tickers.forEach((fund) => {
         fundCodeToNameMap[fund.symbol] = fund.name;
       });
 
       // Step 3: Find intersection of funds
       const intersectingFunds = eggfundFunds.filter((fund: any) =>
-        portfolio.some((pf: any) => pf.symbol === fund.id)
+        tickers.some((pf) => pf.symbol === fund.id)
       ).map((fund: any) => ({ code: fund.id, name: fund.name }));
 
       if (intersectingFunds.length === 0) {
@@ -397,14 +388,13 @@ const SyncConfirmationModal: React.FC<Props> = ({
         // 使用之前存储的eggfund数据重新计算差异，而不是重新加载
         const allDifferences: TradeDifference[] = [];
 
-        // Get current portfolio from local storage
-        const portfolioStr = localStorage.getItem('fund_portfolio');
-        const portfolio = portfolioStr ? JSON.parse(portfolioStr) : [];
+        // Get current portfolio from marketFundService
+        const tickers = marketFundService.getAllTickers();
 
         // Iterate through the eggfund data we have already loaded
         Object.entries(eggfundData).forEach(([fundCode, externalTrades]) => {
           // Only process funds that are in the current portfolio
-          if (portfolio.some((pf: any) => pf.symbol === fundCode)) {
+          if (tickers.some((pf) => pf.symbol === fundCode)) {
             // Get local trades after sync (updated data)
             const localTrades = getTradesForFund(fundCode);
 

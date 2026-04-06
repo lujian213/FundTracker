@@ -11,7 +11,7 @@ import {
   ComboTrade, ComboTradeRecord
 } from '../types';
 import * as cacheService from '../services/cacheService';
-import { readAll as readAllTrades } from '../hooks/useTrades';
+import { readAll as readAllTrades, setTradesForSymbol } from '../hooks/useTrades';
 import { normalizeComboTrades } from './comboTradeService';
 import {
   getBackupConfig,
@@ -24,6 +24,8 @@ import {
 import type { BackupConfigSection, SyncFilterConfigSection } from '../types/systemConfigTypes';
 import { INDEX_NAME_MAP, saveAllIndexInfos } from '../services/indexService';
 import { STORAGE_KEYS } from '../services/storageKeys';
+import * as marketFundService from '../services/marketFundService';
+import { loadComboTrades, saveAllComboTradesToStorage } from '../services/appDataService';
 
 // ─── Config helpers ───────────────────────────────────────────────────────────
 // 配置读写已迁移到 systemConfigService，这里仅保留兼容导出
@@ -80,29 +82,22 @@ export async function buildBackupData(
 
   const backupIndices: BackupIndex[] = indicesConfig.map(s => toBackupIndex(s));
 
-  // 3. positions — one entry per fund_position_* key
+  // 3. positions — 从 marketFundService 获取（已统一到 MarketFund）
   const positions: Record<string, BackupPosition> = {};
-  try {
-    Object.keys(localStorage)
-      .filter(k => k.startsWith('fund_position_'))
-      .forEach(k => {
-        const sym = k.replace('fund_position_', '');
-        try {
-          const raw = localStorage.getItem(k);
-          if (raw) {
-            const cfg = JSON.parse(raw);
-            positions[sym] = {
-              fullCapacity: Number(cfg.fullCapacity) || 0,
-              initialPosition: Number(cfg.initialPosition) || 0,
-              startDate: typeof cfg.startDate === 'string' ? cfg.startDate : null,
-              initialPrice: cfg.initialPrice === null || cfg.initialPrice === undefined
-                ? null
-                : Number(cfg.initialPrice),
-            };
-          }
-        } catch { /* skip single key */ }
-      });
-  } catch { /* ignore */ }
+  const allFundSymbols = marketFundService.getAllFundSymbols();
+  allFundSymbols.forEach(sym => {
+    const pos = marketFundService.getPosition(sym);
+    if (pos) {
+      positions[sym] = {
+        fullCapacity: pos.fullCapacity || 0,
+        initialPosition: pos.initialPosition || 0,
+        startDate: pos.startDate ?? null,
+        initialPrice: pos.initialPrice === null || pos.initialPrice === undefined
+          ? null
+          : Number(pos.initialPrice),
+      };
+    }
+  });
 
   // 4. trades — from fund_trades
   const rawTrades = readAllTrades();
@@ -128,18 +123,13 @@ export async function buildBackupData(
     syncFilterConfig: syncFilterConfig || undefined
   };
 
-  // 4. comboTrades - 从 localStorage 读取
+  // 4. comboTrades - 从 appDataService 读取（使用新 key）
   const comboTrades: Record<string, ComboTrade> = {};
   try {
-    const data = localStorage.getItem('fund_combo_trades');
-    if (data) {
-      const parsed = JSON.parse(data);
-      // 使用公共函数过滤并规范化
-      const normalized = normalizeComboTrades(parsed);
-      Object.entries(normalized).forEach(([id, combo]) => {
-        comboTrades[id] = combo;
-      });
-    }
+    const allComboTrades = loadComboTrades();
+    Object.entries(allComboTrades).forEach(([id, combo]) => {
+      comboTrades[id] = combo;
+    });
   } catch { /* ignore */ }
 
   return {
@@ -242,20 +232,36 @@ export async function applyBackupData(imported: BackupData): Promise<AppliedData
   });
 
   // ── 4. Clear old localStorage keys ────────────────────────────────────────
+  // 清理旧的基金相关 keys（迁移后不再需要）
   try { localStorage.removeItem('fund_portfolio'); } catch { /* ignore */ }
   try { localStorage.removeItem('fund_trades'); } catch { /* ignore */ }
 
-  // Remove all fund_position_* keys
+  // Remove all fund_position_* keys (已迁移到 MarketFund)
   try {
     Object.keys(localStorage)
       .filter(k => k.startsWith('fund_position_'))
       .forEach(k => { try { localStorage.removeItem(k); } catch { /* ignore */ } });
   } catch { /* ignore */ }
 
-  // ── 5. Write new portfolio to localStorage ─────────────────────────────────
-  try {
-    localStorage.setItem('fund_portfolio', JSON.stringify(newPortfolio));
-  } catch { /* ignore */ }
+  // 注意：fund_history_* 和 fund_intraday_* keys 保留，供迁移使用
+  // fund_market_data 也保留，供 cacheService 兼容
+
+  // ── 5. Write new portfolio via marketFundService ─────────────────────────────────
+  // 创建新基金（如果不存在）
+  newPortfolio.forEach((t: any) => {
+    if (!marketFundService.getFundInfo(t.symbol)) {
+      marketFundService.addFund(t.symbol, t.name || '');
+    }
+  });
+
+  // 删除不在新 portfolio 中的基金
+  const newSymbolSet2 = new Set(newPortfolio.map((t: any) => t.symbol));
+  const existingSymbols = marketFundService.getAllFundSymbols();
+  existingSymbols.forEach(sym => {
+    if (!newSymbolSet2.has(sym)) {
+      marketFundService.removeFund(sym);
+    }
+  });
 
   // ── 6. Write new indices config (unified) ───────────────────────────────────
   // Compatibility: old format stored indices as string[], new format as BackupIndex[]
@@ -296,24 +302,23 @@ export async function applyBackupData(imported: BackupData): Promise<AppliedData
 
   const newIndicesConfig = allIndexInfos.map(i => i.symbol);
 
-  // ── 7. Write positions ─────────────────────────────────────────────────────
+  // ── 7. Write positions (通过 marketFundService 写入) ─────────────────────────────
   const positions: Record<string, any> = imported.positions || {};
   Object.entries(positions).forEach(([sym, pos]) => {
     try {
-      localStorage.setItem(`fund_position_${sym}`, JSON.stringify({
+      marketFundService.updatePosition(sym, {
         fullCapacity: Number(pos.fullCapacity) || 0,
         initialPosition: Number(pos.initialPosition) || 0,
         startDate: pos.startDate ?? null,
         initialPrice: pos.initialPrice === undefined ? null : pos.initialPrice,
-      }));
+      });
     } catch { /* ignore */ }
   });
 
-  // ── 8. Write trades ────────────────────────────────────────────────────────
+  // ── 8. Write trades (通过 useTrades hook 写入 marketFundService) ────────────────
   const trades: Record<string, any[]> = imported.trades || {};
-  const normalizedTrades: Record<string, any[]> = {};
   Object.entries(trades).forEach(([sym, arr]) => {
-    normalizedTrades[sym] = (Array.isArray(arr) ? arr : []).map((t: any) => ({
+    const normalizedTrades = (Array.isArray(arr) ? arr : []).map((t: any) => ({
       id: t.id,
       date: t.date,
       type: t.type,
@@ -321,8 +326,8 @@ export async function applyBackupData(imported: BackupData): Promise<AppliedData
       price: t.price === undefined ? 0 : Number(t.price),
       fee: Number(t.fee) || 0,
     }));
+    setTradesForSymbol(sym, normalizedTrades);
   });
-  try { localStorage.setItem('fund_trades', JSON.stringify(normalizedTrades)); } catch { /* ignore */ }
 
   // ── 9. Write config including sync filter config ────────────────────────────────────
   if (imported.config) {
@@ -349,7 +354,11 @@ export async function applyBackupData(imported: BackupData): Promise<AppliedData
       // 使用公共函数过滤并规范化导入数据
       const filteredComboTrades = normalizeComboTrades(imported.comboTrades);
       if (Object.keys(filteredComboTrades).length > 0) {
-        localStorage.setItem('fund_combo_trades', JSON.stringify(filteredComboTrades));
+        // 使用 appDataService 保存到新 key
+        const appDataComboTrades: Record<string, ComboTrade> = {};
+        Object.assign(appDataComboTrades, filteredComboTrades);
+        // 直接写入 localStorage 使用新 key，并更新 appDataService 缓存
+        localStorage.setItem(STORAGE_KEYS.COMBO_TRADE, JSON.stringify(appDataComboTrades));
       }
     } catch { /* ignore */ }
   }

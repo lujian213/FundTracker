@@ -100,6 +100,33 @@ export interface MarketIndex {
   history: HistoricalPoint[];   // 历史数据点数组
 }
 
+// ═══════════════════════════════════════════════════════════════════════════════
+// 基金相关类型
+// ═══════════════════════════════════════════════════════════════════════════════
+
+// 基金持仓配置
+export interface FundPosition {
+  fullCapacity: number;       // 满仓金额
+  initialPosition: number;    // 初始仓位
+  startDate: string | null;   // 开始日期 YYYY-MM-DD
+  initialPrice: number | null; // 初始价格
+}
+
+// 基金信息（统一存储）：包含 Ticker、持仓、估值
+export interface FundInfo {
+  ticker: Ticker;              // Ticker 信息（嵌套）
+  position?: FundPosition;     // 持仓配置（可选）
+  valuation?: ValuationData;   // 估值数据（可选）
+}
+
+// 基金完整数据（运行时，包含交易、日内和历史）
+export interface MarketFund {
+  info: FundInfo;                 // 基金信息（Ticker + 持仓 + 估值）
+  trades: TradeRecord[];          // 交易记录
+  intraday: IntradayPoint[];      // 日内数据点数组
+  history: HistoricalPoint[];     // 历史数据点数组
+}
+
 export interface HistoricalPoint {
   date: number; // 时间戳
   value: number; // 净值

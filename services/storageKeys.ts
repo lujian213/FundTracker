@@ -30,6 +30,9 @@ export const STORAGE_KEYS = {
 
   /** 指数完整数据（统一存储所有指数的MarketIndex：info+intraday+history） */
   INDEX_DATA: 'fund_all_indices_data',
+
+  /** 基金完整数据（统一存储所有基金的MarketFund：info+trades+intraday+history） */
+  FUND_DATA: 'fund_all_funds_data',
 } as const;
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -82,5 +85,20 @@ export const OLD_STORAGE_KEYS = {
     INDEX_INFO_GLOBAL: 'fund_global_indices_info',
     /** 旧版IndexInfo统一存储key（Phase 1迁移源） */
     INDEX_INFO_UNIFIED: 'fund_all_indices_info',
+  },
+
+  FUND: {
+    /** 旧版基金列表 */
+    PORTFOLIO: 'fund_portfolio',
+    /** 旧版估值数据（所有基金合并） */
+    MARKET_DATA: 'fund_market_data',
+    /** 旧版交易记录（所有基金合并） */
+    TRADES: 'fund_trades',
+    /** 历史数据 key 前缀 */
+    HISTORY_PREFIX: 'fund_history_',
+    /** 日内数据 key 前缀 */
+    INTRADAY_PREFIX: 'fund_intraday_',
+    /** 持仓配置 key 前缀 */
+    POSITION_PREFIX: 'fund_position_',
   },
 } as const;

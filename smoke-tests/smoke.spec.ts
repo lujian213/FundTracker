@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import path from 'path';
 
 // 需要检查的 localStorage key
 const EXPECTED_STORAGE_KEYS = [
@@ -162,5 +163,128 @@ test.describe('Smoke Tests', () => {
 
     // 至少应该显示一些默认指数
     expect(indexCards.length).toBeGreaterThan(0);
+  });
+
+  test('导入备份文件成功显示7个指数和21个基金', async ({ page }) => {
+    // 监听 console 消息
+    const consoleMessages: string[] = [];
+    page.on('console', msg => {
+      consoleMessages.push(msg.text());
+    });
+
+    // 打开主页
+    await page.goto('/', { waitUntil: 'networkidle' });
+
+    // 等待页面渲染完成
+    await page.waitForTimeout(2000);
+
+    // 点击系统配置按钮（齿轮图标）
+    const configButton = page.locator('button[title="系统配置"]');
+    await configButton.click();
+
+    // 等待系统配置模态框打开
+    await page.waitForTimeout(500);
+
+    // 验证备份管理标签已选中
+    const backupTab = page.locator('button:has-text("备份管理")');
+    await expect(backupTab).toHaveClass(/bg-blue-50/);
+
+    // 准备上传备份文件
+    const backupFilePath = path.join(process.cwd(), '__mocks__', 'fund_backup_2026-04-06_12-50-51.json');
+
+    // 点击导入备份按钮并等待文件选择器
+    const importButton = page.locator('button:has-text("导入备份")');
+
+    // 使用 Promise.all 确保点击和文件选择器监听同步
+    const [fileChooser] = await Promise.all([
+      page.waitForEvent('filechooser'),
+      importButton.click(),
+    ]);
+
+    // 上传文件
+    await fileChooser.setFiles(backupFilePath);
+
+    // 等待确认对话框出现
+    const confirmDialog = page.locator('[role="dialog"]:has-text("导入确认")');
+    await expect(confirmDialog).toBeVisible({ timeout: 5000 });
+
+    // 点击确认导入按钮
+    const confirmButton = confirmDialog.locator('button:has-text("确认导入")');
+    await confirmButton.click();
+
+    // 等待导入处理完成
+    await page.waitForTimeout(3000);
+
+    // 输出控制台消息帮助调试
+    console.log('控制台消息:', consoleMessages.filter(m => m.includes('backup') || m.includes('import') || m.includes('迁移')));
+
+    // 验证 localStorage 中的数据
+    const storageData = await page.evaluate(() => {
+      // 读取基金数据
+      const fundsRaw = localStorage.getItem('fund_all_funds_data');
+      const funds = fundsRaw ? JSON.parse(fundsRaw) : [];
+
+      // 读取指数数据
+      const indicesRaw = localStorage.getItem('fund_all_indices_data');
+      const indices = indicesRaw ? JSON.parse(indicesRaw) : [];
+
+      // 输出所有 localStorage keys
+      const allKeys = Object.keys(localStorage);
+      console.log('所有 localStorage keys:', allKeys);
+
+      return {
+        fundCount: funds.length,
+        indexCount: indices.length,
+        fundSymbols: funds.map((f: any) => f.info?.ticker?.symbol).filter(Boolean),
+        indexSymbols: indices.map((m: any) => m.info?.symbol).filter(Boolean),
+        allKeys,
+      };
+    });
+
+    // 输出详细信息
+    console.log('导入后基金数量:', storageData.fundCount);
+    console.log('导入后指数数量:', storageData.indexCount);
+    console.log('localStorage keys:', storageData.allKeys);
+
+    // 验证数量
+    expect(storageData.fundCount).toBe(21);
+    expect(storageData.indexCount).toBe(7);
+
+    // 输出详细信息
+    console.log('导入后基金数量:', storageData.fundCount);
+    console.log('导入后指数数量:', storageData.indexCount);
+    console.log('基金符号:', storageData.fundSymbols);
+    console.log('指数符号:', storageData.indexSymbols);
+
+    // 验证基金符号
+    const expectedFundSymbols = [
+      '023832', '004433', '022364', '012328', '008888', '012734', '024194', '011592',
+      '002611', '012349', '270023', '530018', '020640', '025833', '270042', '015283',
+      '019005', '161226', '019173', '017437', '019524'
+    ];
+    expect(storageData.fundSymbols.sort()).toEqual(expectedFundSymbols.sort());
+
+    // 验证指数符号
+    const expectedIndexSymbols = ['1.000001', '124.HSTECH', '0.399001', '0.399006', '100.NDX100', '101.GC00Y', '101.SI00Y'];
+    expect(storageData.indexSymbols.sort()).toEqual(expectedIndexSymbols.sort());
+
+    // 刷新页面验证数据持久化
+    await page.reload({ waitUntil: 'networkidle' });
+    await page.waitForTimeout(2000);
+
+    // 验证刷新后数据仍然存在
+    const refreshedData = await page.evaluate(() => {
+      const fundsRaw = localStorage.getItem('fund_all_funds_data');
+      const funds = fundsRaw ? JSON.parse(fundsRaw) : [];
+      const indicesRaw = localStorage.getItem('fund_all_indices_data');
+      const indices = indicesRaw ? JSON.parse(indicesRaw) : [];
+      return {
+        fundCount: funds.length,
+        indexCount: indices.length,
+      };
+    });
+
+    expect(refreshedData.fundCount).toBe(21);
+    expect(refreshedData.indexCount).toBe(7);
   });
 });

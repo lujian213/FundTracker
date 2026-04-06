@@ -1,8 +1,12 @@
 import { getTradesForSymbol, addTradeForSymbol, updateTradeForSymbol, removeTradeForSymbol, setTradesForSymbol, exportTradesForSymbolJSON, exportTradesForSymbolCSV } from '../../hooks/useTrades';
+import { resetCache as resetMarketFundCache } from '../../services/marketFundService';
 
 describe('useTrades helpers', () => {
   const symbol = 'TEST123';
-  beforeEach(() => { localStorage.clear(); });
+  beforeEach(() => {
+    localStorage.clear();
+    resetMarketFundCache();
+  });
 
   test('add, update, remove trades and export', () => {
     // initial empty

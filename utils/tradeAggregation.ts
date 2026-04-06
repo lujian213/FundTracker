@@ -1,6 +1,7 @@
 import { TradeRecord } from '../types';
 import { HistoricalPoint } from '../types';
 import { toLocalDateKey } from './priceResolver';
+import * as marketFundService from '../services/marketFundService';
 
 export interface AggregatedMarker {
   x: number;
@@ -144,19 +145,18 @@ export function aggregateTradesByDate(trades: TradeRecord[] | undefined, chartDa
  * @returns An array containing at most one position start marker
  */
 export function generatePositionStartMarker(symbol: string, chartData: HistoricalPoint[], points: { x: number; y: number; data: HistoricalPoint }[]): AggregatedMarker[] {
-  // Read position config from localStorage
+  // Read position config from marketFundService
   let initialPosition = 0;
   let startDate: string | null = null;
 
   try {
-    const cfgRaw = localStorage.getItem(`fund_position_${symbol}`);
-    if (cfgRaw) {
-      const cfg = JSON.parse(cfgRaw);
-      initialPosition = Number(cfg.initialPosition) || 0;
-      startDate = typeof cfg.startDate === 'string' ? cfg.startDate : null;
+    const position = marketFundService.getPosition(symbol);
+    if (position) {
+      initialPosition = position.initialPosition || 0;
+      startDate = position.startDate || null;
     }
   } catch (e) {
-    // ignore parsing errors
+    // ignore errors
     return [];
   }
 

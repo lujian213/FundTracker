@@ -43,6 +43,7 @@ jest.mock('react-dom', () => ({
 import { setTradesForSymbol } from '../../hooks/useTrades';
 import TransactionsModal from '../../components/TransactionsModal';
 import { Ticker, ValuationData } from '../../types';
+import { resetCache as resetMarketFundCache } from '../../services/marketFundService';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -74,7 +75,10 @@ function seed() {
 // ── Tests ─────────────────────────────────────────────────────────────────────
 
 describe('TransactionsModal', () => {
-  beforeEach(() => { localStorage.clear(); });
+  beforeEach(() => {
+    localStorage.clear();
+    resetMarketFundCache();
+  });
 
   // 1. No trades at all
   describe('when there are no trades', () => {

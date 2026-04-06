@@ -7,6 +7,7 @@ import { computeAvgCostPrice } from '../utils/positionHelper';
 import { toLocalDateKey } from '../utils/priceResolver';
 import { computeSMA } from '../utils/movingAverage';
 import { DraftEntry } from '../types/appDataTypes';
+import * as marketFundService from './marketFundService';
 
 // Re-export DraftEntry type for backward compatibility
 export type { DraftEntry };
@@ -164,22 +165,19 @@ function getStageReturn(
  */
 function getCurrentShares(symbol: string): number {
   try {
-    const raw = localStorage.getItem(`fund_position_${symbol}`);
-    if (raw) {
-      const cfg = JSON.parse(raw);
-      const initialPosition = Number(cfg.initialPosition) || 0;
+    const position = marketFundService.getPosition(symbol);
+    const initialPosition = position?.initialPosition || 0;
 
-      // 加上交易记录
-      const trades = getTradesForSymbol(symbol);
-      let buyShares = 0;
-      let sellShares = 0;
-      for (const t of trades) {
-        if (t.type === 'buy') buyShares += t.shares;
-        else sellShares += t.shares;
-      }
-
-      return initialPosition + buyShares - sellShares;
+    // 加上交易记录
+    const trades = getTradesForSymbol(symbol);
+    let buyShares = 0;
+    let sellShares = 0;
+    for (const t of trades) {
+      if (t.type === 'buy') buyShares += t.shares;
+      else sellShares += t.shares;
     }
+
+    return initialPosition + buyShares - sellShares;
   } catch (e) {
     // ignore
   }

@@ -3,6 +3,7 @@ import React from 'react';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { FundDetailsModal } from '../../components/FundDetailsModal';
 import * as systemConfigService from '../../services/systemConfigService';
+import { updatePosition, resetCache as resetMarketFundCache } from '../../services/marketFundService';
 
 jest.mock('../../services/systemConfigService');
 
@@ -26,16 +27,17 @@ describe('FundDetailsModal - 初始价格调整按钮', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     localStorage.clear();
+    resetMarketFundCache();
   });
 
   test('should not show adjust button when feature is disabled', () => {
     mockIsFeatureEnabled.mockReturnValue(false);
-    localStorage.setItem('fund_position_007349', JSON.stringify({
+    updatePosition('007349', {
       fullCapacity: 10000,
       initialPosition: 1000,
       startDate: '2026-01-01',
       initialPrice: 1.2,
-    }));
+    });
 
     render(<FundDetailsModal data={mockData} onClose={mockOnClose} />);
 
@@ -44,10 +46,12 @@ describe('FundDetailsModal - 初始价格调整按钮', () => {
 
   test('should not show adjust button when initialPosition is 0', () => {
     mockIsFeatureEnabled.mockReturnValue(true);
-    localStorage.setItem('fund_position_007349', JSON.stringify({
+    updatePosition('007349', {
       fullCapacity: 10000,
       initialPosition: 0,
-    }));
+      startDate: null,
+      initialPrice: null,
+    });
 
     render(<FundDetailsModal data={mockData} onClose={mockOnClose} />);
 
@@ -56,12 +60,12 @@ describe('FundDetailsModal - 初始价格调整按钮', () => {
 
   test('should show adjust button when feature enabled and initialPosition > 0', async () => {
     mockIsFeatureEnabled.mockReturnValue(true);
-    localStorage.setItem('fund_position_007349', JSON.stringify({
+    updatePosition('007349', {
       fullCapacity: 10000,
       initialPosition: 1000,
       startDate: '2026-01-01',
       initialPrice: 1.2,
-    }));
+    });
 
     render(<FundDetailsModal data={mockData} onClose={mockOnClose} />);
 

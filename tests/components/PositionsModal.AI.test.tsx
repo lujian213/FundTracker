@@ -4,6 +4,7 @@ import { render, screen, fireEvent } from '@testing-library/react';
 import { MarketType } from '../../types';
 import PositionsModal from '../../components/PositionsModal';
 import { Ticker, ValuationData } from '../../types';
+import { resetCache as resetMarketFundCache, updatePosition } from '../../services/marketFundService';
 
 // Mock react-dom portal
 jest.mock('react-dom', () => ({
@@ -59,15 +60,13 @@ function makeValuation(symbol: string, currentPrice: number): ValuationData {
 }
 
 function setPosition(symbol: string, fullCapacity: number, initialPosition: number) {
-  localStorage.setItem(
-    `fund_position_${symbol}`,
-    JSON.stringify({ fullCapacity, initialPosition })
-  );
+  updatePosition(symbol, { fullCapacity, initialPosition, startDate: null, initialPrice: null });
 }
 
 describe('PositionsModal - AI Analysis Integration', () => {
   beforeEach(() => {
     localStorage.clear();
+    resetMarketFundCache();
   });
 
   test('renders AI analysis button next to magnifier button', () => {

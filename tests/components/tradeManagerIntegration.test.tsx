@@ -6,6 +6,7 @@ import { ValuationData } from '../../types';
 import { fetchFundHistory } from '../../services/fundService';
 import { toLocalDateKey } from '../../utils/priceResolver';
 import { setTradesForSymbol } from '../../hooks/useTrades';
+import { resetCache as resetMarketFundCache, updatePosition } from '../../services/marketFundService';
 
 jest.mock('../../services/fundService', () => ({ fetchFundHistory: jest.fn() }));
 
@@ -34,8 +35,9 @@ const data: ValuationData = {
 // ─── FundDetailsModal → TradeManager integration ────────────────────────────
 describe('FundDetailsModal -> TradeManager integration', () => {
   beforeEach(() => {
-    const key = `fund_position_TEST001`;
-    try { localStorage.setItem(key, JSON.stringify({ fullCapacity: 100, initialPosition: 0, startDate: null, initialPrice: null })); } catch (e) {}
+    localStorage.clear();
+    resetMarketFundCache();
+    updatePosition('TEST001', { fullCapacity: 100, initialPosition: 0, startDate: null, initialPrice: null });
     (fetchFundHistory as jest.Mock).mockResolvedValue(SHARED_HISTORY);
   });
 
@@ -154,6 +156,7 @@ describe('TradeManager initial position record', () => {
 
   test('records sorted by date DESC', async () => {
     localStorage.clear();
+    resetMarketFundCache();
     setTradesForSymbol('TEST001', [
       { id: 't1', date: '2024-06-15', type: 'buy', shares: 50, price: 1.5, fee: 0 },
       { id: 't2', date: '2024-03-20', type: 'sell', shares: 30, price: 1.6, fee: 0 },
@@ -199,6 +202,7 @@ describe('TradeManager profit/loss display', () => {
   beforeEach(() => {
     (fetchFundHistory as jest.Mock).mockResolvedValue([]);
     localStorage.clear();
+    resetMarketFundCache();
   });
 
   test('positive profit in red', async () => {
@@ -254,6 +258,7 @@ describe('TradeManager FIFO/LIFO views', () => {
   beforeEach(() => {
     (fetchFundHistory as jest.Mock).mockResolvedValue([]);
     localStorage.clear();
+    resetMarketFundCache();
   });
 
   test('FIFO shows remaining shares', async () => {

@@ -3,6 +3,7 @@ import { computeProfitTimeline } from './profitCalculator';
 import { adjustProfitTimelineForDisplay } from './profitAdjustment';
 import { toLocalDateKey } from './priceResolver';
 import { resolvePreferredPrice } from './priceResolver';
+import * as marketFundService from '../services/marketFundService';
 
 // Interface for the position data
 interface PositionData {
@@ -212,19 +213,16 @@ export const calculateRealProfitSync = (
 };
 
 /**
- * Gets stored position data from localStorage for a fund
+ * Gets stored position data from marketFundService for a fund
  */
 export const getStoredPosition = (fundSymbol: string): PositionData | null => {
   try {
-    const rawKey = `fund_position_${fundSymbol}`;
-    const padKey = `fund_position_${String(fundSymbol).padStart(6, '0')}`;
-    const raw = localStorage.getItem(rawKey) || localStorage.getItem(padKey);
-    if (!raw) return null;
-    const cfg = JSON.parse(raw);
+    const position = marketFundService.getPosition(fundSymbol);
+    if (!position) return null;
     return {
-      startDate: typeof cfg.startDate === 'string' ? cfg.startDate : null,
-      initialPosition: typeof cfg.initialPosition === 'number' ? Number(cfg.initialPosition) || 0 : (typeof cfg.initialPosition === 'string' ? Number(cfg.initialPosition) || 0 : 0),
-      initialPrice: cfg.initialPrice !== undefined ? (cfg.initialPrice === null ? null : Number(cfg.initialPrice)) : null,
+      startDate: position.startDate || null,
+      initialPosition: position.initialPosition || 0,
+      initialPrice: position.initialPrice ?? null,
     };
   } catch (e) {
     console.error(`Error reading stored position for ${fundSymbol}:`, e);
@@ -233,13 +231,11 @@ export const getStoredPosition = (fundSymbol: string): PositionData | null => {
 };
 
 /**
- * Gets trade data for a fund from localStorage
+ * Gets trade data for a fund from marketFundService
  */
 export const getTradesForFund = (fundSymbol: string): TradeRecord[] => {
   try {
-    const raw = localStorage.getItem('fund_trades');
-    const all = raw ? JSON.parse(raw) : {};
-    return Array.isArray(all[fundSymbol]) ? all[fundSymbol] : [];
+    return marketFundService.getTrades(fundSymbol) || [];
   } catch (e) {
     console.error(`Error getting trades for ${fundSymbol}:`, e);
     return [];

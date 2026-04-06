@@ -9,6 +9,7 @@
 
 import { IndexInfo, MarketIndex, HistoricalPoint, IntradayPoint } from '../types';
 import { STORAGE_KEYS, OLD_STORAGE_KEYS } from './storageKeys';
+import { floorToMinute, isSameLocalDay } from '../utils/dateTimeUtils';
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // 内存缓存
@@ -95,48 +96,48 @@ function init(): void {
 /**
  * 从旧 key 迁移数据到新 key
  * 合并 IndexInfo + history + intraday 为完整 MarketIndex
+ * 保持原有指数顺序
  */
 function migrateFromOldKeys(): void {
   const OLD_KEYS = OLD_STORAGE_KEYS.INDEX;
-  const indexInfoMap = new Map<string, IndexInfo>();
+  // 使用数组存储 IndexInfo，保持原有顺序
+  let indexInfoList: IndexInfo[] = [];
 
   // 1. 从 fund_all_indices_info 读取 IndexInfo（Phase 1 的迁移结果）
   try {
     const unifiedRaw = localStorage.getItem(OLD_KEYS.INDEX_INFO_UNIFIED);
     if (unifiedRaw) {
-      const infos: IndexInfo[] = JSON.parse(unifiedRaw);
-      infos.forEach(info => indexInfoMap.set(info.symbol, info));
+      indexInfoList = JSON.parse(unifiedRaw);
     }
   } catch { /* ignore */ }
 
   // 2. 如果没有统一的 IndexInfo，尝试从分开的两个key合并（更早的旧格式）
-  if (indexInfoMap.size === 0) {
+  if (indexInfoList.length === 0) {
     try {
       const domesticRaw = localStorage.getItem(OLD_KEYS.INDEX_INFO_DOMESTIC);
       const globalRaw = localStorage.getItem(OLD_KEYS.INDEX_INFO_GLOBAL);
       if (domesticRaw) {
         const domesticInfos: IndexInfo[] = JSON.parse(domesticRaw);
-        domesticInfos.forEach(info => indexInfoMap.set(info.symbol, info));
+        indexInfoList = indexInfoList.concat(domesticInfos);
       }
       if (globalRaw) {
         const globalInfos: IndexInfo[] = JSON.parse(globalRaw);
-        globalInfos.forEach(info => indexInfoMap.set(info.symbol, info));
+        indexInfoList = indexInfoList.concat(globalInfos);
       }
     } catch { /* ignore */ }
   }
 
   // 3. 如果还是没有数据，尝试从更早的旧格式迁移
-  if (indexInfoMap.size === 0) {
-    migrateFromVeryOldFormat(indexInfoMap);
+  if (indexInfoList.length === 0) {
+    indexInfoList = migrateFromVeryOldFormat();
   }
 
-  // 4. 构建 MarketIndex，合并 history 和 intraday
-  const marketIndices: MarketIndex[] = [];
-  indexInfoMap.forEach((info, symbol) => {
+  // 4. 构建 MarketIndex，合并 history 和 intraday，保持顺序
+  const marketIndices: MarketIndex[] = indexInfoList.map(info => {
     // 读取历史数据
     let history: HistoricalPoint[] = [];
     try {
-      const historyRaw = localStorage.getItem(`${OLD_KEYS.HISTORY_PREFIX}${symbol}`);
+      const historyRaw = localStorage.getItem(`${OLD_KEYS.HISTORY_PREFIX}${info.symbol}`);
       if (historyRaw) {
         history = JSON.parse(historyRaw);
       }
@@ -145,7 +146,7 @@ function migrateFromOldKeys(): void {
     // 读取日内数据
     let intraday: IntradayPoint[] = [];
     try {
-      const intradayRaw = localStorage.getItem(`${OLD_KEYS.INTRADAY_PREFIX}${symbol}`);
+      const intradayRaw = localStorage.getItem(`${OLD_KEYS.INTRADAY_PREFIX}${info.symbol}`);
       if (intradayRaw) {
         const parsed: IntradayPoint[] = JSON.parse(intradayRaw);
         // 只保留当天的日内数据
@@ -153,7 +154,7 @@ function migrateFromOldKeys(): void {
       }
     } catch { /* ignore */ }
 
-    marketIndices.push({ info, intraday, history });
+    return { info, intraday, history };
   });
 
   // 5. 如果没有数据，使用默认值
@@ -173,11 +174,12 @@ function migrateFromOldKeys(): void {
 
 /**
  * 从非常旧的格式迁移（fund_indices_config + fund_market_indices_cache 等）
+ * 返回保持原有顺序的 IndexInfo 数组
  */
-function migrateFromVeryOldFormat(indexInfoMap: Map<string, IndexInfo>): void {
+function migrateFromVeryOldFormat(): IndexInfo[] {
   const OLD_KEYS = OLD_STORAGE_KEYS.INDEX;
 
-  // 读取旧的配置列表
+  // 读取旧的配置列表（保持顺序）
   let domesticSymbols: string[] = [];
   let globalSymbols: string[] = [];
 
@@ -191,7 +193,8 @@ function migrateFromVeryOldFormat(indexInfoMap: Map<string, IndexInfo>): void {
     if (raw) globalSymbols = JSON.parse(raw);
   } catch { /* ignore */ }
 
-  const allSymbols = new Set([...domesticSymbols, ...globalSymbols]);
+  // 保持原有顺序：国内指数 + 全球指数
+  const allSymbols = [...domesticSymbols, ...globalSymbols];
 
   // 读取旧的实时数据
   const dataMap = new Map<string, any>();
@@ -235,10 +238,10 @@ function migrateFromVeryOldFormat(indexInfoMap: Map<string, IndexInfo>): void {
     }
   } catch { /* ignore */ }
 
-  // 构建 IndexInfo 列表
-  allSymbols.forEach(symbol => {
+  // 按 allSymbols 的顺序构建 IndexInfo 数组
+  return allSymbols.map(symbol => {
     const data = dataMap.get(symbol);
-    indexInfoMap.set(symbol, {
+    return {
       symbol,
       name: data?.name || INDEX_NAME_MAP[symbol] || symbol,
       current: data?.current || 0,
@@ -249,7 +252,7 @@ function migrateFromVeryOldFormat(indexInfoMap: Map<string, IndexInfo>): void {
       previousClose: data?.previousClose,
       volume: data?.volume,
       amount: data?.amount,
-    });
+    };
   });
 }
 
@@ -314,24 +317,28 @@ export function saveIndexInfo(info: IndexInfo): void {
 
 /**
  * 批量保存指数配置（创建新的 MarketIndex，保留已有的 intraday 和 history）
+ * 保持传入的 infos 数组顺序
  */
 export function saveAllIndexInfos(infos: IndexInfo[]): void {
-  const newSymbols = new Set(infos.map(i => i.symbol));
-  // 删除不在新列表中的指数
-  indices.forEach((_, symbol) => {
-    if (!newSymbols.has(symbol)) {
-      indices.delete(symbol);
-    }
+  // 先保存现有的 intraday 和 history 数据
+  const existingData = new Map<string, { intraday: IntradayPoint[]; history: HistoricalPoint[] }>();
+  indices.forEach((m, symbol) => {
+    existingData.set(symbol, { intraday: m.intraday, history: m.history });
   });
-  // 更新或新增指数
+
+  // 清空 Map
+  indices.clear();
+
+  // 按新顺序重新添加
   infos.forEach(info => {
-    const existing = indices.get(info.symbol);
-    if (existing) {
-      existing.info = info;
-    } else {
-      indices.set(info.symbol, { info, intraday: [], history: [] });
-    }
+    const existing = existingData.get(info.symbol);
+    indices.set(info.symbol, {
+      info,
+      intraday: existing?.intraday || [],
+      history: existing?.history || []
+    });
   });
+
   saveToStorage();
 }
 
@@ -513,19 +520,6 @@ export function updateIntraday(symbol: string, points: IntradayPoint[]): void {
   saveToStorage();
 }
 
-/**
- * Helper: floor timestamp to minute (ms)
- */
-const floorToMinute = (ts: number) => Math.floor(ts / 60000) * 60000;
-
-/**
- * Helper: check if timestamp is same local day as now
- */
-const isSameLocalDay = (ts: number) => {
-  const d = new Date(ts);
-  const now = new Date();
-  return d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth() && d.getDate() === now.getDate();
-};
 
 /**
  * 添加单个日内数据点（用于实时更新）
@@ -638,6 +632,13 @@ export function ensureIndexMigration(): void {
   migrateFromOldKeys();
 
   // 重新加载缓存
+  loadFromStorage();
+}
+
+/**
+ * 从 localStorage 加载数据到缓存
+ */
+function loadFromStorage(): void {
   indices.clear();
   try {
     const raw = localStorage.getItem(STORAGE_KEYS.INDEX_DATA);
@@ -656,6 +657,7 @@ export function ensureIndexMigration(): void {
 
 /**
  * 验证迁移结果
+ * 验证：1. 新key有数据；2. 指数数量一致；3. 每个指数的info、history、intraday 内容一致
  */
 export function verifyIndexMigration(deleteOldKeys: boolean = false): {
   success: boolean;
@@ -684,28 +686,228 @@ export function verifyIndexMigration(deleteOldKeys: boolean = false): {
     }
   }
 
+  // 读取旧 IndexInfo 数据
+  let oldIndexInfos: IndexInfo[] = [];
+  // 优先从统一 key 读取
+  try {
+    const unifiedRaw = localStorage.getItem(OLD_KEYS.INDEX_INFO_UNIFIED);
+    if (unifiedRaw) {
+      oldIndexInfos = JSON.parse(unifiedRaw);
+    }
+  } catch { /* ignore */ }
+  // 如果没有统一 key，从分开的两个 key 读取
+  if (oldIndexInfos.length === 0) {
+    try {
+      const domesticRaw = localStorage.getItem(OLD_KEYS.INDEX_INFO_DOMESTIC);
+      const globalRaw = localStorage.getItem(OLD_KEYS.INDEX_INFO_GLOBAL);
+      if (domesticRaw) {
+        const domesticInfos: IndexInfo[] = JSON.parse(domesticRaw);
+        oldIndexInfos = oldIndexInfos.concat(domesticInfos);
+      }
+      if (globalRaw) {
+        const globalInfos: IndexInfo[] = JSON.parse(globalRaw);
+        oldIndexInfos = oldIndexInfos.concat(globalInfos);
+      }
+    } catch { /* ignore */ }
+  }
+  // 如果还是没有，从最旧的格式读取
+  if (oldIndexInfos.length === 0) {
+    try {
+      const configRaw = localStorage.getItem(OLD_KEYS.INDICES_CONFIG);
+      const globalConfigRaw = localStorage.getItem(OLD_KEYS.GLOBAL_INDICES_CONFIG);
+      const cacheRaw = localStorage.getItem(OLD_KEYS.MARKET_INDICES_CACHE);
+      const globalCacheRaw = localStorage.getItem(OLD_KEYS.GLOBAL_INDICES_CACHE);
+      const marketDataRaw = localStorage.getItem(OLD_KEYS.INDEX_MARKET_DATA);
+
+      const domesticSymbols: string[] = configRaw ? JSON.parse(configRaw) : [];
+      const globalSymbols: string[] = globalConfigRaw ? JSON.parse(globalConfigRaw) : [];
+      const allSymbols = [...domesticSymbols, ...globalSymbols];
+
+      const dataMap = new Map<string, any>();
+      if (cacheRaw) {
+        const items = JSON.parse(cacheRaw);
+        if (Array.isArray(items)) items.forEach((item: any) => { if (item.symbol) dataMap.set(item.symbol, item); });
+      }
+      if (globalCacheRaw) {
+        const items = JSON.parse(globalCacheRaw);
+        if (Array.isArray(items)) items.forEach((item: any) => { if (item.symbol) dataMap.set(item.symbol, item); });
+      }
+      if (marketDataRaw) {
+        const obj = JSON.parse(marketDataRaw);
+        if (obj && typeof obj === 'object') {
+          Object.entries(obj).forEach(([symbol, data]: [string, any]) => { dataMap.set(symbol, data); });
+        }
+      }
+
+      oldIndexInfos = allSymbols.map(symbol => {
+        const data = dataMap.get(symbol);
+        return {
+          symbol,
+          name: data?.name || INDEX_NAME_MAP[symbol] || symbol,
+          current: data?.current || 0,
+          change: data?.change || 0,
+          changePercent: data?.changePercent || 0,
+          lastUpdated: data?.lastUpdated || '',
+          tradeDate: data?.tradeDate,
+          previousClose: data?.previousClose,
+          volume: data?.volume,
+          amount: data?.amount,
+        };
+      });
+    } catch { /* ignore */ }
+  }
+
+  // 读取旧历史数据
+  const oldHistoryMap = new Map<string, HistoricalPoint[]>();
+  oldIndexInfos.forEach(info => {
+    try {
+      const historyRaw = localStorage.getItem(`${OLD_KEYS.HISTORY_PREFIX}${info.symbol}`);
+      if (historyRaw) {
+        oldHistoryMap.set(info.symbol, JSON.parse(historyRaw));
+      }
+    } catch { /* ignore */ }
+  });
+
+  // 读取旧日内数据
+  const oldIntradayMap = new Map<string, IntradayPoint[]>();
+  oldIndexInfos.forEach(info => {
+    try {
+      const intradayRaw = localStorage.getItem(`${OLD_KEYS.INTRADAY_PREFIX}${info.symbol}`);
+      if (intradayRaw) {
+        const parsed: IntradayPoint[] = JSON.parse(intradayRaw);
+        // 只保留当天的
+        oldIntradayMap.set(info.symbol, filterTodayIntraday(parsed));
+      }
+    } catch { /* ignore */ }
+  });
+
   // 读取新数据（MarketIndex[]）
+  let newMarketIndices: MarketIndex[] = [];
   let newIndexSymbols: string[] = [];
   try {
     const raw = localStorage.getItem(STORAGE_KEYS.INDEX_DATA);
     if (raw) {
-      const items: MarketIndex[] = JSON.parse(raw);
-      newIndexSymbols = Array.isArray(items) ? items.map(m => m.info.symbol) : [];
+      newMarketIndices = JSON.parse(raw);
+      newIndexSymbols = Array.isArray(newMarketIndices) ? newMarketIndices.map(m => m.info.symbol) : [];
     }
   } catch { /* ignore */ }
+
+  // 验证内容一致性
+  const contentMismatches: string[] = [];
+
+  // 比较指数数量
+  const oldIndexCount = oldIndexInfos.length;
+  const newIndexCount = newIndexSymbols.length;
+  if (oldIndexCount > 0 && oldIndexCount !== newIndexCount) {
+    contentMismatches.push(`指数数量: 期望 ${oldIndexCount}, 实际 ${newIndexCount}`);
+  } else if (newIndexCount > 0) {
+    details.push(`指数数量一致: ${newIndexCount} 个`);
+  }
+
+  // 比较指数顺序
+  if (oldIndexInfos.length > 0 && newIndexSymbols.length > 0) {
+    const oldSymbols = oldIndexInfos.map(info => info.symbol);
+    const orderMismatches: string[] = [];
+    for (let i = 0; i < Math.min(oldSymbols.length, newIndexSymbols.length); i++) {
+      if (oldSymbols[i] !== newIndexSymbols[i]) {
+        orderMismatches.push(`位置 ${i}: 期望 '${oldSymbols[i]}', 实际 '${newIndexSymbols[i]}'`);
+      }
+    }
+    if (orderMismatches.length > 0) {
+      details.push(`检测到顺序不一致，正在重新迁移...`);
+      // 删除新 key，触发重新迁移
+      localStorage.removeItem(STORAGE_KEYS.INDEX_DATA);
+      migrateFromOldKeys();
+      loadFromStorage();
+      details.push(`重新迁移完成`);
+      // 重新验证顺序
+      const newSymbols = getAllIndexSymbols();
+      if (JSON.stringify(newSymbols) === JSON.stringify(oldSymbols)) {
+        details.push(`重新迁移后顺序正确`);
+      } else {
+        details.push(`重新迁移后顺序仍不一致`);
+      }
+    } else if (oldSymbols.length === newIndexSymbols.length) {
+      details.push('指数顺序一致');
+    }
+  }
+
+  // 比较每个指数的 info 内容（排除实时数据字段）
+  if (oldIndexInfos.length > 0 && newMarketIndices.length > 0) {
+    const oldInfoMap = new Map<string, IndexInfo>();
+    oldIndexInfos.forEach(info => oldInfoMap.set(info.symbol, info));
+
+    // 实时数据字段，不严格比较（因为每次刷新都会变化）
+    const realtimeFields = ['current', 'change', 'changePercent', 'lastUpdated', 'tradeDate', 'previousClose', 'volume', 'amount'];
+
+    newMarketIndices.forEach(newMI => {
+      const oldInfo = oldInfoMap.get(newMI.info.symbol);
+      if (oldInfo) {
+        // 比较非实时字段（只有 name 需要比较）
+        if (oldInfo.name !== newMI.info.name) {
+          contentMismatches.push(`${newMI.info.symbol} name: 期望 '${oldInfo.name}', 实际 '${newMI.info.name}'`);
+        }
+      }
+    });
+    if (contentMismatchCount(contentMismatches, 'name') === 0) {
+      details.push('所有指数 info 内容一致（name 匹配，实时数据不比较）');
+    }
+  }
+
+  // 比较历史数据
+  if (oldHistoryMap.size > 0 && newMarketIndices.length > 0) {
+    let historyMatchCount = 0;
+    newMarketIndices.forEach(newMI => {
+      const oldHistory = oldHistoryMap.get(newMI.info.symbol);
+      if (oldHistory && newMI.history) {
+        if (oldHistory.length === newMI.history.length) {
+          historyMatchCount++;
+        } else {
+          contentMismatches.push(`${newMI.info.symbol} history: 条数期望 ${oldHistory.length}, 实际 ${newMI.history.length}`);
+        }
+      }
+    });
+    if (historyMatchCount > 0) {
+      details.push(`${historyMatchCount} 个指数历史数据条数一致`);
+    }
+  }
+
+  // 比较日内数据（只比较当天的）
+  if (oldIntradayMap.size > 0 && newMarketIndices.length > 0) {
+    let intradayMatchCount = 0;
+    newMarketIndices.forEach(newMI => {
+      const oldIntraday = oldIntradayMap.get(newMI.info.symbol);
+      if (oldIntraday && newMI.intraday) {
+        if (oldIntraday.length === newMI.intraday.length) {
+          intradayMatchCount++;
+        } else {
+          contentMismatches.push(`${newMI.info.symbol} intraday: 条数期望 ${oldIntraday.length}, 实际 ${newMI.intraday.length}`);
+        }
+      }
+    });
+    if (intradayMatchCount > 0) {
+      details.push(`${intradayMatchCount} 个指数日内数据条数一致`);
+    }
+  }
 
   // 计算分类
   const newDomesticSymbols = newIndexSymbols.filter(s => isDomesticIndex(s));
   const newGlobalSymbols = newIndexSymbols.filter(s => isGlobalIndex(s));
 
   // 判断成功条件
-  let success = newIndexSymbols.length > 0;
+  let success = newIndexCount > 0 && contentMismatches.length === 0;
   if (success) {
     details.push(`迁移成功: ${newIndexSymbols.length} 个指数`);
     details.push(`国内指数: ${newDomesticSymbols.length} 个`);
     details.push(`全球指数: ${newGlobalSymbols.length} 个`);
-  } else {
+  } else if (newIndexCount === 0) {
     details.push('迁移失败：新 key 无数据');
+  } else {
+    details.push('迁移存在问题');
+  }
+
+  if (contentMismatches.length > 0) {
+    details.push(`内容不一致: ${contentMismatches.join('; ')}`);
   }
 
   // 删除旧 key
@@ -757,6 +959,13 @@ export function verifyIndexMigration(deleteOldKeys: boolean = false): {
     newIndexCount: newIndexSymbols.length,
     details,
   };
+}
+
+/**
+ * Helper: 统计包含某关键词的 mismatch 数量
+ */
+function contentMismatchCount(mismatches: string[], keyword: string): number {
+  return mismatches.filter(m => m.includes(keyword)).length;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════

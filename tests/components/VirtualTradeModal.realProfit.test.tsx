@@ -2,6 +2,7 @@ import React from 'react';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import '@testing-library/jest-dom';
 import { ValuationData } from '../../types';
+import * as marketFundService from '../../services/marketFundService';
 
 jest.mock('../../utils/positionHelper', () => ({
   getUnitsForDate: jest.fn(async () => 100),
@@ -23,15 +24,17 @@ const mkHistoryPoint = (date: string, value: number) => ({
 describe('VirtualTradeModal real profit display', () => {
   beforeEach(() => {
     localStorage.clear();
+    marketFundService.resetCache();
   });
 
   test('shows real profit and effective interval based on available history', async () => {
     const symbol = '002611';
-    localStorage.setItem(`fund_position_${symbol}`, JSON.stringify({
+    marketFundService.updatePosition(symbol, {
+      fullCapacity: 0,
       initialPosition: 100,
       startDate: '2026-02-13',
       initialPrice: 1,
-    }));
+    });
 
     const history = [
       { date: new Date('2026-02-13T00:00:00').getTime(), value: 1.0, equityReturn: 0 },
@@ -49,11 +52,12 @@ describe('VirtualTradeModal real profit display', () => {
 
   test('recomputes real profit when selected start date changes and ends at today valuation', async () => {
     const symbol = '002611';
-    localStorage.setItem(`fund_position_${symbol}`, JSON.stringify({
+    marketFundService.updatePosition(symbol, {
+      fullCapacity: 0,
       initialPosition: 100,
       startDate: '2026-02-13',
       initialPrice: 1,
-    }));
+    });
 
     const history = [
       mkHistoryPoint('2026-02-13', 1.0),
@@ -91,11 +95,12 @@ describe('VirtualTradeModal real profit display', () => {
 
   test('uses today confirmed NAV when no intraday valuation is available', async () => {
     const symbol = '002612';
-    localStorage.setItem(`fund_position_${symbol}`, JSON.stringify({
+    marketFundService.updatePosition(symbol, {
+      fullCapacity: 0,
       initialPosition: 100,
       startDate: '2026-02-13',
       initialPrice: 1,
-    }));
+    });
 
     const history = [
       mkHistoryPoint('2026-02-13', 1.0),

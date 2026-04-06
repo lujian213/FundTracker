@@ -1,11 +1,23 @@
-import { appendIntradayPoint, getIntradayPoints, clearOldIntradayData, setIntradayPoints } from '../../services/cacheService';
+import { appendIntradayPoint, getIntradayPoints, clearOldIntradayData, setIntradayPoints, resetCache } from '../../services/cacheService';
 import { IntradayPoint } from '../../types';
+import * as marketFundService from '../../services/marketFundService';
 
 describe('cacheService intraday', () => {
-  beforeEach(() => { localStorage.clear(); jest.resetModules(); });
+  beforeEach(() => {
+    localStorage.clear();
+    marketFundService.resetCache();
+    resetCache();
+  });
+
+  afterEach(() => {
+    localStorage.clear();
+    marketFundService.resetCache();
+    resetCache();
+  });
 
   test('appendIntradayPoint stores and getIntradayPoints returns floored minute timestamp', () => {
     const symbol = '000001';
+    marketFundService.addFund(symbol, '测试基金');
     const lastUpdated = '2026-03-09T10:05:20+08:00';
     appendIntradayPoint(symbol, { value: 1.2345, lastUpdated, equityReturn: 0.5 } as any);
     const pts = getIntradayPoints(symbol);
@@ -18,6 +30,7 @@ describe('cacheService intraday', () => {
 
   test('appendIntradayPoint dedupes same minute', () => {
     const symbol = '000002';
+    marketFundService.addFund(symbol, '测试基金');
     const t1 = '2026-03-09T09:00:10+08:00';
     const t2 = '2026-03-09T09:00:50+08:00';
     appendIntradayPoint(symbol, { value: 1.0, lastUpdated: t1, equityReturn: 0 } as any);
@@ -30,6 +43,7 @@ describe('cacheService intraday', () => {
 
   test('clearOldIntradayData removes previous day points', () => {
     const symbol = '000003';
+    marketFundService.addFund(symbol, '测试基金');
     const yesterday = new Date(); yesterday.setDate(yesterday.getDate() - 1);
     const yTs = Math.floor(yesterday.getTime() / 60000) * 60000;
     const today = new Date();
@@ -46,6 +60,7 @@ describe('cacheService intraday', () => {
 
   test('appendIntradayPoint skips when tradeDate is not today', () => {
     const symbol = '000004';
+    marketFundService.addFund(symbol, '测试基金');
     // 模拟上周五的数据（tradeDate不是今天）
     const oldTradeDate = '2026-03-27'; // 上周五
     appendIntradayPoint(symbol, { value: 1.5, lastUpdated: '15:00:00', equityReturn: 0.5, tradeDate: oldTradeDate } as any);
@@ -56,6 +71,7 @@ describe('cacheService intraday', () => {
 
   test('appendIntradayPoint parses time-only lastUpdated with tradeDate', () => {
     const symbol = '000005';
+    marketFundService.addFund(symbol, '测试基金');
     // 获取今天的日期字符串
     const today = new Date();
     const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
@@ -74,6 +90,7 @@ describe('cacheService intraday', () => {
 
   test('appendIntradayPoint clears dirty data with future timestamp', () => {
     const symbol = '000006';
+    marketFundService.addFund(symbol, '测试基金');
     const today = new Date();
     const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
 
@@ -92,6 +109,7 @@ describe('cacheService intraday', () => {
 
   test('appendIntradayPoint with full ISO timestamp still works', () => {
     const symbol = '000007';
+    marketFundService.addFund(symbol, '测试基金');
     const fullTimestamp = '2026-03-30T10:30:00+08:00';
     appendIntradayPoint(symbol, { value: 1.5, lastUpdated: fullTimestamp, equityReturn: 0.5 } as any);
     const pts = getIntradayPoints(symbol);
@@ -101,4 +119,3 @@ describe('cacheService intraday', () => {
     expect(pts[0].timestamp).toBe(expectedTs);
   });
 });
-

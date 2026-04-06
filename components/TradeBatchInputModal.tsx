@@ -8,6 +8,7 @@ import { resolvePreferredPrice, toLocalDateKey } from '../utils/priceResolver';
 import { getHistory } from '../services/cacheService';
 import { ConfirmDialog } from './ConfirmDialog';
 import { loadComboTradesFromStorage } from '../utils/comboTradeService';
+import * as marketFundService from '../services/marketFundService';
 
 interface Props {
   onClose: () => void;
@@ -108,31 +109,25 @@ const TradeBatchInputModal: React.FC<Props> = ({ onClose, onSaved, portfolio = [
 
     const groups: FundGroup[] = [];
 
-    // 扫描 localStorage 中的 fund_position_* keys
-    for (let i = 0; i < localStorage.length; i++) {
-      const key = localStorage.key(i);
-      if (!key || !key.startsWith('fund_position_')) continue;
+    // 使用 marketFundService 获取所有基金信息
+    const fundInfos = marketFundService.getAllFundInfos();
+    for (const info of fundInfos) {
+      if (info.position && info.position.fullCapacity > 0) {
+        const symbol = info.ticker.symbol;
+        // 尝试获取基金名称（优先使用传入的props，否则使用 ticker 名称）
+        const name =
+          (marketData[symbol]?.name) ||
+          (portfolio.find(p => p.symbol === symbol)?.name) ||
+          info.ticker.name ||
+          symbol;
 
-      try {
-        const pos = JSON.parse(localStorage.getItem(key) || '{}');
-        if (pos.fullCapacity > 0) {
-          const symbol = key.replace('fund_position_', '');
-          // 尝试获取基金名称（优先使用传入的props，否则回退到symbol）
-          const name =
-            (marketData[symbol]?.name) ||
-            (portfolio.find(p => p.symbol === symbol)?.name) ||
-            symbol;
-
-          groups.push({
-            symbol,
-            name,
-            fullCapacity: pos.fullCapacity,
-            price: 0, // 稍后获取
-            rows: [], // 初始为空，用户可以添加行
-          });
-        }
-      } catch (e) {
-        // 忽略解析错误
+        groups.push({
+          symbol,
+          name,
+          fullCapacity: info.position.fullCapacity,
+          price: 0, // 稍后获取
+          rows: [], // 初始为空，用户可以添加行
+        });
       }
     }
 
@@ -379,13 +374,13 @@ const TradeBatchInputModal: React.FC<Props> = ({ onClose, onSaved, portfolio = [
     return false;
   }, [fundGroups]);
 
-  // 缓存持仓数据，避免重复读取 localStorage
+  // 缓存持仓数据，避免重复读取
   const positionCache = useMemo(() => {
     const cache: Record<string, number> = {};
     for (const group of fundGroups) {
       try {
-        const pos = JSON.parse(localStorage.getItem(`fund_position_${group.symbol}`) || '{}');
-        cache[group.symbol] = pos.fullCapacity || 0;
+        const pos = marketFundService.getPosition(group.symbol);
+        cache[group.symbol] = pos?.fullCapacity || 0;
       } catch (e) {
         cache[group.symbol] = 0;
       }

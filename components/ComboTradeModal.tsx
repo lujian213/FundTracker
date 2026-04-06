@@ -4,6 +4,7 @@ import { ComboTrade, ComboTradeRecord } from '../types';
 import { ConfirmDialog } from './ConfirmDialog';
 import { loadComboTradesFromStorage, saveComboTradesToStorage, filterValidRecords, validateComboTrade, isValidComboTradeRecord } from '../utils/comboTradeService';
 import { fmtNumber } from '../utils/format';
+import * as marketFundService from '../services/marketFundService';
 
 interface Props {
   portfolio: { symbol: string; name: string }[];
@@ -72,24 +73,17 @@ const ComboTradeModal: React.FC<Props> = ({ portfolio, onClose }) => {
   useEffect(() => {
     const funds: FundWithPosition[] = [];
 
-    for (let i = 0; i < localStorage.length; i++) {
-      const key = localStorage.key(i);
-      if (!key || !key.startsWith('fund_position_')) continue;
-
-      try {
-        const pos = JSON.parse(localStorage.getItem(key) || '{}');
-        if (pos.fullCapacity > 0) {
-          const symbol = key.replace('fund_position_', '');
-          // 尝试获取基金名称
-          const name =
-            portfolio.find(p => p.symbol === symbol)?.name ||
-            symbol;
-          funds.push({ symbol, name });
-        }
-      } catch (e) {
-        // 忽略解析错误
+    // 使用 marketFundService 获取所有基金的持仓信息
+    const allFundInfos = marketFundService.getAllFundInfos();
+    allFundInfos.forEach(info => {
+      const pos = info.position;
+      if (pos && pos.fullCapacity > 0) {
+        const symbol = info.ticker.symbol;
+        // 尝试获取基金名称
+        const name = info.ticker.name || symbol;
+        funds.push({ symbol, name });
       }
-    }
+    });
 
     // 按基金名称排序
     funds.sort((a, b) => a.name.localeCompare(b.name));

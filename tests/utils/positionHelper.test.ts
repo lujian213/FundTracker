@@ -1,6 +1,7 @@
 import { computePositions, POSITION_COLORS } from '../../utils/positionHelper';
 import { setTradesForSymbol } from '../../hooks/useTrades';
 import { Ticker, ValuationData, MarketType } from '../../types';
+import { resetCache as resetMarketFundCache, updatePosition } from '../../services/marketFundService';
 
 // ── helpers ───────────────────────────────────────────────────────────────────
 
@@ -22,10 +23,12 @@ function makeValuation(symbol: string, currentPrice: number, previousPrice = 1.0
 }
 
 function setPosition(symbol: string, fullCapacity: number, initialPosition: number) {
-  localStorage.setItem(
-    `fund_position_${symbol}`,
-    JSON.stringify({ fullCapacity, initialPosition })
-  );
+  updatePosition(symbol, {
+    fullCapacity,
+    initialPosition,
+    startDate: null,
+    initialPrice: null,
+  });
 }
 
 // ── tests ─────────────────────────────────────────────────────────────────────
@@ -33,6 +36,7 @@ function setPosition(symbol: string, fullCapacity: number, initialPosition: numb
 describe('computePositions', () => {
   beforeEach(() => {
     localStorage.clear();
+    resetMarketFundCache();
   });
 
   test('returns empty result when portfolio is empty', () => {

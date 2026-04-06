@@ -16,6 +16,7 @@ import { formatMoneyWithSeparators } from '../utils/format';
 import { resolvePreferredPrice } from '../utils/priceResolver';
 import { calculateRealProfit, getStoredPosition, getTradesForFund } from '../utils/realProfitCalculator';
 import { loadAllStrategies } from '../services/strategyRegistry';
+import * as marketFundService from '../services/marketFundService';
 
 
 interface InvestmentNoticeModalProps {
@@ -72,16 +73,8 @@ const InvestmentNoticeModal: React.FC<InvestmentNoticeModalProps> = ({
 
             // Get stored position config following VirtualTradeModal's logic
             const getStoredStartDate = () => {
-              try {
-                const rawKey = `fund_position_${fund.symbol}`;
-                const padKey = `fund_position_${String(fund.symbol).padStart(6, '0')}`;
-                const raw = localStorage.getItem(rawKey) || localStorage.getItem(padKey);
-                if (!raw) return null;
-                const cfg = JSON.parse(raw);
-                return cfg && typeof cfg.startDate === 'string' && cfg.startDate ? cfg.startDate : null;
-              } catch (e) {
-                return null;
-              }
+              const pos = marketFundService.getPosition(fund.symbol);
+              return pos && typeof pos.startDate === 'string' && pos.startDate ? pos.startDate : null;
             };
 
             // Use VirtualTradeModal's default start date logic: localStorage start date or 90 days ago
@@ -161,86 +154,21 @@ const InvestmentNoticeModal: React.FC<InvestmentNoticeModalProps> = ({
             // Note: We're no longer using local cache here since we removed the cache in runVirtualTrade
             // The computeMultipleSMAs function handles the calculations directly
 
-            // Get stored position config following VirtualTradeModal's logic
-            const getStoredStartDate = () => {
-              try {
-                const rawKey = `fund_position_${fund.symbol}`;
-                const padKey = `fund_position_${String(fund.symbol).padStart(6, '0')}`;
-                const raw = localStorage.getItem(rawKey) || localStorage.getItem(padKey);
-                if (!raw) return null;
-                const cfg = JSON.parse(raw);
-                return cfg && typeof cfg.startDate === 'string' && cfg.startDate ? cfg.startDate : null;
-              } catch (e) {
-                return null;
-              }
-            };
-
-            // Use VirtualTradeModal's default start date logic: localStorage start date or 90 days ago
-            const getFallbackStartDate = () => {
-              const d = new Date();
-              d.setDate(d.getDate() - 90);
-              return toLocalDateKey(d);
-            };
-
-            const getDefaultStartDate = () => {
-              const stored = getStoredStartDate();
-              if (stored) return stored;
-              return getFallbackStartDate();
-            };
-
-            // Determine the start date to use following VirtualTradeModal's logic
-            const virtualTradeStartDate = getDefaultStartDate();
-
-            // Clamp to history bounds to ensure date is valid for this fund
-            const clampDateToHistoryBounds = (date: string, sourceHistory: HistoricalPoint[] | null) => {
-              if (!sourceHistory || sourceHistory.length === 0) return date;
-              const sorted = [...sourceHistory].sort((a, b) => (a.date as number) - (b.date as number));
-              const earliestIso = toLocalDateKey(sorted[0].date);
-              const latestIso = toLocalDateKey(sorted[sourceHistory.length - 1].date);
-              if (date < earliestIso) return earliestIso;
-              if (date > latestIso) return latestIso;
-              return date;
-            };
-
-            const finalStartDate = clampDateToHistoryBounds(virtualTradeStartDate, sortedHistory);
-
-            // Calculate initialShares following VirtualTradeModal's auto-fill logic
-            // This matches the same logic used in VirtualTradeModal's useEffect for shares auto-fill
-            let finalInitialShares = 0;
-            try {
-              const units = await getUnitsForDate(fund.symbol, finalStartDate, defaultVirtualCash);
-              finalInitialShares = units || 0;
-            } catch (e) {
-              console.error(`Failed to calculate initial shares for ${fund.symbol}:`, e);
-              // Fallback: calculate based on defaultVirtualCash and start NAV
-              const startDatePoint = sortedHistory.find(h => toLocalDateKey(h.date) === finalStartDate);
-              if (startDatePoint && startDatePoint.value > 0) {
-                finalInitialShares = defaultVirtualCash / startDatePoint.value;
-              }
-            }
+            // Use values already calculated in first pass
+            const currentPrice = sortedHistory[sortedHistory.length - 1]?.value;
 
             // Calculate initialCash following VirtualTradeModal's logic
             let finalInitialCash = defaultVirtualCash; // Default fallback
             try {
-              // Read fullCapacity from localStorage following VirtualTradeModal's logic
-              let fullCapacity = 0;
-              try {
-                const rawKey = `fund_position_${fund.symbol}`;
-                const padKey = `fund_position_${String(fund.symbol).padStart(6, '0')}`;
-                const raw = localStorage.getItem(rawKey) || localStorage.getItem(padKey);
-                if (raw) {
-                  const cfg = JSON.parse(raw);
-                  fullCapacity = Number(cfg.fullCapacity) || 0;
-                }
-              } catch (e) {
-                // ignore
-              }
+              // 使用 marketFundService 获取持仓配置
+              const pos = marketFundService.getPosition(fund.symbol);
+              const fullCapacity = pos?.fullCapacity || 0;
 
               if (fullCapacity > 0) {
-                // Get current shares on startDate (finalInitialShares as calculated above)
-                const shares = finalInitialShares || 0;
+                // Get current shares on startDate (already calculated in first pass)
+                const shares = initialShares || 0;
                 // Get NAV on startDate
-                const startDatePoint = sortedHistory.find(h => toLocalDateKey(h.date) === finalStartDate);
+                const startDatePoint = sortedHistory.find(h => toLocalDateKey(h.date) === startDate);
                 const nav = startDatePoint ? startDatePoint.value : null;
 
                 if (nav !== null && nav > 0) {
@@ -253,8 +181,6 @@ const InvestmentNoticeModal: React.FC<InvestmentNoticeModalProps> = ({
               // Keep default value
             }
 
-            const currentPrice = sortedHistory[sortedHistory.length - 1]?.value;
-
             // Run all strategies with parameters matching VirtualTradeModal's default behavior
             // Use the dynamically loaded strategies instead of hardcoded ones
             const strategyResults: Record<string, VirtualTradeResult> = {};
@@ -262,9 +188,9 @@ const InvestmentNoticeModal: React.FC<InvestmentNoticeModalProps> = ({
             for (const [key, strategy] of Object.entries(strategyMap)) {
               try {
                 strategyResults[key] = runVirtualTrade(strategy, sortedHistory, {
-                  startDate: finalStartDate,  // Use VirtualTradeModal's default date logic
+                  startDate,  // Use value from first pass
                   initialCash: finalInitialCash,  // Use VirtualTradeModal's cash calculation logic
-                  initialShares: finalInitialShares,  // Use VirtualTradeModal's shares calculation logic
+                  initialShares,  // Use value from first pass
                   currentPrice: valuation?.currentPrice ?? currentPrice,
                   realtimeDate: valuation?.realtimeDate ?? toLocalDateKey(new Date()),
                   previousPrice: valuation?.previousPrice ?? null, // Use valuation.previousPrice like VirtualTradeModal
@@ -285,7 +211,7 @@ const InvestmentNoticeModal: React.FC<InvestmentNoticeModalProps> = ({
             const trades = getTradesForFund(fund.symbol);
             const realProfit = await calculateRealProfit(
               fund.symbol,
-              finalStartDate,
+              startDate,
               sortedHistory,
               storedPosition,
               trades,
@@ -509,16 +435,6 @@ const InvestmentNoticeModal: React.FC<InvestmentNoticeModalProps> = ({
     return null;
   };
 
-  const renderRecommendationCellOnly = (
-    tip: VirtualTradeResult['todayTip'],
-    fundSymbol: string,
-    fundName: string,
-    strategy: StrategyType,
-    strategyProfit: number
-  ) => {
-    return renderRecommendationCell(tip, fundSymbol, fundName, strategy, strategyProfit);
-  };
-
   const renderRealProfitCell = (realProfit: number | null) => {
     if (realProfit === null) {
       return <span className="text-gray-400">—</span>;
@@ -620,7 +536,7 @@ const InvestmentNoticeModal: React.FC<InvestmentNoticeModalProps> = ({
                                 <td
                                   className={`px-3 py-2 text-left text-xs ${shouldHighlight ? 'border-2 border-amber-400 bg-amber-50' : ''}`}
                                 >
-                                  {renderRecommendationCellOnly(
+                                  {renderRecommendationCell(
                                     strategyTip,
                                     rec.fund.symbol,
                                     rec.fund.name || rec.fund.symbol,

@@ -8,12 +8,14 @@ jest.mock('../../utils/positionHelper', () => ({
 
 import VirtualTradeModal from '../../components/VirtualTradeModal';
 import { getUnitsForDate } from '../../utils/positionHelper';
+import * as marketFundService from '../../services/marketFundService';
 
 const mockedGetUnitsForDate = getUnitsForDate as jest.Mock;
 
 describe('VirtualTradeModal initialization from localStorage', () => {
   beforeEach(() => {
     localStorage.clear();
+    marketFundService.resetCache();
     mockedGetUnitsForDate.mockReset();
     mockedGetUnitsForDate.mockImplementation(async (_symbol: string, date: string) => {
       if (date === '2026-02-15') return 88888.88;
@@ -23,8 +25,14 @@ describe('VirtualTradeModal initialization from localStorage', () => {
 
   test('uses stored startDate and populates shares from getUnitsForDate', async () => {
     const symbol = '002611';
-    const cfg = { fullCapacity: 200000, initialPosition: 131568.67, startDate: '2026-02-13', initialPrice: 3.4845 };
-    localStorage.setItem(`fund_position_${symbol}`, JSON.stringify(cfg));
+    // 使用 marketFundService 设置持仓数据（而非 legacy key）
+    marketFundService.addFund(symbol, 'Test Fund');
+    marketFundService.updatePosition(symbol, {
+      fullCapacity: 200000,
+      initialPosition: 131568.67,
+      startDate: '2026-02-13',
+      initialPrice: 3.4845,
+    });
 
     const hist = [
       { date: new Date('2026-02-12').getTime(), value: 3.4, equityReturn: 0 },
@@ -46,12 +54,14 @@ describe('VirtualTradeModal initialization from localStorage', () => {
 
   test('reset restores default start date, default shares, and default cash', async () => {
     const symbol = '002611';
-    localStorage.setItem(`fund_position_${symbol}`, JSON.stringify({
+    // 使用 marketFundService 设置持仓数据（而非 legacy key）
+    marketFundService.addFund(symbol, 'Test Fund');
+    marketFundService.updatePosition(symbol, {
       fullCapacity: 200000,
       initialPosition: 131568.67,
       startDate: '2026-02-13',
       initialPrice: 3.4845,
-    }));
+    });
 
     const hist = [
       { date: new Date('2026-02-12').getTime(), value: 3.4, equityReturn: 0 },

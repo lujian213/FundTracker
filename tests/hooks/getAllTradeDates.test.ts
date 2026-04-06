@@ -1,7 +1,11 @@
 import { getAllTradeDates, readAll, setTradesForSymbol, addTradeForSymbol } from '../../hooks/useTrades';
+import { resetCache as resetMarketFundCache } from '../../services/marketFundService';
 
 describe('getAllTradeDates', () => {
-  beforeEach(() => { localStorage.clear(); });
+  beforeEach(() => {
+    localStorage.clear();
+    resetMarketFundCache();
+  });
 
   test('returns empty array when no trades exist', () => {
     expect(getAllTradeDates()).toEqual([]);
@@ -49,7 +53,10 @@ describe('getAllTradeDates', () => {
 });
 
 describe('readAll', () => {
-  beforeEach(() => { localStorage.clear(); });
+  beforeEach(() => {
+    localStorage.clear();
+    resetMarketFundCache();
+  });
 
   test('returns empty object when localStorage is empty', () => {
     expect(readAll()).toEqual({});
@@ -64,11 +71,6 @@ describe('readAll', () => {
     expect(Object.keys(all)).toContain('S2');
     expect(all['S1'][0].id).toBe('r1');
     expect(all['S2'][0].id).toBe('r2');
-  });
-
-  test('returns empty object when localStorage contains invalid JSON', () => {
-    localStorage.setItem('fund_trades', 'not-json');
-    expect(readAll()).toEqual({});
   });
 });
 

@@ -3,11 +3,12 @@ import { computePositionTrend, downsampleLTTB, PositionTrendSeries, PositionTren
 import * as cacheService from '../services/cacheService';
 import { getAllTradeDates, readAll as readAllTrades, getTradesForSymbol } from './useTrades';
 import { Ticker } from '../types';
+import * as marketFundService from '../services/marketFundService';
 
 interface UsePositionTrendParams {
   startDate?: string;
   endDate?: string;
-  symbols?: string[]; // optional override; if absent, read from localStorage 'fund_portfolio' or fund_position_*
+  symbols?: string[]; // optional override; if absent, derive from marketFundService
   maxPoints?: number; // threshold to downsample (default 500)
   valuationsOverride?: Record<string, any>;
 }
@@ -19,30 +20,20 @@ export default function usePositionTrend(params: UsePositionTrendParams = {}) {
   const [error, setError] = useState<Error | null>(null);
   const [fullResolutionAvailable, setFullResolutionAvailable] = useState(false);
 
-  // read symbols: prefer explicit symbols; else derive from fund_position_* entries (funds with fullCapacity>0)
+  // read symbols: prefer explicit symbols; else derive from marketFundService (funds with fullCapacity>0)
   const portfolioSymbols = useMemo(() => {
     if (Array.isArray(symbols) && symbols.length > 0) return symbols;
     try {
-      // collect from localStorage keys fund_position_{sym}
+      // 从 marketFundService 获取所有有 position 的基金
+      const allSymbols = marketFundService.getAllFundSymbols();
       const syms: string[] = [];
-      Object.keys(localStorage).forEach((k) => {
-        if (k.startsWith('fund_position_')) {
-          const sym = k.replace('fund_position_', '');
-          try {
-            const cfgRaw = localStorage.getItem(k);
-            if (!cfgRaw) return;
-            const cfg = JSON.parse(cfgRaw);
-            const full = Number(cfg.fullCapacity) || 0;
-            if (full > 0) syms.push(sym);
-          } catch (e) { /* ignore per-key errors */ }
+      for (const sym of allSymbols) {
+        const pos = marketFundService.getPosition(sym);
+        if (pos && pos.fullCapacity > 0) {
+          syms.push(sym);
         }
-      });
-      // fallback: use fund_portfolio symbols if no fund_position_* found
-      if (syms.length > 0) return syms;
-      const raw = localStorage.getItem('fund_portfolio');
-      if (!raw) return [] as string[];
-      const arr: Ticker[] = JSON.parse(raw);
-      return arr.map(t => t.symbol);
+      }
+      return syms;
     } catch (e) { return [] as string[]; }
   }, [symbols]);
 
@@ -53,17 +44,14 @@ export default function usePositionTrend(params: UsePositionTrendParams = {}) {
     let start = startDate;
     let end = endDate || todayStr;
     if (!start) {
-      // First, prefer earliest configured startDate from fund_position_* for funds with fullCapacity>0
+      // 从 marketFundService 获取最早的 startDate
       let earliest: string | null = null;
       for (const s of portfolioSymbols) {
         try {
-          const cfgRaw = localStorage.getItem(`fund_position_${s}`);
-          if (cfgRaw) {
-            const cfg = JSON.parse(cfgRaw);
-            if (cfg && cfg.startDate) {
-              const d = String(cfg.startDate);
-              if (!earliest || d < earliest) earliest = d;
-            }
+          const pos = marketFundService.getPosition(s);
+          if (pos && pos.startDate) {
+            const d = String(pos.startDate);
+            if (!earliest || d < earliest) earliest = d;
           }
         } catch (e) { }
       }
@@ -141,13 +129,10 @@ export default function usePositionTrend(params: UsePositionTrendParams = {}) {
           }
         } catch (e) { /* ignore */ }
 
-        // initial position from localStorage fund_position_{sym}
+        // initial position from marketFundService
         try {
-          const cfgRaw = localStorage.getItem(`fund_position_${s}`);
-          if (cfgRaw) {
-            const cfg = JSON.parse(cfgRaw);
-            initialPositions[s] = Number(cfg.initialPosition) || 0;
-          } else initialPositions[s] = 0;
+          const pos = marketFundService.getPosition(s);
+          initialPositions[s] = pos?.initialPosition || 0;
         } catch (e) { initialPositions[s] = 0; }
       }
 

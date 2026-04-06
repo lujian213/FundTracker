@@ -12,6 +12,7 @@ import SimpleTooltip from './SimpleTooltip';
 import { formatMoneyWithSeparators } from '../utils/format';
 import { getDraftModalHeight, saveDraftModalHeight } from '../services/userPreferenceService';
 import { loadInvestmentDraft, saveInvestmentDraft, saveAllDraftsToStorage } from '../services/appDataService';
+import * as marketFundService from '../services/marketFundService';
 
 // 防抖延迟时间（毫秒）
 const DEBOUNCE_DELAY = 500;
@@ -85,18 +86,8 @@ const InvestmentDraftModal: React.FC<InvestmentDraftModalProps> = ({
 
       // Filter portfolio to only include funds that have position configuration with fullCapacity
       const fundsWithPositions = portfolio.filter(fund => {
-        try {
-          const rawKey = `fund_position_${fund.symbol}`;
-          const padKey = `fund_position_${String(fund.symbol).padStart(6, '0')}`;
-          const raw = localStorage.getItem(rawKey) || localStorage.getItem(padKey);
-          if (raw) {
-            const cfg: BackupPosition = JSON.parse(raw);
-            return cfg && typeof cfg.fullCapacity === 'number' && cfg.fullCapacity > 0;
-          }
-        } catch (e) {
-          return false;
-        }
-        return false;
+        const pos = marketFundService.getPosition(fund.symbol);
+        return pos && typeof pos.fullCapacity === 'number' && pos.fullCapacity > 0;
       });
 
       // Initialize draft data with existing data or default values
@@ -149,18 +140,8 @@ const InvestmentDraftModal: React.FC<InvestmentDraftModalProps> = ({
 
   // Filter portfolio to only include funds with fullCapacity and sort by gain/loss percentage
   const fundsWithPositions = [...portfolio].filter(fund => {
-    try {
-      const rawKey = `fund_position_${fund.symbol}`;
-      const padKey = `fund_position_${String(fund.symbol).padStart(6, '0')}`;
-      const raw = localStorage.getItem(rawKey) || localStorage.getItem(padKey);
-      if (raw) {
-        const cfg: BackupPosition = JSON.parse(raw);
-        return cfg && typeof cfg.fullCapacity === 'number' && cfg.fullCapacity > 0;
-      }
-    } catch (e) {
-      return false;
-    }
-    return false;
+    const pos = marketFundService.getPosition(fund.symbol);
+    return pos && typeof pos.fullCapacity === 'number' && pos.fullCapacity > 0;
   }).sort((a, b) => {
     const today = toLocalDateKey(new Date());
 
@@ -519,27 +500,15 @@ const InvestmentDraftModal: React.FC<InvestmentDraftModalProps> = ({
     return gainLoss >= 0 ? 'text-red-600' : 'text-green-600';
   };
 
-  useEffect(() => {
-    if (sideBySide) {
-      const modal = document.querySelector('.investment-draft-modal-content') as HTMLElement;
-      if (modal) {
-        const rect = modal.getBoundingClientRect();
-        // 将草稿窗口宽度存储到 window 对象，供基金详情窗口使用
-        (window as any).__draftModalWidth = rect.width;
-      }
-    }
-  }, [sideBySide, modalHeight]);
-
   // 动态计算并排显示时的偏移量
   const [draftOffset, setDraftOffset] = useState<number>(0);
 
   useEffect(() => {
     if (sideBySide) {
       const calculateOffset = () => {
-        const draftModal = document.querySelector('.investment-draft-modal-content') as HTMLElement;
-        const detailWidth = (window as any).__detailModalWidth;
-        if (draftModal && detailWidth) {
-          const draftWidth = draftModal.getBoundingClientRect().width;
+        const detailModal = document.getElementById('fund-details-modal')?.querySelector('.bg-white') as HTMLElement;
+        if (detailModal) {
+          const detailWidth = detailModal.getBoundingClientRect().width;
           // 草稿窗口需要向左偏移 detailWidth/2，使两个窗口整体居中
           setDraftOffset(detailWidth / 2);
         }
@@ -548,9 +517,13 @@ const InvestmentDraftModal: React.FC<InvestmentDraftModalProps> = ({
       // 初始计算
       calculateOffset();
 
-      // 监听详情窗口宽度变化
-      const interval = setInterval(calculateOffset, 100);
-      return () => clearInterval(interval);
+      // 使用 ResizeObserver 监听详情窗口宽度变化
+      const detailModal = document.getElementById('fund-details-modal')?.querySelector('.bg-white') as HTMLElement;
+      if (detailModal) {
+        const resizeObserver = new ResizeObserver(calculateOffset);
+        resizeObserver.observe(detailModal);
+        return () => resizeObserver.disconnect();
+      }
     } else {
       setDraftOffset(0);
     }

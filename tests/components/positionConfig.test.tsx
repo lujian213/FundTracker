@@ -2,6 +2,7 @@ import React from 'react';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { FundDetailsModal } from '../../components/FundDetailsModal';
 import { fetchFundHistory } from '../../services/fundService';
+import { resetCache as resetMarketFundCache, getPosition, updatePosition } from '../../services/marketFundService';
 
 jest.mock('../../services/fundService', () => ({ fetchFundHistory: jest.fn() }));
 
@@ -28,6 +29,7 @@ describe('position config persistence and UI', () => {
   beforeEach(() => {
     (fetchFundHistory as jest.Mock).mockResolvedValue(SAMPLE_HISTORY);
     localStorage.clear();
+    resetMarketFundCache();
   });
 
   afterEach(() => jest.restoreAllMocks());
@@ -57,13 +59,11 @@ describe('position config persistence and UI', () => {
     expect(screen.getByText(/初始份额/)).toBeTruthy();
     expect(screen.getByText(/25.00份/)).toBeTruthy();
 
-    // localStorage should have key
-    const key = `fund_position_${data.symbol}`;
-    const raw = localStorage.getItem(key);
-    expect(raw).toBeTruthy();
-    const obj = JSON.parse(raw as string);
-    expect(obj.fullCapacity).toBe(100);
-    expect(obj.initialPosition).toBe(25);
+    // marketFundService should have position
+    const pos = getPosition(data.symbol);
+    expect(pos).toBeTruthy();
+    expect(pos!.fullCapacity).toBe(100);
+    expect(pos!.initialPosition).toBe(25);
   });
 
   test('invalid inputs show errors and keep modal open', async () => {
@@ -96,9 +96,8 @@ describe('position config persistence and UI', () => {
   });
 
   test('clear button removes persisted config and hides UI', async () => {
-    // pre-populate storage
-    const key = `fund_position_${data.symbol}`;
-    localStorage.setItem(key, JSON.stringify({ fullCapacity: 50, initialPosition: 10 }));
+    // pre-populate via marketFundService
+    updatePosition(data.symbol, { fullCapacity: 50, initialPosition: 10, startDate: null, initialPrice: null });
 
     render(<FundDetailsModal data={data as any} onClose={() => {}} />);
     await waitFor(() => expect(fetchFundHistory).toHaveBeenCalled());
@@ -115,7 +114,9 @@ describe('position config persistence and UI', () => {
     fireEvent.click(clearBtn);
 
     await waitFor(() => expect(screen.queryByText(/满仓/)).toBeNull());
-    expect(localStorage.getItem(key)).toBeNull();
+    // position should be cleared (fullCapacity = 0)
+    const pos = getPosition(data.symbol);
+    expect(pos?.fullCapacity).toBe(0);
   });
 
   test('start date uses date picker and initial price shows hint', async () => {
@@ -171,14 +172,12 @@ describe('position config persistence and UI', () => {
     // 保存
     fireEvent.click(screen.getByText('保存'));
 
-    // 验证 localStorage 中保存的初始价格是起始日期的净值
+    // 验证 marketFundService 中保存的初始价格是起始日期的净值
     await waitFor(() => expect(screen.getByText(/初始价格/)).toBeTruthy());
-    const key = `fund_position_${data.symbol}`;
-    const raw = localStorage.getItem(key);
-    expect(raw).toBeTruthy();
-    const obj = JSON.parse(raw as string);
+    const pos = getPosition(data.symbol);
+    expect(pos).toBeTruthy();
     // 初始价格应该是 SAMPLE_HISTORY 中该日期对应的值 (1.0)
-    expect(obj.initialPrice).toBe(1.0);
+    expect(pos!.initialPrice).toBe(1.0);
   });
 
   test('user can input custom initial price', async () => {
@@ -209,13 +208,11 @@ describe('position config persistence and UI', () => {
     // 保存
     fireEvent.click(screen.getByText('保存'));
 
-    // 验证 localStorage 中保存的是用户输入的值
+    // 验证 marketFundService 中保存的是用户输入的值
     await waitFor(() => expect(screen.getByText(/初始价格/)).toBeTruthy());
-    const key = `fund_position_${data.symbol}`;
-    const raw = localStorage.getItem(key);
-    expect(raw).toBeTruthy();
-    const obj = JSON.parse(raw as string);
-    expect(obj.initialPrice).toBe(0.95);
+    const pos = getPosition(data.symbol);
+    expect(pos).toBeTruthy();
+    expect(pos!.initialPrice).toBe(0.95);
   });
 
   test('trade manager disabled and market row hidden until fullCapacity configured', async () => {

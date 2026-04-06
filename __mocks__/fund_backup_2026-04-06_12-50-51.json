@@ -1,0 +1,4462 @@
+{
+  "portfolio": [
+    {
+      "symbol": "023832",
+      "name": "华泰柏瑞中证油气产业ETF发起式联接A",
+      "previousPrice": 1.4866,
+      "netWorthDate": "2026-04-02",
+      "currentPrice": 1.4799,
+      "realtimeDate": "2026-04-03"
+    },
+    {
+      "symbol": "004433",
+      "name": "南方有色金属ETF联接C",
+      "previousPrice": 1.8977,
+      "netWorthDate": "2026-04-02",
+      "currentPrice": 1.8793,
+      "realtimeDate": "2026-04-03"
+    },
+    {
+      "symbol": "022364",
+      "name": "永赢科技智选混合发起A",
+      "previousPrice": 3.8018,
+      "netWorthDate": "2026-04-02",
+      "currentPrice": 3.8894,
+      "realtimeDate": "2026-04-03"
+    },
+    {
+      "symbol": "012328",
+      "name": "天弘中证新能源指数增强A",
+      "previousPrice": 0.7523,
+      "netWorthDate": "2026-04-02",
+      "currentPrice": 0.7357,
+      "realtimeDate": "2026-04-03"
+    },
+    {
+      "symbol": "008888",
+      "name": "华夏国证半导体芯片ETF联接C",
+      "previousPrice": 1.4043,
+      "netWorthDate": "2026-04-02",
+      "currentPrice": 1.3993,
+      "realtimeDate": "2026-04-03"
+    },
+    {
+      "symbol": "012734",
+      "name": "易方达中证人工智能主题ETF联接C",
+      "previousPrice": 1.6582,
+      "netWorthDate": "2026-04-02",
+      "currentPrice": 1.6698,
+      "realtimeDate": "2026-04-03"
+    },
+    {
+      "symbol": "024194",
+      "name": "永赢国证商用卫星通信产业ETF发起联接A",
+      "previousPrice": 1.4861,
+      "netWorthDate": "2026-04-02",
+      "currentPrice": 1.4745,
+      "realtimeDate": "2026-04-03"
+    },
+    {
+      "symbol": "011592",
+      "name": "博时军工主题股票C",
+      "previousPrice": 1.991,
+      "netWorthDate": "2026-04-02",
+      "currentPrice": 1.988,
+      "realtimeDate": "2026-04-03"
+    },
+    {
+      "symbol": "002611",
+      "name": "博时黄金ETF联接C",
+      "previousPrice": 3.235,
+      "netWorthDate": "2026-04-02",
+      "currentPrice": 3.2546,
+      "realtimeDate": "2026-04-03"
+    },
+    {
+      "symbol": "012349",
+      "name": "天弘恒生科技ETF联接C",
+      "previousPrice": 0.6506,
+      "netWorthDate": "2026-04-02",
+      "currentPrice": 0.6391,
+      "realtimeDate": "2026-04-02"
+    },
+    {
+      "symbol": "270023",
+      "name": "广发全球精选股票(QDII)人民币A",
+      "previousPrice": 4.9572,
+      "netWorthDate": "2026-04-02",
+      "currentPrice": 4.9532,
+      "realtimeDate": "2026-04-03"
+    },
+    {
+      "symbol": "530018",
+      "name": "建信深证100指数增强",
+      "previousPrice": 2.6475,
+      "netWorthDate": "2026-04-02",
+      "currentPrice": 2.6287,
+      "realtimeDate": "2026-04-03"
+    },
+    {
+      "symbol": "020640",
+      "name": "广发半导体设备ETF联接C",
+      "previousPrice": 1.8627,
+      "netWorthDate": "2026-04-02",
+      "currentPrice": 1.8602,
+      "realtimeDate": "2026-04-03"
+    },
+    {
+      "symbol": "025833",
+      "name": "天弘中证电网设备主题指数发起C",
+      "previousPrice": 1.2731,
+      "netWorthDate": "2026-04-02",
+      "currentPrice": 1.2725,
+      "realtimeDate": "2026-04-03"
+    },
+    {
+      "symbol": "270042",
+      "name": "广发纳斯达克100ETF联接人民币(QDII)A",
+      "previousPrice": 6.8214,
+      "netWorthDate": "2026-04-02",
+      "currentPrice": 6.8283,
+      "realtimeDate": "2026-04-03"
+    },
+    {
+      "symbol": "015283",
+      "name": "华安恒生科技ETF发起式联接(QDII)C",
+      "previousPrice": 1.1553,
+      "netWorthDate": "2026-04-02",
+      "currentPrice": 1.1342,
+      "realtimeDate": "2026-04-02"
+    },
+    {
+      "symbol": "019005",
+      "name": "国投瑞银白银期货(LOF)C",
+      "previousPrice": 2.0556,
+      "netWorthDate": "2026-04-03",
+      "currentPrice": 2.0046,
+      "realtimeDate": "2026-04-03"
+    },
+    {
+      "symbol": "161226",
+      "name": "国投瑞银白银期货(LOF)A",
+      "previousPrice": 2.0758,
+      "netWorthDate": "2026-04-03",
+      "currentPrice": 2.0243,
+      "realtimeDate": "2026-04-03"
+    },
+    {
+      "symbol": "019173",
+      "name": "摩根纳斯达克100指数(QDII)人民币C",
+      "previousPrice": 1.455,
+      "netWorthDate": "2026-04-02",
+      "currentPrice": 1.4565,
+      "realtimeDate": "2026-04-03"
+    },
+    {
+      "symbol": "017437",
+      "name": "华宝纳斯达克精选股票发起式(QDII)C",
+      "previousPrice": 1.9927,
+      "netWorthDate": "2026-04-02",
+      "currentPrice": 1.9904,
+      "realtimeDate": "2026-04-03"
+    },
+    {
+      "symbol": "019524",
+      "name": "华泰柏瑞纳斯达克100ETF发起式联接(QDII)A",
+      "previousPrice": 1.3791,
+      "netWorthDate": "2026-04-02",
+      "currentPrice": 1.3805,
+      "realtimeDate": "2026-04-03"
+    }
+  ],
+  "indices": [
+    {
+      "symbol": "1.000001",
+      "name": "上证指数",
+      "current": 3880.1,
+      "change": -39.19,
+      "changePercent": -1,
+      "lastUpdated": "12:50:21"
+    },
+    {
+      "symbol": "124.HSTECH",
+      "name": "恒生科技指数",
+      "current": 4679.1,
+      "change": -77.35,
+      "changePercent": -1.63,
+      "lastUpdated": "12:50:23"
+    },
+    {
+      "symbol": "0.399001",
+      "name": "深证成指",
+      "current": 13352.9,
+      "change": -134.04,
+      "changePercent": -0.99,
+      "lastUpdated": "12:50:25"
+    },
+    {
+      "symbol": "0.399006",
+      "name": "创业板指",
+      "current": 3149.6,
+      "change": -23.05,
+      "changePercent": -0.73,
+      "lastUpdated": "12:50:27"
+    }
+  ],
+  "globalIndices": [
+    {
+      "symbol": "100.NDX100",
+      "name": "纳斯达克100",
+      "current": 24045.53,
+      "change": 25.54,
+      "changePercent": 0.11,
+      "lastUpdated": "12:50:29"
+    },
+    {
+      "symbol": "101.GC00Y",
+      "name": "COMEX黄金",
+      "current": 4673.2,
+      "change": -6.5,
+      "changePercent": -0.14,
+      "lastUpdated": "12:50:31"
+    },
+    {
+      "symbol": "101.SI00Y",
+      "name": "COMEX白银",
+      "current": 72.335,
+      "change": -0.589,
+      "changePercent": -0.81,
+      "lastUpdated": "12:50:33"
+    }
+  ],
+  "positions": {
+    "161226": {
+      "fullCapacity": 2000,
+      "initialPosition": 1822.95,
+      "startDate": "2026-02-13",
+      "initialPrice": 2.139392081516224
+    },
+    "270023": {
+      "fullCapacity": 50000,
+      "initialPosition": 34196.93,
+      "startDate": "2026-02-12",
+      "initialPrice": 4.1962830748842075
+    },
+    "270042": {
+      "fullCapacity": 25000,
+      "initialPosition": 20429.64,
+      "startDate": "2026-02-12",
+      "initialPrice": 4.975368787115191
+    },
+    "530018": {
+      "fullCapacity": 200000,
+      "initialPosition": 167924.68,
+      "startDate": "2026-02-13",
+      "initialPrice": 2.427787463558067
+    },
+    "019173": {
+      "fullCapacity": 20000,
+      "initialPosition": 15735.89,
+      "startDate": "2026-02-13",
+      "initialPrice": 1.5804963442804951
+    },
+    "020640": {
+      "fullCapacity": 100000,
+      "initialPosition": 49633.27,
+      "startDate": "2026-02-13",
+      "initialPrice": 2.164525998851175
+    },
+    "022364": {
+      "fullCapacity": 100000,
+      "initialPosition": 84795.12,
+      "startDate": "2026-02-13",
+      "initialPrice": 3.6066299320644872
+    },
+    "004433": {
+      "fullCapacity": 150000,
+      "initialPosition": 60232.52,
+      "startDate": "2026-02-13",
+      "initialPrice": 1.7460963172551975
+    },
+    "011592": {
+      "fullCapacity": 100000,
+      "initialPosition": 67887.27,
+      "startDate": "2026-02-13",
+      "initialPrice": 2.173897384443358
+    },
+    "025833": {
+      "fullCapacity": 100000,
+      "initialPosition": 49322.23,
+      "startDate": "2026-02-13",
+      "initialPrice": 1.2348668114357348
+    },
+    "019005": {
+      "fullCapacity": 50000,
+      "initialPosition": 46456.25,
+      "startDate": "2026-02-13",
+      "initialPrice": -0.012373456208798525
+    },
+    "024194": {
+      "fullCapacity": 200000,
+      "initialPosition": 130941.01,
+      "startDate": "2026-02-13",
+      "initialPrice": 1.6770785942158233
+    },
+    "012328": {
+      "fullCapacity": 250000,
+      "initialPosition": 236814.96,
+      "startDate": "2026-02-13",
+      "initialPrice": 0.7393785804621464
+    },
+    "019524": {
+      "fullCapacity": 200000,
+      "initialPosition": 153488.55,
+      "startDate": "2026-02-13",
+      "initialPrice": 1.4756800672516617
+    },
+    "002611": {
+      "fullCapacity": 200000,
+      "initialPosition": 131568.67,
+      "startDate": "2026-02-13",
+      "initialPrice": 2.078414162186181
+    },
+    "023832": {
+      "fullCapacity": 100000,
+      "initialPosition": 37467.96,
+      "startDate": "2026-02-13",
+      "initialPrice": 1.266045634536815
+    },
+    "017437": {
+      "fullCapacity": 15000,
+      "initialPosition": 14833.73,
+      "startDate": "2026-02-13",
+      "initialPrice": 2.2010815878406853
+    },
+    "012349": {
+      "fullCapacity": 300000,
+      "initialPosition": 277278.7,
+      "startDate": "2026-02-13",
+      "initialPrice": 0.7012855644122682
+    },
+    "008888": {
+      "fullCapacity": 200000,
+      "initialPosition": 166145.72,
+      "startDate": "2026-02-13",
+      "initialPrice": 0.7335156607825948
+    },
+    "015283": {
+      "fullCapacity": 300000,
+      "initialPosition": 277163.7,
+      "startDate": "2026-02-13",
+      "initialPrice": 1.4777354911086844
+    },
+    "012734": {
+      "fullCapacity": 280000,
+      "initialPosition": 241205.07,
+      "startDate": "2026-02-13",
+      "initialPrice": 1.3620450888325026
+    }
+  },
+  "trades": {
+    "270023": [
+      {
+        "id": "ihi279ajq",
+        "date": "2026-04-01",
+        "type": "buy",
+        "shares": 990.93,
+        "price": 5.0377,
+        "fee": 7.99
+      },
+      {
+        "id": "r24df4bc8",
+        "date": "2026-03-30",
+        "type": "buy",
+        "shares": 1052.72,
+        "price": 4.742,
+        "fee": 7.99
+      }
+    ],
+    "270042": [
+      {
+        "id": "trade_1775193600393_op03gbn8v",
+        "date": "2026-04-01",
+        "type": "buy",
+        "shares": 1.46,
+        "price": 6.8274,
+        "fee": 0.01
+      },
+      {
+        "id": "trade_1775105340309_81lygkq7p",
+        "date": "2026-03-31",
+        "type": "buy",
+        "shares": 1.48,
+        "price": 6.7635,
+        "fee": 0.01
+      },
+      {
+        "id": "trade_1775019804868_koihk1jrn",
+        "date": "2026-03-30",
+        "type": "buy",
+        "shares": 1.53,
+        "price": 6.5452,
+        "fee": 0.01
+      },
+      {
+        "id": "trade_1774935086457_rw79nvulv",
+        "date": "2026-03-27",
+        "type": "buy",
+        "shares": 1.52,
+        "price": 6.5885,
+        "fee": 0.01
+      },
+      {
+        "id": "trade_1774850298531_ws6cyjmy8",
+        "date": "2026-03-26",
+        "type": "buy",
+        "shares": 1.4889,
+        "price": 6.7095,
+        "fee": 0.01
+      },
+      {
+        "id": "que94iesm",
+        "date": "2026-03-25",
+        "type": "buy",
+        "shares": 1.46,
+        "price": 6.8582,
+        "fee": 0.01
+      },
+      {
+        "id": "jcc9e6mf4",
+        "date": "2026-03-24",
+        "type": "buy",
+        "shares": 1.47,
+        "price": 6.8167,
+        "fee": 0.01
+      },
+      {
+        "id": "u5edhhwx0",
+        "date": "2026-03-23",
+        "type": "buy",
+        "shares": 1.45,
+        "price": 6.8783,
+        "fee": 0.01
+      },
+      {
+        "id": "q8hkmvzog",
+        "date": "2026-03-20",
+        "type": "buy",
+        "shares": 1.47,
+        "price": 6.7845,
+        "fee": 0.01
+      },
+      {
+        "id": "5slyac6tu",
+        "date": "2026-03-19",
+        "type": "buy",
+        "shares": 1.44,
+        "price": 6.9195,
+        "fee": 0.01
+      },
+      {
+        "id": "zvrxx66a5",
+        "date": "2026-03-18",
+        "type": "buy",
+        "shares": 1.44,
+        "price": 6.9328,
+        "fee": 0.01
+      },
+      {
+        "id": "r67fr0rex",
+        "date": "2026-03-17",
+        "type": "buy",
+        "shares": 1.42,
+        "price": 7.0381,
+        "fee": 0.01
+      },
+      {
+        "id": "rdezbj638",
+        "date": "2026-03-16",
+        "type": "buy",
+        "shares": 1.42,
+        "price": 7.0122,
+        "fee": 0.01
+      },
+      {
+        "id": "dg3pnm3i1",
+        "date": "2026-03-13",
+        "type": "buy",
+        "shares": 1.44,
+        "price": 6.9302,
+        "fee": 0.01
+      },
+      {
+        "id": "9wbdtvc29",
+        "date": "2026-03-12",
+        "type": "buy",
+        "shares": 1.43,
+        "price": 6.9687,
+        "fee": 0.01
+      },
+      {
+        "id": "95yudqqie",
+        "date": "2026-03-11",
+        "type": "buy",
+        "shares": 1.41,
+        "price": 7.0863,
+        "fee": 0.01
+      },
+      {
+        "id": "biygrini0",
+        "date": "2026-03-10",
+        "type": "buy",
+        "shares": 1.41,
+        "price": 7.0907,
+        "fee": 0.01
+      },
+      {
+        "id": "zr37ud8uv",
+        "date": "2026-03-09",
+        "type": "buy",
+        "shares": 1.41,
+        "price": 7.1102,
+        "fee": 0.01
+      },
+      {
+        "id": "untp6rwgl",
+        "date": "2026-03-06",
+        "type": "buy",
+        "shares": 1.43,
+        "price": 7.0066,
+        "fee": 0.01
+      },
+      {
+        "id": "rw9fyb569",
+        "date": "2026-03-05",
+        "type": "buy",
+        "shares": 1.4,
+        "price": 7.1107,
+        "fee": 0.01
+      },
+      {
+        "id": "sihr8zu6k",
+        "date": "2026-03-04",
+        "type": "buy",
+        "shares": 1.4,
+        "price": 7.143,
+        "fee": 0.01
+      },
+      {
+        "id": "lci90xxc5",
+        "date": "2026-03-03",
+        "type": "buy",
+        "shares": 1.42,
+        "price": 7.0341,
+        "fee": 0.01
+      },
+      {
+        "id": "s7cx41hca",
+        "date": "2026-03-02",
+        "type": "buy",
+        "shares": 1.4,
+        "price": 7.1258,
+        "fee": 0.01
+      },
+      {
+        "id": "0kktn4l7r",
+        "date": "2026-02-27",
+        "type": "buy",
+        "shares": 1.4,
+        "price": 7.1161,
+        "fee": 0.01
+      },
+      {
+        "id": "mdmjwb7da",
+        "date": "2026-02-26",
+        "type": "buy",
+        "shares": 1.4,
+        "price": 7.1377,
+        "fee": 0.01
+      },
+      {
+        "id": "uyfj79e9u",
+        "date": "2026-02-25",
+        "type": "buy",
+        "shares": 1.38,
+        "price": 7.2303,
+        "fee": 0.01
+      },
+      {
+        "id": "c9i1f1096",
+        "date": "2026-02-24",
+        "type": "buy",
+        "shares": 1.4,
+        "price": 7.1396,
+        "fee": 0.01
+      },
+      {
+        "id": "z9zfutv57",
+        "date": "2026-02-13",
+        "type": "buy",
+        "shares": 1.41,
+        "price": 7.0693,
+        "fee": 0.01
+      }
+    ],
+    "530018": [
+      {
+        "id": "trade_1775193698072_28zkbrz7l",
+        "date": "2026-04-02",
+        "type": "buy",
+        "shares": 1885.75,
+        "price": 2.6475,
+        "fee": 7.49
+      },
+      {
+        "id": "trade_1775019196835_o9ou81lt2",
+        "date": "2026-03-31",
+        "type": "buy",
+        "shares": 3791.11,
+        "price": 2.6338,
+        "fee": 14.98
+      },
+      {
+        "id": "axadj469o",
+        "date": "2026-03-19",
+        "type": "buy",
+        "shares": 1859.89,
+        "price": 2.6843,
+        "fee": 7.49
+      },
+      {
+        "id": "m0hrxictp",
+        "date": "2026-03-12",
+        "type": "buy",
+        "shares": 3678.54,
+        "price": 2.7144,
+        "fee": 14.98
+      },
+      {
+        "id": "rin7v22ol",
+        "date": "2026-03-10",
+        "type": "sell",
+        "shares": 7500,
+        "price": 2.7062,
+        "fee": 101.48
+      },
+      {
+        "id": "mo7zb12v6",
+        "date": "2026-03-09",
+        "type": "buy",
+        "shares": 3770.78,
+        "price": 2.648,
+        "fee": 14.98
+      },
+      {
+        "id": "dqhmglzgx",
+        "date": "2026-03-04",
+        "type": "buy",
+        "shares": 3804.11,
+        "price": 2.6248,
+        "fee": 14.98
+      },
+      {
+        "id": "7kgtyh8p5",
+        "date": "2026-03-03",
+        "type": "buy",
+        "shares": 3764.95,
+        "price": 2.6521,
+        "fee": 14.98
+      },
+      {
+        "id": "z3du0ivcn",
+        "date": "2026-02-27",
+        "type": "buy",
+        "shares": 3692.14,
+        "price": 2.7044,
+        "fee": 14.98
+      }
+    ],
+    "020640": [
+      {
+        "id": "trade_1775193890636_4tacxu6us",
+        "date": "2026-04-02",
+        "type": "buy",
+        "shares": 5368.55,
+        "price": 1.8627,
+        "fee": 0
+      },
+      {
+        "id": "rgxskx5e8",
+        "date": "2026-04-01",
+        "type": "sell",
+        "shares": 2600,
+        "price": 1.9284,
+        "fee": 0
+      },
+      {
+        "id": "trade_1775019017995_6xh0omqmw",
+        "date": "2026-03-31",
+        "type": "buy",
+        "shares": 2638.24,
+        "price": 1.8952,
+        "fee": 0
+      },
+      {
+        "id": "trade_1774934835928_iwybqqr6e",
+        "date": "2026-03-30",
+        "type": "sell",
+        "shares": 2500,
+        "price": 1.9673,
+        "fee": 0
+      },
+      {
+        "id": "i9h3tnil0",
+        "date": "2026-03-24",
+        "type": "sell",
+        "shares": 5300,
+        "price": 1.8686,
+        "fee": 0
+      },
+      {
+        "id": "s8wyf80ky",
+        "date": "2026-03-23",
+        "type": "buy",
+        "shares": 5442.47,
+        "price": 1.8374,
+        "fee": 0
+      },
+      {
+        "id": "69cj10l8n",
+        "date": "2026-03-19",
+        "type": "buy",
+        "shares": 2585.85,
+        "price": 1.9336,
+        "fee": 0
+      },
+      {
+        "id": "zip7hilbi",
+        "date": "2026-03-16",
+        "type": "sell",
+        "shares": 2500,
+        "price": 1.9904,
+        "fee": 0
+      },
+      {
+        "id": "jytj3j0mv",
+        "date": "2026-03-13",
+        "type": "buy",
+        "shares": 2544.92,
+        "price": 1.9647,
+        "fee": 0
+      },
+      {
+        "id": "xgwf5v3xr",
+        "date": "2026-03-12",
+        "type": "buy",
+        "shares": 5041.34,
+        "price": 1.9836,
+        "fee": 0
+      },
+      {
+        "id": "94upywhh4",
+        "date": "2026-03-11",
+        "type": "buy",
+        "shares": 4965.74,
+        "price": 2.0138,
+        "fee": 0
+      },
+      {
+        "id": "9nzngibj2",
+        "date": "2026-03-10",
+        "type": "sell",
+        "shares": 5000,
+        "price": 2.0386,
+        "fee": 0
+      },
+      {
+        "id": "g0xa7ieij",
+        "date": "2026-03-09",
+        "type": "buy",
+        "shares": 5014.29,
+        "price": 1.9943,
+        "fee": 0
+      },
+      {
+        "id": "5difdmqcl",
+        "date": "2026-03-06",
+        "type": "buy",
+        "shares": 4892.61,
+        "price": 2.0439,
+        "fee": 0
+      },
+      {
+        "id": "kgiyfhqkr",
+        "date": "2026-03-05",
+        "type": "sell",
+        "shares": 5000,
+        "price": 2.066,
+        "fee": 0
+      },
+      {
+        "id": "8cnulx8nu",
+        "date": "2026-03-04",
+        "type": "buy",
+        "shares": 4917.63,
+        "price": 2.0335,
+        "fee": 0
+      },
+      {
+        "id": "vi92el9y9",
+        "date": "2026-03-03",
+        "type": "buy",
+        "shares": 12223.74,
+        "price": 2.0452,
+        "fee": 0
+      },
+      {
+        "id": "q5l7ej45g",
+        "date": "2026-03-02",
+        "type": "buy",
+        "shares": 9291.09,
+        "price": 2.1526,
+        "fee": 0
+      },
+      {
+        "id": "4ybums3hf",
+        "date": "2026-02-27",
+        "type": "buy",
+        "shares": 11414.48,
+        "price": 2.1902,
+        "fee": 0
+      },
+      {
+        "id": "5ennwetgx",
+        "date": "2026-02-26",
+        "type": "sell",
+        "shares": 4500,
+        "price": 2.2457,
+        "fee": 0
+      },
+      {
+        "id": "5bdhvp6q4",
+        "date": "2026-02-25",
+        "type": "sell",
+        "shares": 12000,
+        "price": 2.2216,
+        "fee": 0
+      }
+    ],
+    "011592": [
+      {
+        "id": "trade_1775193798752_63txx7pot",
+        "date": "2026-04-02",
+        "type": "buy",
+        "shares": 2511.3,
+        "price": 1.991,
+        "fee": 0
+      },
+      {
+        "id": "trade_1775193439320_14j18zxqz",
+        "date": "2026-04-02",
+        "type": "buy",
+        "shares": 502.26,
+        "price": 1.991,
+        "fee": 0
+      },
+      {
+        "id": "trade_1775018902739_iovix5908",
+        "date": "2026-03-31",
+        "type": "buy",
+        "shares": 502.51,
+        "price": 1.99,
+        "fee": 0
+      },
+      {
+        "id": "trade_1774934717752_fc9p519di",
+        "date": "2026-03-30",
+        "type": "buy",
+        "shares": 493.34,
+        "price": 2.027,
+        "fee": 0
+      },
+      {
+        "id": "trade_1774850142426_yamg9hft5",
+        "date": "2026-03-27",
+        "type": "buy",
+        "shares": 496.2779,
+        "price": 2.015,
+        "fee": 0
+      },
+      {
+        "id": "nup9vy9s3",
+        "date": "2026-03-26",
+        "type": "buy",
+        "shares": 2486.33,
+        "price": 2.011,
+        "fee": 0
+      },
+      {
+        "id": "s1tuvex2y",
+        "date": "2026-03-26",
+        "type": "buy",
+        "shares": 497.27,
+        "price": 2.011,
+        "fee": 0
+      },
+      {
+        "id": "ff7n1iksu",
+        "date": "2026-03-25",
+        "type": "sell",
+        "shares": 9800,
+        "price": 2.047,
+        "fee": 0
+      },
+      {
+        "id": "2q3qeln6k",
+        "date": "2026-03-25",
+        "type": "buy",
+        "shares": 488.52,
+        "price": 2.047,
+        "fee": 0
+      },
+      {
+        "id": "c5i5htsiw",
+        "date": "2026-03-24",
+        "type": "buy",
+        "shares": 3990.02,
+        "price": 2.005,
+        "fee": 0
+      },
+      {
+        "id": "akdl7sdcs",
+        "date": "2026-03-24",
+        "type": "buy",
+        "shares": 498.75,
+        "price": 2.005,
+        "fee": 0
+      },
+      {
+        "id": "syqcoahuy",
+        "date": "2026-03-23",
+        "type": "buy",
+        "shares": 5122.95,
+        "price": 1.952,
+        "fee": 0
+      },
+      {
+        "id": "0rcm5k9cf",
+        "date": "2026-03-23",
+        "type": "buy",
+        "shares": 512.3,
+        "price": 1.952,
+        "fee": 0
+      },
+      {
+        "id": "lknwo97kn",
+        "date": "2026-03-20",
+        "type": "buy",
+        "shares": 4906.77,
+        "price": 2.038,
+        "fee": 0
+      },
+      {
+        "id": "sjxv9ha6f",
+        "date": "2026-03-20",
+        "type": "buy",
+        "shares": 490.68,
+        "price": 2.038,
+        "fee": 0
+      },
+      {
+        "id": "p3wvnpjdv",
+        "date": "2026-03-19",
+        "type": "buy",
+        "shares": 2415.46,
+        "price": 2.07,
+        "fee": 0
+      },
+      {
+        "id": "1audtejy8",
+        "date": "2026-03-19",
+        "type": "buy",
+        "shares": 483.09,
+        "price": 2.07,
+        "fee": 0
+      },
+      {
+        "id": "ueq1ato6t",
+        "date": "2026-03-17",
+        "type": "buy",
+        "shares": 471.7,
+        "price": 2.12,
+        "fee": 0
+      },
+      {
+        "id": "qd4turls6",
+        "date": "2026-03-16",
+        "type": "buy",
+        "shares": 460.41,
+        "price": 2.172,
+        "fee": 0
+      },
+      {
+        "id": "1r3lt49i6",
+        "date": "2026-03-13",
+        "type": "buy",
+        "shares": 462.75,
+        "price": 2.161,
+        "fee": 0
+      },
+      {
+        "id": "v9jsuigia",
+        "date": "2026-03-12",
+        "type": "buy",
+        "shares": 4559.96,
+        "price": 2.193,
+        "fee": 0
+      },
+      {
+        "id": "fmbx1bjod",
+        "date": "2026-03-12",
+        "type": "buy",
+        "shares": 456,
+        "price": 2.193,
+        "fee": 0
+      },
+      {
+        "id": "bvyosh334",
+        "date": "2026-03-11",
+        "type": "buy",
+        "shares": 4490.35,
+        "price": 2.227,
+        "fee": 0
+      },
+      {
+        "id": "yr8u4epxq",
+        "date": "2026-03-11",
+        "type": "buy",
+        "shares": 449.03,
+        "price": 2.227,
+        "fee": 0
+      },
+      {
+        "id": "clulevpyr",
+        "date": "2026-03-10",
+        "type": "sell",
+        "shares": 10000,
+        "price": 2.271,
+        "fee": 0
+      },
+      {
+        "id": "gizkckorx",
+        "date": "2026-03-09",
+        "type": "buy",
+        "shares": 4508.57,
+        "price": 2.218,
+        "fee": 0
+      },
+      {
+        "id": "4y5768bfd",
+        "date": "2026-03-09",
+        "type": "buy",
+        "shares": 450.86,
+        "price": 2.218,
+        "fee": 0
+      },
+      {
+        "id": "yzjr3u5dc",
+        "date": "2026-03-06",
+        "type": "buy",
+        "shares": 445.43,
+        "price": 2.245,
+        "fee": 0
+      },
+      {
+        "id": "0vn1vh38j",
+        "date": "2026-03-05",
+        "type": "buy",
+        "shares": 449.64,
+        "price": 2.224,
+        "fee": 0
+      },
+      {
+        "id": "033bn81my",
+        "date": "2026-03-04",
+        "type": "buy",
+        "shares": 455.37,
+        "price": 2.196,
+        "fee": 0
+      },
+      {
+        "id": "299mnjwys",
+        "date": "2026-03-03",
+        "type": "buy",
+        "shares": 13698.63,
+        "price": 2.19,
+        "fee": 0
+      },
+      {
+        "id": "35vc1ybjl",
+        "date": "2026-03-03",
+        "type": "buy",
+        "shares": 456.62,
+        "price": 2.19,
+        "fee": 0
+      },
+      {
+        "id": "amndaxv98",
+        "date": "2026-03-02",
+        "type": "sell",
+        "shares": 5000,
+        "price": 2.337,
+        "fee": 0
+      },
+      {
+        "id": "hsjle09ql",
+        "date": "2026-02-27",
+        "type": "buy",
+        "shares": 4304.78,
+        "price": 2.323,
+        "fee": 0
+      },
+      {
+        "id": "jvzkgx0ur",
+        "date": "2026-02-27",
+        "type": "buy",
+        "shares": 430.48,
+        "price": 2.323,
+        "fee": 0
+      },
+      {
+        "id": "yx46zpt4g",
+        "date": "2026-02-26",
+        "type": "sell",
+        "shares": 4500,
+        "price": 2.314,
+        "fee": 0
+      },
+      {
+        "id": "plbrc23l9",
+        "date": "2026-02-25",
+        "type": "sell",
+        "shares": 9100,
+        "price": 2.244,
+        "fee": 0
+      },
+      {
+        "id": "phf1d1ysj",
+        "date": "2026-02-24",
+        "type": "buy",
+        "shares": 455.79,
+        "price": 2.194,
+        "fee": 0
+      }
+    ],
+    "024194": [
+      {
+        "id": "trade_1775193815928_16fvv41om",
+        "date": "2026-04-02",
+        "type": "buy",
+        "shares": 3360.48,
+        "price": 1.4861,
+        "fee": 5.99
+      },
+      {
+        "id": "trade_1775193439320_neh98hmmg",
+        "date": "2026-04-02",
+        "type": "buy",
+        "shares": 672.09,
+        "price": 1.4861,
+        "fee": 1.2
+      },
+      {
+        "id": "wngm1z9ky",
+        "date": "2026-04-01",
+        "type": "buy",
+        "shares": 655.98,
+        "price": 1.5226,
+        "fee": 1.2
+      },
+      {
+        "id": "trade_1774934863394_5npvao5n1",
+        "date": "2026-03-30",
+        "type": "sell",
+        "shares": 2600,
+        "price": 1.5278,
+        "fee": 0
+      },
+      {
+        "id": "trade_1774850109034_bb4krwl6b",
+        "date": "2026-03-27",
+        "type": "buy",
+        "shares": 669.7063,
+        "price": 1.4914,
+        "fee": 1.2
+      },
+      {
+        "id": "sqw0sfijw",
+        "date": "2026-03-25",
+        "type": "buy",
+        "shares": 663.74,
+        "price": 1.5048,
+        "fee": 1.2
+      },
+      {
+        "id": "grban5or1",
+        "date": "2026-03-24",
+        "type": "buy",
+        "shares": 671.33,
+        "price": 1.4878,
+        "fee": 1.2
+      },
+      {
+        "id": "s6bv5pxvp",
+        "date": "2026-03-23",
+        "type": "buy",
+        "shares": 680.01,
+        "price": 1.4688,
+        "fee": 1.2
+      },
+      {
+        "id": "yui45g6k5",
+        "date": "2026-03-20",
+        "type": "buy",
+        "shares": 3242.23,
+        "price": 1.5403,
+        "fee": 5.99
+      },
+      {
+        "id": "zfbm10uae",
+        "date": "2026-03-20",
+        "type": "buy",
+        "shares": 648.45,
+        "price": 1.5403,
+        "fee": 1.2
+      },
+      {
+        "id": "8qag69b92",
+        "date": "2026-03-19",
+        "type": "buy",
+        "shares": 3179.08,
+        "price": 1.5709,
+        "fee": 5.99
+      },
+      {
+        "id": "ljxclmy8c",
+        "date": "2026-03-19",
+        "type": "buy",
+        "shares": 635.81,
+        "price": 1.5709,
+        "fee": 1.2
+      },
+      {
+        "id": "sw8b9uo8k",
+        "date": "2026-03-18",
+        "type": "sell",
+        "shares": 6600,
+        "price": 1.598,
+        "fee": 0
+      },
+      {
+        "id": "9kruxozg2",
+        "date": "2026-03-17",
+        "type": "buy",
+        "shares": 652.9,
+        "price": 1.5298,
+        "fee": 1.2
+      },
+      {
+        "id": "akc9jm13o",
+        "date": "2026-03-16",
+        "type": "buy",
+        "shares": 634.2,
+        "price": 1.5749,
+        "fee": 1.2
+      },
+      {
+        "id": "40col9aas",
+        "date": "2026-03-12",
+        "type": "buy",
+        "shares": 6139.29,
+        "price": 1.6269,
+        "fee": 11.99
+      },
+      {
+        "id": "37rir9ub5",
+        "date": "2026-03-12",
+        "type": "buy",
+        "shares": 613.93,
+        "price": 1.6269,
+        "fee": 1.2
+      },
+      {
+        "id": "7zo296fba",
+        "date": "2026-03-11",
+        "type": "buy",
+        "shares": 6023.77,
+        "price": 1.6581,
+        "fee": 11.99
+      },
+      {
+        "id": "bohm2i4dh",
+        "date": "2026-03-11",
+        "type": "buy",
+        "shares": 602.38,
+        "price": 1.6581,
+        "fee": 1.2
+      },
+      {
+        "id": "h23d9jvb1",
+        "date": "2026-03-10",
+        "type": "sell",
+        "shares": 9000,
+        "price": 1.6886,
+        "fee": 0
+      },
+      {
+        "id": "ov99qki79",
+        "date": "2026-03-09",
+        "type": "buy",
+        "shares": 6032.86,
+        "price": 1.6556,
+        "fee": 11.99
+      },
+      {
+        "id": "nbhm21wdv",
+        "date": "2026-03-09",
+        "type": "buy",
+        "shares": 603.29,
+        "price": 1.6556,
+        "fee": 1.2
+      },
+      {
+        "id": "xa23rzde4",
+        "date": "2026-03-06",
+        "type": "buy",
+        "shares": 596.16,
+        "price": 1.6754,
+        "fee": 1.2
+      },
+      {
+        "id": "vvcm7k3e2",
+        "date": "2026-03-05",
+        "type": "buy",
+        "shares": 594.98,
+        "price": 1.6787,
+        "fee": 1.2
+      },
+      {
+        "id": "0clukd4us",
+        "date": "2026-03-04",
+        "type": "buy",
+        "shares": 604.34,
+        "price": 1.6527,
+        "fee": 1.2
+      },
+      {
+        "id": "h1712imj7",
+        "date": "2026-03-03",
+        "type": "buy",
+        "shares": 608.62,
+        "price": 1.6411,
+        "fee": 1.2
+      },
+      {
+        "id": "oc4t0rf31",
+        "date": "2026-03-03",
+        "type": "buy",
+        "shares": 18258.51,
+        "price": 1.6411,
+        "fee": 35.96
+      },
+      {
+        "id": "sc7o2bg9u",
+        "date": "2026-03-03",
+        "type": "buy",
+        "shares": 608.62,
+        "price": 1.6411,
+        "fee": 1.2
+      },
+      {
+        "id": "gk6mm8fie",
+        "date": "2026-03-02",
+        "type": "sell",
+        "shares": 14000,
+        "price": 1.7867,
+        "fee": 0
+      },
+      {
+        "id": "tkb7guz6t",
+        "date": "2026-02-27",
+        "type": "buy",
+        "shares": 573.07,
+        "price": 1.7429,
+        "fee": 1.2
+      },
+      {
+        "id": "ujcfy310r",
+        "date": "2026-02-26",
+        "type": "sell",
+        "shares": 5900,
+        "price": 1.7239,
+        "fee": 0
+      },
+      {
+        "id": "3dhxrbhc8",
+        "date": "2026-02-25",
+        "type": "sell",
+        "shares": 6100,
+        "price": 1.7,
+        "fee": 0
+      },
+      {
+        "id": "40ml6i0ij",
+        "date": "2026-02-24",
+        "type": "buy",
+        "shares": 6032.14,
+        "price": 1.6558,
+        "fee": 11.99
+      },
+      {
+        "id": "rsbtsbzen",
+        "date": "2026-02-24",
+        "type": "buy",
+        "shares": 603.21,
+        "price": 1.6558,
+        "fee": 1.2
+      },
+      {
+        "id": "Lu-024194-0456a818-4ec8-4b0d-b440-a630bcb01bd3",
+        "date": "2026-03-13",
+        "type": "buy",
+        "shares": 6963.37,
+        "price": 1.5778,
+        "fee": 13.19
+      }
+    ],
+    "002611": [
+      {
+        "id": "trade_1775193905713_ewevxskfw",
+        "date": "2026-04-02",
+        "type": "buy",
+        "shares": 1545.6,
+        "price": 3.235,
+        "fee": 0
+      },
+      {
+        "id": "trade_1775193439320_uoes1pbl0",
+        "date": "2026-04-02",
+        "type": "buy",
+        "shares": 309.12,
+        "price": 3.235,
+        "fee": 0
+      },
+      {
+        "id": "trade_1775019221915_jgcmw0iak",
+        "date": "2026-03-31",
+        "type": "sell",
+        "shares": 1425,
+        "price": 3.2067,
+        "fee": 0
+      },
+      {
+        "id": "trade_1775018902739_y2qvc9r7g",
+        "date": "2026-03-31",
+        "type": "buy",
+        "shares": 311.85,
+        "price": 3.2067,
+        "fee": 0
+      },
+      {
+        "id": "trade_1774934717752_bvlmw7rpc",
+        "date": "2026-03-30",
+        "type": "buy",
+        "shares": 315.06,
+        "price": 3.174,
+        "fee": 0
+      },
+      {
+        "id": "trade_1774850001418_lu1xatnc2",
+        "date": "2026-03-27",
+        "type": "buy",
+        "shares": 319.6522,
+        "price": 3.1284,
+        "fee": 0
+      },
+      {
+        "id": "x6hh6pm1r",
+        "date": "2026-03-26",
+        "type": "buy",
+        "shares": 320.11,
+        "price": 3.1239,
+        "fee": 0
+      },
+      {
+        "id": "wnwdwoywg",
+        "date": "2026-03-25",
+        "type": "buy",
+        "shares": 312.98,
+        "price": 3.1951,
+        "fee": 0
+      },
+      {
+        "id": "tsbpbovbf",
+        "date": "2026-03-23",
+        "type": "buy",
+        "shares": 342.27,
+        "price": 2.9217,
+        "fee": 0
+      },
+      {
+        "id": "kdtt9c3j1",
+        "date": "2026-03-20",
+        "type": "buy",
+        "shares": 3054.74,
+        "price": 3.2736,
+        "fee": 0
+      },
+      {
+        "id": "gj63uo9oz",
+        "date": "2026-03-20",
+        "type": "buy",
+        "shares": 305.47,
+        "price": 3.2736,
+        "fee": 0
+      },
+      {
+        "id": "rmj9apf0a",
+        "date": "2026-03-19",
+        "type": "buy",
+        "shares": 2996.16,
+        "price": 3.3376,
+        "fee": 0
+      },
+      {
+        "id": "qegsmau4g",
+        "date": "2026-03-19",
+        "type": "buy",
+        "shares": 299.62,
+        "price": 3.3376,
+        "fee": 0
+      },
+      {
+        "id": "p36pqoe42",
+        "date": "2026-03-18",
+        "type": "buy",
+        "shares": 1432.25,
+        "price": 3.491,
+        "fee": 0
+      },
+      {
+        "id": "yl3p3vl03",
+        "date": "2026-03-18",
+        "type": "buy",
+        "shares": 286.45,
+        "price": 3.491,
+        "fee": 0
+      },
+      {
+        "id": "py07g01ex",
+        "date": "2026-03-16",
+        "type": "buy",
+        "shares": 2856.73,
+        "price": 3.5005,
+        "fee": 0
+      },
+      {
+        "id": "8qhyf3dqn",
+        "date": "2026-03-16",
+        "type": "buy",
+        "shares": 285.67,
+        "price": 3.5005,
+        "fee": 0
+      },
+      {
+        "id": "6mt8dpqk1",
+        "date": "2026-03-13",
+        "type": "buy",
+        "shares": 2815.55,
+        "price": 3.5517,
+        "fee": 0
+      },
+      {
+        "id": "j5e34wml5",
+        "date": "2026-03-13",
+        "type": "buy",
+        "shares": 281.56,
+        "price": 3.5517,
+        "fee": 0
+      },
+      {
+        "id": "h7g2i8atl",
+        "date": "2026-03-12",
+        "type": "buy",
+        "shares": 277.96,
+        "price": 3.5976,
+        "fee": 0
+      },
+      {
+        "id": "hu5gco2tz",
+        "date": "2026-03-10",
+        "type": "buy",
+        "shares": 278.31,
+        "price": 3.5931,
+        "fee": 0
+      },
+      {
+        "id": "8klnkfyrk",
+        "date": "2026-03-09",
+        "type": "buy",
+        "shares": 279.39,
+        "price": 3.5792,
+        "fee": 0
+      },
+      {
+        "id": "csatmzjg6",
+        "date": "2026-03-06",
+        "type": "buy",
+        "shares": 2795.72,
+        "price": 3.5769,
+        "fee": 0
+      },
+      {
+        "id": "jmawr4hrq",
+        "date": "2026-03-06",
+        "type": "buy",
+        "shares": 279.57,
+        "price": 3.5769,
+        "fee": 0
+      },
+      {
+        "id": "sru8p5d7u",
+        "date": "2026-03-05",
+        "type": "buy",
+        "shares": 2771.54,
+        "price": 3.6081,
+        "fee": 0
+      },
+      {
+        "id": "wgthz0i21",
+        "date": "2026-03-05",
+        "type": "buy",
+        "shares": 277.15,
+        "price": 3.6081,
+        "fee": 0
+      },
+      {
+        "id": "maos9j01i",
+        "date": "2026-03-04",
+        "type": "buy",
+        "shares": 6908.37,
+        "price": 3.6188,
+        "fee": 0
+      },
+      {
+        "id": "9srgsbe16",
+        "date": "2026-03-04",
+        "type": "buy",
+        "shares": 276.33,
+        "price": 3.6188,
+        "fee": 0
+      },
+      {
+        "id": "ljtt161dw",
+        "date": "2026-03-03",
+        "type": "buy",
+        "shares": 5391.56,
+        "price": 3.7095,
+        "fee": 0
+      },
+      {
+        "id": "nmohsryde",
+        "date": "2026-03-03",
+        "type": "buy",
+        "shares": 269.58,
+        "price": 3.7095,
+        "fee": 0
+      },
+      {
+        "id": "2js3ch6y2",
+        "date": "2026-03-02",
+        "type": "sell",
+        "shares": 11400,
+        "price": 3.7578,
+        "fee": 0
+      },
+      {
+        "id": "bs3vzz062",
+        "date": "2026-02-27",
+        "type": "buy",
+        "shares": 278.75,
+        "price": 3.5874,
+        "fee": 0
+      },
+      {
+        "id": "3ysog65aa",
+        "date": "2026-02-26",
+        "type": "buy",
+        "shares": 278.4,
+        "price": 3.592,
+        "fee": 0
+      },
+      {
+        "id": "3snj3ueel",
+        "date": "2026-02-25",
+        "type": "buy",
+        "shares": 278.12,
+        "price": 3.5956,
+        "fee": 0
+      },
+      {
+        "id": "shf3tio8o",
+        "date": "2026-02-24",
+        "type": "sell",
+        "shares": 5700,
+        "price": 3.602,
+        "fee": 0
+      }
+    ],
+    "012349": [
+      {
+        "id": "trade_1775193762712_1khp9aj2b",
+        "date": "2026-04-02",
+        "type": "buy",
+        "shares": 7823.5,
+        "price": 0.6391,
+        "fee": 0
+      },
+      {
+        "id": "4cz51pfn1",
+        "date": "2026-04-01",
+        "type": "sell",
+        "shares": 11000,
+        "price": 0.6506,
+        "fee": 0
+      },
+      {
+        "id": "trade_1775019179708_ld369vypq",
+        "date": "2026-03-31",
+        "type": "buy",
+        "shares": 3133.32,
+        "price": 0.6383,
+        "fee": 0
+      },
+      {
+        "id": "trade_1774934775736_i9582iuxr",
+        "date": "2026-03-30",
+        "type": "buy",
+        "shares": 7761.56,
+        "price": 0.6442,
+        "fee": 0
+      },
+      {
+        "id": "0id4z5x3n",
+        "date": "2026-03-20",
+        "type": "buy",
+        "shares": 7517.67,
+        "price": 0.6651,
+        "fee": 0
+      },
+      {
+        "id": "t1n3uonfj",
+        "date": "2026-03-19",
+        "type": "buy",
+        "shares": 7335.68,
+        "price": 0.6816,
+        "fee": 0
+      },
+      {
+        "id": "dvmsgdmzw",
+        "date": "2026-03-16",
+        "type": "sell",
+        "shares": 22000,
+        "price": 0.6981,
+        "fee": 0
+      },
+      {
+        "id": "82v8lnboh",
+        "date": "2026-03-12",
+        "type": "buy",
+        "shares": 7284.38,
+        "price": 0.6864,
+        "fee": 0
+      },
+      {
+        "id": "kldzygomk",
+        "date": "2026-03-10",
+        "type": "sell",
+        "shares": 7300,
+        "price": 0.6911,
+        "fee": 0
+      },
+      {
+        "id": "x54k9j480",
+        "date": "2026-03-06",
+        "type": "sell",
+        "shares": 23000,
+        "price": 0.6768,
+        "fee": 0
+      },
+      {
+        "id": "6x4jxr0qp",
+        "date": "2026-03-05",
+        "type": "buy",
+        "shares": 7603.41,
+        "price": 0.6576,
+        "fee": 0
+      },
+      {
+        "id": "0q7xbk8qv",
+        "date": "2026-03-04",
+        "type": "buy",
+        "shares": 7531.25,
+        "price": 0.6639,
+        "fee": 0
+      },
+      {
+        "id": "wc4vn5ifl",
+        "date": "2026-03-03",
+        "type": "buy",
+        "shares": 7481.67,
+        "price": 0.6683,
+        "fee": 0
+      },
+      {
+        "id": "640hla2rm",
+        "date": "2026-03-02",
+        "type": "buy",
+        "shares": 7305.67,
+        "price": 0.6844,
+        "fee": 0
+      },
+      {
+        "id": "onam4slmj",
+        "date": "2026-02-26",
+        "type": "buy",
+        "shares": 7137.76,
+        "price": 0.7005,
+        "fee": 0
+      },
+      {
+        "id": "y3ldhfxn6",
+        "date": "2026-02-24",
+        "type": "buy",
+        "shares": 6911.81,
+        "price": 0.7234,
+        "fee": 0
+      }
+    ],
+    "015283": [
+      {
+        "id": "trade_1775193751609_49j28icnx",
+        "date": "2026-04-02",
+        "type": "buy",
+        "shares": 440.84,
+        "price": 1.1342,
+        "fee": 0
+      },
+      {
+        "id": "trade_1775019159933_1exw0ej1f",
+        "date": "2026-03-31",
+        "type": "buy",
+        "shares": 441.42,
+        "price": 1.1327,
+        "fee": 0
+      },
+      {
+        "id": "trade_1774934751264_wi18zyiht",
+        "date": "2026-03-30",
+        "type": "buy",
+        "shares": 437.22,
+        "price": 1.1436,
+        "fee": 0
+      },
+      {
+        "id": "jr8ofv40j",
+        "date": "2026-03-20",
+        "type": "buy",
+        "shares": 423.3,
+        "price": 1.1812,
+        "fee": 0
+      },
+      {
+        "id": "qzl6uqcf8",
+        "date": "2026-03-19",
+        "type": "buy",
+        "shares": 412.61,
+        "price": 1.2118,
+        "fee": 0
+      },
+      {
+        "id": "i7ixhm2pq",
+        "date": "2026-03-12",
+        "type": "buy",
+        "shares": 409.74,
+        "price": 1.2203,
+        "fee": 0
+      },
+      {
+        "id": "hff4q5oct",
+        "date": "2026-03-10",
+        "type": "sell",
+        "shares": 4200,
+        "price": 1.229,
+        "fee": 0
+      },
+      {
+        "id": "dv2hhqx4q",
+        "date": "2026-03-06",
+        "type": "sell",
+        "shares": 4300,
+        "price": 1.2028,
+        "fee": 0
+      },
+      {
+        "id": "pyg96c3an",
+        "date": "2026-03-05",
+        "type": "buy",
+        "shares": 428.3,
+        "price": 1.1674,
+        "fee": 0
+      },
+      {
+        "id": "zjvus10m4",
+        "date": "2026-03-04",
+        "type": "buy",
+        "shares": 424.09,
+        "price": 1.179,
+        "fee": 0
+      },
+      {
+        "id": "6l6xl5riw",
+        "date": "2026-03-03",
+        "type": "buy",
+        "shares": 421.27,
+        "price": 1.1869,
+        "fee": 0
+      },
+      {
+        "id": "cenf86msm",
+        "date": "2026-03-02",
+        "type": "buy",
+        "shares": 411.32,
+        "price": 1.2156,
+        "fee": 0
+      },
+      {
+        "id": "x7t1aowb3",
+        "date": "2026-02-26",
+        "type": "buy",
+        "shares": 401.45,
+        "price": 1.2455,
+        "fee": 0
+      },
+      {
+        "id": "fjndkl8gt",
+        "date": "2026-02-24",
+        "type": "buy",
+        "shares": 3888.33,
+        "price": 1.2859,
+        "fee": 0
+      }
+    ],
+    "025833": [
+      {
+        "id": "trade_1775193716897_ndehb5yfm",
+        "date": "2026-04-02",
+        "type": "buy",
+        "shares": 3927.42,
+        "price": 1.2731,
+        "fee": 0
+      },
+      {
+        "id": "trade_1775193439320_zikupu0im",
+        "date": "2026-04-02",
+        "type": "buy",
+        "shares": 1963.71,
+        "price": 1.2731,
+        "fee": 0
+      },
+      {
+        "id": "91dhq3rjn",
+        "date": "2026-04-01",
+        "type": "sell",
+        "shares": 7800,
+        "price": 1.2929,
+        "fee": 0
+      },
+      {
+        "id": "trade_1775019130556_jixzwqmvc",
+        "date": "2026-03-31",
+        "type": "buy",
+        "shares": 7829.63,
+        "price": 1.2772,
+        "fee": 0
+      },
+      {
+        "id": "trade_1775018902739_lgpt8uzq4",
+        "date": "2026-03-31",
+        "type": "buy",
+        "shares": 1957.41,
+        "price": 1.2772,
+        "fee": 0
+      },
+      {
+        "id": "trade_1774934717752_76zsykawp",
+        "date": "2026-03-30",
+        "type": "buy",
+        "shares": 1918.21,
+        "price": 1.3033,
+        "fee": 0
+      },
+      {
+        "id": "trade_1774850164155_5ft9jj4ph",
+        "date": "2026-03-27",
+        "type": "buy",
+        "shares": 769.4083,
+        "price": 1.2997,
+        "fee": 0
+      },
+      {
+        "id": "mker7bnk7",
+        "date": "2026-03-26",
+        "type": "buy",
+        "shares": 7747.13,
+        "price": 1.2908,
+        "fee": 0
+      },
+      {
+        "id": "fh008pt1q",
+        "date": "2026-03-25",
+        "type": "sell",
+        "shares": 15000,
+        "price": 1.3195,
+        "fee": 0
+      },
+      {
+        "id": "h0j20vrfm",
+        "date": "2026-03-25",
+        "type": "buy",
+        "shares": 1894.66,
+        "price": 1.3195,
+        "fee": 0
+      },
+      {
+        "id": "o3qwj6u43",
+        "date": "2026-03-24",
+        "type": "buy",
+        "shares": 7786.95,
+        "price": 1.2842,
+        "fee": 0
+      },
+      {
+        "id": "swpm6djrc",
+        "date": "2026-03-24",
+        "type": "buy",
+        "shares": 1946.74,
+        "price": 1.2842,
+        "fee": 0
+      },
+      {
+        "id": "suu3pmvix",
+        "date": "2026-03-23",
+        "type": "buy",
+        "shares": 7979.57,
+        "price": 1.2532,
+        "fee": 0
+      },
+      {
+        "id": "smhmuj7m8",
+        "date": "2026-03-23",
+        "type": "buy",
+        "shares": 1994.89,
+        "price": 1.2532,
+        "fee": 0
+      },
+      {
+        "id": "olph4bp1z",
+        "date": "2026-03-20",
+        "type": "buy",
+        "shares": 3894.99,
+        "price": 1.2837,
+        "fee": 0
+      },
+      {
+        "id": "nsr0tlfg6",
+        "date": "2026-03-20",
+        "type": "buy",
+        "shares": 1947.5,
+        "price": 1.2837,
+        "fee": 0
+      },
+      {
+        "id": "eoby2qlsw",
+        "date": "2026-03-19",
+        "type": "buy",
+        "shares": 7671.06,
+        "price": 1.3036,
+        "fee": 0
+      },
+      {
+        "id": "pzffhyw2f",
+        "date": "2026-03-19",
+        "type": "buy",
+        "shares": 1917.77,
+        "price": 1.3036,
+        "fee": 0
+      },
+      {
+        "id": "5fdxo5r8l",
+        "date": "2026-03-17",
+        "type": "buy",
+        "shares": 1894.37,
+        "price": 1.3197,
+        "fee": 0
+      },
+      {
+        "id": "bs8mttpkg",
+        "date": "2026-03-16",
+        "type": "buy",
+        "shares": 7349.16,
+        "price": 1.3607,
+        "fee": 0
+      },
+      {
+        "id": "pk47i13if",
+        "date": "2026-03-16",
+        "type": "buy",
+        "shares": 1837.29,
+        "price": 1.3607,
+        "fee": 0
+      },
+      {
+        "id": "ah7sjk91j",
+        "date": "2026-03-13",
+        "type": "buy",
+        "shares": 7182.36,
+        "price": 1.3923,
+        "fee": 0
+      },
+      {
+        "id": "kzyom7xqi",
+        "date": "2026-03-13",
+        "type": "buy",
+        "shares": 1795.59,
+        "price": 1.3923,
+        "fee": 0
+      },
+      {
+        "id": "7ph61hvzg",
+        "date": "2026-03-12",
+        "type": "buy",
+        "shares": 6988.12,
+        "price": 1.431,
+        "fee": 0
+      },
+      {
+        "id": "31ashi5mu",
+        "date": "2026-03-12",
+        "type": "buy",
+        "shares": 1747.03,
+        "price": 1.431,
+        "fee": 0
+      },
+      {
+        "id": "m31c1cfmg",
+        "date": "2026-03-11",
+        "type": "buy",
+        "shares": 1724.26,
+        "price": 1.4499,
+        "fee": 0
+      },
+      {
+        "id": "lmnni8uw8",
+        "date": "2026-03-10",
+        "type": "buy",
+        "shares": 686.48,
+        "price": 1.4567,
+        "fee": 0
+      },
+      {
+        "id": "pnhe050b1",
+        "date": "2026-03-09",
+        "type": "buy",
+        "shares": 691.42,
+        "price": 1.4463,
+        "fee": 0
+      },
+      {
+        "id": "fp6hvw8lo",
+        "date": "2026-03-06",
+        "type": "buy",
+        "shares": 3490.89,
+        "price": 1.4323,
+        "fee": 0
+      },
+      {
+        "id": "01g9q4c6x",
+        "date": "2026-03-06",
+        "type": "buy",
+        "shares": 698.18,
+        "price": 1.4323,
+        "fee": 0
+      },
+      {
+        "id": "jhlfyp5jk",
+        "date": "2026-03-05",
+        "type": "sell",
+        "shares": 10000,
+        "price": 1.4233,
+        "fee": 0
+      },
+      {
+        "id": "bjsps0g83",
+        "date": "2026-03-04",
+        "type": "sell",
+        "shares": 15000,
+        "price": 1.3724,
+        "fee": 0
+      },
+      {
+        "id": "nqo92puxp",
+        "date": "2026-03-03",
+        "type": "buy",
+        "shares": 14949.92,
+        "price": 1.3378,
+        "fee": 0
+      },
+      {
+        "id": "geyva0ijx",
+        "date": "2026-03-03",
+        "type": "buy",
+        "shares": 747.5,
+        "price": 1.3378,
+        "fee": 0
+      },
+      {
+        "id": "qru8b5p7b",
+        "date": "2026-03-02",
+        "type": "sell",
+        "shares": 7300,
+        "price": 1.3886,
+        "fee": 0
+      },
+      {
+        "id": "j45ij0jj4",
+        "date": "2026-02-27",
+        "type": "buy",
+        "shares": 3654.97,
+        "price": 1.368,
+        "fee": 0
+      },
+      {
+        "id": "97yj44s5k",
+        "date": "2026-02-27",
+        "type": "buy",
+        "shares": 730.99,
+        "price": 1.368,
+        "fee": 0
+      },
+      {
+        "id": "8wmdaixsh",
+        "date": "2026-02-26",
+        "type": "sell",
+        "shares": 7500,
+        "price": 1.3701,
+        "fee": 0
+      },
+      {
+        "id": "txfh53xfo",
+        "date": "2026-02-25",
+        "type": "buy",
+        "shares": 751.26,
+        "price": 1.3311,
+        "fee": 0
+      },
+      {
+        "id": "ridxbsgyc",
+        "date": "2026-02-24",
+        "type": "sell",
+        "shares": 10000,
+        "price": 1.3238,
+        "fee": 0
+      }
+    ],
+    "023832": [
+      {
+        "id": "trade_1775193929882_tfl8oj1ko",
+        "date": "2026-04-02",
+        "type": "sell",
+        "shares": 4000,
+        "price": 1.4866,
+        "fee": 0
+      },
+      {
+        "id": "trade_1775193439320_m0p9lpvzk",
+        "date": "2026-04-02",
+        "type": "buy",
+        "shares": 671.87,
+        "price": 1.4866,
+        "fee": 1.2
+      },
+      {
+        "id": "trade_1775019400733_hgkwb1c12",
+        "date": "2026-03-30",
+        "type": "buy",
+        "shares": 686.7,
+        "price": 1.4545,
+        "fee": 1.2
+      },
+      {
+        "id": "trade_1775018902739_7n98s9oa3",
+        "date": "2026-03-31",
+        "type": "buy",
+        "shares": 700.57,
+        "price": 1.4257,
+        "fee": 1.2
+      },
+      {
+        "id": "u0gohwazz",
+        "date": "2026-03-25",
+        "type": "buy",
+        "shares": 685.19,
+        "price": 1.4577,
+        "fee": 1.2
+      },
+      {
+        "id": "yaac978x8",
+        "date": "2026-03-24",
+        "type": "buy",
+        "shares": 680.2,
+        "price": 1.4684,
+        "fee": 1.2
+      },
+      {
+        "id": "ahu1y594b",
+        "date": "2026-03-23",
+        "type": "buy",
+        "shares": 690.4,
+        "price": 1.4467,
+        "fee": 1.2
+      },
+      {
+        "id": "uf66vzdcx",
+        "date": "2026-03-20",
+        "type": "buy",
+        "shares": 686.22,
+        "price": 1.4555,
+        "fee": 1.2
+      },
+      {
+        "id": "j0wo9rnuv",
+        "date": "2026-03-19",
+        "type": "buy",
+        "shares": 670.02,
+        "price": 1.4907,
+        "fee": 1.2
+      },
+      {
+        "id": "66lf0ifon",
+        "date": "2026-03-18",
+        "type": "buy",
+        "shares": 669.93,
+        "price": 1.4909,
+        "fee": 1.2
+      },
+      {
+        "id": "omgtgfbab",
+        "date": "2026-03-17",
+        "type": "buy",
+        "shares": 669.44,
+        "price": 1.492,
+        "fee": 1.2
+      },
+      {
+        "id": "415b1877m",
+        "date": "2026-03-16",
+        "type": "buy",
+        "shares": 659.23,
+        "price": 1.5151,
+        "fee": 1.2
+      },
+      {
+        "id": "jmu5t8wu3",
+        "date": "2026-03-13",
+        "type": "buy",
+        "shares": 659.06,
+        "price": 1.5155,
+        "fee": 1.2
+      },
+      {
+        "id": "hc3zzi7f0",
+        "date": "2026-03-12",
+        "type": "buy",
+        "shares": 647.1,
+        "price": 1.5435,
+        "fee": 1.2
+      },
+      {
+        "id": "w45xhho04",
+        "date": "2026-03-11",
+        "type": "buy",
+        "shares": 650.68,
+        "price": 1.535,
+        "fee": 1.2
+      },
+      {
+        "id": "w6sp8aeqt",
+        "date": "2026-03-10",
+        "type": "buy",
+        "shares": 649.29,
+        "price": 1.5383,
+        "fee": 1.2
+      },
+      {
+        "id": "w0mfac1od",
+        "date": "2026-03-09",
+        "type": "buy",
+        "shares": 1568.86,
+        "price": 1.5916,
+        "fee": 3
+      },
+      {
+        "id": "ubox62kn0",
+        "date": "2026-03-06",
+        "type": "buy",
+        "shares": 3119.5,
+        "price": 1.6009,
+        "fee": 5.99
+      },
+      {
+        "id": "hbfi8y4cz",
+        "date": "2026-03-06",
+        "type": "buy",
+        "shares": 1559.75,
+        "price": 1.6009,
+        "fee": 3
+      },
+      {
+        "id": "29gq9aofo",
+        "date": "2026-03-05",
+        "type": "buy",
+        "shares": 1534.92,
+        "price": 1.6268,
+        "fee": 3
+      },
+      {
+        "id": "zme1ils91",
+        "date": "2026-03-04",
+        "type": "buy",
+        "shares": 1527.03,
+        "price": 1.6352,
+        "fee": 3
+      },
+      {
+        "id": "o70sxfnxu",
+        "date": "2026-03-03",
+        "type": "sell",
+        "shares": 7000,
+        "price": 1.66,
+        "fee": 11.62
+      },
+      {
+        "id": "09gnak6rz",
+        "date": "2026-03-02",
+        "type": "sell",
+        "shares": 10000,
+        "price": 1.5956,
+        "fee": 15.96
+      },
+      {
+        "id": "u67j3e3oc",
+        "date": "2026-02-27",
+        "type": "buy",
+        "shares": 1669.45,
+        "price": 1.4957,
+        "fee": 3
+      },
+      {
+        "id": "qbpft5sg1",
+        "date": "2026-02-26",
+        "type": "buy",
+        "shares": 1693.91,
+        "price": 1.4741,
+        "fee": 3
+      },
+      {
+        "id": "8cfu9gurz",
+        "date": "2026-02-25",
+        "type": "sell",
+        "shares": 7000,
+        "price": 1.4733,
+        "fee": 10.31
+      },
+      {
+        "id": "e0jknbso6",
+        "date": "2026-02-24",
+        "type": "sell",
+        "shares": 10000,
+        "price": 1.4507,
+        "fee": 14.51
+      }
+    ],
+    "012328": [
+      {
+        "id": "trade_1775193776618_auvb51j2z",
+        "date": "2026-04-02",
+        "type": "buy",
+        "shares": 6638.32,
+        "price": 0.7523,
+        "fee": 5.99
+      },
+      {
+        "id": "trade_1775193439320_xolye18jn",
+        "date": "2026-04-02",
+        "type": "buy",
+        "shares": 1327.66,
+        "price": 0.7523,
+        "fee": 1.2
+      },
+      {
+        "id": "ge5cnut2s",
+        "date": "2026-04-01",
+        "type": "buy",
+        "shares": 1304.43,
+        "price": 0.7657,
+        "fee": 1.2
+      },
+      {
+        "id": "trade_1775019074212_qgr1o7zaz",
+        "date": "2026-03-31",
+        "type": "buy",
+        "shares": 13035.77,
+        "price": 0.7662,
+        "fee": 11.99
+      },
+      {
+        "id": "trade_1775018902739_uzdwgfgjn",
+        "date": "2026-03-31",
+        "type": "buy",
+        "shares": 1303.58,
+        "price": 0.7662,
+        "fee": 1.2
+      },
+      {
+        "id": "trade_1774934795633_roensx68b",
+        "date": "2026-03-30",
+        "type": "buy",
+        "shares": 12615.9,
+        "price": 0.7917,
+        "fee": 11.99
+      },
+      {
+        "id": "trade_1774850225058_iz0lfsr1i",
+        "date": "2026-03-27",
+        "type": "sell",
+        "shares": 5000,
+        "price": 0.8033,
+        "fee": 0
+      },
+      {
+        "id": "3ptagx99c",
+        "date": "2026-03-26",
+        "type": "buy",
+        "shares": 1261.75,
+        "price": 0.7916,
+        "fee": 1.2
+      },
+      {
+        "id": "rf42ltx6n",
+        "date": "2026-03-25",
+        "type": "buy",
+        "shares": 1254.93,
+        "price": 0.7959,
+        "fee": 1.2
+      },
+      {
+        "id": "e8wbkiul3",
+        "date": "2026-03-24",
+        "type": "buy",
+        "shares": 1273.49,
+        "price": 0.7843,
+        "fee": 1.2
+      },
+      {
+        "id": "zm5tma6fj",
+        "date": "2026-03-23",
+        "type": "buy",
+        "shares": 1281.83,
+        "price": 0.7792,
+        "fee": 1.2
+      },
+      {
+        "id": "nt84akrbh",
+        "date": "2026-03-20",
+        "type": "sell",
+        "shares": 27000,
+        "price": 0.7917,
+        "fee": 0
+      },
+      {
+        "id": "6v5kt86zg",
+        "date": "2026-03-19",
+        "type": "buy",
+        "shares": 6463.9,
+        "price": 0.7726,
+        "fee": 5.99
+      },
+      {
+        "id": "hlv1hg0qo",
+        "date": "2026-03-19",
+        "type": "buy",
+        "shares": 1292.78,
+        "price": 0.7726,
+        "fee": 1.2
+      },
+      {
+        "id": "gybjcllr2",
+        "date": "2026-03-18",
+        "type": "buy",
+        "shares": 12641.45,
+        "price": 0.7901,
+        "fee": 11.99
+      },
+      {
+        "id": "9p76vdddd",
+        "date": "2026-03-18",
+        "type": "buy",
+        "shares": 1264.14,
+        "price": 0.7901,
+        "fee": 1.2
+      },
+      {
+        "id": "uup9dejav",
+        "date": "2026-03-17",
+        "type": "buy",
+        "shares": 1261.11,
+        "price": 0.792,
+        "fee": 1.2
+      },
+      {
+        "id": "22ix3oe9h",
+        "date": "2026-03-16",
+        "type": "buy",
+        "shares": 12333.92,
+        "price": 0.8098,
+        "fee": 11.99
+      },
+      {
+        "id": "s0q1bla4k",
+        "date": "2026-03-16",
+        "type": "buy",
+        "shares": 1233.39,
+        "price": 0.8098,
+        "fee": 1.2
+      },
+      {
+        "id": "oi20csev9",
+        "date": "2026-03-13",
+        "type": "buy",
+        "shares": 1216.12,
+        "price": 0.8213,
+        "fee": 1.2
+      },
+      {
+        "id": "v7fl6lcfs",
+        "date": "2026-03-12",
+        "type": "buy",
+        "shares": 1212.72,
+        "price": 0.8236,
+        "fee": 1.2
+      },
+      {
+        "id": "lyqgio7ox",
+        "date": "2026-03-11",
+        "type": "sell",
+        "shares": 25000,
+        "price": 0.8197,
+        "fee": 0
+      },
+      {
+        "id": "7ks4kkze6",
+        "date": "2026-03-10",
+        "type": "buy",
+        "shares": 1250.22,
+        "price": 0.7989,
+        "fee": 1.2
+      },
+      {
+        "id": "0z1384k6e",
+        "date": "2026-03-09",
+        "type": "sell",
+        "shares": 20000,
+        "price": 0.787,
+        "fee": 0
+      },
+      {
+        "id": "gaqxo04zm",
+        "date": "2026-03-09",
+        "type": "buy",
+        "shares": 1269.12,
+        "price": 0.787,
+        "fee": 1.2
+      },
+      {
+        "id": "4022ik3nv",
+        "date": "2026-03-06",
+        "type": "buy",
+        "shares": 1285.13,
+        "price": 0.7772,
+        "fee": 1.2
+      },
+      {
+        "id": "fcrrrvhbv",
+        "date": "2026-03-05",
+        "type": "buy",
+        "shares": 1282.82,
+        "price": 0.7786,
+        "fee": 1.2
+      },
+      {
+        "id": "r2deg1x82",
+        "date": "2026-03-04",
+        "type": "buy",
+        "shares": 1293.78,
+        "price": 0.772,
+        "fee": 1.2
+      },
+      {
+        "id": "zz2v7z1f4",
+        "date": "2026-03-03",
+        "type": "buy",
+        "shares": 12917.76,
+        "price": 0.7732,
+        "fee": 11.99
+      },
+      {
+        "id": "pk2jid8h8",
+        "date": "2026-03-03",
+        "type": "buy",
+        "shares": 1291.77,
+        "price": 0.7732,
+        "fee": 1.2
+      },
+      {
+        "id": "caoapj0oy",
+        "date": "2026-03-02",
+        "type": "buy",
+        "shares": 12609.53,
+        "price": 0.7921,
+        "fee": 11.99
+      },
+      {
+        "id": "mivmgewaq",
+        "date": "2026-03-02",
+        "type": "buy",
+        "shares": 1260.95,
+        "price": 0.7921,
+        "fee": 1.2
+      },
+      {
+        "id": "bspsr3m0w",
+        "date": "2026-02-27",
+        "type": "buy",
+        "shares": 1258.73,
+        "price": 0.7935,
+        "fee": 1.2
+      },
+      {
+        "id": "oyys99zir",
+        "date": "2026-02-26",
+        "type": "buy",
+        "shares": 12694.47,
+        "price": 0.7868,
+        "fee": 11.99
+      },
+      {
+        "id": "rd21395cz",
+        "date": "2026-02-26",
+        "type": "buy",
+        "shares": 12694.47,
+        "price": 0.7868,
+        "fee": 11.99
+      },
+      {
+        "id": "g61aty88z",
+        "date": "2026-02-26",
+        "type": "buy",
+        "shares": 1269.45,
+        "price": 0.7868,
+        "fee": 1.2
+      },
+      {
+        "id": "0ey5u4o3x",
+        "date": "2026-02-25",
+        "type": "sell",
+        "shares": 13000,
+        "price": 0.7953,
+        "fee": 0
+      },
+      {
+        "id": "fnxww3um3",
+        "date": "2026-02-24",
+        "type": "sell",
+        "shares": 13000,
+        "price": 0.7811,
+        "fee": 0
+      }
+    ],
+    "022364": [
+      {
+        "id": "trade_1775193836528_6kzmdh2b6",
+        "date": "2026-04-02",
+        "type": "buy",
+        "shares": 2626.39,
+        "price": 3.8018,
+        "fee": 14.98
+      },
+      {
+        "id": "trade_1775193439320_93oxqagqk",
+        "date": "2026-04-02",
+        "type": "buy",
+        "shares": 262.64,
+        "price": 3.8018,
+        "fee": 1.5
+      },
+      {
+        "id": "9poh66ti1",
+        "date": "2026-04-01",
+        "type": "sell",
+        "shares": 2600,
+        "price": 3.868,
+        "fee": 50.28
+      },
+      {
+        "id": "trade_1775019109867_9cagrlo67",
+        "date": "2026-03-31",
+        "type": "buy",
+        "shares": 1331.55,
+        "price": 3.7494,
+        "fee": 7.49
+      },
+      {
+        "id": "trade_1775018902739_gg2749m2l",
+        "date": "2026-03-31",
+        "type": "buy",
+        "shares": 266.31,
+        "price": 3.7494,
+        "fee": 1.5
+      },
+      {
+        "id": "trade_1774934717752_3ubsmyw2b",
+        "date": "2026-03-30",
+        "type": "buy",
+        "shares": 260.11,
+        "price": 3.8388,
+        "fee": 1.5
+      },
+      {
+        "id": "trade_1774850020874_y0f04d7ye",
+        "date": "2026-03-27",
+        "type": "buy",
+        "shares": 261.4217,
+        "price": 3.8195,
+        "fee": 1.5
+      },
+      {
+        "id": "yvr131j40",
+        "date": "2026-03-25",
+        "type": "sell",
+        "shares": 2000,
+        "price": 3.8929,
+        "fee": 38.93
+      },
+      {
+        "id": "jm3c37q0s",
+        "date": "2026-03-25",
+        "type": "buy",
+        "shares": 256.49,
+        "price": 3.8929,
+        "fee": 1.5
+      },
+      {
+        "id": "j9yqcpf92",
+        "date": "2026-03-24",
+        "type": "buy",
+        "shares": 262.96,
+        "price": 3.7972,
+        "fee": 1.5
+      },
+      {
+        "id": "dlbzuln8x",
+        "date": "2026-03-23",
+        "type": "buy",
+        "shares": 268.93,
+        "price": 3.7129,
+        "fee": 1.5
+      },
+      {
+        "id": "pr1wcbkd0",
+        "date": "2026-03-19",
+        "type": "buy",
+        "shares": 1312.54,
+        "price": 3.8037,
+        "fee": 7.49
+      },
+      {
+        "id": "x69jbbbt9",
+        "date": "2026-03-19",
+        "type": "buy",
+        "shares": 262.51,
+        "price": 3.8037,
+        "fee": 1.5
+      },
+      {
+        "id": "qw9rb1r1b",
+        "date": "2026-03-18",
+        "type": "sell",
+        "shares": 2600,
+        "price": 3.8817,
+        "fee": 50.46
+      },
+      {
+        "id": "66j4mueap",
+        "date": "2026-03-17",
+        "type": "buy",
+        "shares": 266.97,
+        "price": 3.7401,
+        "fee": 1.5
+      },
+      {
+        "id": "mhhosvnpp",
+        "date": "2026-03-16",
+        "type": "sell",
+        "shares": 3200,
+        "price": 3.8342,
+        "fee": 61.35
+      },
+      {
+        "id": "g3oj0ounf",
+        "date": "2026-03-13",
+        "type": "buy",
+        "shares": 265.03,
+        "price": 3.7675,
+        "fee": 1.5
+      },
+      {
+        "id": "bdzia3h2o",
+        "date": "2026-03-12",
+        "type": "buy",
+        "shares": 2666.8,
+        "price": 3.7442,
+        "fee": 14.98
+      },
+      {
+        "id": "4x6q9046x",
+        "date": "2026-03-12",
+        "type": "buy",
+        "shares": 266.68,
+        "price": 3.7442,
+        "fee": 1.5
+      },
+      {
+        "id": "hjc4p1z7b",
+        "date": "2026-03-11",
+        "type": "buy",
+        "shares": 261.85,
+        "price": 3.8132,
+        "fee": 1.5
+      },
+      {
+        "id": "n7jl6gu7a",
+        "date": "2026-03-10",
+        "type": "sell",
+        "shares": 8000,
+        "price": 3.8495,
+        "fee": 153.98
+      },
+      {
+        "id": "yfduuowke",
+        "date": "2026-03-09",
+        "type": "buy",
+        "shares": 2675.51,
+        "price": 3.732,
+        "fee": 14.98
+      },
+      {
+        "id": "lw9p467ry",
+        "date": "2026-03-09",
+        "type": "buy",
+        "shares": 267.55,
+        "price": 3.732,
+        "fee": 1.5
+      },
+      {
+        "id": "5vstw9y7z",
+        "date": "2026-03-06",
+        "type": "buy",
+        "shares": 2613.95,
+        "price": 3.8199,
+        "fee": 14.98
+      },
+      {
+        "id": "x0ccemjmw",
+        "date": "2026-03-06",
+        "type": "buy",
+        "shares": 261.39,
+        "price": 3.8199,
+        "fee": 1.5
+      },
+      {
+        "id": "auassp59w",
+        "date": "2026-03-05",
+        "type": "buy",
+        "shares": 259.78,
+        "price": 3.8437,
+        "fee": 1.5
+      },
+      {
+        "id": "4ty88yedo",
+        "date": "2026-03-04",
+        "type": "buy",
+        "shares": 2632.35,
+        "price": 3.7932,
+        "fee": 14.98
+      },
+      {
+        "id": "ws49astrd",
+        "date": "2026-03-04",
+        "type": "buy",
+        "shares": 263.23,
+        "price": 3.7932,
+        "fee": 1.5
+      },
+      {
+        "id": "83e83ghbp",
+        "date": "2026-03-03",
+        "type": "buy",
+        "shares": 5193.09,
+        "price": 3.8455,
+        "fee": 29.96
+      },
+      {
+        "id": "oh0rz8ua2",
+        "date": "2026-03-03",
+        "type": "buy",
+        "shares": 259.65,
+        "price": 3.8455,
+        "fee": 1.5
+      },
+      {
+        "id": "2zld0vjhp",
+        "date": "2026-03-02",
+        "type": "buy",
+        "shares": 2529.52,
+        "price": 3.9474,
+        "fee": 14.98
+      },
+      {
+        "id": "yl85952o3",
+        "date": "2026-03-02",
+        "type": "buy",
+        "shares": 252.95,
+        "price": 3.9474,
+        "fee": 1.5
+      },
+      {
+        "id": "6o4kyvkvb",
+        "date": "2026-02-27",
+        "type": "buy",
+        "shares": 5097.13,
+        "price": 3.9179,
+        "fee": 29.96
+      },
+      {
+        "id": "c2rgottez",
+        "date": "2026-02-27",
+        "type": "buy",
+        "shares": 254.86,
+        "price": 3.9179,
+        "fee": 1.5
+      },
+      {
+        "id": "jx0zuqu5s",
+        "date": "2026-02-26",
+        "type": "sell",
+        "shares": 7700,
+        "price": 4.017,
+        "fee": 154.65
+      },
+      {
+        "id": "h02ihhk5b",
+        "date": "2026-02-25",
+        "type": "buy",
+        "shares": 254.91,
+        "price": 3.917,
+        "fee": 1.5
+      },
+      {
+        "id": "sj8waq7wr",
+        "date": "2026-02-24",
+        "type": "sell",
+        "shares": 5000,
+        "price": 3.8515,
+        "fee": 96.29
+      }
+    ],
+    "004433": [
+      {
+        "id": "trade_1775193737625_m5cpm32z2",
+        "date": "2026-04-02",
+        "type": "buy",
+        "shares": 2634.77,
+        "price": 1.8977,
+        "fee": 0
+      },
+      {
+        "id": "trade_1775193439320_ltpgjq3rj",
+        "date": "2026-04-02",
+        "type": "buy",
+        "shares": 1317.38,
+        "price": 1.8977,
+        "fee": 0
+      },
+      {
+        "id": "6hkux3c8i",
+        "date": "2026-04-01",
+        "type": "sell",
+        "shares": 5200,
+        "price": 1.9286,
+        "fee": 0
+      },
+      {
+        "id": "trade_1775019141780_q266hk56g",
+        "date": "2026-03-31",
+        "type": "buy",
+        "shares": 2653.22,
+        "price": 1.8845,
+        "fee": 0
+      },
+      {
+        "id": "trade_1775018902739_h5g0iydet",
+        "date": "2026-03-31",
+        "type": "buy",
+        "shares": 1326.61,
+        "price": 1.8845,
+        "fee": 0
+      },
+      {
+        "id": "trade_1774850190649_fmihh1wc9",
+        "date": "2026-03-27",
+        "type": "sell",
+        "shares": 18000,
+        "price": 1.8791,
+        "fee": 0
+      },
+      {
+        "id": "fv0h2hvea",
+        "date": "2026-03-26",
+        "type": "buy",
+        "shares": 2731.49,
+        "price": 1.8305,
+        "fee": 0
+      },
+      {
+        "id": "md32ftppr",
+        "date": "2026-03-26",
+        "type": "buy",
+        "shares": 1365.75,
+        "price": 1.8305,
+        "fee": 0
+      },
+      {
+        "id": "eb24ga0wq",
+        "date": "2026-03-25",
+        "type": "sell",
+        "shares": 5300,
+        "price": 1.8608,
+        "fee": 0
+      },
+      {
+        "id": "n1xpsej2m",
+        "date": "2026-03-25",
+        "type": "buy",
+        "shares": 1343.51,
+        "price": 1.8608,
+        "fee": 0
+      },
+      {
+        "id": "6ypsnee63",
+        "date": "2026-03-24",
+        "type": "buy",
+        "shares": 2764.72,
+        "price": 1.8085,
+        "fee": 0
+      },
+      {
+        "id": "xlsczg30m",
+        "date": "2026-03-24",
+        "type": "buy",
+        "shares": 1382.36,
+        "price": 1.8085,
+        "fee": 0
+      },
+      {
+        "id": "96xx2h6kt",
+        "date": "2026-03-23",
+        "type": "buy",
+        "shares": 1424.74,
+        "price": 1.7547,
+        "fee": 0
+      },
+      {
+        "id": "6npfnrjcw",
+        "date": "2026-03-20",
+        "type": "buy",
+        "shares": 5445.14,
+        "price": 1.8365,
+        "fee": 0
+      },
+      {
+        "id": "xbbnclv7w",
+        "date": "2026-03-20",
+        "type": "buy",
+        "shares": 1361.29,
+        "price": 1.8365,
+        "fee": 0
+      },
+      {
+        "id": "7a6ee0gp6",
+        "date": "2026-03-19",
+        "type": "buy",
+        "shares": 5387.35,
+        "price": 1.8562,
+        "fee": 0
+      },
+      {
+        "id": "nfc8ywn1q",
+        "date": "2026-03-19",
+        "type": "buy",
+        "shares": 1346.84,
+        "price": 1.8562,
+        "fee": 0
+      },
+      {
+        "id": "1m5auqskv",
+        "date": "2026-03-18",
+        "type": "buy",
+        "shares": 5070.48,
+        "price": 1.9722,
+        "fee": 0
+      },
+      {
+        "id": "veuj7wjjo",
+        "date": "2026-03-18",
+        "type": "buy",
+        "shares": 1267.62,
+        "price": 1.9722,
+        "fee": 0
+      },
+      {
+        "id": "z8wpokh8z",
+        "date": "2026-03-17",
+        "type": "buy",
+        "shares": 1257.42,
+        "price": 1.9882,
+        "fee": 0
+      },
+      {
+        "id": "cbibtii1m",
+        "date": "2026-03-16",
+        "type": "buy",
+        "shares": 4944.13,
+        "price": 2.0226,
+        "fee": 0
+      },
+      {
+        "id": "4famaqbj8",
+        "date": "2026-03-16",
+        "type": "buy",
+        "shares": 1236.03,
+        "price": 2.0226,
+        "fee": 0
+      },
+      {
+        "id": "qkrtkk0fs",
+        "date": "2026-03-13",
+        "type": "buy",
+        "shares": 4805.61,
+        "price": 2.0809,
+        "fee": 0
+      },
+      {
+        "id": "1t88t1d88",
+        "date": "2026-03-13",
+        "type": "buy",
+        "shares": 1201.4,
+        "price": 2.0809,
+        "fee": 0
+      },
+      {
+        "id": "bicfcai8w",
+        "date": "2026-03-12",
+        "type": "buy",
+        "shares": 2340.6,
+        "price": 2.1362,
+        "fee": 0
+      },
+      {
+        "id": "tz6llyqs6",
+        "date": "2026-03-12",
+        "type": "buy",
+        "shares": 1170.3,
+        "price": 2.1362,
+        "fee": 0
+      },
+      {
+        "id": "20rwqdagc",
+        "date": "2026-03-11",
+        "type": "buy",
+        "shares": 1163.49,
+        "price": 2.1487,
+        "fee": 0
+      },
+      {
+        "id": "nqvn2mz9m",
+        "date": "2026-03-10",
+        "type": "sell",
+        "shares": 4500,
+        "price": 2.1574,
+        "fee": 0
+      },
+      {
+        "id": "p5k974cua",
+        "date": "2026-03-09",
+        "type": "buy",
+        "shares": 4677.49,
+        "price": 2.1379,
+        "fee": 0
+      },
+      {
+        "id": "ch0ht6kb0",
+        "date": "2026-03-09",
+        "type": "buy",
+        "shares": 1169.37,
+        "price": 2.1379,
+        "fee": 0
+      },
+      {
+        "id": "pup3kgt9a",
+        "date": "2026-03-06",
+        "type": "buy",
+        "shares": 9277.73,
+        "price": 2.1557,
+        "fee": 0
+      },
+      {
+        "id": "vx7zf6ajl",
+        "date": "2026-03-06",
+        "type": "buy",
+        "shares": 1159.72,
+        "price": 2.1557,
+        "fee": 0
+      },
+      {
+        "id": "j2apcz9e4",
+        "date": "2026-03-05",
+        "type": "buy",
+        "shares": 4547.31,
+        "price": 2.1991,
+        "fee": 0
+      },
+      {
+        "id": "yi9y7pygt",
+        "date": "2026-03-05",
+        "type": "buy",
+        "shares": 1136.83,
+        "price": 2.1991,
+        "fee": 0
+      },
+      {
+        "id": "f8v8msjsa",
+        "date": "2026-03-04",
+        "type": "buy",
+        "shares": 1128.77,
+        "price": 2.2148,
+        "fee": 0
+      },
+      {
+        "id": "sfw71d75i",
+        "date": "2026-03-03",
+        "type": "buy",
+        "shares": 13497.1,
+        "price": 2.2227,
+        "fee": 0
+      },
+      {
+        "id": "fr7k5jgtr",
+        "date": "2026-03-03",
+        "type": "buy",
+        "shares": 1124.76,
+        "price": 2.2227,
+        "fee": 0
+      },
+      {
+        "id": "0me7mzzrr",
+        "date": "2026-03-02",
+        "type": "sell",
+        "shares": 9000,
+        "price": 2.3469,
+        "fee": 0
+      },
+      {
+        "id": "wy3d291tq",
+        "date": "2026-02-27",
+        "type": "sell",
+        "shares": 10000,
+        "price": 2.2709,
+        "fee": 0
+      },
+      {
+        "id": "zvdh3ss7u",
+        "date": "2026-02-26",
+        "type": "buy",
+        "shares": 4547.94,
+        "price": 2.1988,
+        "fee": 0
+      },
+      {
+        "id": "ein351pjk",
+        "date": "2026-02-26",
+        "type": "buy",
+        "shares": 1136.98,
+        "price": 2.1988,
+        "fee": 0
+      },
+      {
+        "id": "9ia6oioac",
+        "date": "2026-02-25",
+        "type": "sell",
+        "shares": 10000,
+        "price": 2.2146,
+        "fee": 0
+      },
+      {
+        "id": "tanzzll01",
+        "date": "2026-02-24",
+        "type": "sell",
+        "shares": 9600,
+        "price": 2.1384,
+        "fee": 0
+      }
+    ],
+    "019524": [
+      {
+        "id": "trade_1775193600393_w65gukf5o",
+        "date": "2026-04-01",
+        "type": "buy",
+        "shares": 72.37,
+        "price": 1.3802,
+        "fee": 0.12
+      },
+      {
+        "id": "trade_1775105340309_8kodirfq2",
+        "date": "2026-03-31",
+        "type": "buy",
+        "shares": 73.01,
+        "price": 1.3681,
+        "fee": 0.12
+      },
+      {
+        "id": "q8sqoa38x",
+        "date": "2026-03-30",
+        "type": "buy",
+        "shares": 75.31,
+        "price": 1.3262,
+        "fee": 0.12
+      },
+      {
+        "id": "trade_1774935086457_wbu1vyux4",
+        "date": "2026-03-27",
+        "type": "buy",
+        "shares": 74.84,
+        "price": 1.3346,
+        "fee": 0.12
+      },
+      {
+        "id": "trade_1774850347490_yq1p9zkcd",
+        "date": "2026-03-26",
+        "type": "buy",
+        "shares": 73.5602,
+        "price": 1.3578,
+        "fee": 0.12
+      },
+      {
+        "id": "3mii5oguh",
+        "date": "2026-03-25",
+        "type": "buy",
+        "shares": 72.04,
+        "price": 1.3864,
+        "fee": 0.12
+      },
+      {
+        "id": "g7jt9mgsr",
+        "date": "2026-03-24",
+        "type": "buy",
+        "shares": 72.47,
+        "price": 1.3783,
+        "fee": 0.12
+      },
+      {
+        "id": "prtrtylso",
+        "date": "2026-03-23",
+        "type": "buy",
+        "shares": 71.85,
+        "price": 1.3902,
+        "fee": 0.12
+      },
+      {
+        "id": "5ozbtt2iq",
+        "date": "2026-03-20",
+        "type": "buy",
+        "shares": 72.79,
+        "price": 1.3722,
+        "fee": 0.12
+      },
+      {
+        "id": "vbzc8n1ux",
+        "date": "2026-03-19",
+        "type": "buy",
+        "shares": 71.44,
+        "price": 1.3981,
+        "fee": 0.12
+      },
+      {
+        "id": "zwun9o1d2",
+        "date": "2026-03-18",
+        "type": "buy",
+        "shares": 71.31,
+        "price": 1.4007,
+        "fee": 0.12
+      },
+      {
+        "id": "ig04be4em",
+        "date": "2026-03-17",
+        "type": "buy",
+        "shares": 70.3,
+        "price": 1.4207,
+        "fee": 0.12
+      },
+      {
+        "id": "hw8svmn8d",
+        "date": "2026-03-16",
+        "type": "buy",
+        "shares": 70.55,
+        "price": 1.4158,
+        "fee": 0.12
+      },
+      {
+        "id": "xqexj42sk",
+        "date": "2026-03-13",
+        "type": "buy",
+        "shares": 71.33,
+        "price": 1.4003,
+        "fee": 0.12
+      },
+      {
+        "id": "snvozdkf8",
+        "date": "2026-03-12",
+        "type": "buy",
+        "shares": 70.96,
+        "price": 1.4075,
+        "fee": 0.12
+      },
+      {
+        "id": "dcp2wnsbm",
+        "date": "2026-03-11",
+        "type": "buy",
+        "shares": 69.85,
+        "price": 1.4299,
+        "fee": 0.12
+      },
+      {
+        "id": "1783fud9n",
+        "date": "2026-03-10",
+        "type": "buy",
+        "shares": 69.81,
+        "price": 1.4307,
+        "fee": 0.12
+      },
+      {
+        "id": "1fc70aujg",
+        "date": "2026-03-09",
+        "type": "buy",
+        "shares": 69.62,
+        "price": 1.4346,
+        "fee": 0.12
+      },
+      {
+        "id": "p1uf8gogu",
+        "date": "2026-03-06",
+        "type": "buy",
+        "shares": 70.6,
+        "price": 1.4148,
+        "fee": 0.12
+      },
+      {
+        "id": "bjg377a4a",
+        "date": "2026-03-05",
+        "type": "buy",
+        "shares": 69.61,
+        "price": 1.4348,
+        "fee": 0.12
+      },
+      {
+        "id": "kn069t4gg",
+        "date": "2026-03-04",
+        "type": "buy",
+        "shares": 69.32,
+        "price": 1.4409,
+        "fee": 0.12
+      },
+      {
+        "id": "in6sbrogr",
+        "date": "2026-03-04",
+        "type": "buy",
+        "shares": 70.33,
+        "price": 1.4201,
+        "fee": 0.12
+      },
+      {
+        "id": "6og6gxezq",
+        "date": "2026-03-02",
+        "type": "buy",
+        "shares": 69.48,
+        "price": 1.4375,
+        "fee": 0.12
+      },
+      {
+        "id": "fl8ug6ucv",
+        "date": "2026-02-27",
+        "type": "buy",
+        "shares": 69.56,
+        "price": 1.4358,
+        "fee": 0.12
+      },
+      {
+        "id": "0wl18ydol",
+        "date": "2026-02-26",
+        "type": "buy",
+        "shares": 69.38,
+        "price": 1.4397,
+        "fee": 0.12
+      },
+      {
+        "id": "wyocdqwog",
+        "date": "2026-02-25",
+        "type": "buy",
+        "shares": 68.53,
+        "price": 1.4575,
+        "fee": 0.12
+      },
+      {
+        "id": "i9qgzlk9c",
+        "date": "2026-02-13",
+        "type": "buy",
+        "shares": 69.98,
+        "price": 1.4272,
+        "fee": 0.12
+      },
+      {
+        "id": "dat9vm0m8",
+        "date": "2026-02-24",
+        "type": "buy",
+        "shares": 69.36,
+        "price": 1.4401,
+        "fee": 0.12
+      }
+    ],
+    "017437": [
+      {
+        "id": "trade_1775193600393_b17t2hres",
+        "date": "2026-04-01",
+        "type": "buy",
+        "shares": 100.68,
+        "price": 1.9865,
+        "fee": 0
+      },
+      {
+        "id": "trade_1775105340309_v1otdrbp0",
+        "date": "2026-03-31",
+        "type": "buy",
+        "shares": 101.52,
+        "price": 1.9701,
+        "fee": 0
+      },
+      {
+        "id": "mby3uyole",
+        "date": "2026-03-30",
+        "type": "buy",
+        "shares": 106.26,
+        "price": 1.8822,
+        "fee": 0
+      },
+      {
+        "id": "trade_1774850413229_1wev4ihvo",
+        "date": "2026-03-26",
+        "type": "buy",
+        "shares": 103.2791,
+        "price": 1.9365,
+        "fee": 0
+      },
+      {
+        "id": "t3kbwjr5a",
+        "date": "2026-03-25",
+        "type": "buy",
+        "shares": 100.63,
+        "price": 1.9874,
+        "fee": 0
+      },
+      {
+        "id": "dqnwg5sz4",
+        "date": "2026-03-24",
+        "type": "buy",
+        "shares": 101.82,
+        "price": 1.9642,
+        "fee": 0
+      },
+      {
+        "id": "1m6x0pxmz",
+        "date": "2026-03-23",
+        "type": "buy",
+        "shares": 101.03,
+        "price": 1.9796,
+        "fee": 0
+      },
+      {
+        "id": "yku839mbt",
+        "date": "2026-03-20",
+        "type": "buy",
+        "shares": 103.4,
+        "price": 1.9343,
+        "fee": 0
+      },
+      {
+        "id": "vzc2sn9rq",
+        "date": "2026-03-19",
+        "type": "buy",
+        "shares": 99.84,
+        "price": 2.0033,
+        "fee": 0
+      },
+      {
+        "id": "qfh46qkfn",
+        "date": "2026-03-18",
+        "type": "buy",
+        "shares": 99.61,
+        "price": 2.0079,
+        "fee": 0
+      },
+      {
+        "id": "r7jzvoxhe",
+        "date": "2026-03-17",
+        "type": "buy",
+        "shares": 97.98,
+        "price": 2.0412,
+        "fee": 0
+      },
+      {
+        "id": "157jfmxon",
+        "date": "2026-03-16",
+        "type": "buy",
+        "shares": 98.02,
+        "price": 2.0404,
+        "fee": 0
+      },
+      {
+        "id": "7cfoermnh",
+        "date": "2026-03-13",
+        "type": "buy",
+        "shares": 99.51,
+        "price": 2.0099,
+        "fee": 0
+      },
+      {
+        "id": "cbs2bvdqd",
+        "date": "2026-03-12",
+        "type": "buy",
+        "shares": 98.31,
+        "price": 2.0343,
+        "fee": 0
+      },
+      {
+        "id": "z15mqf0at",
+        "date": "2026-03-11",
+        "type": "buy",
+        "shares": 96.08,
+        "price": 2.0815,
+        "fee": 0
+      },
+      {
+        "id": "ruwehz0bs",
+        "date": "2026-03-10",
+        "type": "buy",
+        "shares": 95.85,
+        "price": 2.0867,
+        "fee": 0
+      },
+      {
+        "id": "dlg9wwr4n",
+        "date": "2026-03-09",
+        "type": "buy",
+        "shares": 95.58,
+        "price": 2.0924,
+        "fee": 0
+      },
+      {
+        "id": "06zj5q6tt",
+        "date": "2026-03-06",
+        "type": "buy",
+        "shares": 97.16,
+        "price": 2.0585,
+        "fee": 0
+      },
+      {
+        "id": "o7irshdma",
+        "date": "2026-03-05",
+        "type": "buy",
+        "shares": 96.54,
+        "price": 2.0717,
+        "fee": 0
+      },
+      {
+        "id": "p65eezgis",
+        "date": "2026-03-04",
+        "type": "buy",
+        "shares": 96.74,
+        "price": 2.0673,
+        "fee": 0
+      },
+      {
+        "id": "zzvr766z3",
+        "date": "2026-03-03",
+        "type": "buy",
+        "shares": 98.17,
+        "price": 2.0373,
+        "fee": 0
+      },
+      {
+        "id": "iqzr5pjbw",
+        "date": "2026-03-02",
+        "type": "buy",
+        "shares": 96.82,
+        "price": 2.0655,
+        "fee": 0
+      },
+      {
+        "id": "j9deg38kk",
+        "date": "2026-02-27",
+        "type": "buy",
+        "shares": 97.08,
+        "price": 2.0601,
+        "fee": 0
+      },
+      {
+        "id": "zouvchjj8",
+        "date": "2026-02-26",
+        "type": "buy",
+        "shares": 97.35,
+        "price": 2.0544,
+        "fee": 0
+      },
+      {
+        "id": "irkeavhbd",
+        "date": "2026-02-25",
+        "type": "buy",
+        "shares": 96.17,
+        "price": 2.0795,
+        "fee": 0
+      },
+      {
+        "id": "4ajr2cp2v",
+        "date": "2026-02-13",
+        "type": "buy",
+        "shares": 99.12,
+        "price": 2.0176,
+        "fee": 0
+      },
+      {
+        "id": "r6cxwvcn9",
+        "date": "2026-02-24",
+        "type": "buy",
+        "shares": 98.16,
+        "price": 2.0374,
+        "fee": 0
+      }
+    ],
+    "019173": [
+      {
+        "id": "trade_1775193600393_bjv0xa3rn",
+        "date": "2026-04-01",
+        "type": "buy",
+        "shares": 6.87,
+        "price": 1.4565,
+        "fee": 0
+      },
+      {
+        "id": "trade_1775105340309_6adx1sct0",
+        "date": "2026-03-31",
+        "type": "buy",
+        "shares": 6.93,
+        "price": 1.4438,
+        "fee": 0
+      },
+      {
+        "id": "trade_1775019804868_90bbyuaga",
+        "date": "2026-03-30",
+        "type": "buy",
+        "shares": 7.15,
+        "price": 1.3988,
+        "fee": 0
+      },
+      {
+        "id": "trade_1774935086457_5ots2d0rn",
+        "date": "2026-03-27",
+        "type": "buy",
+        "shares": 7.1,
+        "price": 1.4076,
+        "fee": 0
+      },
+      {
+        "id": "vyvlbln1n",
+        "date": "2026-03-03",
+        "type": "buy",
+        "shares": 6.67,
+        "price": 1.4983,
+        "fee": 0
+      },
+      {
+        "id": "trade_1774850399154_fdd5nuvne",
+        "date": "2026-03-26",
+        "type": "buy",
+        "shares": 6.9828,
+        "price": 1.4321,
+        "fee": 0
+      },
+      {
+        "id": "5j0brb4xo",
+        "date": "2026-03-25",
+        "type": "buy",
+        "shares": 6.84,
+        "price": 1.4623,
+        "fee": 0
+      },
+      {
+        "id": "bo831q6fl",
+        "date": "2026-03-24",
+        "type": "buy",
+        "shares": 6.88,
+        "price": 1.4536,
+        "fee": 0
+      },
+      {
+        "id": "jqfzikxfb",
+        "date": "2026-03-23",
+        "type": "buy",
+        "shares": 6.82,
+        "price": 1.4666,
+        "fee": 0
+      },
+      {
+        "id": "g888rrvan",
+        "date": "2026-03-20",
+        "type": "buy",
+        "shares": 6.91,
+        "price": 1.4469,
+        "fee": 0
+      },
+      {
+        "id": "z8q0ofhr8",
+        "date": "2026-03-19",
+        "type": "buy",
+        "shares": 6.78,
+        "price": 1.4747,
+        "fee": 0
+      },
+      {
+        "id": "qr7sd21kw",
+        "date": "2026-03-18",
+        "type": "buy",
+        "shares": 6.77,
+        "price": 1.4773,
+        "fee": 0
+      },
+      {
+        "id": "xxvvmkd9s",
+        "date": "2026-03-17",
+        "type": "buy",
+        "shares": 6.67,
+        "price": 1.4989,
+        "fee": 0
+      },
+      {
+        "id": "c0l9grud2",
+        "date": "2026-03-16",
+        "type": "buy",
+        "shares": 6.69,
+        "price": 1.4938,
+        "fee": 0
+      },
+      {
+        "id": "8m604qa7t",
+        "date": "2026-03-13",
+        "type": "buy",
+        "shares": 6.77,
+        "price": 1.4771,
+        "fee": 0
+      },
+      {
+        "id": "f9nb40jnn",
+        "date": "2026-03-12",
+        "type": "buy",
+        "shares": 6.74,
+        "price": 1.4847,
+        "fee": 0
+      },
+      {
+        "id": "c3tklwma6",
+        "date": "2026-03-11",
+        "type": "buy",
+        "shares": 6.63,
+        "price": 1.5086,
+        "fee": 0
+      },
+      {
+        "id": "ht50tssqb",
+        "date": "2026-03-10",
+        "type": "buy",
+        "shares": 6.62,
+        "price": 1.5095,
+        "fee": 0
+      },
+      {
+        "id": "0g56pjqsv",
+        "date": "2026-03-09",
+        "type": "buy",
+        "shares": 6.61,
+        "price": 1.514,
+        "fee": 0
+      },
+      {
+        "id": "5tx2aewtz",
+        "date": "2026-03-06",
+        "type": "buy",
+        "shares": 6.7,
+        "price": 1.4926,
+        "fee": 0
+      },
+      {
+        "id": "apwk5o4gj",
+        "date": "2026-03-05",
+        "type": "buy",
+        "shares": 6.58,
+        "price": 1.5206,
+        "fee": 0
+      },
+      {
+        "id": "b8oapnh9a",
+        "date": "2026-03-04",
+        "type": "buy",
+        "shares": 6.67,
+        "price": 1.4983,
+        "fee": 0
+      },
+      {
+        "id": "ojt3e8v33",
+        "date": "2026-03-02",
+        "type": "buy",
+        "shares": 6.59,
+        "price": 1.5174,
+        "fee": 0
+      },
+      {
+        "id": "o4kfpbs33",
+        "date": "2026-02-27",
+        "type": "buy",
+        "shares": 6.6,
+        "price": 1.5155,
+        "fee": 0
+      },
+      {
+        "id": "ussgdpe3x",
+        "date": "2026-02-26",
+        "type": "buy",
+        "shares": 6.58,
+        "price": 1.5197,
+        "fee": 0
+      },
+      {
+        "id": "6n7e7sn11",
+        "date": "2026-02-25",
+        "type": "buy",
+        "shares": 6.5,
+        "price": 1.5387,
+        "fee": 0
+      },
+      {
+        "id": "6se493wnq",
+        "date": "2026-02-24",
+        "type": "buy",
+        "shares": 6.58,
+        "price": 1.5206,
+        "fee": 0
+      },
+      {
+        "id": "z89c1xbz8",
+        "date": "2026-02-13",
+        "type": "buy",
+        "shares": 6.64,
+        "price": 1.5063,
+        "fee": 0
+      }
+    ],
+    "012734": [
+      {
+        "id": "trade_1775193872576_d7hv23kan",
+        "date": "2026-04-02",
+        "type": "buy",
+        "shares": 6030.64,
+        "price": 1.6582,
+        "fee": 0
+      },
+      {
+        "id": "1gkbptdc0",
+        "date": "2026-04-01",
+        "type": "sell",
+        "shares": 3000,
+        "price": 1.7095,
+        "fee": 0
+      },
+      {
+        "id": "trade_1775019097387_ugvrayipg",
+        "date": "2026-03-31",
+        "type": "buy",
+        "shares": 3020.42,
+        "price": 1.6554,
+        "fee": 0
+      },
+      {
+        "id": "mxsbahek1",
+        "date": "2026-03-19",
+        "type": "buy",
+        "shares": 2840.91,
+        "price": 1.76,
+        "fee": 0
+      },
+      {
+        "id": "484rkvvbg",
+        "date": "2026-03-18",
+        "type": "sell",
+        "shares": 5700,
+        "price": 1.783,
+        "fee": 0
+      },
+      {
+        "id": "4wcn8azk3",
+        "date": "2026-03-13",
+        "type": "buy",
+        "shares": 2852.58,
+        "price": 1.7528,
+        "fee": 0
+      },
+      {
+        "id": "suqq01y9u",
+        "date": "2026-03-12",
+        "type": "buy",
+        "shares": 3386.2,
+        "price": 1.7719,
+        "fee": 0
+      },
+      {
+        "id": "8t2kxxi3p",
+        "date": "2026-03-11",
+        "type": "buy",
+        "shares": 2797.05,
+        "price": 1.7876,
+        "fee": 0
+      },
+      {
+        "id": "towkjqtl7",
+        "date": "2026-03-10",
+        "type": "sell",
+        "shares": 8000,
+        "price": 1.8072,
+        "fee": 0
+      },
+      {
+        "id": "uum4sjz4c",
+        "date": "2026-03-05",
+        "type": "sell",
+        "shares": 12000,
+        "price": 1.7821,
+        "fee": 0
+      },
+      {
+        "id": "9hk9cudkv",
+        "date": "2026-03-04",
+        "type": "buy",
+        "shares": 5741.52,
+        "price": 1.7417,
+        "fee": 0
+      },
+      {
+        "id": "87lsgv6us",
+        "date": "2026-03-03",
+        "type": "buy",
+        "shares": 14147.47,
+        "price": 1.7671,
+        "fee": 0
+      },
+      {
+        "id": "ikg26xjob",
+        "date": "2026-03-02",
+        "type": "buy",
+        "shares": 5437.44,
+        "price": 1.8391,
+        "fee": 0
+      },
+      {
+        "id": "wzay9lo3a",
+        "date": "2026-02-27",
+        "type": "buy",
+        "shares": 5396.36,
+        "price": 1.8531,
+        "fee": 0
+      },
+      {
+        "id": "vjs3ifrtz",
+        "date": "2026-02-26",
+        "type": "sell",
+        "shares": 5500,
+        "price": 1.86,
+        "fee": 0
+      }
+    ],
+    "008888": [
+      {
+        "id": "trade_1775193855200_lyg6w77cz",
+        "date": "2026-04-02",
+        "type": "buy",
+        "shares": 7120.99,
+        "price": 1.4043,
+        "fee": 0
+      },
+      {
+        "id": "a2h9kpjpr",
+        "date": "2026-04-01",
+        "type": "sell",
+        "shares": 7000,
+        "price": 1.4451,
+        "fee": 0
+      },
+      {
+        "id": "trade_1775019048396_6hd0uaixv",
+        "date": "2026-03-31",
+        "type": "buy",
+        "shares": 7140.31,
+        "price": 1.4005,
+        "fee": 0
+      },
+      {
+        "id": "g6ali6lfj",
+        "date": "2026-03-19",
+        "type": "buy",
+        "shares": 3273.11,
+        "price": 1.5276,
+        "fee": 0
+      },
+      {
+        "id": "ab0dzjans",
+        "date": "2026-03-16",
+        "type": "sell",
+        "shares": 8000,
+        "price": 1.5745,
+        "fee": 0
+      },
+      {
+        "id": "yth8mzuk4",
+        "date": "2026-03-13",
+        "type": "buy",
+        "shares": 3230.6,
+        "price": 1.5477,
+        "fee": 0
+      },
+      {
+        "id": "lbd5j24g2",
+        "date": "2026-03-12",
+        "type": "buy",
+        "shares": 4485.17,
+        "price": 1.5607,
+        "fee": 0
+      },
+      {
+        "id": "mm3dngw04",
+        "date": "2026-03-11",
+        "type": "buy",
+        "shares": 4438.53,
+        "price": 1.5771,
+        "fee": 0
+      },
+      {
+        "id": "0eikxuixu",
+        "date": "2026-03-10",
+        "type": "sell",
+        "shares": 13000,
+        "price": 1.5935,
+        "fee": 0
+      },
+      {
+        "id": "24fj6sm6q",
+        "date": "2026-03-09",
+        "type": "buy",
+        "shares": 6416.43,
+        "price": 1.5585,
+        "fee": 0
+      },
+      {
+        "id": "rr0wsr5xl",
+        "date": "2026-03-05",
+        "type": "sell",
+        "shares": 10000,
+        "price": 1.5948,
+        "fee": 0
+      },
+      {
+        "id": "mzkcjk9g0",
+        "date": "2026-03-03",
+        "type": "buy",
+        "shares": 15906.34,
+        "price": 1.5717,
+        "fee": 0
+      },
+      {
+        "id": "ehaasft18",
+        "date": "2026-03-02",
+        "type": "buy",
+        "shares": 12068.55,
+        "price": 1.6572,
+        "fee": 0
+      },
+      {
+        "id": "8c4wm158u",
+        "date": "2026-02-27",
+        "type": "buy",
+        "shares": 5943.18,
+        "price": 1.6826,
+        "fee": 0
+      },
+      {
+        "id": "v2iv52d53",
+        "date": "2026-02-26",
+        "type": "sell",
+        "shares": 6000,
+        "price": 1.6936,
+        "fee": 0
+      }
+    ]
+  },
+  "comboTrades": {
+    "combo_1774933420897_b23rlkm7q": {
+      "id": "combo_1774933420897_b23rlkm7q",
+      "name": "纳斯达克",
+      "records": [
+        {
+          "fundId": "270042",
+          "amount": 10,
+          "fee": 0.01
+        },
+        {
+          "fundId": "017437",
+          "amount": 200,
+          "fee": 0
+        },
+        {
+          "fundId": "019524",
+          "amount": 100,
+          "fee": 0.12
+        },
+        {
+          "fundId": "019173",
+          "amount": 10,
+          "fee": 0
+        }
+      ]
+    },
+    "combo_1774933505386_ekiodllzo": {
+      "id": "combo_1774933505386_ekiodllzo",
+      "name": "日常定投",
+      "records": [
+        {
+          "fundId": "004433",
+          "amount": 2500,
+          "fee": 0
+        },
+        {
+          "fundId": "025833",
+          "amount": 2500,
+          "fee": 0
+        },
+        {
+          "fundId": "002611",
+          "amount": 1000,
+          "fee": 0
+        },
+        {
+          "fundId": "011592",
+          "amount": 1000,
+          "fee": 0
+        },
+        {
+          "fundId": "023832",
+          "amount": 1000,
+          "fee": 1.2
+        },
+        {
+          "fundId": "012328",
+          "amount": 1000,
+          "fee": 1.2
+        },
+        {
+          "fundId": "024194",
+          "amount": 1000,
+          "fee": 1.2
+        },
+        {
+          "fundId": "022364",
+          "amount": 1000,
+          "fee": 1.5
+        }
+      ]
+    }
+  },
+  "config": {
+    "autoExportTime": "16:00",
+    "autoBackupEnabled": true,
+    "syncFilterConfig": {
+      "selectedFunds": [
+        "002611",
+        "022364",
+        "004433",
+        "530018",
+        "012734",
+        "024194",
+        "008888",
+        "012349",
+        "019005",
+        "270023"
+      ],
+      "filterDate": "2026-02-14",
+      "selectedTypes": []
+    }
+  }
+}

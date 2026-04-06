@@ -4,6 +4,7 @@ import { MarketType } from '../../types';
 import { setTradesForSymbol } from '../../hooks/useTrades';
 import PositionsModal from '../../components/PositionsModal';
 import { Ticker, ValuationData } from '../../types';
+import { resetCache as resetMarketFundCache, updatePosition } from '../../services/marketFundService';
 
 // ── Mocks ─────────────────────────────────────────────────────────────────────
 
@@ -33,10 +34,7 @@ function makeValuation(symbol: string, currentPrice: number): ValuationData {
 }
 
 function setPosition(symbol: string, fullCapacity: number, initialPosition: number) {
-  localStorage.setItem(
-    `fund_position_${symbol}`,
-    JSON.stringify({ fullCapacity, initialPosition })
-  );
+  updatePosition(symbol, { fullCapacity, initialPosition, startDate: null, initialPrice: null });
 }
 
 const BASE_PORTFOLIO: Ticker[] = [
@@ -54,6 +52,7 @@ const BASE_MARKET_DATA: Record<string, ValuationData> = {
 describe('PositionsModal', () => {
   beforeEach(() => {
     localStorage.clear();
+    resetMarketFundCache();
   });
 
   // ── Empty state ─────────────────────────────────────────────────────────────

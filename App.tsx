@@ -1,9 +1,10 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { Ticker, ValuationData, MarketType, MarketIndex, BackupData, CardStatus, ManageItemType, ManageSelectionKey, JobResult, HistoricalPoint } from './types';
+import { Ticker, ValuationData, MarketType, MarketIndex, BackupData, CardStatus, ManageItemType, ManageSelectionKey, JobResult, HistoricalPoint, FundInfo } from './types';
 import { fetchFundData, fetchFundDatas, forceFetchFundHistories, fetchMarketIndices, fetchIndexHistories, maybeTriggerHistoryRefresh, normalizeIndexSymbol } from './services/fundService';
 import { toLocalDateKey } from './utils/priceResolver';
 import * as cacheService from './services/cacheService';
 import * as indexService from './services/indexService';
+import * as marketFundService from './services/marketFundService';
 import { INDEX_NAME_MAP, isDomesticIndex, isGlobalIndex, DEFAULT_INDEX_SYMBOLS, DEFAULT_INDICES } from './services/indexService';
 import { isFeatureEnabled, getSyncConfig, saveSyncConfig } from './services/systemConfigService';
 import { getSortOrder, saveSortOrder, SortOrder } from './services/userPreferenceService';
@@ -444,10 +445,7 @@ function calculateDeliveryDates(): void {
 
 const AppContent: React.FC = () => {
   const [portfolio, setPortfolio] = useState<Ticker[]>(() => {
-    try {
-      const saved = localStorage.getItem('fund_portfolio');
-      return saved ? JSON.parse(saved) : [];
-    } catch (e) { return []; }
+    return marketFundService.getAllTickers();
   });
 
   const initialIndexSymbols = indexService.getAllIndexSymbols();
@@ -457,12 +455,7 @@ const AppContent: React.FC = () => {
   );
 
   const [marketData, setMarketData] = useState<Record<string, ValuationData>>(() => {
-    const fromCache = cacheService.getAllValuations();
-    if (Object.keys(fromCache).length > 0) return fromCache;
-    try {
-      const saved = localStorage.getItem('fund_market_data');
-      return saved ? JSON.parse(saved) : {};
-    } catch (e) { return {}; }
+    return marketFundService.getAllValuations();
   });
 
   const [marketIndices, setMarketIndices] = useState<MarketIndex[]>(() => {
@@ -587,7 +580,7 @@ const AppContent: React.FC = () => {
     };
   }, []);
 
-  useEffect(() => { localStorage.setItem('fund_portfolio', JSON.stringify(portfolio)); }, [portfolio]);
+  // portfolio 由 marketFundService 管理，不需要单独同步到 localStorage
   // fund_market_data 由 cacheService.setValuation() 写入，此处不重复同步
   // indicesConfig 由 indexService 管理，写入 fund_all_indices_info，此处不再单独同步
   useEffect(() => { saveSortOrder(sortOrder); }, [sortOrder]);

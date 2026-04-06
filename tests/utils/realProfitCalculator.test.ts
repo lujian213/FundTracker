@@ -1,6 +1,6 @@
 import { calculateRealProfit, calculateRealProfitSync, getStoredPosition, getTradesForFund } from '../../utils/realProfitCalculator';
-import { HistoricalPoint } from '../../types';
-import { TradeRecord } from '../../types';
+import { HistoricalPoint, TradeRecord, FundPosition } from '../../types';
+import * as marketFundService from '../../services/marketFundService';
 
 // Setup localStorage mock before running tests
 const localStorageMock = (() => {
@@ -32,6 +32,7 @@ Object.defineProperty(global, 'localStorage', {
 describe('realProfitCalculator', () => {
   beforeEach(() => {
     global.localStorage.clear();
+    marketFundService.resetCache();
   });
 
   describe('getStoredPosition', () => {
@@ -41,31 +42,25 @@ describe('realProfitCalculator', () => {
     });
 
     it('should return stored position data when available', () => {
-      const testData = {
+      const testData: FundPosition = {
         startDate: '2026-01-01',
         initialPosition: 100,
-        initialPrice: 1.5
+        initialPrice: 1.5,
+        fullCapacity: 0
       };
-      global.localStorage.setItem('fund_position_TEST001', JSON.stringify(testData));
+      marketFundService.updatePosition('TEST001', testData);
 
       const result = getStoredPosition('TEST001');
-      expect(result).toEqual(testData);
+      expect(result).toEqual({
+        startDate: testData.startDate,
+        initialPosition: testData.initialPosition,
+        initialPrice: testData.initialPrice
+      });
     });
 
-    it('should handle padded fund symbols correctly', () => {
-      const testData = {
-        startDate: '2026-01-01',
-        initialPosition: 100,
-        initialPrice: 1.5
-      };
-      global.localStorage.setItem('fund_position_000001', JSON.stringify(testData));
-
-      const result = getStoredPosition('1');
-      expect(result).toEqual(testData);
-    });
-
-    it('should return null for invalid JSON', () => {
-      global.localStorage.setItem('fund_position_TEST002', 'invalid json');
+    it('should return null for fund without position', () => {
+      // 添加一个没有 position 的基金
+      marketFundService.addFund('TEST002', 'Test Fund');
 
       const result = getStoredPosition('TEST002');
       expect(result).toBeNull();
@@ -84,16 +79,16 @@ describe('realProfitCalculator', () => {
         { id: '2', date: '2026-01-02', type: 'sell', shares: 50, price: 1.6, fee: 0 }
       ];
 
-      global.localStorage.setItem('fund_trades', JSON.stringify({ 'TEST001': testTrades }));
+      marketFundService.updateTrades('TEST001', testTrades);
 
       const result = getTradesForFund('TEST001');
       expect(result).toEqual(testTrades);
     });
 
-    it('should return empty array for invalid JSON', () => {
-      global.localStorage.setItem('fund_trades', 'invalid json');
+    it('should return empty array for fund without trades', () => {
+      marketFundService.addFund('TEST002', 'Test Fund');
 
-      const result = getTradesForFund('TEST001');
+      const result = getTradesForFund('TEST002');
       expect(result).toEqual([]);
     });
   });

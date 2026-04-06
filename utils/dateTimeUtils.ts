@@ -26,3 +26,33 @@ export function formatCountdown(seconds: number): string {
   const pad = (n: number) => String(n).padStart(2, '0');
   return `${pad(h)}:${pad(m)}:${pad(s)}`;
 }
+
+/**
+ * 将时间戳向下取整到分钟
+ * @param ts 毫秒时间戳
+ */
+export function floorToMinute(ts: number): number {
+  return Math.floor(ts / 60000) * 60000;
+}
+
+/**
+ * 检查时间戳是否与当前本地日期相同
+ * @param ts 毫秒时间戳
+ */
+export function isSameLocalDay(ts: number): boolean {
+  const d = new Date(ts);
+  const now = new Date();
+  return d.getFullYear() === now.getFullYear()
+    && d.getMonth() === now.getMonth()
+    && d.getDate() === now.getDate();
+}
+
+/**
+ * 获取今天的开始和结束时间戳
+ */
+export function getTodayStartEnd(): { start: number; end: number } {
+  const now = new Date();
+  const start = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+  const end = start + 24 * 60 * 60 * 1000;
+  return { start, end };
+}

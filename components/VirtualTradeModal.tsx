@@ -15,6 +15,7 @@ import useTrades from '../hooks/useTrades';
 import { adjustProfitTimelineForDisplay } from '../utils/profitAdjustment';
 import { SymbolBadge } from './SymbolBadge';
 import { calculateRealProfit, calculateRealProfitSync, getStoredPosition, getTradesForFund } from '../utils/realProfitCalculator';
+import * as marketFundService from '../services/marketFundService';
 
 // Import all strategies dynamically through a centralized function
 import { loadAllStrategies, getStaticStrategyList } from '../services/strategyRegistry';
@@ -63,16 +64,9 @@ export const VirtualTradeModal: React.FC<Props> = ({ symbol, fundName, history: 
     return toLocalDateKey(d);
   };
   const getStoredStartDate = () => {
-    try {
-      const rawKey = `fund_position_${symbol}`;
-      const padKey = `fund_position_${String(symbol).padStart(6, '0')}`;
-      const raw = localStorage.getItem(rawKey) || localStorage.getItem(padKey);
-      if (!raw) return null;
-      const cfg = JSON.parse(raw);
-      return cfg && typeof cfg.startDate === 'string' && cfg.startDate ? cfg.startDate : null;
-    } catch (e) {
-      return null;
-    }
+    // 使用 marketFundService 获取持仓配置
+    const pos = getStoredPosition(symbol);
+    return pos && typeof pos.startDate === 'string' && pos.startDate ? pos.startDate : null;
   };
   const clampDateToHistoryBounds = (date: string, sourceHistory?: HistoricalPoint[] | null) => {
     if (!sourceHistory || sourceHistory.length === 0) return date;
@@ -343,19 +337,9 @@ export const VirtualTradeModal: React.FC<Props> = ({ symbol, fundName, history: 
       if (cashOverridden) return;
       setLoadingDefaultCash(true);
       try {
-        // Read fullCapacity from localStorage
-        let fullCapacity = 0;
-        try {
-          const rawKey = `fund_position_${symbol}`;
-          const padKey = `fund_position_${String(symbol).padStart(6, '0')}`;
-          const raw = localStorage.getItem(rawKey) || localStorage.getItem(padKey);
-          if (raw) {
-            const cfg = JSON.parse(raw);
-            fullCapacity = Number(cfg.fullCapacity) || 0;
-          }
-        } catch (e) {
-          // ignore
-        }
+        // 使用 marketFundService 获取持仓配置
+        const pos = marketFundService.getPosition(symbol);
+        const fullCapacity = pos?.fullCapacity || 0;
 
         let defaultCash = defaultVirtualCash; // fallback
 
@@ -437,21 +421,10 @@ export const VirtualTradeModal: React.FC<Props> = ({ symbol, fundName, history: 
     if (!canRun && process.env.NODE_ENV !== 'test') { setError('请检查输入与起始日期'); return; }
     setRunning(true);
     try {
-      // Read fullCapacity from localStorage for fund configuration
-      let fullCapacity = 0;
-      let initialPrice = null;
-      try {
-        const rawKey = `fund_position_${symbol}`;
-        const padKey = `fund_position_${String(symbol).padStart(6, '0')}`;
-        const raw = localStorage.getItem(rawKey) || localStorage.getItem(padKey);
-        if (raw) {
-          const cfg = JSON.parse(raw);
-          fullCapacity = Number(cfg.fullCapacity) || 0;
-          initialPrice = cfg.initialPrice !== undefined ? (cfg.initialPrice === null ? null : Number(cfg.initialPrice)) : null;
-        }
-      } catch (e) {
-        // ignore
-      }
+      // 使用 marketFundService 获取持仓配置
+      const pos = marketFundService.getPosition(symbol);
+      const fullCapacity = pos?.fullCapacity || 0;
+      const initialPrice = pos?.initialPrice ?? null;
 
       // Calculate max position in monetary terms: fullCapacity (shares) * initialPrice (NAV)
       let maxPositionInMonetaryTerms = undefined;

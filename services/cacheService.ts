@@ -4,16 +4,17 @@
  * 集中式内存缓存层。维护三类数据的内存 Map ：
  *   - valuationMap  : 实时估值  (ValuationData)
  *   - historyMap    : 历史净值  (HistoricalPoint[])
+ *   - intradayMap   : 日内数据  (IntradayPoint[])
  *   - newsCache     : 市场热点  (NewsItem[])
  *
- * 写入时同步更新对应 localStorage key，以便页面刷新后仍能从
- * localStorage 预加载（historyMap 以 fund_history_{symbol} 存储）。
- *
- * 注意：历史净值不纳入导入/导出备份，这与现有 handleExport/handleImport 行为一致。
+ * 数据来源：从 marketFundService 读取，提供估值增强等业务逻辑。
  */
 
 import { ValuationData, HistoricalPoint, IntradayPoint } from '../types';
 import { toLocalDateKey } from '../utils/priceResolver';
+import { floorToMinute, isSameLocalDay } from '../utils/dateTimeUtils';
+import { compressConsecutiveSameValues } from '../utils/intradayCompression';
+import * as marketFundService from './marketFundService';
 
 export interface NewsItem {
   id: string;
@@ -23,104 +24,34 @@ export interface NewsItem {
   altUrls?: { label: string; url: string }[];
 }
 
-// ─── localStorage keys ────────────────────────────────────────────────────────
-const VALUATION_STORAGE_KEY = 'fund_market_data';
-const historyStorageKey = (symbol: string) => `fund_history_${symbol}`;
-const intradayStorageKey = (symbol: string) => `fund_intraday_${symbol}`;
-
 // ─── In-memory stores ─────────────────────────────────────────────────────────
 const valuationMap = new Map<string, ValuationData>();
 const historyMap   = new Map<string, HistoricalPoint[]>();
 const intradayMap  = new Map<string, IntradayPoint[]>();
 let   newsCache: NewsItem[] = [];
 
-// Helper: floor timestamp to minute (ms)
-const floorToMinute = (ts: number) => Math.floor(ts / 60000) * 60000;
-
-// Helper: check if timestamp is same local day as now
-const isSameLocalDay = (ts: number) => {
-  const d = new Date(ts);
-  const now = new Date();
-  return d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth() && d.getDate() === now.getDate();
-};
-
-// Helper: compress consecutive identical-value points keeping the earliest timestamp in each run
-const compressConsecutiveSameValues = (pts: IntradayPoint[]) => {
-  if (!Array.isArray(pts) || pts.length === 0) return [] as IntradayPoint[];
-  // sort ascending by timestamp
-  const arr = [...pts].sort((a, b) => a.timestamp - b.timestamp);
-  const out: IntradayPoint[] = [];
-  for (const p of arr) {
-    const last = out[out.length - 1];
-    if (last && Object.is(last.value, p.value)) {
-      // same value as last kept -> skip (keep earliest)
-      continue;
-    }
-    out.push(p);
-  }
-  return out;
-};
-
-// ─── Initialisation: pre-load from localStorage ───────────────────────────────
+// ─── Initialisation: load from marketFundService ───────────────────────────────
 function init() {
-  // 1. Valuation data (already stored as a single JSON object in fund_market_data)
-  try {
-    const raw = localStorage.getItem(VALUATION_STORAGE_KEY);
-    if (raw) {
-      const obj: Record<string, ValuationData> = JSON.parse(raw);
-      Object.entries(obj).forEach(([sym, data]) => valuationMap.set(sym, data));
+  // 1. Valuation data - 从 marketFundService 获取
+  const allValuations = marketFundService.getAllValuations();
+  Object.entries(allValuations).forEach(([sym, data]) => valuationMap.set(sym, data));
+
+  // 2. History data - 从 marketFundService 获取
+  const allSymbols = marketFundService.getAllFundSymbols();
+  allSymbols.forEach(sym => {
+    const history = marketFundService.getHistory(sym);
+    if (history.length > 0) {
+      historyMap.set(sym, history);
     }
-  } catch {/* ignore */}
+  });
 
-  // 2. History data (one key per fund: fund_history_{symbol})
-  try {
-    Object.keys(localStorage)
-      .filter(k => k.startsWith('fund_history_'))
-      .forEach(k => {
-        const symbol = k.replace('fund_history_', '');
-        try {
-          const raw = localStorage.getItem(k);
-          if (raw) {
-            const arr: HistoricalPoint[] = JSON.parse(raw);
-            if (Array.isArray(arr)) historyMap.set(symbol, arr);
-          }
-        } catch {/* ignore single key errors */}
-      });
-  } catch {/* ignore */}
-
-  // 3. Intraday data (one key per fund: fund_intraday_{symbol}) — load only today's data
-  try {
-    Object.keys(localStorage)
-      .filter(k => k.startsWith('fund_intraday_'))
-      .forEach(k => {
-        const symbol = k.replace('fund_intraday_', '');
-        try {
-          const raw = localStorage.getItem(k);
-          if (!raw) return;
-          const arr: IntradayPoint[] = JSON.parse(raw);
-          if (!Array.isArray(arr)) return;
-          // normalize: ensure timestamp numbers and keep only today's points
-          const cleaned = arr.map(pt => ({
-            timestamp: floorToMinute(typeof pt.timestamp === 'string' ? Date.parse(pt.timestamp) : Number(pt.timestamp)),
-            value: Number(pt.value) || 0,
-            equityReturn: Number(pt.equityReturn) || 0,
-          })).filter(pt => !Number.isNaN(pt.timestamp) && isSameLocalDay(pt.timestamp))
-            // dedupe by minute keeping last by timestamp (then compress consecutive identical values keeping earliest)
-            .reduce((acc: IntradayPoint[], cur) => {
-              const last = acc[acc.length - 1];
-              if (last && floorToMinute(last.timestamp) === floorToMinute(cur.timestamp)) {
-                acc[acc.length - 1] = cur; // replace with newer
-              } else {
-                acc.push(cur);
-              }
-              return acc;
-            }, []);
-          const compressed = compressConsecutiveSameValues(cleaned);
-          if (compressed.length > 0) intradayMap.set(symbol, compressed);
-          else try { localStorage.removeItem(k); } catch (e) { /* ignore */ }
-        } catch {/* ignore per-key errors */}
-      });
-  } catch {/* ignore top-level */}
+  // 3. Intraday data - 从 marketFundService 获取
+  allSymbols.forEach(sym => {
+    const intraday = marketFundService.getIntraday(sym);
+    if (intraday.length > 0) {
+      intradayMap.set(sym, intraday);
+    }
+  });
 }
 
 init();
@@ -202,12 +133,8 @@ export function getValuation(symbol: string): ValuationData | undefined {
 
 export function setValuation(symbol: string, data: ValuationData): void {
   valuationMap.set(symbol, data);
-  // Persist entire valuation map as a single JSON blob (compatible with App.tsx key)
-  try {
-    const obj: Record<string, ValuationData> = {};
-    valuationMap.forEach((v, k) => { obj[k] = v; });
-    localStorage.setItem(VALUATION_STORAGE_KEY, JSON.stringify(obj));
-  } catch {/* ignore quota errors */}
+  // 同步到 marketFundService
+  marketFundService.updateValuation(symbol, data);
 }
 
 export function getAllValuations(): Record<string, ValuationData> {
@@ -235,19 +162,13 @@ export function setValuationIfAbsent(symbol: string, data: ValuationData): void 
 }
 
 /**
- * Remove all valuations whose symbol is NOT in keepSymbols, both from the
- * in-memory map and from the persisted fund_market_data localStorage entry.
+ * Remove all valuations whose symbol is NOT in keepSymbols.
  */
 export function evictValuations(keepSymbols: Set<string>): void {
   const toDelete: string[] = [];
   valuationMap.forEach((_, k) => { if (!keepSymbols.has(k)) toDelete.push(k); });
   toDelete.forEach(k => valuationMap.delete(k));
-  // Re-persist the pruned map
-  try {
-    const obj: Record<string, ValuationData> = {};
-    valuationMap.forEach((v, k) => { obj[k] = v; });
-    localStorage.setItem(VALUATION_STORAGE_KEY, JSON.stringify(obj));
-  } catch {/* ignore quota errors */}
+  // 注意：数据统一由 marketFundService 管理，这里只清理内存缓存
 }
 
 // ─── History (historical net worth) ──────────────────────────────────────────
@@ -257,10 +178,8 @@ export function getHistory(symbol: string): HistoricalPoint[] | undefined {
 
 export function setHistory(symbol: string, points: HistoricalPoint[]): void {
   historyMap.set(symbol, points);
-  // Persist per-fund history to localStorage
-  try {
-    localStorage.setItem(historyStorageKey(symbol), JSON.stringify(points));
-  } catch {/* ignore quota errors */}
+  // 同步到 marketFundService
+  marketFundService.updateHistory(symbol, points);
 }
 
 /** Fallback write: only sets history if the symbol is NOT already in the cache. */
@@ -277,30 +196,13 @@ export function getIntradayPoints(symbol: string): IntradayPoint[] {
   const s = symbol.padStart ? symbol.padStart(6, '0') : symbol;
   const inMem = intradayMap.get(s);
   if (Array.isArray(inMem)) return [...inMem];
-  try {
-    const raw = localStorage.getItem(intradayStorageKey(s));
-    if (!raw) return [];
-    const arr: IntradayPoint[] = JSON.parse(raw);
-    if (!Array.isArray(arr)) return [];
-    // filter today's and normalize
-    const cleaned = arr.map(pt => ({
-      timestamp: floorToMinute(typeof pt.timestamp === 'string' ? Date.parse(pt.timestamp) : Number(pt.timestamp)),
-      value: Number(pt.value) || 0,
-      equityReturn: Number(pt.equityReturn) || 0,
-    })).filter(pt => !Number.isNaN(pt.timestamp) && isSameLocalDay(pt.timestamp));
-    // dedupe by minute keeping last
-    const dedup = cleaned.reduce((acc: IntradayPoint[], cur) => {
-      const last = acc[acc.length - 1];
-      if (last && floorToMinute(last.timestamp) === floorToMinute(cur.timestamp)) acc[acc.length - 1] = cur;
-      else acc.push(cur);
-      return acc;
-    }, []);
-    // compress consecutive identical values keeping earliest timestamp
-    const compressed = compressConsecutiveSameValues(dedup);
-    // cache in memory
-    if (compressed.length > 0) intradayMap.set(s, compressed);
-    return compressed;
-  } catch { return []; }
+  // 从 marketFundService 获取
+  const intraday = marketFundService.getIntraday(s);
+  if (intraday.length > 0) {
+    intradayMap.set(s, intraday);
+    return [...intraday];
+  }
+  return [];
 }
 
 export function setIntradayPoints(symbol: string, points: IntradayPoint[]): void {
@@ -319,9 +221,8 @@ export function setIntradayPoints(symbol: string, points: IntradayPoint[]): void
   }, []);
   const compressed = compressConsecutiveSameValues(dedup);
   intradayMap.set(s, compressed);
-  try {
-    localStorage.setItem(intradayStorageKey(s), JSON.stringify(compressed));
-  } catch {/* ignore */}
+  // 同步到 marketFundService
+  marketFundService.updateIntraday(s, compressed);
 }
 
 /**
@@ -371,39 +272,18 @@ export function appendIntradayPoint(symbol: string, valuation: ValuationData | {
     const value = Number((valuation as any).value ?? (valuation as any).currentPrice ?? 0) || 0;
     const equity = Number((valuation as any).equityReturn ?? (valuation as any).changePercentage ?? 0) || 0;
 
-    const point: IntradayPoint = { timestamp: minuteTs, value, equityReturn: equity };
+    // 使用 marketFundService 的 appendIntradayPoint
+    marketFundService.appendIntradayPoint(s, value, equity, ts);
 
-    const existing = intradayMap.get(s) || [];
-    // ensure existing only contains today's points
-    let today = existing.filter(p => isSameLocalDay(p.timestamp));
-
-    // 清除时间戳比新点更晚的脏数据（之前错误解析导致的15:00收市时间点）
-    today = today.filter(p => p.timestamp <= minuteTs);
-
-    const last = today[today.length - 1];
-    if (last && Object.is(last.value, point.value)) {
-      // same as last value: keep earliest (do not append or replace)
-      // but still update storage to reflect current state (no-op)
-      try { localStorage.setItem(intradayStorageKey(s), JSON.stringify(today)); } catch {/* ignore */}
-      intradayMap.set(s, today);
-      return;
-    }
-    if (today.length > 0 && floorToMinute(last.timestamp) === minuteTs) {
-      // same minute but different value -> replace last
-      today[today.length - 1] = point;
-    } else {
-      today.push(point);
-    }
-    // compress consecutive same values to remove long flat runs, keeping earliest
-    const compressed = compressConsecutiveSameValues(today);
-    intradayMap.set(s, compressed);
-    try { localStorage.setItem(intradayStorageKey(s), JSON.stringify(compressed)); } catch {/* ignore */}
+    // 更新本地缓存
+    const updated = marketFundService.getIntraday(s);
+    intradayMap.set(s, updated);
   } catch (e) { /* swallow errors to avoid bubbling into polling */ }
 }
 
 /**
  * Remove intraday entries that are not from current local day. If symbol provided,
- * only operates on that symbol; otherwise scans all fund_intraday_* keys.
+ * only operates on that symbol; otherwise cleans all funds.
  */
 export function clearOldIntradayData(symbol?: string): void {
   try {
@@ -413,38 +293,26 @@ export function clearOldIntradayData(symbol?: string): void {
       const today = arr.filter(p => isSameLocalDay(p.timestamp));
       if (today.length > 0) {
         intradayMap.set(s, today);
-        try { localStorage.setItem(intradayStorageKey(s), JSON.stringify(today)); } catch {/* ignore */}
+        marketFundService.updateIntraday(s, today);
       } else {
         intradayMap.delete(s);
-        try { localStorage.removeItem(intradayStorageKey(s)); } catch {/* ignore */}
+        marketFundService.updateIntraday(s, []);
       }
       return;
     }
 
-    Object.keys(localStorage).filter(k => k.startsWith('fund_intraday_')).forEach(k => {
-      const sym = k.replace('fund_intraday_', '');
-      try {
-        const raw = localStorage.getItem(k);
-        if (!raw) { try { localStorage.removeItem(k); } catch {/* ignore */} ; return; }
-        const arr: IntradayPoint[] = JSON.parse(raw);
-        if (!Array.isArray(arr)) { try { localStorage.removeItem(k); } catch {/* ignore */} ; return; }
-        const cleaned = arr.map(pt => ({ timestamp: floorToMinute(typeof pt.timestamp === 'string' ? Date.parse(pt.timestamp) : Number(pt.timestamp)), value: Number(pt.value) || 0, equityReturn: Number(pt.equityReturn) || 0 }))
-          .filter(pt => !Number.isNaN(pt.timestamp) && isSameLocalDay(pt.timestamp))
-          .reduce((acc: IntradayPoint[], cur) => {
-            const last = acc[acc.length - 1];
-            if (last && floorToMinute(last.timestamp) === floorToMinute(cur.timestamp)) acc[acc.length - 1] = cur;
-            else acc.push(cur);
-            return acc;
-          }, []);
-        const compressed = compressConsecutiveSameValues(cleaned);
-        if (compressed.length > 0) {
-          intradayMap.set(sym, compressed);
-          try { localStorage.setItem(k, JSON.stringify(compressed)); } catch {/* ignore */}
-        } else {
-          intradayMap.delete(sym);
-          try { localStorage.removeItem(k); } catch {/* ignore */}
-        }
-      } catch {/* ignore per-key errors */}
+    // 清理所有基金的日内数据
+    const allSymbols = marketFundService.getAllFundSymbols();
+    allSymbols.forEach(sym => {
+      const arr = intradayMap.get(sym) || [];
+      const today = arr.filter(p => isSameLocalDay(p.timestamp));
+      if (today.length > 0) {
+        intradayMap.set(sym, today);
+        marketFundService.updateIntraday(sym, today);
+      } else {
+        intradayMap.delete(sym);
+        marketFundService.updateIntraday(sym, []);
+      }
     });
   } catch {/* ignore */}
 }
@@ -457,4 +325,15 @@ export function getNews(): NewsItem[] {
 export function setNews(items: NewsItem[]): void {
   newsCache = items;
   // News is ephemeral: not persisted to localStorage
+}
+
+// ─── Test utilities ────────────────────────────────────────────────────────────
+/**
+ * Reset all in-memory caches. Used for testing only.
+ */
+export function resetCache(): void {
+  valuationMap.clear();
+  historyMap.clear();
+  intradayMap.clear();
+  newsCache = [];
 }

@@ -7,6 +7,7 @@ import { MA_COLORS } from '../utils/movingAverage';
 import { DEFAULT_VISIBLE_MAS, MA_WINDOWS } from '../utils/maConfig';
 import { computeRatingFromHistory } from '../utils/ratingHelper';
 import { computeAvgCostPrice } from '../utils/positionHelper';
+import * as marketFundService from '../services/marketFundService';
 import RatingTooltip from './RatingTooltip';
 import TradeManager from './TradeManager';
 import useTrades, { getTradesForSymbol } from '../hooks/useTrades';
@@ -135,7 +136,7 @@ export const FundDetailsModal: React.FC<FundDetailsModalProps> = ({ data, onClos
   );
 
   // localStorage key per fund symbol
-  const storageKey = `fund_position_${valuationData.symbol}`;
+  // 注意：持仓数据已迁移到 marketFundService，不再使用 localStorage 直接读写
 
   // shared chart visual height used by HistoryChart and IntradayChart
   // reduced to 180 per request; top/bottom padding will be removed to eliminate extra whitespace
@@ -188,26 +189,21 @@ export const FundDetailsModal: React.FC<FundDetailsModalProps> = ({ data, onClos
     setCalcAmount('');
     setMarkerTooltip(null);
 
-    try {
-      const raw = localStorage.getItem(storageKey);
-      if (raw) {
-        const obj = JSON.parse(raw);
-        // Coerce persisted values (accept numbers or numeric strings)
-        if (obj.fullCapacity !== undefined && obj.fullCapacity !== null) setFullCapacity(Number(obj.fullCapacity) || 0);
-        if (obj.initialPosition !== undefined && obj.initialPosition !== null) setInitialPosition(Number(obj.initialPosition) || 0);
-        if (typeof obj.startDate === 'string') setStartDate(obj.startDate);
-        // load persisted initialPrice if present (number or numeric string) — allow null
-        if (obj.initialPrice === null) setInitialPrice(null);
-        else if (obj.initialPrice !== undefined) {
-          const p = Number(obj.initialPrice);
-          setInitialPrice(!Number.isNaN(p) ? p : null);
-        }
+    // 从 marketFundService 读取持仓配置
+    const position = marketFundService.getPosition(data.symbol);
+    if (position) {
+      if (position.fullCapacity !== undefined && position.fullCapacity !== null) setFullCapacity(Number(position.fullCapacity) || 0);
+      if (position.initialPosition !== undefined && position.initialPosition !== null) setInitialPosition(Number(position.initialPosition) || 0);
+      if (typeof position.startDate === 'string') setStartDate(position.startDate);
+      // load persisted initialPrice if present (number or numeric string) — allow null
+      if (position.initialPrice === null) setInitialPrice(null);
+      else if (position.initialPrice !== undefined) {
+        const p = Number(position.initialPrice);
+        setInitialPrice(!Number.isNaN(p) ? p : null);
       }
-    } catch (e) {
-      // ignore parse errors
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [storageKey]);
+  }, [data.symbol]);
 
 
   useEffect(() => {
@@ -258,13 +254,15 @@ export const FundDetailsModal: React.FC<FundDetailsModalProps> = ({ data, onClos
     const price = getPriceForISODate(startDate);
     if (price !== null) {
       setInitialPrice(price);
-      try {
-        localStorage.setItem(storageKey, JSON.stringify({ fullCapacity, initialPosition, startDate, initialPrice: price }));
-      } catch (e) {
-        // ignore
-      }
+      // 使用 marketFundService 更新持仓配置
+      marketFundService.updatePosition(data.symbol, {
+        fullCapacity,
+        initialPosition,
+        startDate,
+        initialPrice: price
+      });
     }
-  }, [history, startDate, initialPrice, storageKey, fullCapacity, initialPosition]);
+  }, [history, startDate, initialPrice, data.symbol, fullCapacity, initialPosition]);
 
     // Merge realtime point carefully: only append/replace when realtimeDate is explicit and valid, preventing synthetic today points from distorting MA values.
     // 重要规则：只有当 realtimeDate > netWorthDate 时才合并估值点（即估值是针对还未公布净值的日期）
@@ -396,11 +394,10 @@ export const FundDetailsModal: React.FC<FundDetailsModalProps> = ({ data, onClos
     let initialShares = 0;
     let positionStartDate: string | null = null;
     try {
-      const cfgRaw = localStorage.getItem(`fund_position_${data.symbol}`);
-      if (cfgRaw) {
-        const cfg = JSON.parse(cfgRaw);
-        initialShares = Number(cfg.initialPosition) || 0;
-        positionStartDate = cfg.startDate || null;
+      const position = marketFundService.getPosition(data.symbol);
+      if (position) {
+        initialShares = position.initialPosition || 0;
+        positionStartDate = position.startDate || null;
       }
     } catch (e) {
       // ignore
@@ -599,15 +596,23 @@ export const FundDetailsModal: React.FC<FundDetailsModalProps> = ({ data, onClos
     if (s) {
       setStartDate(s);
       setInitialPrice(finalInitialPrice);
-      try {
-        localStorage.setItem(storageKey, JSON.stringify({ fullCapacity: f, initialPosition: c, startDate: s || null, initialPrice: finalInitialPrice }));
-      } catch (e) {
-        // ignore storage errors
-      }
+      // 使用 marketFundService 保存 position
+      marketFundService.updatePosition(data.symbol, {
+        fullCapacity: f,
+        initialPosition: c,
+        startDate: s || null,
+        initialPrice: finalInitialPrice,
+      });
     } else {
       setStartDate(null);
       setInitialPrice(null);
-      try { localStorage.setItem(storageKey, JSON.stringify({ fullCapacity: f, initialPosition: c, startDate: null, initialPrice: null })); } catch (e) {}
+      // 使用 marketFundService 保存 position
+      marketFundService.updatePosition(data.symbol, {
+        fullCapacity: f,
+        initialPosition: c,
+        startDate: null,
+        initialPrice: null,
+      });
     }
     setShowConfig(false);
   };
@@ -616,7 +621,13 @@ export const FundDetailsModal: React.FC<FundDetailsModalProps> = ({ data, onClos
     setInitialPosition(0);
     setStartDate(null);
     setInitialPrice(null);
-    try { localStorage.removeItem(storageKey); } catch (e) {}
+    // 使用 marketFundService 清除 position
+    marketFundService.updatePosition(data.symbol, {
+      fullCapacity: 0,
+      initialPosition: 0,
+      startDate: null,
+      initialPrice: null,
+    });
     setShowConfig(false);
   };
 
@@ -883,31 +894,15 @@ export const FundDetailsModal: React.FC<FundDetailsModalProps> = ({ data, onClos
     ? { position: 'fixed', inset: 0, zIndex: MODAL_Z_INDEX, display: 'flex', alignItems: 'center', justifyContent: 'center', pointerEvents: 'none' }
     : { position: 'fixed', inset: 0, zIndex: MODAL_Z_INDEX, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem', pointerEvents: 'auto' };
 
-  // 将详情窗口高度和宽度传递给草稿窗口
-  useEffect(() => {
-    if (actualPosition === 'right') {
-      // 使用 requestAnimationFrame 确保 DOM 完全渲染后获取尺寸
-      requestAnimationFrame(() => {
-        setTimeout(() => {
-          const modal = document.getElementById('fund-details-modal')?.querySelector('.bg-white') as HTMLElement;
-          if (modal) {
-            const rect = modal.getBoundingClientRect();
-            (window as any).__detailModalHeight = rect.height;
-            (window as any).__detailModalWidth = rect.width;
-          }
-        }, 100);
-      });
-    }
-  }, [actualPosition, data.symbol]);
-
   // 动态计算偏移量，使两个窗口整体居中
   const [detailOffset, setDetailOffset] = useState<number>(0);
 
   useEffect(() => {
     if (actualPosition === 'right') {
       const calculateOffset = () => {
-        const draftWidth = (window as any).__draftModalWidth;
-        if (draftWidth) {
+        const draftModal = document.querySelector('.investment-draft-modal-content') as HTMLElement;
+        if (draftModal) {
+          const draftWidth = draftModal.getBoundingClientRect().width;
           // 详情窗口需要向右偏移 draftWidth/2，使两个窗口整体居中
           setDetailOffset(draftWidth / 2);
         }
@@ -916,9 +911,13 @@ export const FundDetailsModal: React.FC<FundDetailsModalProps> = ({ data, onClos
       // 初始计算
       calculateOffset();
 
-      // 监听草稿窗口宽度变化
-      const interval = setInterval(calculateOffset, 100);
-      return () => clearInterval(interval);
+      // 使用 ResizeObserver 监听草稿窗口宽度变化
+      const draftModal = document.querySelector('.investment-draft-modal-content') as HTMLElement;
+      if (draftModal) {
+        const resizeObserver = new ResizeObserver(calculateOffset);
+        resizeObserver.observe(draftModal);
+        return () => resizeObserver.disconnect();
+      }
     } else {
       setDetailOffset(0);
     }
@@ -1441,13 +1440,13 @@ export const FundDetailsModal: React.FC<FundDetailsModalProps> = ({ data, onClos
                    buyAmount={buyAmount}
                    onSave={(newPrice) => {
                      setInitialPrice(newPrice);
-                     try {
-                       const stored = localStorage.getItem(storageKey);
-                       const config = stored ? JSON.parse(stored) : {};
-                       localStorage.setItem(storageKey, JSON.stringify({ ...config, initialPrice: newPrice }));
-                     } catch (e) {
-                       // ignore
-                     }
+                     // 使用 marketFundService 更新持仓配置
+                     marketFundService.updatePosition(data.symbol, {
+                       fullCapacity,
+                       initialPosition,
+                       startDate,
+                       initialPrice: newPrice
+                     });
                      setShowPriceAdjust(false);
                    }}
                    onClose={() => setShowPriceAdjust(false)}

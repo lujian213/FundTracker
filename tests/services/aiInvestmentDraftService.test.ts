@@ -8,6 +8,7 @@ import {
   DraftEntry,
 } from '../../services/aiInvestmentDraftService';
 import { Ticker, ValuationData, HistoricalPoint, MarketIndex } from '../../types';
+import * as marketFundService from '../../services/marketFundService';
 
 // Mock localStorage
 const localStorageMock = (() => {
@@ -27,10 +28,10 @@ jest.mock('../../hooks/useTrades', () => ({
 }));
 
 describe('aiInvestmentDraftService', () => {
-  describe('formatInvestmentDraftData', () => {
-    beforeEach(() => {
-      localStorage.clear();
-    });
+  beforeEach(() => {
+    localStorage.clear();
+    marketFundService.resetCache();
+  });
 
     test('filters out funds with 不操作', () => {
       const draftData: Record<string, DraftEntry> = {
@@ -98,12 +99,18 @@ describe('aiInvestmentDraftService', () => {
       expect(result.indices[0].index_name).toBe('上证指数');
       expect(result.indices[0].current_value).toBe(3250);
     });
-  });
 
-  describe('formatFundBaseContextData', () => {
+    describe('formatFundBaseContextData', () => {
     beforeEach(() => {
       localStorage.clear();
-      localStorage.setItem('fund_position_000001', JSON.stringify({ fullCapacity: 10000, initialPosition: 1000 }));
+      marketFundService.resetCache();
+      // 使用 marketFundService 设置持仓数据（而非 legacy key）
+      marketFundService.updatePosition('000001', {
+        fullCapacity: 10000,
+        initialPosition: 1000,
+        startDate: null,
+        initialPrice: null
+      });
     });
 
     test('returns base data without user plan fields', () => {
@@ -152,6 +159,8 @@ describe('aiInvestmentDraftService', () => {
       expect(result.funds.length).toBe(1);
       expect(result.funds[0].code).toBe('000001');
       expect(result.funds[0].name).toBe('测试基金');
+      // 验证 current_shares 能正确读取（beforeEach 中通过 legacy key 设置了 initialPosition: 1000）
+      expect(result.funds[0].current_shares).toBe(1000);
       // 不应包含用户计划相关字段
       expect(result.funds[0]).not.toHaveProperty('today_action');
       expect(result.funds[0]).not.toHaveProperty('action_shares');
@@ -159,6 +168,14 @@ describe('aiInvestmentDraftService', () => {
     });
 
     test('includes all base fields for fund', () => {
+      // 设置持仓数据
+      marketFundService.updatePosition('000001', {
+        fullCapacity: 10000,
+        initialPosition: 1000,
+        startDate: '2026-01-01',
+        initialPrice: 1.5
+      });
+
       const portfolio: Ticker[] = [
         {
           id: '1',

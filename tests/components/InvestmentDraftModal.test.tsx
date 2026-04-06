@@ -3,6 +3,7 @@ import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import '@testing-library/jest-dom';
 import InvestmentDraftModal from '../../components/InvestmentDraftModal';
 import { Ticker, ValuationData, MarketType } from '../../types';
+import * as marketFundService from '../../services/marketFundService';
 
 // Mock cacheService.getValuation to return null (use marketData directly)
 jest.mock('../../services/cacheService', () => ({
@@ -84,20 +85,23 @@ describe('InvestmentDraftModal', () => {
     // Clear localStorage before each test
     localStorage.clear();
 
-    // Add mock position data for the funds to appear in the draft
-    localStorage.setItem('fund_position_000001', JSON.stringify({
+    // 使用 marketFundService 设置基金和持仓数据
+    marketFundService.resetCache();
+    mockPortfolio.forEach(t => {
+      marketFundService.addFund(t.symbol, t.name);
+    });
+    marketFundService.updatePosition('000001', {
       fullCapacity: 10000,
       initialPosition: 0,
       startDate: '2026-01-01',
       initialPrice: 2.0
-    }));
-
-    localStorage.setItem('fund_position_000002', JSON.stringify({
+    });
+    marketFundService.updatePosition('000002', {
       fullCapacity: 5000,
       initialPosition: 0,
       startDate: '2026-01-01',
       initialPrice: 3.0
-    }));
+    });
   });
 
   afterEach(() => {

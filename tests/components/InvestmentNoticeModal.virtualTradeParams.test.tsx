@@ -2,6 +2,7 @@ import React from 'react';
 import { render, waitFor } from '@testing-library/react';
 import InvestmentNoticeModal from '../../components/InvestmentNoticeModal';
 import { Ticker, MarketType } from '../../types';
+import * as marketFundService from '../../services/marketFundService';
 
 // Mock the services and utilities
 jest.mock('../../services/fundService', () => ({
@@ -60,6 +61,7 @@ Object.defineProperty(window, 'localStorage', {
 describe('InvestmentNoticeModal Virtual Trade Parameters Consistency', () => {
   beforeEach(() => {
     localStorage.clear();
+    marketFundService.resetCache();
     jest.clearAllMocks();
 
     // Mock fetchFundHistory to return sample history data
@@ -129,13 +131,14 @@ describe('InvestmentNoticeModal Virtual Trade Parameters Consistency', () => {
   });
 
   test('should use localStorage-configured startDate when available', async () => {
-    // Configure a fund in localStorage with a specific start date
-    localStorage.setItem('fund_position_000001', JSON.stringify({
+    // 使用 marketFundService 设置持仓数据（而非 legacy key）
+    marketFundService.addFund('000001', 'Test Fund 1');
+    marketFundService.updatePosition('000001', {
       startDate: '2026-01-02',
       initialPosition: 10000,
       initialPrice: 1.0,
       fullCapacity: 20000
-    }));
+    });
 
     const mockPortfolio: Ticker[] = [
       { id: 'test1', symbol: '000001', name: 'Test Fund 1', market: MarketType.FUND }
@@ -166,13 +169,14 @@ describe('InvestmentNoticeModal Virtual Trade Parameters Consistency', () => {
   });
 
   test('should calculate initialCash and initialShares following VirtualTradeModal logic', async () => {
-    // Configure a fund with full capacity in localStorage
-    localStorage.setItem('fund_position_000001', JSON.stringify({
+    // 使用 marketFundService 设置持仓数据（而非 legacy key）
+    marketFundService.addFund('000001', 'Test Fund 1');
+    marketFundService.updatePosition('000001', {
       startDate: '2026-01-01',
       initialPosition: 5000,
       initialPrice: 1.0,
       fullCapacity: 15000
-    }));
+    });
 
     const mockPortfolio: Ticker[] = [
       { id: 'test1', symbol: '000001', name: 'Test Fund 1', market: MarketType.FUND }

@@ -4,6 +4,7 @@ jest.mock('../../hooks/useTrades', () => ({
 
 import { resolvePreferredPrice } from '../../utils/priceResolver';
 import { computeOverallProfit, _deps } from '../../services/fundService';
+import * as marketFundService from '../../services/marketFundService';
 
 describe('price resolution contract', () => {
   let origFetchHistory: typeof _deps.fetchFundHistory;
@@ -13,6 +14,7 @@ describe('price resolution contract', () => {
     origFetchHistory = _deps.fetchFundHistory;
     origFetchData = _deps.fetchFundData;
     localStorage.clear();
+    marketFundService.resetCache();
   });
 
   afterEach(() => {
@@ -51,8 +53,14 @@ describe('price resolution contract', () => {
     expect(resolved).not.toBeNull();
     expect(resolved!.price).toBeCloseTo(2.2, 4);
 
-    localStorage.setItem('fund_portfolio', JSON.stringify([{ symbol: '111111', name: 'A' }]));
-    localStorage.setItem('fund_position_111111', JSON.stringify({ startDate: '2026-02-01', initialPosition: 10, initialPrice: 1 }));
+    // 使用 marketFundService API 设置测试数据
+    marketFundService.addFund('111111', 'A');
+    marketFundService.updatePosition('111111', {
+      fullCapacity: 0,
+      startDate: '2026-02-01',
+      initialPosition: 10,
+      initialPrice: 1
+    });
 
     _deps.fetchFundHistory = jest.fn().mockResolvedValue(history);
     _deps.fetchFundData = jest.fn().mockResolvedValue(valuation as any);

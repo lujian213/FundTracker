@@ -7,6 +7,7 @@ import {
   DifferenceDetail
 } from '../types/syncTypes';
 import { transformEggfundData as convertEggfundData } from '../utils/syncUtils';
+import * as marketFundService from './marketFundService';
 
 /**
  * 比较本地交易记录与外部交易记录，按日期和基金分组检测差异
@@ -77,22 +78,16 @@ export function compareTrades(
  */
 export function applySyncUpdates(selectedDifferences: TradeDifference[]): void {
   try {
-    // 获取当前的交易数据
-    const allTradesStr = localStorage.getItem('fund_trades');
-    let allTrades = allTradesStr ? JSON.parse(allTradesStr) : {};
-
     // 遍历选中的差异并应用更新
     for (const diff of selectedDifferences) {
-      if (!allTrades[diff.symbol]) {
-        allTrades[diff.symbol] = [];
-      }
+      const trades = marketFundService.getTrades(diff.symbol);
 
       // 根据差异类型处理更新
       switch (diff.type) {
         case 'new':
           // 添加新的交易记录
           if (diff.externalData) {
-            allTrades[diff.symbol].push(...diff.externalData.trades);
+            trades.push(...diff.externalData.trades);
           }
           break;
 
@@ -100,27 +95,31 @@ export function applySyncUpdates(selectedDifferences: TradeDifference[]): void {
           // 修改现有记录 - 用外部数据替换本地数据
           if (diff.externalData) {
             // 移除对应日期的本地记录
-            allTrades[diff.symbol] = allTrades[diff.symbol].filter(
+            const filteredTrades = trades.filter(
               (trade: TradeRecord) => trade.date !== diff.date
             );
             // 添加外部数据
-            allTrades[diff.symbol].push(...diff.externalData.trades);
+            filteredTrades.push(...diff.externalData.trades);
+            marketFundService.updateTrades(diff.symbol, filteredTrades);
+            continue; // 跳过最后的 updateTrades
           }
           break;
 
         case 'deleted':
           // 删除本地记录
           if (diff.localData) {
-            allTrades[diff.symbol] = allTrades[diff.symbol].filter(
+            const filteredTrades = trades.filter(
               (trade: TradeRecord) => trade.date !== diff.date
             );
+            marketFundService.updateTrades(diff.symbol, filteredTrades);
+            continue; // 跳过最后的 updateTrades
           }
           break;
       }
-    }
 
-    // 保存更新后的数据
-    localStorage.setItem('fund_trades', JSON.stringify(allTrades));
+      // 对于 new 类型，保存更新后的数据
+      marketFundService.updateTrades(diff.symbol, trades);
+    }
   } catch (error) {
     console.error('应用同步更新时出错:', error);
     throw error;

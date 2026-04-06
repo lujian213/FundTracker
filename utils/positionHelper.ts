@@ -1,6 +1,7 @@
 import { Ticker, ValuationData, HistoricalPoint, TradeRecord } from '../types';
 import { getTradesForSymbol } from '../hooks/useTrades';
 import { fetchFundHistory } from '../services/fundService';
+import * as marketFundService from '../services/marketFundService';
 
 export interface PositionEntry {
   symbol: string;
@@ -20,20 +21,14 @@ export function computeAvgCostPrice(
   symbol: string,
   trades: TradeRecord[]
 ): number | null {
-  // 从 localStorage 读取持仓配置
-  const storageKey = `fund_position_${symbol}`;
+  // 从 marketFundService 读取持仓配置
+  const position = marketFundService.getPosition(symbol);
   let initialPosition = 0;
   let initialPrice = 0;
 
-  try {
-    const raw = localStorage.getItem(storageKey);
-    if (raw) {
-      const obj = JSON.parse(raw);
-      initialPosition = Number(obj.initialPosition) || 0;
-      initialPrice = Number(obj.initialPrice) || 0;
-    }
-  } catch {
-    // ignore
+  if (position) {
+    initialPosition = position.initialPosition || 0;
+    initialPrice = position.initialPrice || 0;
   }
 
   // 计算买入和卖出金额
@@ -117,19 +112,10 @@ export function computePositions(
   for (const ticker of portfolio) {
     const sym = ticker.symbol;
 
-    // Read position config from localStorage
-    let fullCapacity = 0;
-    let initialPosition = 0;
-    try {
-      const cfgRaw = localStorage.getItem(`fund_position_${sym}`);
-      if (cfgRaw) {
-        const cfg = JSON.parse(cfgRaw);
-        fullCapacity = Number(cfg.fullCapacity) || 0;
-        initialPosition = Number(cfg.initialPosition) || 0;
-      }
-    } catch (e) {
-      // ignore
-    }
+    // Read position config from marketFundService
+    const position = marketFundService.getPosition(sym);
+    const fullCapacity = position?.fullCapacity || 0;
+    const initialPosition = position?.initialPosition || 0;
 
     // Only process funds that have been configured (fullCapacity > 0)
     if (fullCapacity <= 0) continue;
@@ -185,19 +171,10 @@ export function computePositions(
  */
 export async function getUnitsForDate(symbol: string, isoDate: string, fallbackCash?: number): Promise<number | null> {
   try {
-    // gather stored initialPosition and configured startDate if present
-    let storedInitialPosition = 0;
-    let storedStartDate: string | null = null;
-    try {
-      const raw = localStorage.getItem(`fund_position_${symbol}`);
-      if (raw) {
-        const cfg = JSON.parse(raw);
-        if (cfg) {
-          if (typeof cfg.initialPosition === 'number') storedInitialPosition = Number(cfg.initialPosition) || 0;
-          if (typeof cfg.startDate === 'string') storedStartDate = cfg.startDate;
-        }
-      }
-    } catch (e) { /* ignore */ }
+    // 从 marketFundService 读取持仓配置
+    const position = marketFundService.getPosition(symbol);
+    let storedInitialPosition = position?.initialPosition || 0;
+    let storedStartDate: string | null = position?.startDate || null;
 
     // if stored startDate matches isoDate and an initialPosition exists, prefer it
     if (storedStartDate === isoDate && storedInitialPosition > 0) {

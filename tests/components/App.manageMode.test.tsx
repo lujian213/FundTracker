@@ -3,6 +3,7 @@ import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import App from '../../App';
 import { MarketIndex, ValuationData } from '../../types';
 import { resetCache as resetIndexCache } from '../../services/indexService';
+import * as marketFundService from '../../services/marketFundService';
 
 jest.mock('../../components/MarketNewsTicker', () => ({
   MarketNewsTicker: () => <div data-testid="market-news" />,
@@ -82,6 +83,7 @@ describe('App manage mode', () => {
   beforeEach(() => {
     localStorage.clear();
     jest.clearAllMocks();
+    marketFundService.resetCache();
 
     fetchFundDataMock.mockResolvedValue(fundData);
     forceFetchFundHistoryMock.mockResolvedValue([]);
@@ -97,6 +99,7 @@ describe('App manage mode', () => {
   test('manage button is enabled due to default indices when no funds or indices are configured', () => {
     localStorage.setItem('fund_portfolio', JSON.stringify([]));
     localStorage.setItem('fund_indices_info', JSON.stringify([]));
+    marketFundService.resetCache();
     resetIndexCache();
 
     render(<App />);
@@ -112,6 +115,7 @@ describe('App manage mode', () => {
       { symbol: '1.000001', name: '上证指数', current: 3200, change: 0, changePercent: 0, lastUpdated: '' },
       { symbol: '100.NDX', name: '纳斯达克100', current: 15000, change: 0, changePercent: 0, lastUpdated: '' }
     ]));
+    marketFundService.resetCache();
     resetIndexCache();
 
     render(<App />);
@@ -136,6 +140,7 @@ describe('App manage mode', () => {
       { symbol: '1.000001', name: '上证指数', current: 3200, change: 0, changePercent: 0, lastUpdated: '' },
       { symbol: '100.NDX', name: '纳斯达克100', current: 15000, change: 0, changePercent: 0, lastUpdated: '' }
     ]));
+    marketFundService.resetCache();
     resetIndexCache();
 
     render(<App />);
@@ -173,6 +178,7 @@ describe('App manage mode', () => {
       { symbol: '1.000001', name: '上证指数', current: 3200, change: 0, changePercent: 0, lastUpdated: '' },
       { symbol: '100.NDX', name: '纳斯达克100', current: 15000, change: 0, changePercent: 0, lastUpdated: '' }
     ]));
+    marketFundService.resetCache();
     resetIndexCache();
 
     render(<App />);
@@ -201,6 +207,7 @@ describe('App manage mode', () => {
       { symbol: '1.000001', name: '上证指数', current: 3200, change: 0, changePercent: 0, lastUpdated: '' },
       { symbol: '100.NDX', name: '纳斯达克100', current: 15000, change: 0, changePercent: 0, lastUpdated: '' }
     ]));
+    marketFundService.resetCache();
     resetIndexCache();
 
     render(<App />);
