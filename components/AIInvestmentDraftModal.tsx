@@ -4,15 +4,18 @@ import { createPortal } from 'react-dom';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import rehypeRaw from 'rehype-raw';
-import { Ticker, ValuationData, HistoricalPoint, MarketIndex } from '../types';
+import { Ticker, ValuationData, HistoricalPoint, MarketIndex, MarketFund } from '../types';
 import { hasUsableAIConfig, getAIConfig, AIConfiguration } from '../services/aiConfigService';
 import { analyzeInvestmentDraft, DraftEntry } from '../services/aiInvestmentDraftService';
 import { StreamCallback } from '../services/aiService';
+import * as marketFundService from '../services/marketFundService';
+import * as indexService from '../services/indexService';
 
 interface AIInvestmentDraftModalProps {
   isVisible: boolean;
   onClose: () => void;
   draftData: Record<string, DraftEntry>;
+  // 保留原有props以兼容调用方，但不再使用
   portfolio: Ticker[];
   fundHistories: Record<string, HistoricalPoint[]>;
   indexHistories: Record<string, HistoricalPoint[]>;
@@ -27,12 +30,13 @@ const AIInvestmentDraftModal: React.FC<AIInvestmentDraftModalProps> = ({
   isVisible,
   onClose,
   draftData,
-  portfolio,
-  fundHistories,
-  indexHistories,
-  marketIndices,
-  globalIndices,
-  marketData
+  // 以下props保留但不再使用，从服务获取最新数据
+  portfolio: _portfolio,
+  fundHistories: _fundHistories,
+  indexHistories: _indexHistories,
+  marketIndices: _marketIndices,
+  globalIndices: _globalIndices,
+  marketData: _marketData
 }) => {
   const [state, setState] = useState<AnalysisState>('idle');
   const [content, setContent] = useState<string>('');
@@ -128,9 +132,12 @@ const AIInvestmentDraftModal: React.FC<AIInvestmentDraftModalProps> = ({
         setContent(fullContent);
       };
 
+      // 获取 MarketFund 和 MarketIndex 数据
+      const funds = marketFundService.getAllMarketFunds();
+      const indices = indexService.getAllMarketIndices();
+
       const result = await analyzeInvestmentDraft(
-        config, draftData, portfolio, fundHistories, indexHistories,
-        marketIndices, globalIndices, marketData, handleChunk
+        config, draftData, funds, indices, handleChunk
       );
 
       if (result.success) {
@@ -144,7 +151,7 @@ const AIInvestmentDraftModal: React.FC<AIInvestmentDraftModalProps> = ({
       setErrorMessage(error.message || '发生未知错误');
       setState('error');
     }
-  }, [draftData, portfolio, fundHistories, indexHistories, marketIndices, globalIndices, marketData]);
+  }, [draftData]);
 
   useEffect(() => {
     if (isVisible && !hasInitialized.current) {

@@ -1055,15 +1055,14 @@ const AppContent: React.FC = () => {
     return result;
   }, [portfolio]);
 
-  // 从 cacheService 获取指数历史数据
+  // 从 indexService 获取指数历史数据
   const indexHistories = useMemo(() => {
-    const allHistories = cacheService.getAllHistories();
     const result: Record<string, HistoricalPoint[]> = {};
     indicesConfig.forEach(symbol => {
       const normalized = normalizeIndexSymbol(symbol);
-      const history = allHistories.get(normalized);
-      if (history) {
-        result[normalized] = history;
+      const marketIndex = indexService.getMarketIndex(normalized);
+      if (marketIndex && marketIndex.history.length > 0) {
+        result[normalized] = marketIndex.history;
       }
     });
     return result;

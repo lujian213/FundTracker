@@ -1,5 +1,5 @@
 import { HistoricalPoint } from '../types';
-import { computeMultipleSMAs } from './movingAverage';
+import { computeSMAsForLast } from './movingAverage';
 import { MA_WINDOWS } from './maConfig';
 
 // 默认的 MA lookback，取 MA_WINDOWS 最大值，确保第一个显示点有完整的 MA 值
@@ -56,18 +56,9 @@ export function prepareChartData(
     ? calcData.slice(-displayCount)
     : calcData;
 
-  // 使用 calcData 计算MA值，确保第一个显示点有完整的MA值
-  const calcValues = calcData.map(p => p.value);
-  const fullMaValues = computeMultipleSMAs(calcValues, maWindows);
-
-  // 将MA值截取到与displayData相同的长度
-  const maValues: Record<number, (number | null)[]> = {};
-  for (const w of maWindows) {
-    const smaArray = fullMaValues[w] || [];
-    maValues[w] = smaArray.length > displayData.length
-      ? smaArray.slice(-displayData.length)
-      : smaArray;
-  }
+  // 使用优化函数计算MA值
+  const allValues = data.map(p => p.value);
+  const maValues = computeSMAsForLast(allValues, displayCount, maWindows);
 
   return {
     displayData,

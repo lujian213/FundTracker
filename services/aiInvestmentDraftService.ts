@@ -1,13 +1,46 @@
 // services/aiInvestmentDraftService.ts
-import { Ticker, ValuationData, HistoricalPoint, MarketIndex, TradeRecord } from '../types';
+import { Ticker, ValuationData, HistoricalPoint, MarketIndex, TradeRecord, MarketFund } from '../types';
 import { AIConfiguration } from './aiConfigService';
 import { queryAI, StreamCallback, PromptTemplate, ChatMessage, queryAIWithMessages } from './aiService';
 import { getTradesForSymbol } from '../hooks/useTrades';
 import { computeAvgCostPrice } from '../utils/positionHelper';
 import { toLocalDateKey } from '../utils/priceResolver';
-import { computeSMA } from '../utils/movingAverage';
+import { computeSMAsForLast } from '../utils/movingAverage';
 import { DraftEntry } from '../types/appDataTypes';
 import * as marketFundService from './marketFundService';
+
+// 模板缓存
+let investmentDraftTemplatesCache: PromptTemplate[] | null = null;
+
+/**
+ * 加载投资计划模板（带缓存）
+ */
+async function loadInvestmentDraftTemplates(): Promise<PromptTemplate[]> {
+  // 检查缓存
+  if (investmentDraftTemplatesCache) {
+    return investmentDraftTemplatesCache;
+  }
+
+  try {
+    const response = await fetch('./assets/config/ai-investment-draft-templates.json', { cache: 'no-store' });
+    const data = await response.json();
+
+    if (data && data.templates && Array.isArray(data.templates)) {
+      investmentDraftTemplatesCache = data.templates;
+      return data.templates;
+    }
+  } catch (e) {
+    console.error('Failed to load investment draft templates:', e);
+  }
+  return [];
+}
+
+/**
+ * 从模板列表中获取指定ID的启用模板
+ */
+function getTemplateById(templates: PromptTemplate[], id: string): PromptTemplate | null {
+  return templates.find(t => t.id === id && t.enabled) || null;
+}
 
 // Re-export DraftEntry type for backward compatibility
 export type { DraftEntry };
@@ -128,21 +161,21 @@ const JSON_SCHEMA = `### funds 数组（基金列表）
 - quarterly_return: 近3月涨跌幅（数值，小数形式；无数据则为 null）
 - halfyear_return: 近6月涨跌幅（数值，小数形式；无数据则为 null）
 - top10_stocks: 基金前十股票持仓（对象数组，包含 stock_name 和 stock_percentage；无数据则为 null）
-- nav_last_10_days: 最近10天净值（数值数组，不含今日，按时间倒序，最新在前）
-- ma5_last_10_days: 最近10天的5日均值（数值数组，不含今日，对应 nav_last_10_days 各日的5日均值）
-- ma10_last_10_days: 最近10天的10日均值（数值数组，不含今日）
-- ma20_last_10_days: 最近10天的20日均值（数值数组，不含今日）
+- nav_last_10_days: 最近10天净值（数值数组，不含今日，从最近日期开始，最新在前）
+- ma5_last_10_days: 最近10天的5日均值（数值数组，不含今日，从最近日期开始，最新在前）
+- ma10_last_10_days: 最近10天的10日均值（数值数组，不含今日，从最近日期开始，最新在前）
+- ma20_last_10_days: 最近10天的20日均值（数值数组，不含今日，从最近日期开始，最新在前）
 
 ### indices 数组（指数列表）
 每个指数对象包含以下字段：
 - index_name: 指数名称（字符串，如 "上证指数"、"纳斯达克100指数"）
 - current_value: 当前指数值（数值）
 - current_volume: 当前成交量（数值，单位：手）
-- values_last_10_days: 最近10天指数值（数值数组，不含今日，按时间倒序）
-- volume_last_10_days: 最近10天成交量（数值数组，不含今日）
-- ma5_last_10_days: 最近10天的5日均值（数值数组，不含今日）
-- ma10_last_10_days: 最近10天的10日均值（数值数组，不含今日）
-- ma20_last_10_days: 最近10天的20日均值（数值数组，不含今日）`;
+- values_last_10_days: 最近10天指数值（数值数组，不含今日，从最近日期开始，最新在前）
+- volume_last_10_days: 最近10天成交量（数值数组，不含今日，从最近日期开始，最新在前）
+- ma5_last_10_days: 最近10天的5日均值（数值数组，不含今日，从最近日期开始，最新在前）
+- ma10_last_10_days: 最近10天的10日均值（数值数组，不含今日，从最近日期开始，最新在前）
+- ma20_last_10_days: 最近10天的20日均值（数值数组，不含今日，从最近日期开始，最新在前）`;
 
 /**
  * 获取最近N次交易记录（不含今日）
@@ -208,27 +241,24 @@ function getCurrentShares(symbol: string): number {
 
 /**
  * 格式化基金基础数据（不含用户计划，用于AI辅助功能）
- * 处理所有portfolio中的基金，不筛选操作类型
+ * 处理所有MarketFund中的基金
  */
 export function formatFundBaseContextData(
-  portfolio: Ticker[],
-  fundHistories: Record<string, HistoricalPoint[]>,
-  indexHistories: Record<string, HistoricalPoint[]>,
-  marketIndices: MarketIndex[],
-  globalIndices: MarketIndex[],
-  marketData: Record<string, ValuationData>
+  funds: MarketFund[],
+  indices: MarketIndex[]
 ): AIAdviceInputData {
   const today = toLocalDateKey(new Date());
-  const funds: FundBaseData[] = [];
+  const resultFunds: FundBaseData[] = [];
 
-  // 处理基金数据（处理所有有估值数据的基金）
-  for (const ticker of portfolio) {
+  // 处理基金数据
+  for (const fund of funds) {
+    const ticker = fund.info.ticker;
     const symbol = ticker.symbol;
-    const valuation = marketData[symbol];
+    const valuation = fund.info.valuation;
     if (!valuation) continue;
 
     // 获取历史净值
-    const history = fundHistories[symbol] || [];
+    const history = fund.history;
     // 按时间正序排列（旧数据在前）
     const sortedHistory = [...history].sort((a, b) => (a.date as number) - (b.date as number));
 
@@ -242,16 +272,14 @@ export function formatFundBaseContextData(
     // 提取全部净值数组用于均值计算（确保有足够数据）
     const allNavValues = historyWithoutToday.map(h => h.value);
 
-    // 使用全部历史数据计算均值
-    const ma5 = computeSMA(allNavValues, 5);
-    const ma10 = computeSMA(allNavValues, 10);
-    const ma20 = computeSMA(allNavValues, 20);
+    // 使用优化函数计算MA值（只计算需要的数量）
+    const maValues = computeSMAsForLast(allNavValues, 10);
 
     // 取最近10天的净值和均值（倒序，最新在前）
     const navLast10Days = allNavValues.slice(-10).reverse();
-    const ma5Last10 = ma5.slice(-10).reverse().map(v => v ?? 0);
-    const ma10Last10 = ma10.slice(-10).reverse().map(v => v ?? 0);
-    const ma20Last10 = ma20.slice(-10).reverse().map(v => v ?? 0);
+    const ma5Last10 = [...maValues[5]].reverse().map(v => v ?? 0);
+    const ma10Last10 = [...maValues[10]].reverse().map(v => v ?? 0);
+    const ma20Last10 = [...maValues[20]].reverse().map(v => v ?? 0);
 
     // 获取交易记录
     const trades = getTradesForSymbol(symbol);
@@ -277,7 +305,7 @@ export function formatFundBaseContextData(
         stock_percentage: s.percentage || 0
       })) || null;
 
-    funds.push({
+    resultFunds.push({
       code: symbol,
       name: ticker.name || symbol,
       current_shares: currentShares,
@@ -289,7 +317,7 @@ export function formatFundBaseContextData(
       quarterly_return: quarterlyReturn,
       halfyear_return: halfyearReturn,
       top10_stocks: top10Stocks,
-      nav_last_10_days: [...navLast10Days].reverse(),
+      nav_last_10_days: navLast10Days,
       ma5_last_10_days: ma5Last10,
       ma10_last_10_days: ma10Last10,
       ma20_last_10_days: ma20Last10
@@ -297,11 +325,10 @@ export function formatFundBaseContextData(
   }
 
   // 处理指数数据
-  const indices: IndexDraftData[] = [];
-  const allIndices = [...marketIndices, ...globalIndices];
+  const resultIndices: IndexDraftData[] = [];
 
-  for (const idx of allIndices) {
-    const history = indexHistories[idx.info.symbol] || [];
+  for (const idx of indices) {
+    const history = idx.history;
     const sortedHistory = [...history].sort((a, b) => (a.date as number) - (b.date as number));
 
     // 过滤掉今日数据，使用全部历史数据计算均值
@@ -315,31 +342,50 @@ export function formatFundBaseContextData(
     const allValues = historyWithoutToday.map(h => h.value);
     const allVolume = historyWithoutToday.map(h => h.volume || 0);
 
-    // 使用全部历史数据计算均值
-    const ma5 = computeSMA(allValues, 5);
-    const ma10 = computeSMA(allValues, 10);
-    const ma20 = computeSMA(allValues, 20);
+    // 使用优化函数计算MA值（只计算需要的数量）
+    const maValues = computeSMAsForLast(allValues, 10);
 
     // 取最近10天的数据（倒序，最新在前）
     const valuesLast10Days = allValues.slice(-10).reverse();
     const volumeLast10Days = allVolume.slice(-10).reverse();
-    const ma5Last10 = ma5.slice(-10).reverse().map(v => v ?? 0);
-    const ma10Last10 = ma10.slice(-10).reverse().map(v => v ?? 0);
-    const ma20Last10 = ma20.slice(-10).reverse().map(v => v ?? 0);
+    const ma5Last10 = [...maValues[5]].reverse().map(v => v ?? 0);
+    const ma10Last10 = [...maValues[10]].reverse().map(v => v ?? 0);
+    const ma20Last10 = [...maValues[20]].reverse().map(v => v ?? 0);
 
-    indices.push({
+    resultIndices.push({
       index_name: idx.info.name,
       current_value: idx.info.current,
       current_volume: idx.info.volume || 0,
-      values_last_10_days: [...valuesLast10Days].reverse(),
-      volume_last_10_days: [...volumeLast10Days].reverse(),
+      values_last_10_days: valuesLast10Days,
+      volume_last_10_days: volumeLast10Days,
       ma5_last_10_days: ma5Last10,
       ma10_last_10_days: ma10Last10,
       ma20_last_10_days: ma20Last10
     });
   }
 
-  return { funds, indices };
+  return { funds: resultFunds, indices: resultIndices };
+}
+
+/**
+ * 从响应中提取JSON内容
+ * 支持纯JSON和被代码块包裹的JSON格式
+ */
+function extractJSONContent(response: string): string {
+  let jsonContent = response.trim();
+  const codeBlockMatch = jsonContent.match(/```(?:json)?\s*\n?([\s\S]*?)\n?```/);
+  if (codeBlockMatch) {
+    jsonContent = codeBlockMatch[1].trim();
+  }
+  return jsonContent;
+}
+
+/**
+ * 创建解析错误
+ */
+function createParseError(message: string, jsonContent: string): Error {
+  const preview = jsonContent.length > 200 ? jsonContent.slice(0, 200) + '...' : jsonContent;
+  return new Error(`AI返回格式解析失败: ${message}\n响应预览: ${preview}`);
 }
 
 /**
@@ -347,21 +393,13 @@ export function formatFundBaseContextData(
  * 支持纯JSON和被代码块包裹的JSON格式
  */
 export function parseAIAdviceJSON(response: string): AIAdviceEntry[] {
-  // 尝试提取JSON内容
-  let jsonContent = response.trim();
+  const jsonContent = extractJSONContent(response);
 
-  // 检查是否被代码块包裹（去除锚点，处理AI响应中可能包含的周围文本）
-  const codeBlockMatch = jsonContent.match(/```(?:json)?\s*\n?([\s\S]*?)\n?```/);
-  if (codeBlockMatch) {
-    jsonContent = codeBlockMatch[1].trim();
-  }
-
-  // 尝试直接解析
   try {
     const parsed = JSON.parse(jsonContent);
 
     if (!Array.isArray(parsed)) {
-      throw new Error(`AI返回的不是数组格式，而是: ${typeof parsed}`);
+      throw createParseError(`AI返回的不是数组格式，而是: ${typeof parsed}`, jsonContent);
     }
 
     // 过滤并转换结果，只保留 buy/sell 操作
@@ -374,9 +412,10 @@ export function parseAIAdviceJSON(response: string): AIAdviceEntry[] {
         reason: item.reason || ''
       }));
   } catch (e) {
-    // 提供更详细的错误信息
-    const preview = jsonContent.length > 200 ? jsonContent.slice(0, 200) + '...' : jsonContent;
-    throw new Error(`AI返回格式解析失败: ${(e as Error).message}\n响应预览: ${preview}`);
+    if (e instanceof Error && e.message.startsWith('AI返回格式解析失败')) {
+      throw e;
+    }
+    throw createParseError((e as Error).message, jsonContent);
   }
 }
 
@@ -385,20 +424,13 @@ export function parseAIAdviceJSON(response: string): AIAdviceEntry[] {
  * 支持纯JSON和被代码块包裹的JSON格式
  */
 export function parseAIAdviceWithScoreJSON(response: string): AIAdviceWithScore[] {
-  // 尝试提取JSON内容
-  let jsonContent = response.trim();
-
-  // 检查是否被代码块包裹
-  const codeBlockMatch = jsonContent.match(/```(?:json)?\s*\n?([\s\S]*?)\n?```/);
-  if (codeBlockMatch) {
-    jsonContent = codeBlockMatch[1].trim();
-  }
+  const jsonContent = extractJSONContent(response);
 
   try {
     const parsed = JSON.parse(jsonContent);
 
     if (!Array.isArray(parsed)) {
-      throw new Error(`AI返回的不是数组格式，而是: ${typeof parsed}`);
+      throw createParseError(`AI返回的不是数组格式，而是: ${typeof parsed}`, jsonContent);
     }
 
     // 过滤并转换结果，只保留 buy/sell 操作
@@ -412,8 +444,10 @@ export function parseAIAdviceWithScoreJSON(response: string): AIAdviceWithScore[
         score: typeof item.score === 'number' ? item.score : 0
       }));
   } catch (e) {
-    const preview = jsonContent.length > 200 ? jsonContent.slice(0, 200) + '...' : jsonContent;
-    throw new Error(`AI返回格式解析失败: ${(e as Error).message}\n响应预览: ${preview}`);
+    if (e instanceof Error && e.message.startsWith('AI返回格式解析失败')) {
+      throw e;
+    }
+    throw createParseError((e as Error).message, jsonContent);
   }
 }
 
@@ -430,30 +464,14 @@ function allScoresPass(advice: AIAdviceWithScore[]): boolean {
  */
 export async function generateAIAdviceWithValidation(
   config: AIConfiguration,
-  portfolio: Ticker[],
-  fundHistories: Record<string, HistoricalPoint[]>,
-  indexHistories: Record<string, HistoricalPoint[]>,
-  marketIndices: MarketIndex[],
-  globalIndices: MarketIndex[],
-  marketData: Record<string, ValuationData>
+  funds: MarketFund[],
+  indices: MarketIndex[]
 ): Promise<AIAdviceIterationResult> {
-  // 加载模板配置
-  let template1: PromptTemplate | null = null;  // 投资建议模板
-  let template2: PromptTemplate | null = null;  // 评分模板
-  let template3: PromptTemplate | null = null;  // 修正模板
-
-  try {
-    const response = await fetch('./assets/config/ai-investment-draft-templates.json', { cache: 'no-store' });
-    const data = await response.json();
-
-    if (data && data.templates && Array.isArray(data.templates)) {
-      template1 = data.templates.find((t: PromptTemplate) => t.id === 'ai-investment-advice' && t.enabled) || null;
-      template2 = data.templates.find((t: PromptTemplate) => t.id === 'ai-investment-advice-score' && t.enabled) || null;
-      template3 = data.templates.find((t: PromptTemplate) => t.id === 'ai-investment-advice-refine' && t.enabled) || null;
-    }
-  } catch (e) {
-    console.error('Failed to load AI advice templates:', e);
-  }
+  // 加载模板配置（带缓存）
+  const templates = await loadInvestmentDraftTemplates();
+  const template1 = getTemplateById(templates, 'ai-investment-advice');
+  const template2 = getTemplateById(templates, 'ai-investment-advice-score');
+  const template3 = getTemplateById(templates, 'ai-investment-advice-refine');
 
   if (!template1 || !template2 || !template3) {
     return {
@@ -466,14 +484,7 @@ export async function generateAIAdviceWithValidation(
   }
 
   // 格式化数据（不含用户计划）
-  const analysisData = formatFundBaseContextData(
-    portfolio,
-    fundHistories,
-    indexHistories,
-    marketIndices,
-    globalIndices,
-    marketData
-  );
+  const analysisData = formatFundBaseContextData(funds, indices);
 
   const jsonContent = JSON.stringify(analysisData, null, 2);
 
@@ -635,22 +646,11 @@ export async function generateAIAdviceWithValidation(
  */
 export function formatInvestmentDraftData(
   draftData: Record<string, DraftEntry>,
-  portfolio: Ticker[],
-  fundHistories: Record<string, HistoricalPoint[]>,
-  indexHistories: Record<string, HistoricalPoint[]>,
-  marketIndices: MarketIndex[],
-  globalIndices: MarketIndex[],
-  marketData: Record<string, ValuationData>
+  funds: MarketFund[],
+  indices: MarketIndex[]
 ): InvestmentDraftAnalysisData {
   // 先获取基础数据（不含用户计划）
-  const baseData = formatFundBaseContextData(
-    portfolio,
-    fundHistories,
-    indexHistories,
-    marketIndices,
-    globalIndices,
-    marketData
-  );
+  const baseData = formatFundBaseContextData(funds, indices);
 
   // 构建基金数据的映射，用于快速查找
   const fundDataMap = new Map<string, FundBaseData>();
@@ -658,8 +658,14 @@ export function formatInvestmentDraftData(
     fundDataMap.set(fund.code, fund);
   }
 
+  // 构建MarketFund的映射，用于获取valuation
+  const marketFundMap = new Map<string, MarketFund>();
+  for (const fund of funds) {
+    marketFundMap.set(fund.info.ticker.symbol, fund);
+  }
+
   // 处理基金数据（只处理买入或卖出操作的，添加用户计划字段）
-  const funds: FundDraftData[] = [];
+  const resultFunds: FundDraftData[] = [];
 
   for (const [symbol, entry] of Object.entries(draftData)) {
     if (entry.operation === '不操作' || !entry.amount) continue;
@@ -668,7 +674,9 @@ export function formatInvestmentDraftData(
     const baseFund = fundDataMap.get(symbol);
     if (!baseFund) continue;
 
-    const valuation = marketData[symbol];
+    // 从MarketFund中获取valuation
+    const marketFund = marketFundMap.get(symbol);
+    const valuation = marketFund?.info.valuation;
     if (!valuation) continue;
 
     // 计算操作份额
@@ -678,7 +686,7 @@ export function formatInvestmentDraftData(
       : 0;
 
     // 在基础数据上添加用户计划字段
-    funds.push({
+    resultFunds.push({
       ...baseFund,
       today_action: entry.operation as '买入' | '卖出',
       action_shares: actionShares,
@@ -686,33 +694,15 @@ export function formatInvestmentDraftData(
     });
   }
 
-  return { funds, indices: baseData.indices };
+  return { funds: resultFunds, indices: baseData.indices };
 }
 
 /**
- * 加载投资计划分析模板
+ * 加载投资计划分析模板（带缓存）
  */
 export async function loadInvestmentDraftTemplate(): Promise<PromptTemplate | null> {
-  try {
-    const response = await fetch('./assets/config/ai-investment-draft-templates.json', { cache: 'no-store' });
-
-    if (!response.ok) {
-      console.error(`Failed to load investment draft templates: HTTP ${response.status}`);
-      return null;
-    }
-
-    const data = await response.json();
-
-    if (data && data.templates && Array.isArray(data.templates)) {
-      const enabledTemplate = data.templates.find((t: PromptTemplate) => t.enabled);
-      return enabledTemplate || null;
-    }
-
-    return null;
-  } catch (error) {
-    console.error('Failed to load investment draft templates:', error);
-    return null;
-  }
+  const templates = await loadInvestmentDraftTemplates();
+  return templates.find(t => t.enabled) || null;
 }
 
 /**
@@ -721,12 +711,8 @@ export async function loadInvestmentDraftTemplate(): Promise<PromptTemplate | nu
 export async function analyzeInvestmentDraft(
   config: AIConfiguration,
   draftData: Record<string, DraftEntry>,
-  portfolio: Ticker[],
-  fundHistories: Record<string, HistoricalPoint[]>,
-  indexHistories: Record<string, HistoricalPoint[]>,
-  marketIndices: MarketIndex[],
-  globalIndices: MarketIndex[],
-  marketData: Record<string, ValuationData>,
+  funds: MarketFund[],
+  indices: MarketIndex[],
   onChunk?: StreamCallback
 ): Promise<{ content: string; success: boolean; error?: string }> {
   // 加载模板
@@ -741,10 +727,7 @@ export async function analyzeInvestmentDraft(
   }
 
   // 格式化数据
-  const analysisData = formatInvestmentDraftData(
-    draftData, portfolio, fundHistories, indexHistories,
-    marketIndices, globalIndices, marketData
-  );
+  const analysisData = formatInvestmentDraftData(draftData, funds, indices);
 
   // 转为JSON字符串
   const jsonContent = JSON.stringify(analysisData, null, 2);
@@ -774,49 +757,34 @@ const AI_ADVICE_JSON_SCHEMA = `### funds 数组（基金列表）
 - quarterly_return: 近3月涨跌幅（数值，小数形式；无数据则为 null）
 - halfyear_return: 近6月涨跌幅（数值，小数形式；无数据则为 null）
 - top10_stocks: 基金前十股票持仓（对象数组；无数据则为 null）
-- nav_last_10_days: 最近10天净值（数值数组）
-- ma5_last_10_days: 最近10天的5日均值（数值数组）
-- ma10_last_10_days: 最近10天的10日均值（数值数组）
-- ma20_last_10_days: 最近10天的20日均值（数值数组）
+- nav_last_10_days: 最近10天净值（数值数组，从最近日期开始，最新在前）
+- ma5_last_10_days: 最近10天的5日均值（数值数组，从最近日期开始，最新在前）
+- ma10_last_10_days: 最近10天的10日均值（数值数组，从最近日期开始，最新在前）
+- ma20_last_10_days: 最近10天的20日均值（数值数组，从最近日期开始，最新在前）
 
 ### indices 数组（指数列表）
 每个指数对象包含以下字段：
 - index_name: 指数名称（字符串）
 - current_value: 当前指数值（数值）
 - current_volume: 当前成交量（数值）
-- values_last_10_days: 最近10天指数值（数值数组）
-- volume_last_10_days: 最近10天成交量（数值数组）
-- ma5_last_10_days: 最近10天的5日均值（数值数组）
-- ma10_last_10_days: 最近10天的10日均值（数值数组）
-- ma20_last_10_days: 最近10天的20日均值（数值数组）`;
+- values_last_10_days: 最近10天指数值（数值数组，从最近日期开始，最新在前）
+- volume_last_10_days: 最近10天成交量（数值数组，从最近日期开始，最新在前）
+- ma5_last_10_days: 最近10天的5日均值（数值数组，从最近日期开始，最新在前）
+- ma10_last_10_days: 最近10天的10日均值（数值数组，从最近日期开始，最新在前）
+- ma20_last_10_days: 最近10天的20日均值（数值数组，从最近日期开始，最新在前）`;
 
 /**
  * 生成AI投资建议
  */
 export async function generateAIInvestmentAdvice(
   config: AIConfiguration,
-  portfolio: Ticker[],
-  fundHistories: Record<string, HistoricalPoint[]>,
-  indexHistories: Record<string, HistoricalPoint[]>,
-  marketIndices: MarketIndex[],
-  globalIndices: MarketIndex[],
-  marketData: Record<string, ValuationData>,
+  funds: MarketFund[],
+  indices: MarketIndex[],
   templateId: string = 'ai-investment-advice'
 ): Promise<{ advice: AIAdviceEntry[]; success: boolean; error?: string }> {
-  // 加载模板配置
-  let targetTemplate: PromptTemplate | null = null;
-
-  try {
-    const response = await fetch('./assets/config/ai-investment-draft-templates.json', { cache: 'no-store' });
-    const data = await response.json();
-
-    if (data && data.templates && Array.isArray(data.templates)) {
-      // 查找指定ID的模板
-      targetTemplate = data.templates.find((t: PromptTemplate) => t.id === templateId && t.enabled) || null;
-    }
-  } catch (e) {
-    console.error('Failed to load AI advice template:', e);
-  }
+  // 加载模板配置（带缓存）
+  const templates = await loadInvestmentDraftTemplates();
+  const targetTemplate = getTemplateById(templates, templateId);
 
   if (!targetTemplate) {
     return {
@@ -827,14 +795,7 @@ export async function generateAIInvestmentAdvice(
   }
 
   // 格式化数据（不含用户计划）
-  const analysisData = formatFundBaseContextData(
-    portfolio,
-    fundHistories,
-    indexHistories,
-    marketIndices,
-    globalIndices,
-    marketData
-  );
+  const analysisData = formatFundBaseContextData(funds, indices);
 
   // 转为JSON字符串
   const jsonContent = JSON.stringify(analysisData, null, 2);

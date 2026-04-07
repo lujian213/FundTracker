@@ -11,7 +11,7 @@ import {
   SCORE_THRESHOLD,
   MAX_ITERATIONS,
 } from '../../services/aiInvestmentDraftService';
-import { Ticker, ValuationData, HistoricalPoint, MarketIndex } from '../../types';
+import { Ticker, ValuationData, HistoricalPoint, MarketIndex, MarketFund } from '../../types';
 import * as marketFundService from '../../services/marketFundService';
 
 // Mock localStorage
@@ -31,6 +31,51 @@ jest.mock('../../hooks/useTrades', () => ({
   getTradesForSymbol: jest.fn(() => []),
 }));
 
+// Helper to create MarketFund
+function createMarketFund(
+  symbol: string,
+  name: string,
+  valuation: ValuationData | undefined,
+  history: HistoricalPoint[] = [],
+  ticker?: Partial<Ticker>
+): MarketFund {
+  return {
+    info: {
+      ticker: {
+        id: symbol,
+        symbol,
+        name,
+        market: 'cn',
+        ...ticker
+      },
+      valuation
+    },
+    trades: [],
+    intraday: [],
+    history
+  };
+}
+
+// Helper to create MarketIndex
+function createMarketIndex(
+  symbol: string,
+  name: string,
+  history: HistoricalPoint[] = []
+): MarketIndex {
+  return {
+    info: {
+      symbol,
+      name,
+      current: 0,
+      change: 0,
+      changePercent: 0,
+      lastUpdated: ''
+    },
+    intraday: [],
+    history
+  };
+}
+
 describe('aiInvestmentDraftService', () => {
   beforeEach(() => {
     localStorage.clear();
@@ -42,20 +87,18 @@ describe('aiInvestmentDraftService', () => {
         '000001': { fundSymbol: '000001', operation: '买入', amount: '1000', note: '' },
         '000002': { fundSymbol: '000002', operation: '不操作', amount: '', note: '' },
       };
-      const portfolio: Ticker[] = [
-        { id: '1', symbol: '000001', name: '基金1', market: 'cn' },
-        { id: '2', symbol: '000002', name: '基金2', market: 'cn' },
-      ];
       const valuation1: ValuationData = {
         symbol: '000001', name: '基金1', currentPrice: 1.5, previousPrice: 1.4,
         changePercentage: 7.14, lastUpdated: '2026-04-03 15:00', realtimeDate: '2026-04-03',
         netWorthDate: '2026-04-02', valuationDate: '2026-04-03', sourceUrl: ''
       };
 
-      const result = formatInvestmentDraftData(
-        draftData, portfolio, {}, {}, [], [],
-        { '000001': valuation1 }
-      );
+      const funds: MarketFund[] = [
+        createMarketFund('000001', '基金1', valuation1),
+        createMarketFund('000002', '基金2', undefined)
+      ];
+
+      const result = formatInvestmentDraftData(draftData, funds, []);
 
       expect(result.funds).toHaveLength(1);
       expect(result.funds[0].code).toBe('000001');
@@ -66,42 +109,132 @@ describe('aiInvestmentDraftService', () => {
       const draftData: Record<string, DraftEntry> = {
         '000001': { fundSymbol: '000001', operation: '买入', amount: '1000', note: '' },
       };
-      const portfolio: Ticker[] = [
-        { id: '1', symbol: '000001', name: '基金1', market: 'cn' },
-      ];
       const valuation: ValuationData = {
         symbol: '000001', name: '基金1', currentPrice: 2.0, previousPrice: 1.9,
         changePercentage: 5.26, lastUpdated: '2026-04-03 15:00', realtimeDate: '2026-04-03',
         netWorthDate: '2026-04-02', valuationDate: '2026-04-03', sourceUrl: ''
       };
 
-      const result = formatInvestmentDraftData(
-        draftData, portfolio, {}, {}, [], [],
-        { '000001': valuation }
-      );
+      const funds: MarketFund[] = [
+        createMarketFund('000001', '基金1', valuation)
+      ];
+
+      const result = formatInvestmentDraftData(draftData, funds, []);
 
       expect(result.funds[0].action_shares).toBe(500); // 1000 / 2.0
     });
 
     test('processes indices data', () => {
-      const marketIndices: MarketIndex[] = [
-        { info: { name: '上证指数', symbol: 'sh000001', current: 3250, change: 10, changePercent: 0.31,
-          lastUpdated: '2026-04-03 15:00', volume: 123456789 }, history: [] }
-      ];
-      const indexHistories: Record<string, HistoricalPoint[]> = {
-        'sh000001': Array.from({ length: 15 }, (_, i) => ({
-          date: Date.now() - (15 - i) * 86400000,
-          value: 3200 + i * 5,
-          equityReturn: 0.1,
-          volume: 100000000 + i * 1000000
-        }))
-      };
+      const indexHistory: HistoricalPoint[] = Array.from({ length: 15 }, (_, i) => ({
+        date: Date.now() - (15 - i) * 86400000,
+        value: 3200 + i * 5,
+        equityReturn: 0.1,
+        volume: 100000000 + i * 1000000
+      }));
 
-      const result = formatInvestmentDraftData({}, [], {}, indexHistories, marketIndices, [], {});
+      const indices: MarketIndex[] = [
+        {
+          info: { name: '上证指数', symbol: 'sh000001', current: 3250, change: 10, changePercent: 0.31,
+            lastUpdated: '2026-04-03 15:00', volume: 123456789 },
+          intraday: [],
+          history: indexHistory
+        }
+      ];
+
+      const result = formatInvestmentDraftData({}, [], indices);
 
       expect(result.indices).toHaveLength(1);
       expect(result.indices[0].index_name).toBe('上证指数');
       expect(result.indices[0].current_value).toBe(3250);
+    });
+
+    test('nav_last_10_days is ordered with newest first', () => {
+      // 创建15天历史数据，净值递增（模拟上涨行情）
+      const today = new Date('2026-04-07');
+      const fundHistory: HistoricalPoint[] = Array.from({ length: 15 }, (_, i) => {
+        const d = new Date(today);
+        d.setDate(d.getDate() - (15 - i));
+        return {
+          date: d.getTime(),
+          value: 1.0 + i * 0.1, // 从1.0到2.4，递增
+          equityReturn: 0.01
+        };
+      });
+
+      const marketData: ValuationData = {
+        symbol: '000001', name: '测试基金', currentPrice: 2.5, previousPrice: 2.4,
+        changePercentage: 4.17, lastUpdated: '2026-04-07 15:00', sourceUrl: ''
+      };
+
+      const funds: MarketFund[] = [
+        createMarketFund('000001', '测试基金', marketData, fundHistory)
+      ];
+
+      const result = formatFundBaseContextData(funds, []);
+
+      expect(result.funds[0].nav_last_10_days).toHaveLength(10);
+      // 最新值在前（最高值），最旧值在后（最低值）
+      // 由于净值递增，nav_last_10_days[0] 应该是最近10天中最高的
+      expect(result.funds[0].nav_last_10_days[0]).toBeGreaterThan(result.funds[0].nav_last_10_days[9]);
+    });
+
+    test('indices values_last_10_days and volume_last_10_days are ordered with newest first', () => {
+      const today = new Date('2026-04-07');
+      const indexHistory: HistoricalPoint[] = Array.from({ length: 15 }, (_, i) => {
+        const d = new Date(today);
+        d.setDate(d.getDate() - (15 - i));
+        return {
+          date: d.getTime(),
+          value: 3000 + i * 10, // 递增
+          volume: 1000000 + i * 10000,
+          equityReturn: 0.01
+        };
+      });
+
+      const indices: MarketIndex[] = [
+        {
+          info: { name: '上证指数', symbol: 'sh000001', current: 3150, change: 10, changePercent: 0.32, lastUpdated: '2026-04-07 15:00', volume: 1150000 },
+          intraday: [],
+          history: indexHistory
+        }
+      ];
+
+      const result = formatFundBaseContextData([], indices);
+
+      expect(result.indices).toHaveLength(1);
+      expect(result.indices[0].values_last_10_days).toHaveLength(10);
+      expect(result.indices[0].volume_last_10_days).toHaveLength(10);
+      // 最新值在前（最高值）
+      expect(result.indices[0].values_last_10_days[0]).toBeGreaterThan(result.indices[0].values_last_10_days[9]);
+      expect(result.indices[0].volume_last_10_days[0]).toBeGreaterThan(result.indices[0].volume_last_10_days[9]);
+    });
+
+    test('indices ma5_last_10_days has correct length', () => {
+      const today = new Date('2026-04-07');
+      const indexHistory: HistoricalPoint[] = Array.from({ length: 20 }, (_, i) => {
+        const d = new Date(today);
+        d.setDate(d.getDate() - (20 - i));
+        return {
+          date: d.getTime(),
+          value: 3000 + i * 10,
+          volume: 1000000,
+          equityReturn: 0.01
+        };
+      });
+
+      const indices: MarketIndex[] = [
+        {
+          info: { name: '上证指数', symbol: 'sh000001', current: 3190, change: 10, changePercent: 0.32, lastUpdated: '2026-04-07 15:00', volume: 1200000 },
+          intraday: [],
+          history: indexHistory
+        }
+      ];
+
+      const result = formatFundBaseContextData([], indices);
+
+      expect(result.indices[0].ma5_last_10_days).toHaveLength(10);
+      expect(result.indices[0].ma10_last_10_days).toHaveLength(10);
+      expect(result.indices[0].ma20_last_10_days).toHaveLength(10);
     });
 
     describe('formatFundBaseContextData', () => {
@@ -118,12 +251,19 @@ describe('aiInvestmentDraftService', () => {
     });
 
     test('returns base data without user plan fields', () => {
-      const portfolio: Ticker[] = [
-        {
-          id: '1',
-          symbol: '000001',
-          name: '测试基金',
-          market: 'cn',
+      const fundHistory: HistoricalPoint[] = [
+        { date: new Date('2026-04-01').getTime(), value: 1.5, equityReturn: 0 },
+        { date: new Date('2026-04-02').getTime(), value: 1.6, equityReturn: 0 },
+        { date: new Date('2026-04-03').getTime(), value: 1.7, equityReturn: 0 }
+      ];
+
+      const marketData: ValuationData = {
+        symbol: '000001', name: '测试基金', currentPrice: 1.8, previousPrice: 1.7,
+        changePercentage: 5.88, lastUpdated: '2026-04-03 15:00', sourceUrl: ''
+      };
+
+      const funds: MarketFund[] = [
+        createMarketFund('000001', '测试基金', marketData, fundHistory, {
           profile: {
             stage_increase: [
               { stage: '近1周', increase_percentage: 2.3 },
@@ -133,32 +273,10 @@ describe('aiInvestmentDraftService', () => {
               { stock_name: '股票A', percentage: 10 }
             ]
           }
-        }
+        })
       ];
 
-      const fundHistories: Record<string, HistoricalPoint[]> = {
-        '000001': [
-          { date: new Date('2026-04-01').getTime(), value: 1.5 },
-          { date: new Date('2026-04-02').getTime(), value: 1.6 },
-          { date: new Date('2026-04-03').getTime(), value: 1.7 }
-        ]
-      };
-
-      const indexHistories: Record<string, HistoricalPoint[]> = {};
-      const marketIndices: MarketIndex[] = [];
-      const globalIndices: MarketIndex[] = [];
-      const marketData: Record<string, ValuationData> = {
-        '000001': { symbol: '000001', name: '测试基金', currentPrice: 1.8, previousPrice: 1.7, changePercentage: 5.88, lastUpdated: '2026-04-03 15:00', sourceUrl: '' }
-      };
-
-      const result = formatFundBaseContextData(
-        portfolio,
-        fundHistories,
-        indexHistories,
-        marketIndices,
-        globalIndices,
-        marketData
-      );
+      const result = formatFundBaseContextData(funds, []);
 
       expect(result.funds.length).toBe(1);
       expect(result.funds[0].code).toBe('000001');
@@ -180,12 +298,19 @@ describe('aiInvestmentDraftService', () => {
         initialPrice: 1.5
       });
 
-      const portfolio: Ticker[] = [
-        {
-          id: '1',
-          symbol: '000001',
-          name: '测试基金',
-          market: 'cn',
+      const fundHistory: HistoricalPoint[] = [
+        { date: new Date('2026-04-01').getTime(), value: 1.5, equityReturn: 0 },
+        { date: new Date('2026-04-02').getTime(), value: 1.6, equityReturn: 0 },
+        { date: new Date('2026-04-03').getTime(), value: 1.7, equityReturn: 0 }
+      ];
+
+      const marketData: ValuationData = {
+        symbol: '000001', name: '测试基金', currentPrice: 1.8, previousPrice: 1.7,
+        changePercentage: 5.88, lastUpdated: '2026-04-03 15:00', sourceUrl: ''
+      };
+
+      const funds: MarketFund[] = [
+        createMarketFund('000001', '测试基金', marketData, fundHistory, {
           profile: {
             stage_increase: [
               { stage: '近1周', increase_percentage: 2.3 },
@@ -198,29 +323,10 @@ describe('aiInvestmentDraftService', () => {
               { stock_name: '股票B', percentage: 8 }
             ]
           }
-        }
+        })
       ];
 
-      const fundHistories: Record<string, HistoricalPoint[]> = {
-        '000001': [
-          { date: new Date('2026-04-01').getTime(), value: 1.5 },
-          { date: new Date('2026-04-02').getTime(), value: 1.6 },
-          { date: new Date('2026-04-03').getTime(), value: 1.7 }
-        ]
-      };
-
-      const marketData: Record<string, ValuationData> = {
-        '000001': { symbol: '000001', name: '测试基金', currentPrice: 1.8, previousPrice: 1.7, changePercentage: 5.88, lastUpdated: '2026-04-03 15:00', sourceUrl: '' }
-      };
-
-      const result = formatFundBaseContextData(
-        portfolio,
-        fundHistories,
-        {},
-        [],
-        [],
-        marketData
-      );
+      const result = formatFundBaseContextData(funds, []);
 
       const fund = result.funds[0];
       expect(fund.current_shares).toBe(1000); // from localStorage mock
@@ -233,24 +339,15 @@ describe('aiInvestmentDraftService', () => {
     });
 
     test('skips funds without valuation data', () => {
-      const portfolio: Ticker[] = [
-        { id: '1', symbol: '000001', name: '基金1', market: 'cn' },
-        { id: '2', symbol: '000002', name: '基金2', market: 'cn' }
+      const funds: MarketFund[] = [
+        createMarketFund('000001', '基金1', {
+          symbol: '000001', name: '基金1', currentPrice: 1.5, previousPrice: 1.4,
+          changePercentage: 7.14, lastUpdated: '2026-04-03 15:00', sourceUrl: ''
+        }),
+        createMarketFund('000002', '基金2', undefined)
       ];
 
-      const fundHistories: Record<string, HistoricalPoint[]> = {};
-      const marketData: Record<string, ValuationData> = {
-        '000001': { symbol: '000001', name: '基金1', currentPrice: 1.5, previousPrice: 1.4, changePercentage: 7.14, lastUpdated: '2026-04-03 15:00', sourceUrl: '' }
-      };
-
-      const result = formatFundBaseContextData(
-        portfolio,
-        fundHistories,
-        {},
-        [],
-        [],
-        marketData
-      );
+      const result = formatFundBaseContextData(funds, []);
 
       expect(result.funds.length).toBe(1);
       expect(result.funds[0].code).toBe('000001');

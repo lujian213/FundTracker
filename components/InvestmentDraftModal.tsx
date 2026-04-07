@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { createPortal } from 'react-dom';
-import { Ticker, ValuationData, BackupPosition, HistoricalPoint, MarketIndex } from '../types';
+import { Ticker, ValuationData, BackupPosition, HistoricalPoint, MarketIndex, MarketFund } from '../types';
 import { fetchFundData } from '../services/fundService';  // Import fetchFundData
 import { toLocalDateKey } from '../utils/priceResolver';
 import * as cacheService from '../services/cacheService';  // Import cacheService for enhanced valuation
@@ -13,6 +13,7 @@ import { formatMoneyWithSeparators } from '../utils/format';
 import { getDraftModalHeight, saveDraftModalHeight } from '../services/userPreferenceService';
 import { loadInvestmentDraft, saveInvestmentDraft, saveAllDraftsToStorage } from '../services/appDataService';
 import * as marketFundService from '../services/marketFundService';
+import * as indexService from '../services/indexService';
 
 // 防抖延迟时间（毫秒）
 const DEBOUNCE_DELAY = 500;
@@ -281,14 +282,14 @@ const InvestmentDraftModal: React.FC<InvestmentDraftModalProps> = ({
     setSelectedFunds(new Set());
 
     try {
+      // 获取 MarketFund 和 MarketIndex 数据
+      const funds = marketFundService.getAllMarketFunds();
+      const indices = indexService.getAllMarketIndices();
+
       const result = await generateAIAdviceWithValidation(
         config,
-        portfolio,
-        fundHistories || {},
-        indexHistories || {},
-        marketIndices || [],
-        globalIndices || [],
-        marketData
+        funds,
+        indices
       );
 
       if (!result.success && result.advice.length === 0) {
