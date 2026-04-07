@@ -1,9 +1,10 @@
 import { createContext, useContext, useState, useCallback, ReactNode } from 'react';
-import * as cacheService from '../services/cacheService';
-import { fetchMarketNews, NewsItem } from '../services/fundService';
+import * as marketNewsService from '../services/marketNewsService';
 import { JobResult } from '../types';
 
-export type { NewsItem };
+export type { NewsItem } from '../services/marketNewsService';
+
+type NewsItem = marketNewsService.NewsItem;
 
 interface NewsContextValue {
   news: NewsItem[];
@@ -31,7 +32,7 @@ const NewsContext = createContext<NewsContextValue>({
 
 export const NewsProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   // 初始化时从缓存读取，实现秒开
-  const [news, setNews] = useState<NewsItem[]>(() => cacheService.getNews());
+  const [news, setNews] = useState<NewsItem[]>(() => marketNewsService.getNews());
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
   const [reloadTrigger, setReloadTrigger] = useState(0);
@@ -44,10 +45,10 @@ export const NewsProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     try {
       setLoading(true);
       setError(false);
-      const result = await fetchMarketNews();
+      const result = await marketNewsService.fetchMarketNews();
 
       if (result.success && result.data && result.data.length > 0) {
-        cacheService.setNews(result.data);
+        marketNewsService.setNews(result.data);
         setNews(result.data);
         return { success: true, data: result.data };
       } else {
