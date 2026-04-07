@@ -2,9 +2,8 @@ import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { Ticker, ValuationData, MarketType, MarketIndex, BackupData, CardStatus, ManageItemType, ManageSelectionKey, JobResult, HistoricalPoint, FundInfo } from './types';
 import { fetchFundData, fetchFundDatas, forceFetchFundHistories, fetchMarketIndices, fetchIndexHistories, maybeTriggerHistoryRefresh, normalizeIndexSymbol } from './services/fundService';
 import { toLocalDateKey } from './utils/priceResolver';
-import * as cacheService from './services/cacheService';
-import * as indexService from './services/indexService';
 import * as marketFundService from './services/marketFundService';
+import * as indexService from './services/indexService';
 import { INDEX_NAME_MAP, isDomesticIndex, isGlobalIndex, DEFAULT_INDEX_SYMBOLS, DEFAULT_INDICES } from './services/indexService';
 import { isFeatureEnabled, getSyncConfig, saveSyncConfig } from './services/systemConfigService';
 import { getSortOrder, saveSortOrder, SortOrder } from './services/userPreferenceService';
@@ -588,7 +587,7 @@ const AppContent: React.FC = () => {
   }, []);
 
   // portfolio 由 marketFundService 管理，不需要单独同步到 localStorage
-  // fund_market_data 由 cacheService.setValuation() 写入，此处不重复同步
+  // fund_market_data 由 marketFundService.updateValuation() 写入，此处不重复同步
   // indicesConfig 由 indexService 管理，写入 fund_all_indices_info，此处不再单独同步
   useEffect(() => { saveSortOrder(sortOrder); }, [sortOrder]);
 
@@ -612,11 +611,11 @@ const AppContent: React.FC = () => {
     try {
       const data = await fetchFundData(symbol);
       if (data) {
-        cacheService.setValuation(symbol, data);
+        marketFundService.updateValuation(symbol, data);
         // Append intraday point based on this valuation (lastUpdated preferred inside append)
-        try { cacheService.appendIntradayPoint(symbol, data); } catch (e) { /* swallow */ }
+        try { marketFundService.appendIntradayPoint(symbol, data.currentPrice, data.changePercentage, data.lastUpdated, data.realtimeDate); } catch (e) { /* swallow */ }
         // Use getValuation to get enhanced data with accuracy adjustments
-        const enhancedData = cacheService.getValuation(symbol) || data;
+        const enhancedData = marketFundService.getValuation(symbol) || data;
         setMarketData(prev => ({ ...prev, [symbol]: enhancedData }));
         setPortfolio(prev => prev.map(item =>
           item.symbol === symbol && !item.name ? { ...item, name: enhancedData.name } : item
@@ -1052,13 +1051,12 @@ const AppContent: React.FC = () => {
   // 缓存即将到来的日历事件，避免每次渲染都重新计算
   const upcomingCalendarEvents = useMemo(() => getFirstEventInWorkdays(4), []);
 
-  // 从 cacheService 获取基金历史数据
+  // 从 marketFundService 获取基金历史数据
   const fundHistories = useMemo(() => {
-    const allHistories = cacheService.getAllHistories();
     const result: Record<string, HistoricalPoint[]> = {};
     portfolio.forEach(fund => {
-      const history = allHistories.get(fund.symbol);
-      if (history) {
+      const history = marketFundService.getHistory(fund.symbol);
+      if (history && history.length > 0) {
         result[fund.symbol] = history;
       }
     });

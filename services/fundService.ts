@@ -2,9 +2,8 @@ import { ValuationData, MarketIndex, IndexInfo, HistoricalPoint, OverallProfitSu
 import { computeProfitTimeline } from '../utils/profitCalculator';
 import { toLocalDateKey, resolvePreferredPrice, ResolvedPrice } from '../utils/priceResolver';
 import { getTradesForSymbol } from '../hooks/useTrades';
-import * as cacheService from './cacheService';
-import * as indexService from './indexService';
 import * as marketFundService from './marketFundService';
+import * as indexService from './indexService';
 
 /**
  * 准备用于盈亏计算的历史数据
@@ -307,7 +306,7 @@ function normalizeHistoryPoints(points: Array<Partial<HistoricalPoint>> | undefi
 
 function syncHistoryCache(code: string, points: HistoricalPoint[]): HistoricalPoint[] {
   historyCache[code] = points;
-  cacheService.setHistory(code, points);
+  marketFundService.updateHistory(code, points);
   return points;
 }
 
@@ -475,8 +474,8 @@ export async function fetchFundDatas(symbols: string[]): Promise<JobResult<void>
         errors.push(`${sym}: API返回空数据`);
       } else {
         // 写入缓存
-        cacheService.setValuation(sym, res);
-        try { cacheService.appendIntradayPoint(sym, res); } catch (e) { /* ignore */ }
+        marketFundService.updateValuation(sym, res);
+        try { marketFundService.appendIntradayPoint(sym, res.currentPrice, res.changePercentage, res.lastUpdated, res.realtimeDate); } catch (e) { /* ignore */ }
         successCount++;
       }
     } catch (e) {
@@ -825,7 +824,7 @@ export async function fetchFundHistory(symbol: string): Promise<HistoricalPoint[
   const code = symbol.padStart(6, '0');
 
   // 1. Check cacheService (in-memory + pre-loaded from localStorage)
-  const cached = cacheService.getHistory(code);
+  const cached = marketFundService.getHistory(code);
   if (cached) {
     return normalizeAndSyncHistory(code, cached);
   }
@@ -1114,8 +1113,8 @@ export async function computeOverallProfit(opts: { symbols?: string[]; fromDate?
       // 获取估值数据
       let fd: ValuationData | null = null;
       try {
-        fd = cacheService.getValuation(sym.padStart(6, '0'))
-            ?? cacheService.getValuation(sym)
+        fd = marketFundService.getValuation(sym.padStart(6, '0'))
+            ?? marketFundService.getValuation(sym)
             ?? await _deps.fetchFundData(sym);
       } catch (e) {
         // ignore fetch errors
@@ -1249,7 +1248,7 @@ export async function maybeTriggerHistoryRefresh(symbol: string, netWorthDate?: 
     const netDate = (netWorthDate || '').trim();
     if (!netDate || netDate === '---') return;
     const code = symbol.padStart ? symbol.padStart(6, '0') : symbol;
-    const cachedHist = cacheService.getHistory(code);
+    const cachedHist = marketFundService.getHistory(code);
     let shouldTrigger = false;
     if (!cachedHist || cachedHist.length === 0) shouldTrigger = true;
     else {

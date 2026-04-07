@@ -1,7 +1,7 @@
 import React from 'react';
 import { render, screen, fireEvent } from '@testing-library/react';
 import { FundDetailsModal } from '../../components/FundDetailsModal';
-import * as cacheService from '../../services/cacheService';
+import * as marketFundService from '../../services/marketFundService';
 import { ValuationData } from '../../types';
 
 jest.mock('../../services/fundService', () => ({ fetchFundHistory: jest.fn().mockResolvedValue([]) }));
@@ -23,7 +23,7 @@ describe('FundDetailsModal intraday tab', () => {
   beforeEach(() => { jest.resetAllMocks(); });
 
   test('renders intraday tab and chart when cache has points', async () => {
-    jest.spyOn(cacheService, 'getIntradayPoints').mockReturnValue([{ timestamp: 1678320000000, value: 1.23, equityReturn: 0.5 } as any]);
+    jest.spyOn(marketFundService, 'getIntraday').mockReturnValue([{ timestamp: 1678320000000, value: 1.23, equityReturn: 0.5 } as any]);
     const { container } = render(<FundDetailsModal data={data} onClose={() => {}} />);
     // wait for tab button to appear after async history load
     await screen.findByText('日内趋势图');
@@ -34,7 +34,7 @@ describe('FundDetailsModal intraday tab', () => {
   });
 
   test('shows placeholder when no intraday data', async () => {
-    jest.spyOn(cacheService, 'getIntradayPoints').mockReturnValue([]);
+    jest.spyOn(marketFundService, 'getIntraday').mockReturnValue([]);
     render(<FundDetailsModal data={data} onClose={() => {}} />);
     await screen.findByText('日内趋势图');
     fireEvent.click(screen.getByText('日内趋势图'));

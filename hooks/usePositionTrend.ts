@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { computePositionTrend, downsampleLTTB, PositionTrendSeries, PositionTrendInput, Trade, ValuationPoint } from '../utils/positionTrend';
-import * as cacheService from '../services/cacheService';
 import { getAllTradeDates, readAll as readAllTrades, getTradesForSymbol } from './useTrades';
 import { Ticker } from '../types';
 import * as marketFundService from '../services/marketFundService';
@@ -65,7 +64,7 @@ export default function usePositionTrend(params: UsePositionTrendParams = {}) {
             }
           } catch (e) {}
           try {
-            const hist = cacheService.getHistory(s) || [];
+            const hist = marketFundService.getHistory(s) || [];
             if (hist.length > 0) {
               const first = hist[0];
               const dt = new Date(first.date);
@@ -98,7 +97,7 @@ export default function usePositionTrend(params: UsePositionTrendParams = {}) {
 
         // valuations -> map history points to {date, price}
         try {
-          const hist = cacheService.getHistory(s) || [];
+          const hist = marketFundService.getHistory(s) || [];
           // hist items are HistoricalPoint with date as timestamp in ms
           valuationMap[s] = hist.map(h => {
             const d = new Date(h.date);
@@ -111,7 +110,7 @@ export default function usePositionTrend(params: UsePositionTrendParams = {}) {
         try {
           // prefer override (from PositionsModal.marketData) so trend last point matches UI
           const override = valuationsOverride && valuationsOverride[s];
-          const vd = override || cacheService.getValuation(s);
+          const vd = override || marketFundService.getValuation(s);
           if (vd) {
             const price = (vd.currentPrice && vd.currentPrice > 0) ? vd.currentPrice : (vd.previousPrice || 0);
             if (price > 0) {

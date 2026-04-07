@@ -2,12 +2,11 @@ import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react'
 import { createPortal } from 'react-dom';
 import { ValuationData, HistoricalPoint, IntradayPoint, TradeRecord, RecommendedStrategy, FundProfile } from '../types';
 import { fetchFundHistory as defaultFetchFundHistory } from '../services/fundService';
-import * as cacheService from '../services/cacheService';
+import * as marketFundService from '../services/marketFundService';
 import { MA_COLORS } from '../utils/movingAverage';
 import { DEFAULT_VISIBLE_MAS, MA_WINDOWS } from '../utils/maConfig';
 import { computeRatingFromHistory } from '../utils/ratingHelper';
 import { computeAvgCostPrice } from '../utils/positionHelper';
-import * as marketFundService from '../services/marketFundService';
 import RatingTooltip from './RatingTooltip';
 import TradeManager from './TradeManager';
 import useTrades, { getTradesForSymbol } from '../hooks/useTrades';
@@ -122,7 +121,7 @@ export const FundDetailsModal: React.FC<FundDetailsModalProps> = ({ data, onClos
 
   // Use enhanced valuation data with accuracy adjustments
   const valuationData = useMemo(() => {
-    const enhanced = cacheService.getValuation(data.symbol);
+    const enhanced = marketFundService.getValuation(data.symbol);
     return enhanced || data;
   }, [data.symbol, data]);
 
@@ -211,7 +210,7 @@ export const FundDetailsModal: React.FC<FundDetailsModalProps> = ({ data, onClos
     const load = async () => {
       // 先查内存缓存，命中则秒开无需网络请求
       const code = data.symbol.padStart(6, '0');
-      const cached = cacheService.getHistory(code);
+      const cached = marketFundService.getHistory(code);
       if (cached && cached.length > 0) {
         if (mounted) {
           // keep up to 365 entries from cache (longer window)
@@ -240,7 +239,7 @@ export const FundDetailsModal: React.FC<FundDetailsModalProps> = ({ data, onClos
   useEffect(() => {
     try {
       const code = data.symbol.padStart ? data.symbol.padStart(6, '0') : data.symbol;
-      const pts = cacheService.getIntradayPoints(code);
+      const pts = marketFundService.getIntraday(code);
       setIntradayPoints(pts);
     } catch (e) { setIntradayPoints([]); }
   }, [data.symbol, data.lastUpdated]);

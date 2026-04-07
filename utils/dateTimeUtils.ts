@@ -56,3 +56,29 @@ export function getTodayStartEnd(): { start: number; end: number } {
   const end = start + 24 * 60 * 60 * 1000;
   return { start, end };
 }
+
+/**
+ * 过滤出当天的日内数据点
+ */
+export function filterTodayIntraday<T extends { timestamp: number }>(points: T[]): T[] {
+  const { start, end } = getTodayStartEnd();
+  return points.filter(pt => {
+    const ts = Number(pt.timestamp) || 0;
+    return ts >= start && ts < end;
+  });
+}
+
+/**
+ * 按分钟去重：同一分钟内只保留最新的数据点
+ */
+export function dedupeByMinute<T extends { timestamp: number }>(points: T[]): T[] {
+  return points.reduce((acc: T[], cur) => {
+    const last = acc[acc.length - 1];
+    if (last && floorToMinute(last.timestamp) === floorToMinute(cur.timestamp)) {
+      acc[acc.length - 1] = cur;
+    } else {
+      acc.push(cur);
+    }
+    return acc;
+  }, []);
+}

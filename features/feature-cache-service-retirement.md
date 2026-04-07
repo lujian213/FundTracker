@@ -4,8 +4,8 @@
 * indexService：已经提供了数据缓存功能。
 * marketFundService：已经提供了数据缓存功能。
 * appDataService：已经提供了数据缓存功能。
-* systemConfigService：需要增加类似的数据缓存功能。缓存顶层结构SystemConfig。
-* userPreferenceService：需要增加类似的数据缓存功能。缓存顶层结构UserPreference。
+* systemConfigService：需要增加类似的数据缓存功能。缓存顶层结构SystemConfig。对localStorage的改动也要反映到缓存中。
+* userPreferenceService：需要增加类似的数据缓存功能。缓存顶层结构UserPreference。对localStorage的改动也要反映到缓存中。
 
 ## 原有数据缓存层实际
 原有数据缓冲层提供了以下四种数据的缓存功能：

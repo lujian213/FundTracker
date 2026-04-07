@@ -5,7 +5,7 @@ import { zhCN } from 'date-fns/locale';
 import { Ticker, ValuationData, TradeType, ComboTrade } from '../types';
 import { addTradeForSymbol, readAll } from '../hooks/useTrades';
 import { resolvePreferredPrice, toLocalDateKey } from '../utils/priceResolver';
-import { getHistory } from '../services/cacheService';
+import { getHistory } from '../services/marketFundService';
 import { ConfirmDialog } from './ConfirmDialog';
 import { loadComboTradesFromStorage } from '../utils/comboTradeService';
 import * as marketFundService from '../services/marketFundService';

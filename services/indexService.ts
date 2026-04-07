@@ -9,7 +9,9 @@
 
 import { IndexInfo, MarketIndex, HistoricalPoint, IntradayPoint } from '../types';
 import { STORAGE_KEYS, OLD_STORAGE_KEYS } from './storageKeys';
-import { floorToMinute, isSameLocalDay } from '../utils/dateTimeUtils';
+import { floorToMinute, isSameLocalDay, filterTodayIntraday, dedupeByMinute } from '../utils/dateTimeUtils';
+import { compressConsecutiveSameValues } from '../utils/intradayCompression';
+import { toLocalDateKey } from '../utils/priceResolver';
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // 内存缓存
@@ -256,20 +258,6 @@ function migrateFromVeryOldFormat(): IndexInfo[] {
   });
 }
 
-/**
- * 过滤只保留当天的日内数据
- */
-function filterTodayIntraday(points: IntradayPoint[]): IntradayPoint[] {
-  const now = new Date();
-  const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
-  const todayEnd = todayStart + 24 * 60 * 60 * 1000;
-
-  return points.filter(pt => {
-    const ts = Number(pt.timestamp) || 0;
-    return ts >= todayStart && ts < todayEnd;
-  });
-}
-
 // 初始化
 init();
 
@@ -502,9 +490,13 @@ export function getIntraday(symbol: string): IntradayPoint[] {
 export function updateIntraday(symbol: string, points: IntradayPoint[]): void {
   // 只保留当天的数据
   const todayPoints = filterTodayIntraday(points);
+  // 同一分钟内去重，保留最后一个
+  const dedupedPoints = dedupeByMinute(todayPoints);
+  // 压缩连续相同值
+  const compressedPoints = compressConsecutiveSameValues(dedupedPoints);
   const existing = indices.get(symbol);
   if (existing) {
-    existing.intraday = todayPoints;
+    existing.intraday = compressedPoints;
   } else {
     // 创建新记录（使用默认 info）
     const newInfo: IndexInfo = {
@@ -515,7 +507,7 @@ export function updateIntraday(symbol: string, points: IntradayPoint[]): void {
       changePercent: 0,
       lastUpdated: '',
     };
-    indices.set(symbol, { info: newInfo, intraday: todayPoints, history: [] });
+    indices.set(symbol, { info: newInfo, intraday: compressedPoints, history: [] });
   }
   saveToStorage();
 }
@@ -533,8 +525,7 @@ export function appendIntradayPoint(
 ): void {
   // 检查 tradeDate：如果不是今天，不添加日内点
   if (tradeDate) {
-    const today = new Date();
-    const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+    const todayStr = toLocalDateKey(new Date());
     if (tradeDate !== todayStr) {
       return;
     }
@@ -549,8 +540,7 @@ export function appendIntradayPoint(
       if (tradeDate) {
         dateStr = `${tradeDate} ${lastUpdated}`;
       } else {
-        const now = new Date();
-        dateStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')} ${lastUpdated}`;
+        dateStr = `${toLocalDateKey(new Date())} ${lastUpdated}`;
       }
       const parsed = Date.parse(dateStr);
       if (!Number.isNaN(parsed)) ts = parsed;

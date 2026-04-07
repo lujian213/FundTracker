@@ -2,7 +2,7 @@
  * backupService.ts
  *
  * Core logic for export (build + download) and import (apply) of backup data.
- * Keeps all side-effectful localStorage / cacheService interactions in one place,
+ * Keeps all side-effectful localStorage / marketFundService interactions in one place,
  * so App.tsx only handles React state updates.
  */
 
@@ -10,7 +10,6 @@ import {
   BackupData, BackupFund, BackupIndex, BackupPosition, BackupTrade, BackupConfig,
   ComboTrade, ComboTradeRecord
 } from '../types';
-import * as cacheService from '../services/cacheService';
 import { readAll as readAllTrades, setTradesForSymbol } from '../hooks/useTrades';
 import { normalizeComboTrades } from './comboTradeService';
 import {
@@ -38,7 +37,7 @@ export { getSyncFilterConfig as readSyncFilterConfig, saveSyncFilterConfig as wr
 
 /**
  * Assemble a complete BackupData snapshot from current in-memory state and
- * localStorage.  Optional fields are populated from cacheService where
+ * localStorage.  Optional fields are populated from marketFundService where
  * available, so the backup is as complete as possible.
  */
 export async function buildBackupData(
@@ -49,7 +48,7 @@ export async function buildBackupData(
   // 获取缓存的估值数据
   let valuations: any = {};
   try {
-    valuations = (cacheService as any).getAllValuations();
+    valuations = marketFundService.getAllValuations();
   } catch { /* ignore */ }
 
   // 1. portfolio → BackupFund[]
@@ -187,10 +186,9 @@ export interface AppliedData {
  *
  * Storage actions:
  *   - CLEAR: fund_portfolio, fund_trades, all fund_position_*
- *   - PRESERVE: fund_history_*, fund_market_data (managed via cacheService.evictValuations)
- *   - WRITE:  new portfolio, trades, positions, indices (via indexService)
- *   - FALLBACK: optional fields are written to cacheService only if the symbol
- *               is not already cached (setValuationIfAbsent / setHistoryIfAbsent)
+ *   - PRESERVE: fund_history_*, fund_intraday_* keys (kept for migration)
+ *   - WRITE:  new portfolio, trades, positions, indices (via marketFundService/indexService)
+ *   - FALLBACK: optional valuation fields are written via marketFundService only if absent
  *
  * Returns the new React state values to be applied by the caller.
  */
@@ -205,28 +203,26 @@ export async function applyBackupData(imported: BackupData): Promise<AppliedData
 
   const newSymbolSet = new Set(newPortfolio.map((t: any) => t.symbol));
 
-  // ── 2. Evict valuations that no longer belong to the portfolio ─────────────
-  try {
-    (cacheService as any).evictValuations(newSymbolSet);
-  } catch { /* ignore */ }
-
-  // ── 3. Apply optional fallback valuations (only if absent from cache) ──────
+  // ── 2. Apply optional fallback valuations (only if absent) ──────
   (imported.portfolio || []).forEach((f: any) => {
     if (f.previousPrice !== undefined || f.currentPrice !== undefined) {
       // Reconstruct a minimal ValuationData from optional fields
       try {
-        (cacheService as any).setValuationIfAbsent(f.symbol, {
-          symbol: f.symbol,
-          name: f.name || f.symbol,
-          currentPrice: f.currentPrice ?? 0,
-          previousPrice: f.previousPrice ?? 0,
-          changePercentage: 0,
-          lastUpdated: f.realtimeDate ?? '',
-          realtimeDate: f.realtimeDate ?? '',
-          netWorthDate: f.netWorthDate ?? '',
-          valuationDate: f.realtimeDate ?? '',
-          sourceUrl: '',
-        });
+        const existingInfo = marketFundService.getFundInfo(f.symbol);
+        if (!existingInfo?.valuation) {
+          marketFundService.updateValuation(f.symbol, {
+            symbol: f.symbol,
+            name: f.name || f.symbol,
+            currentPrice: f.currentPrice ?? 0,
+            previousPrice: f.previousPrice ?? 0,
+            changePercentage: 0,
+            lastUpdated: f.realtimeDate ?? '',
+            realtimeDate: f.realtimeDate ?? '',
+            netWorthDate: f.netWorthDate ?? '',
+            valuationDate: f.realtimeDate ?? '',
+            sourceUrl: '',
+          });
+        }
       } catch { /* ignore */ }
     }
   });
@@ -244,7 +240,6 @@ export async function applyBackupData(imported: BackupData): Promise<AppliedData
   } catch { /* ignore */ }
 
   // 注意：fund_history_* 和 fund_intraday_* keys 保留，供迁移使用
-  // fund_market_data 也保留，供 cacheService 兼容
 
   // ── 5. Write new portfolio via marketFundService ─────────────────────────────────
   // 创建新基金（如果不存在）

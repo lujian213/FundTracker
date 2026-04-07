@@ -5,7 +5,7 @@ import { computeRatingFromHistory } from '../utils/ratingHelper';
 import RatingTooltip from './RatingTooltip';
 import ManageSelectButton from './ManageSelectButton';
 import { AlertTooltip } from './AlertTooltip';
-import { getIntradayPoints } from '../services/cacheService';
+import { getIntraday } from '../services/marketFundService';
 import { buildSparklinePath } from '../utils/sparklineUtils';
 
 // Alert 显示的日期范围（天）：仅当 alert 的生效日期在当前日期后 N 天内时才显示图标
@@ -52,7 +52,7 @@ export const TickerCard: React.FC<TickerCardProps> = ({
     return () => { mounted = false; };
   }, [ticker.symbol, fetchFn]);
 
-  const intradayPoints = useMemo(() => getIntradayPoints(ticker.symbol), [ticker.symbol, data?.lastUpdated]);
+  const intradayPoints = useMemo(() => getIntraday(ticker.symbol), [ticker.symbol, data?.lastUpdated]);
   const sparkline = useMemo(() => buildSparklinePath(intradayPoints), [intradayPoints]);
 
   const hasData = !!data;

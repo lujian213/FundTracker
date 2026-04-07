@@ -1,7 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { MarketIndex, HistoricalPoint, VolumeData } from '../types';
 import { fetchIndexHistory } from '../services/fundService';
-import * as cacheService from '../services/cacheService';
 import * as indexService from '../services/indexService';
 import IntradayChart from './IntradayChart';
 import HistoryChart from './HistoryChart';

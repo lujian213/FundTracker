@@ -1,6 +1,6 @@
 import React, { useMemo } from 'react';
 import { MarketIndex, CardStatus, ManageSelectionKey } from '../types';
-import { getIntradayPoints } from '../services/cacheService';
+import { getIntraday } from '../services/indexService';
 import { buildSparklinePath } from '../utils/sparklineUtils';
 import ManageSelectButton from './ManageSelectButton';
 
@@ -51,7 +51,7 @@ const IndexCard: React.FC<IndexCardProps> = ({
     ? idx.info.previousClose.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })
     : '-';
 
-  const sparkline = useMemo(() => buildSparklinePath(getIntradayPoints(idx.info.symbol)), [idx.info.symbol, idx.info.lastUpdated]);
+  const sparkline = useMemo(() => buildSparklinePath(getIntraday(idx.info.symbol)), [idx.info.symbol, idx.info.lastUpdated]);
 
   const handleClick = () => {
     if (isSelectionMode && onSelect) {

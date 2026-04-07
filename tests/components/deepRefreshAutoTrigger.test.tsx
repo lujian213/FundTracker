@@ -17,12 +17,12 @@ jest.mock('../../services/fundService', () => ({
   fetchFundData: () => mockFetch(),
 }));
 
-jest.mock('../../services/cacheService', () => ({
+jest.mock('../../services/marketFundService', () => ({
   getHistory: jest.fn().mockReturnValue([{ date: new Date('2026-03-09').getTime(), value: 1.0, equityReturn: 0 }]),
   getAllValuations: jest.fn().mockReturnValue({}),
-  setValuation: jest.fn(),
+  updateValuation: jest.fn(),
   appendIntradayPoint: jest.fn(),
-  setHistory: jest.fn(),
+  updateHistory: jest.fn(),
 }));
 
 // Ensure a clean localStorage and seed portfolio

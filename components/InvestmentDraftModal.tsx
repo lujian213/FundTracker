@@ -3,7 +3,6 @@ import { createPortal } from 'react-dom';
 import { Ticker, ValuationData, BackupPosition, HistoricalPoint, MarketIndex, MarketFund } from '../types';
 import { fetchFundData } from '../services/fundService';  // Import fetchFundData
 import { toLocalDateKey } from '../utils/priceResolver';
-import * as cacheService from '../services/cacheService';  // Import cacheService for enhanced valuation
 import AIInvestmentDraftModal from './AIInvestmentDraftModal';
 import { DraftEntry, AIAdviceWithScore, AIAdviceIterationResult, generateAIAdviceWithValidation, hasDraftAction, SCORE_THRESHOLD } from '../services/aiInvestmentDraftService';
 import { getActiveAIConfig, hasUsableAIConfig } from '../services/aiConfigService';
@@ -148,9 +147,9 @@ const InvestmentDraftModal: React.FC<InvestmentDraftModalProps> = ({
   }).sort((a, b) => {
     const today = toLocalDateKey(new Date());
 
-    // 使用 cacheService.getValuation 获取增强估值数据，与表格显示逻辑一致
-    const valA = cacheService.getValuation(a.symbol) || marketData[a.symbol];
-    const valB = cacheService.getValuation(b.symbol) || marketData[b.symbol];
+    // 使用 marketFundService.getValuation 获取增强估值数据，与表格显示逻辑一致
+    const valA = marketFundService.getValuation(a.symbol) || marketData[a.symbol];
+    const valB = marketFundService.getValuation(b.symbol) || marketData[b.symbol];
 
     // 判断是否有当日估值：realtimeDate 等于今天日期
     const hasTodayValuationA = valA?.realtimeDate === today;
@@ -201,7 +200,7 @@ const InvestmentDraftModal: React.FC<InvestmentDraftModalProps> = ({
   };
 
   const handleAddValuationToNote = (fundSymbol: string) => {
-    const enhancedValuation = cacheService.getValuation(fundSymbol);
+    const enhancedValuation = marketFundService.getValuation(fundSymbol);
     const valuation = enhancedValuation || marketData[fundSymbol];
 
     if (valuation && typeof valuation.changePercentage === 'number') {
@@ -451,8 +450,8 @@ const InvestmentDraftModal: React.FC<InvestmentDraftModalProps> = ({
     const amount = parseFloat(entry.amount);
     if (isNaN(amount)) return '-';
 
-    // Use enhanced valuation from cacheService which includes validation logic
-    const enhancedValuation = cacheService.getValuation(fundSymbol);
+    // Use enhanced valuation from marketFundService which includes validation logic
+    const enhancedValuation = marketFundService.getValuation(fundSymbol);
 
     // If enhanced valuation is not available, fallback to marketData
     const valuation = enhancedValuation || marketData[fundSymbol];
@@ -464,8 +463,8 @@ const InvestmentDraftModal: React.FC<InvestmentDraftModalProps> = ({
   };
 
   const getGainLoss = (fundSymbol: string): string => {
-    // Use enhanced valuation from cacheService which includes validation logic
-    const enhancedValuation = cacheService.getValuation(fundSymbol);
+    // Use enhanced valuation from marketFundService which includes validation logic
+    const enhancedValuation = marketFundService.getValuation(fundSymbol);
 
     // If enhanced valuation is not available, fallback to marketData
     const valuation = enhancedValuation || marketData[fundSymbol];
@@ -486,8 +485,8 @@ const InvestmentDraftModal: React.FC<InvestmentDraftModalProps> = ({
   };
 
   const getGainLossColor = (fundSymbol: string): string => {
-    // Use enhanced valuation from cacheService which includes validation logic
-    const enhancedValuation = cacheService.getValuation(fundSymbol);
+    // Use enhanced valuation from marketFundService which includes validation logic
+    const enhancedValuation = marketFundService.getValuation(fundSymbol);
 
     // If enhanced valuation is not available, fallback to marketData
     const valuation = enhancedValuation || marketData[fundSymbol];
@@ -629,8 +628,8 @@ const InvestmentDraftModal: React.FC<InvestmentDraftModalProps> = ({
                     fundsWithPositions.map((fund, index) => {
                       const entry = draftData[fund.symbol] || { operation: '不操作', amount: '' };
 
-                      // Try to get enhanced valuation from cacheService first, fallback to marketData
-                      const enhancedValuation = cacheService.getValuation(fund.symbol);
+                      // Try to get enhanced valuation from marketFundService first, fallback to marketData
+                      const enhancedValuation = marketFundService.getValuation(fund.symbol);
                       const valuation = enhancedValuation || marketData[fund.symbol];
 
                       return (
@@ -689,8 +688,8 @@ const InvestmentDraftModal: React.FC<InvestmentDraftModalProps> = ({
                           <td className="px-2 py-1 text-left text-xs">
                             <div className="truncate flex items-center" style={{ maxWidth: '90px' }}>
                               {(() => {
-                                // Use enhanced valuation from cacheService which includes validation logic
-                                const enhancedValuation = cacheService.getValuation(fund.symbol);
+                                // Use enhanced valuation from marketFundService which includes validation logic
+                                const enhancedValuation = marketFundService.getValuation(fund.symbol);
 
                                 // If enhanced valuation is not available, fallback to marketData
                                 const valuation = enhancedValuation || marketData[fund.symbol];
@@ -714,8 +713,8 @@ const InvestmentDraftModal: React.FC<InvestmentDraftModalProps> = ({
                           <td className="px-2 py-1 text-left text-xs">
                             <div className="truncate flex items-center" style={{ maxWidth: '90px' }}>
                               {(() => {
-                                // Use enhanced valuation from cacheService which includes validation logic
-                                const enhancedValuation = cacheService.getValuation(fund.symbol);
+                                // Use enhanced valuation from marketFundService which includes validation logic
+                                const enhancedValuation = marketFundService.getValuation(fund.symbol);
 
                                 // If enhanced valuation is not available, fallback to marketData
                                 const valuation = enhancedValuation || marketData[fund.symbol];

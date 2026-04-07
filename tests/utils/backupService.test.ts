@@ -17,11 +17,6 @@ function loadBackupService() {
   return require('../../utils/backupService');
 }
 
-function loadCacheService() {
-  jest.resetModules();
-  return require('../../services/cacheService');
-}
-
 function resetFundCache() {
   try {
     const mfs = require('../../services/marketFundService');
@@ -32,9 +27,9 @@ function resetFundCache() {
 // Re-load both together so they share the same module registry
 function loadBoth() {
   jest.resetModules();
-  const cs = require('../../services/cacheService');
+  const mfs = require('../../services/marketFundService');
   const bs = require('../../utils/backupService');
-  return { cs, bs };
+  return { mfs, bs };
 }
 
 const SAMPLE_VALUATION: ValuationData = {
@@ -163,9 +158,10 @@ describe('buildBackupData', () => {
     ]);
   });
 
-  test('fills optional valuation fields from cacheService when available', async () => {
-    const { cs, bs } = loadBoth();
-    cs.setValuation('000001', SAMPLE_VALUATION);
+  test('fills optional valuation fields from marketFundService when available', async () => {
+    const { mfs, bs } = loadBoth();
+    mfs.resetCache();
+    mfs.updateValuation('000001', SAMPLE_VALUATION);
 
     const portfolio = [{ id: 'a1', symbol: '000001', name: '', market: MarketType.FUND }];
     const result = await bs.buildBackupData(portfolio, [], []);
@@ -396,21 +392,24 @@ describe('applyBackupData', () => {
     expect(symbols).toEqual(['1.000001', '100.NDX']);
   });
 
-  test('evicts old valuations from cacheService for removed symbols', async () => {
-    const { cs, bs } = loadBoth();
+  test('evicts old funds from marketFundService for removed symbols', async () => {
+    const { mfs, bs } = loadBoth();
+    mfs.resetCache();
     // Seed old symbol in cache
-    cs.setValuation('999999', { ...SAMPLE_VALUATION, symbol: '999999' });
-    expect(cs.getValuation('999999')).toBeDefined();
+    mfs.updateValuation('999999', { ...SAMPLE_VALUATION, symbol: '999999' });
+    expect(mfs.getValuation('999999')).toBeDefined();
 
     await bs.applyBackupData(BASE_BACKUP);
 
-    expect(cs.getValuation('999999')).toBeUndefined();
+    // Fund 999999 should be removed since it's not in the backup
+    expect(mfs.getValuation('999999')).toBeUndefined();
   });
 
   test('fallback: writes valuation to cache when cache is empty', async () => {
-    const { cs, bs } = loadBoth();
+    const { mfs, bs } = loadBoth();
+    mfs.resetCache();
     // Cache is empty
-    expect(cs.getValuation('000001')).toBeUndefined();
+    expect(mfs.getValuation('000001')).toBeUndefined();
 
     // Use a backup that includes the optional price fields
     const backupWithPrices: BackupData = {
@@ -427,16 +426,17 @@ describe('applyBackupData', () => {
     await bs.applyBackupData(backupWithPrices);
 
     // Backup has previousPrice=1.48, should be written as fallback
-    const cached = cs.getValuation('000001');
+    const cached = mfs.getValuation('000001');
     expect(cached).toBeDefined();
     expect(cached!.previousPrice).toBeCloseTo(1.48);
   });
 
   test('fallback: does NOT overwrite existing valuation in cache', async () => {
-    const { cs, bs } = loadBoth();
+    const { mfs, bs } = loadBoth();
+    mfs.resetCache();
     // Seed a "live" valuation with up-to-date data
     const liveVal = { ...SAMPLE_VALUATION, previousPrice: 9.99 };
-    cs.setValuation('000001', liveVal);
+    mfs.updateValuation('000001', liveVal);
 
     const backupWithPrices: BackupData = {
       ...BASE_BACKUP,
@@ -450,7 +450,7 @@ describe('applyBackupData', () => {
     await bs.applyBackupData(backupWithPrices);
 
     // Cache should still have the live value, not the backup fallback
-    expect(cs.getValuation('000001')!.previousPrice).toBeCloseTo(9.99);
+    expect(mfs.getValuation('000001')!.previousPrice).toBeCloseTo(9.99);
   });
 
   test('writes config.autoExportTime and autoBackupEnabled to fund_system_config', async () => {

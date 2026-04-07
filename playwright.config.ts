@@ -2,14 +2,15 @@ import { defineConfig, devices } from '@playwright/test';
 
 export default defineConfig({
   testDir: './smoke-tests',
-  fullyParallel: true,
+  fullyParallel: false,  // 串行执行，避免资源竞争
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 2 : 0,
-  workers: process.env.CI ? 1 : undefined,
+  workers: 1,  // 单 worker，共享浏览器上下文
   reporter: 'html',
   use: {
     baseURL: 'http://localhost:3000',
     trace: { mode: 'retain-on-failure' },
+    actionTimeout: 5000,  // 单个操作超时
   },
   projects: [
     {

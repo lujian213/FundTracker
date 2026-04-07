@@ -5,8 +5,9 @@ import InvestmentDraftModal from '../../components/InvestmentDraftModal';
 import { Ticker, ValuationData, MarketType } from '../../types';
 import * as marketFundService from '../../services/marketFundService';
 
-// Mock cacheService.getValuation to return null (use marketData directly)
-jest.mock('../../services/cacheService', () => ({
+// Mock marketFundService.getValuation to return null (use marketData directly)
+jest.mock('../../services/marketFundService', () => ({
+  ...jest.requireActual('../../services/marketFundService'),
   getValuation: jest.fn(() => null),
 }));
 

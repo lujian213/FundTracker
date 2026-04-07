@@ -12,7 +12,9 @@ import {
   HistoricalPoint, IntradayPoint, ValuationData, Ticker, MarketType
 } from '../types';
 import { STORAGE_KEYS, OLD_STORAGE_KEYS } from './storageKeys';
-import { floorToMinute, isSameLocalDay } from '../utils/dateTimeUtils';
+import { floorToMinute, isSameLocalDay, filterTodayIntraday, dedupeByMinute } from '../utils/dateTimeUtils';
+import { toLocalDateKey } from '../utils/priceResolver';
+import { compressConsecutiveSameValues } from '../utils/intradayCompression';
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // 内存缓存
@@ -234,20 +236,6 @@ function migrateFromOldKeys(): void {
   }
 }
 
-/**
- * 过滤只保留当天的日内数据
- */
-function filterTodayIntraday(points: IntradayPoint[]): IntradayPoint[] {
-  const now = new Date();
-  const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
-  const todayEnd = todayStart + 24 * 60 * 60 * 1000;
-
-  return points.filter(pt => {
-    const ts = Number(pt.timestamp) || 0;
-    return ts >= todayStart && ts < todayEnd;
-  });
-}
-
 // 初始化
 init();
 
@@ -278,15 +266,142 @@ export function getAllTickers(): Ticker[] {
 
 /**
  * 获取所有基金的估值数据映射（从FundInfo.valuation提取）
+ * 返回增强后的估值数据
  */
 export function getAllValuations(): Record<string, ValuationData> {
   const data: Record<string, ValuationData> = {};
   for (const m of funds.values()) {
     if (m.info.valuation) {
-      data[m.info.ticker.symbol] = m.info.valuation;
+      // 使用 getValuation 来获取增强后的估值
+      const enhanced = getValuation(m.info.ticker.symbol);
+      if (enhanced) {
+        data[m.info.ticker.symbol] = enhanced;
+      }
     }
   }
   return data;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// 估值准确性增强逻辑
+// ═══════════════════════════════════════════════════════════════════════════════
+
+/**
+ * 内部函数：应用估值准确性增强逻辑
+ * 从 cacheService.ts 迁移的核心业务逻辑
+ *
+ * Rule 1: 当估值日期 <= 最新历史净值日期时，使用最新历史数据作为估值
+ * Rule 2: 当估值日期 <= netWorthDate 时，调整 previousPrice
+ */
+function applyAccuracyEnhancements(
+  valuation: ValuationData,
+  history: HistoricalPoint[]
+): ValuationData {
+  const sortedHistory = [...history].sort((a, b) => (a.date as number) - (b.date as number));
+  const latestHistory = sortedHistory[sortedHistory.length - 1];
+  const previousHistory = sortedHistory.length > 1 ? sortedHistory[sortedHistory.length - 2] : null;
+
+  let result = {...valuation};
+
+  // Rule 1: 当估值日期 <= 最新历史净值日期时，使用最新历史数据
+  const latestHistoryDate = latestHistory ? toLocalDateKey(latestHistory.date) : null;
+  const valuationDate = valuation.valuationDate?.split(' ')[0] || valuation.realtimeDate;
+
+  let rule1Applied = false;
+
+  if (valuationDate && latestHistoryDate && valuationDate <= latestHistoryDate) {
+    const newCurrentPrice = latestHistory.value;
+    const newPreviousPrice = previousHistory ? previousHistory.value : valuation.previousPrice;
+    const newChangePercentage = previousHistory
+      ? ((newCurrentPrice - newPreviousPrice) / newPreviousPrice) * 100
+      : valuation.changePercentage;
+
+    result = {
+      ...result,
+      currentPrice: newCurrentPrice,
+      realtimeDate: latestHistoryDate,
+      valuationDate: latestHistoryDate,
+      lastUpdated: `${latestHistoryDate} 15:00`,
+      previousPrice: newPreviousPrice,
+      netWorthDate: previousHistory ? toLocalDateKey(previousHistory.date) : valuation.netWorthDate,
+      changePercentage: newChangePercentage,
+    };
+    rule1Applied = true;
+  }
+
+  // Rule 2: 当估值日期 <= netWorthDate 时，调整 previousPrice
+  const currentValuationDate = result.valuationDate?.split(' ')[0] || result.realtimeDate;
+  const currentNetWorthDate = result.netWorthDate;
+
+  if (!rule1Applied && currentValuationDate && currentNetWorthDate && currentValuationDate <= currentNetWorthDate) {
+    // 从已排序数组末尾向前查找，找到 <= currentValuationDate 的最近历史记录
+    let closestIdx = -1;
+    for (let i = sortedHistory.length - 1; i >= 0; i--) {
+      if (toLocalDateKey(sortedHistory[i].date) <= currentValuationDate) {
+        closestIdx = i;
+        break;
+      }
+    }
+
+    if (closestIdx >= 0) {
+      const closestHistory = sortedHistory[closestIdx];
+
+      if (currentValuationDate === currentNetWorthDate) {
+        const newCurrentPrice = closestHistory.value;
+        const newPreviousPrice = closestIdx > 0 ? sortedHistory[closestIdx - 1].value : valuation.previousPrice;
+        const newChangePercentage = ((newCurrentPrice - newPreviousPrice) / newPreviousPrice) * 100;
+
+        result = {
+          ...result,
+          currentPrice: newCurrentPrice,
+          realtimeDate: toLocalDateKey(closestHistory.date),
+          valuationDate: toLocalDateKey(closestHistory.date),
+          lastUpdated: `${toLocalDateKey(closestHistory.date)} 15:00`,
+          previousPrice: newPreviousPrice,
+          netWorthDate: toLocalDateKey(closestHistory.date),
+          changePercentage: newChangePercentage,
+        };
+      } else {
+        const newPreviousPrice = closestHistory.value;
+        const newChangePercentage = ((result.currentPrice - newPreviousPrice) / newPreviousPrice) * 100;
+
+        result = {
+          ...result,
+          previousPrice: newPreviousPrice,
+          netWorthDate: toLocalDateKey(closestHistory.date),
+          changePercentage: newChangePercentage,
+        };
+      }
+    }
+  }
+
+  return result;
+}
+
+/**
+ * 获取单个基金的估值数据（应用准确性增强）
+ * 公共函数：返回增强后的估值
+ */
+export function getValuation(symbol: string): ValuationData | undefined {
+  const fund = funds.get(symbol);
+  if (!fund?.info.valuation) return undefined;
+
+  const valuation = fund.info.valuation;
+
+  // Get historical data for validation
+  const history = fund.history || [];
+  if (!history || history.length === 0) return valuation;
+
+  // Apply the enhancement logic
+  return applyAccuracyEnhancements(valuation, history);
+}
+
+/**
+ * 获取单个基金的原始估值数据（不应用准确性增强）
+ * 公共函数：返回原始估值，用于特殊场景
+ */
+export function getRawValuation(symbol: string): ValuationData | undefined {
+  return funds.get(symbol)?.info.valuation;
 }
 
 /**
@@ -588,9 +703,14 @@ export function getIntraday(symbol: string): IntradayPoint[] {
 export function updateIntraday(symbol: string, points: IntradayPoint[]): void {
   // 只保留当天的数据
   const todayPoints = filterTodayIntraday(points);
+  // 按分钟去重（同一分钟只保留最新的）
+  const dedupedPoints = dedupeByMinute(todayPoints);
+  // 压缩连续相同值
+  const compressedPoints = compressConsecutiveSameValues(dedupedPoints);
+
   const existing = funds.get(symbol);
   if (existing) {
-    existing.intraday = todayPoints;
+    existing.intraday = compressedPoints;
     saveToStorage();
   } else {
     // 创建新基金记录
@@ -602,7 +722,7 @@ export function updateIntraday(symbol: string, points: IntradayPoint[]): void {
         market: MarketType.FUND,
       },
     };
-    funds.set(symbol, { info, trades: [], intraday: todayPoints, history: [] });
+    funds.set(symbol, { info, trades: [], intraday: compressedPoints, history: [] });
     saveToStorage();
   }
 }
@@ -615,14 +735,28 @@ export function appendIntradayPoint(
   symbol: string,
   value: number,
   equityReturn: number,
-  lastUpdated?: string | number
+  lastUpdated?: string | number,
+  tradeDate?: string
 ): void {
+  // 检查 tradeDate：如果不是今天，不添加日内点
+  if (tradeDate) {
+    const todayStr = toLocalDateKey(new Date());
+    if (tradeDate !== todayStr) {
+      return;
+    }
+  }
+
   // 构建 timestamp
   let ts = Date.now();
   if (lastUpdated) {
+    // 如果 lastUpdated 只包含时间格式 (HH:mm:ss)，需要结合 tradeDate 或使用当前日期
     if (typeof lastUpdated === 'string' && /^\d{1,2}:\d{2}:\d{2}$/.test(lastUpdated)) {
-      const now = new Date();
-      const dateStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')} ${lastUpdated}`;
+      let dateStr = '';
+      if (tradeDate) {
+        dateStr = `${tradeDate} ${lastUpdated}`;
+      } else {
+        dateStr = `${toLocalDateKey(new Date())} ${lastUpdated}`;
+      }
       const parsed = Date.parse(dateStr);
       if (!Number.isNaN(parsed)) ts = parsed;
     } else {
