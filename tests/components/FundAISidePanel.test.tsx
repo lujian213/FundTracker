@@ -37,12 +37,16 @@ jest.mock('../../services/aiService', () => ({
   AIQueryContext: {},
 }));
 
-jest.mock('../../services/commonQuestionsService', () => ({
-  getCommonQuestions: jest.fn().mockResolvedValue([
+jest.mock('../../services/promptTemplateService', () => ({
+  getByType: jest.fn().mockReturnValue([
     { id: 'test-1', name: '测试问题1', template: '这是测试问题1的模板' },
     { id: 'test-2', name: '测试问题2', template: '这是测试问题2的模板' },
   ]),
-  applyTemplateVariables: jest.fn((template) => template),
+  fillTemplateVariables: jest.fn((template) => template),
+  TEMPLATE_TYPES: {
+    FUND_COMMON_QUESTION: 'fund-common-question',
+    INDEX_COMMON_QUESTION: 'index-common-question',
+  },
 }));
 
 describe('FundAISidePanel', () => {

@@ -40,7 +40,7 @@ import { applySyncUpdates } from './services/syncService';
 import { TimerJobErrorProvider, useTimerJobErrors } from './contexts/TimerJobErrorContext';
 import { NewsProvider, useNews } from './contexts/NewsContext';
 import { getTimerJobScheduler } from './services/timerJobScheduler';
-import { refreshTickerAlerts, loadBackgroundJobPrompts } from './services/backgroundJobService';
+import { refreshTickerAlerts, getBackgroundJobPromptByType } from './services/backgroundJobService';
 import { queryAI, AIResponse } from './services/aiService';
 import { getAIConfig } from './services/aiConfigService';
 import { refreshStrategyRecommendations } from './services/strategyRecommendationService';
@@ -48,6 +48,7 @@ import { refreshFundProfiles } from './services/fundProfileService';
 import { updateCalendarData, getEventsForYear, getUpcomingEvents, loadCalendarData, getFirstEventInWorkdays } from './services/calendarService';
 import { formatDateDisplay } from './utils/dateFormat';
 import { verifyStorageMigration } from './services/localStorageService';
+import { loadAllTemplates } from './services/promptTemplateService';
 
 const createPlaceholderIndex = (symbol: string): MarketIndex => {
   const normalized = normalizeIndexSymbol(symbol);
@@ -242,9 +243,8 @@ async function processCalendarHoliday(
     console.warn(`[Calendar] ${logPrefix}网站内容可能不包含有效年份信息`);
   }
 
-  // 加载提示词模板
-  const prompts = await loadBackgroundJobPrompts();
-  const prompt = prompts.find(p => p.type === promptType);
+  // 获取提示词模板
+  const prompt = getBackgroundJobPromptByType(promptType as any);
   if (!prompt) {
     throw new Error(`未找到 ${promptType} 提示词模板`);
   }
@@ -565,6 +565,11 @@ const AppContent: React.FC = () => {
   // 应用初始化时验证 localStorage 迁移状态
   useEffect(() => {
     verifyStorageMigration(false);
+  }, []);
+
+  // 初始化模板服务
+  useEffect(() => {
+    loadAllTemplates();
   }, []);
 
   // 监听从 SystemConfigModal 触发的备份导入事件

@@ -2,6 +2,7 @@ import { Ticker, TickerAlert } from '../types';
 import { queryAI, AIResponse } from './aiService';
 import { getAIConfig } from './aiConfigService';
 import { formatDateDisplay } from '../utils/dateFormat';
+import { getById, TEMPLATE_IDS, PromptTemplate } from './promptTemplateService';
 
 export interface BackgroundJobPrompt {
   id: string;
@@ -12,28 +13,75 @@ export interface BackgroundJobPrompt {
   temperature?: number;
 }
 
+/** 旧 type 到新 id 的映射 */
+const TYPE_TO_ID_MAP: Record<string, string> = {
+  'holiday': TEMPLATE_IDS.BG_HOLIDAY,
+  'delivery': TEMPLATE_IDS.BG_DELIVERY,
+  'strategy': TEMPLATE_IDS.BG_STRATEGY,
+  'calendar_holiday_china': TEMPLATE_IDS.BG_CALENDAR_HOLIDAY_CHINA,
+  'calendar_holiday_hk': TEMPLATE_IDS.BG_CALENDAR_HOLIDAY_HK,
+  'calendar_holiday_us': TEMPLATE_IDS.BG_CALENDAR_HOLIDAY_US,
+  'calendar_holiday_sg': TEMPLATE_IDS.BG_CALENDAR_HOLIDAY_SG,
+  'calendar_delivery': TEMPLATE_IDS.BG_CALENDAR_DELIVERY,
+};
+
+/** 新 id 到旧 type 的映射 */
+const ID_TO_TYPE_MAP: Record<string, BackgroundJobPrompt['type']> = {
+  [TEMPLATE_IDS.BG_HOLIDAY]: 'holiday',
+  [TEMPLATE_IDS.BG_DELIVERY]: 'delivery',
+  [TEMPLATE_IDS.BG_STRATEGY]: 'strategy',
+  [TEMPLATE_IDS.BG_CALENDAR_HOLIDAY_CHINA]: 'calendar_holiday_china',
+  [TEMPLATE_IDS.BG_CALENDAR_HOLIDAY_HK]: 'calendar_holiday_hk',
+  [TEMPLATE_IDS.BG_CALENDAR_HOLIDAY_US]: 'calendar_holiday_us',
+  [TEMPLATE_IDS.BG_CALENDAR_HOLIDAY_SG]: 'calendar_holiday_sg',
+  [TEMPLATE_IDS.BG_CALENDAR_DELIVERY]: 'calendar_delivery',
+};
+
+/**
+ * 根据旧 type 获取后台任务模板
+ */
+export function getBackgroundJobPromptByType(type: BackgroundJobPrompt['type']): BackgroundJobPrompt | null {
+  const id = TYPE_TO_ID_MAP[type];
+  if (!id) return null;
+
+  const template = getById(id);
+  if (!template) return null;
+
+  return {
+    id: template.id,
+    name: template.name,
+    type: ID_TO_TYPE_MAP[template.id] || type,
+    template: template.template,
+    maxTokens: template.maxTokens,
+    temperature: template.temperature,
+  };
+}
+
+/**
+ * 获取所有后台任务模板
+ * @deprecated 使用 getBackgroundJobPromptByType 按类型获取
+ */
+export function loadBackgroundJobPrompts(): BackgroundJobPrompt[] {
+  const types: BackgroundJobPrompt['type'][] = [
+    'holiday', 'delivery', 'strategy',
+    'calendar_holiday_china', 'calendar_holiday_hk', 'calendar_holiday_us', 'calendar_holiday_sg',
+    'calendar_delivery'
+  ];
+
+  const result: BackgroundJobPrompt[] = [];
+  for (const type of types) {
+    const prompt = getBackgroundJobPromptByType(type);
+    if (prompt) {
+      result.push(prompt);
+    }
+  }
+  return result;
+}
+
 export interface BackgroundJobResult {
   code: string;
   date: string | null;
   content: string | null;
-}
-
-/**
- * 加载提示词模板配置
- */
-export async function loadBackgroundJobPrompts(): Promise<BackgroundJobPrompt[]> {
-  try {
-    const response = await fetch('./assets/config/background-job-prompts.json');
-    if (!response.ok) {
-      console.error('[BackgroundJob] Failed to load prompts config');
-      return [];
-    }
-    const config = await response.json();
-    return config.prompts || [];
-  } catch (e) {
-    console.error('[BackgroundJob] Error loading prompts:', e);
-    return [];
-  }
 }
 
 /**
@@ -180,9 +228,8 @@ export async function refreshTickerAlerts(
     throw new Error('未配置 AI API Key');
   }
 
-  // 加载提示词模板
-  const prompts = await loadBackgroundJobPrompts();
-  const prompt = prompts.find(p => p.type === type);
+  // 获取提示词模板
+  const prompt = getBackgroundJobPromptByType(type);
   if (!prompt) {
     throw new Error(`未找到类型为 ${type} 的提示词模板`);
   }

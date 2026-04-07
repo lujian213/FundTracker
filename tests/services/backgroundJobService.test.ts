@@ -3,16 +3,19 @@ import {
   parseAIResponse,
   updateTickerAlerts,
   loadBackgroundJobPrompts,
+  getBackgroundJobPromptByType,
   refreshTickerAlerts
 } from '../../services/backgroundJobService';
 import { Ticker, TickerAlert, MarketType } from '../../types';
+import * as promptTemplateService from '../../services/promptTemplateService';
 
-// Mock fetch for loadBackgroundJobPrompts
+// Mock fetch for template loading
 global.fetch = jest.fn();
 
 describe('backgroundJobService', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    promptTemplateService.resetCache();
   });
 
   describe('formatCodeList', () => {
@@ -202,30 +205,65 @@ describe('backgroundJobService', () => {
   });
 
   describe('loadBackgroundJobPrompts', () => {
-    test('loads prompts from config file', async () => {
-      const mockPrompts = {
-        prompts: [
-          { id: 'holiday', name: '节假日信息', type: 'holiday', template: 'test template' }
+    test('loads prompts from promptTemplateService', async () => {
+      // Mock the template loading
+      const mockTemplate = {
+        templates: [
+          { id: 'bg-holiday', name: '节假日信息', template: 'test template' }
         ]
       };
 
-      (global.fetch as jest.Mock).mockResolvedValueOnce({
-        ok: true,
-        json: () => Promise.resolve(mockPrompts)
+      (global.fetch as jest.Mock).mockImplementation((url: string) => {
+        if (url.includes('background-job-prompts')) {
+          return Promise.resolve({
+            ok: true,
+            json: () => Promise.resolve(mockTemplate)
+          });
+        }
+        // Return empty templates for other config files
+        return Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve({ templates: [] })
+        });
       });
 
-      const result = await loadBackgroundJobPrompts();
+      await promptTemplateService.loadAllTemplates();
+      const result = loadBackgroundJobPrompts();
 
-      expect(result).toHaveLength(1);
-      expect(result[0].id).toBe('holiday');
+      expect(result.length).toBeGreaterThanOrEqual(1);
+      expect(result.find(p => p.type === 'holiday')).toBeDefined();
     });
 
-    test('returns empty array on fetch error', async () => {
-      (global.fetch as jest.Mock).mockRejectedValueOnce(new Error('Network error'));
+    test('getBackgroundJobPromptByType returns correct prompt', async () => {
+      const mockTemplate = {
+        templates: [
+          { id: 'bg-holiday', name: '节假日信息', template: 'test template' }
+        ]
+      };
 
-      const result = await loadBackgroundJobPrompts();
+      (global.fetch as jest.Mock).mockImplementation((url: string) => {
+        if (url.includes('background-job-prompts')) {
+          return Promise.resolve({
+            ok: true,
+            json: () => Promise.resolve(mockTemplate)
+          });
+        }
+        return Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve({ templates: [] })
+        });
+      });
 
-      expect(result).toEqual([]);
+      await promptTemplateService.loadAllTemplates();
+      const result = getBackgroundJobPromptByType('holiday');
+
+      expect(result).not.toBeNull();
+      expect(result?.type).toBe('holiday');
+    });
+
+    test('getBackgroundJobPromptByType returns null for unknown type', () => {
+      const result = getBackgroundJobPromptByType('unknown_type' as any);
+      expect(result).toBeNull();
     });
   });
 

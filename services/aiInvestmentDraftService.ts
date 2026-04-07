@@ -1,46 +1,15 @@
 // services/aiInvestmentDraftService.ts
 import { Ticker, ValuationData, HistoricalPoint, MarketIndex, TradeRecord, MarketFund } from '../types';
 import { AIConfiguration } from './aiConfigService';
-import { queryAI, StreamCallback, PromptTemplate, ChatMessage, queryAIWithMessages } from './aiService';
+import { queryAI, StreamCallback, ChatMessage, queryAIWithMessages } from './aiService';
+import { getById, TEMPLATE_IDS } from './promptTemplateService';
+import { PromptTemplate } from '../types/promptTemplateTypes';
 import { getTradesForSymbol } from '../hooks/useTrades';
 import { computeAvgCostPrice } from '../utils/positionHelper';
 import { toLocalDateKey } from '../utils/priceResolver';
 import { computeSMAsForLast } from '../utils/movingAverage';
 import { DraftEntry } from '../types/appDataTypes';
 import * as marketFundService from './marketFundService';
-
-// 模板缓存
-let investmentDraftTemplatesCache: PromptTemplate[] | null = null;
-
-/**
- * 加载投资计划模板（带缓存）
- */
-async function loadInvestmentDraftTemplates(): Promise<PromptTemplate[]> {
-  // 检查缓存
-  if (investmentDraftTemplatesCache) {
-    return investmentDraftTemplatesCache;
-  }
-
-  try {
-    const response = await fetch('./assets/config/ai-investment-draft-templates.json', { cache: 'no-store' });
-    const data = await response.json();
-
-    if (data && data.templates && Array.isArray(data.templates)) {
-      investmentDraftTemplatesCache = data.templates;
-      return data.templates;
-    }
-  } catch (e) {
-    console.error('Failed to load investment draft templates:', e);
-  }
-  return [];
-}
-
-/**
- * 从模板列表中获取指定ID的启用模板
- */
-function getTemplateById(templates: PromptTemplate[], id: string): PromptTemplate | null {
-  return templates.find(t => t.id === id && t.enabled) || null;
-}
 
 // Re-export DraftEntry type for backward compatibility
 export type { DraftEntry };
@@ -467,11 +436,10 @@ export async function generateAIAdviceWithValidation(
   funds: MarketFund[],
   indices: MarketIndex[]
 ): Promise<AIAdviceIterationResult> {
-  // 加载模板配置（带缓存）
-  const templates = await loadInvestmentDraftTemplates();
-  const template1 = getTemplateById(templates, 'ai-investment-advice');
-  const template2 = getTemplateById(templates, 'ai-investment-advice-score');
-  const template3 = getTemplateById(templates, 'ai-investment-advice-refine');
+  // 获取模板
+  const template1 = getById(TEMPLATE_IDS.AI_INVESTMENT_ADVICE);
+  const template2 = getById(TEMPLATE_IDS.AI_INVESTMENT_ADVICE_SCORE);
+  const template3 = getById(TEMPLATE_IDS.AI_INVESTMENT_ADVICE_REFINE);
 
   if (!template1 || !template2 || !template3) {
     return {
@@ -698,11 +666,10 @@ export function formatInvestmentDraftData(
 }
 
 /**
- * 加载投资计划分析模板（带缓存）
+ * 加载投资计划分析模板
  */
-export async function loadInvestmentDraftTemplate(): Promise<PromptTemplate | null> {
-  const templates = await loadInvestmentDraftTemplates();
-  return templates.find(t => t.enabled) || null;
+export function loadInvestmentDraftTemplate(): PromptTemplate | null {
+  return getById(TEMPLATE_IDS.INVESTMENT_DRAFT_ANALYSIS);
 }
 
 /**
@@ -715,8 +682,8 @@ export async function analyzeInvestmentDraft(
   indices: MarketIndex[],
   onChunk?: StreamCallback
 ): Promise<{ content: string; success: boolean; error?: string }> {
-  // 加载模板
-  const template = await loadInvestmentDraftTemplate();
+  // 获取模板
+  const template = loadInvestmentDraftTemplate();
 
   if (!template) {
     return {
@@ -782,9 +749,7 @@ export async function generateAIInvestmentAdvice(
   indices: MarketIndex[],
   templateId: string = 'ai-investment-advice'
 ): Promise<{ advice: AIAdviceEntry[]; success: boolean; error?: string }> {
-  // 加载模板配置（带缓存）
-  const templates = await loadInvestmentDraftTemplates();
-  const targetTemplate = getTemplateById(templates, templateId);
+  const targetTemplate = getById(templateId || TEMPLATE_IDS.AI_INVESTMENT_ADVICE);
 
   if (!targetTemplate) {
     return {

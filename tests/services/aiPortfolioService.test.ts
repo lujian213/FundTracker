@@ -1,90 +1,23 @@
 // tests/services/aiPortfolioService.test.ts
 import {
-  loadPortfolioAnalysisTemplate,
+  loadInvestmentDraftTemplate,
   formatPortfolioData,
   analyzePortfolio
 } from '../../services/aiPortfolioService';
 import { queryAI } from '../../services/aiService';
 import { PortfolioItem } from '../../services/aiPortfolioService';
+import * as promptTemplateService from '../../services/promptTemplateService';
 
 // Mock aiService
 jest.mock('../../services/aiService', () => ({
   queryAI: jest.fn(),
 }));
 
-// Mock fetch for template loading
-const mockFetch = jest.fn();
-global.fetch = mockFetch as any;
-
 describe('aiPortfolioService', () => {
   beforeEach(() => {
     jest.clearAllMocks();
-  });
-
-  describe('loadPortfolioAnalysisTemplate', () => {
-    test('loads enabled template from config file', async () => {
-      const mockConfig = {
-        templates: [
-          {
-            id: 'portfolio-analysis',
-            name: '投资组合综合分析',
-            description: '描述',
-            enabled: true,
-            template: '分析模板 {portfolio}'
-          },
-          {
-            id: 'portfolio-risk',
-            name: '风险评估',
-            description: '描述',
-            enabled: false,
-            template: '风险模板 {portfolio}'
-          }
-        ]
-      };
-
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        json: async () => mockConfig
-      });
-
-      const result = await loadPortfolioAnalysisTemplate();
-
-      expect(result).not.toBeNull();
-      expect(result?.id).toBe('portfolio-analysis');
-      expect(result?.template).toContain('{portfolio}');
-    });
-
-    test('returns null when no template is enabled', async () => {
-      const mockConfig = {
-        templates: [
-          {
-            id: 'disabled-template',
-            name: '禁用的模板',
-            description: '描述',
-            enabled: false,
-            template: '模板内容'
-          }
-        ]
-      };
-
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        json: async () => mockConfig
-      });
-
-      const result = await loadPortfolioAnalysisTemplate();
-      expect(result).toBeNull();
-    });
-
-    test('returns null when fetch fails', async () => {
-      mockFetch.mockResolvedValueOnce({
-        ok: false,
-        status: 404
-      });
-
-      const result = await loadPortfolioAnalysisTemplate();
-      expect(result).toBeNull();
-    });
+    // Reset the template cache before each test
+    promptTemplateService.resetCache();
   });
 
   describe('formatPortfolioData', () => {
@@ -129,19 +62,28 @@ describe('aiPortfolioService', () => {
       active: true
     };
 
-    test('calls queryAI with formatted prompt', async () => {
+    test('calls queryAI with formatted prompt when template is available', async () => {
+      // Pre-load a mock template into the cache
       const mockTemplate = {
         id: 'portfolio-analysis',
         name: '测试模板',
-        description: '描述',
-        enabled: true,
-        template: '分析以下投资组合：\n{portfolio}'
+        template: '分析以下投资组合：\n{portfolio}',
+        enabled: true
       };
 
-      mockFetch.mockResolvedValueOnce({
+      // Manually set the template in cache using getById's internal cache
+      // We need to call loadAllTemplates with mocked fetch, or use resetCache + direct cache set
+      promptTemplateService.resetCache();
+
+      // Mock the template by loading it through the service
+      const originalFetch = global.fetch;
+      global.fetch = jest.fn().mockResolvedValueOnce({
         ok: true,
         json: async () => ({ templates: [mockTemplate] })
       });
+
+      await promptTemplateService.loadAllTemplates();
+      global.fetch = originalFetch;
 
       (queryAI as jest.Mock).mockResolvedValueOnce({
         content: 'AI分析结果',
@@ -169,10 +111,8 @@ describe('aiPortfolioService', () => {
     });
 
     test('returns error when no template found', async () => {
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        json: async () => ({ templates: [] })
-      });
+      // Reset cache to ensure no templates
+      promptTemplateService.resetCache();
 
       const items: PortfolioItem[] = [
         { symbol: '001', name: '基金', position: 100, marketValue: 1000, ratio: 1 }
@@ -181,7 +121,7 @@ describe('aiPortfolioService', () => {
       const result = await analyzePortfolio(mockConfig, items);
 
       expect(result.success).toBe(false);
-      expect(result.error).toContain('模板');
+      expect(result.error).toContain('未找到');
     });
   });
 });

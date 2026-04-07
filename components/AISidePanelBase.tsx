@@ -7,8 +7,8 @@ import { AIAssistantMessage, AIAssistantState } from '../types/aiAssistantTypes'
 import { ContextCompressionService } from '../services/ContextCompressionService';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { getCommonQuestions, applyTemplateVariables } from '../services/commonQuestionsService';
-import { CommonQuestion } from '../types/commonQuestionsTypes';
+import { getByType, fillTemplateVariables, TEMPLATE_TYPES } from '../services/promptTemplateService';
+import { PromptTemplate } from '../types/promptTemplateTypes';
 import { FundAIQueryContext, IndexAIQueryContext } from '../types/aiServiceTypes';
 
 export interface AISidePanelBaseProps {
@@ -42,7 +42,7 @@ const AISidePanelBase: React.FC<AISidePanelBaseProps> = ({
 }) => {
   const [messages, setMessages] = useState<Message[]>([]);
   const [showQuestionsMenu, setShowQuestionsMenu] = useState(false);
-  const [commonQuestions, setCommonQuestions] = useState<CommonQuestion[]>([]);
+  const [commonQuestions, setCommonQuestions] = useState<PromptTemplate[]>([]);
   const [hasBeenInitialized, setHasBeenInitialized] = useState<boolean>(false);
   const [contextLength, setContextLength] = useState<number>(0);
   const [compressionStatus, setCompressionStatus] = useState<string>('Ready');
@@ -61,7 +61,7 @@ const AISidePanelBase: React.FC<AISidePanelBaseProps> = ({
   const pendingMessagesRef = useRef<Array<{
     type: 'text' | 'commonQuestion';
     content: string;
-    question?: CommonQuestion;
+    question?: PromptTemplate;
   }>>([]);
 
   // 使用 ref 保存 props 的最新值，解决闭包问题
@@ -485,9 +485,8 @@ const AISidePanelBase: React.FC<AISidePanelBaseProps> = ({
   // 加载常用问题列表
   useEffect(() => {
     if (isVisible) {
-      getCommonQuestions(marketType).then(questions => {
-        setCommonQuestions(questions);
-      });
+      const type = marketType === 'fund' ? TEMPLATE_TYPES.FUND_COMMON_QUESTION : TEMPLATE_TYPES.INDEX_COMMON_QUESTION;
+      setCommonQuestions(getByType(type));
     }
   }, [isVisible, marketType]);
 
@@ -789,7 +788,7 @@ const AISidePanelBase: React.FC<AISidePanelBaseProps> = ({
   };
 
   // 处理常用问题选择
-  const handleCommonQuestionSelect = async (question: CommonQuestion, fromQueue: boolean = false) => {
+  const handleCommonQuestionSelect = async (question: PromptTemplate, fromQueue: boolean = false) => {
     if (!isValidConfig || !config) {
       return;
     }
@@ -815,7 +814,7 @@ const AISidePanelBase: React.FC<AISidePanelBaseProps> = ({
     const context = propsRef.current.getContextData();
 
     // 替换模板变量得到实际内容
-    const actualPrompt = applyTemplateVariables(question.template, context as any);
+    const actualPrompt = fillTemplateVariables(question.template, context as any);
 
     // 设置用户消息（显示问题名称，但存储实际提示词）
     const userMessage: Message = {

@@ -1,9 +1,28 @@
 // tests/services/promptTemplateService.test.ts
 
-import { fillFundTemplateVariables, fillIndexTemplateVariables, fillTemplateVariables } from '../../services/promptTemplateService';
+import {
+  fillFundTemplateVariables,
+  fillIndexTemplateVariables,
+  fillTemplateVariables,
+  loadAllTemplates,
+  getById,
+  getByType,
+  fillTemplate,
+  resetCache,
+  TEMPLATE_IDS,
+  TEMPLATE_TYPES,
+} from '../../services/promptTemplateService';
 import { FundAIQueryContext, IndexAIQueryContext } from '../../types/aiServiceTypes';
 
+// Mock fetch for template loading tests
+const mockFetch = jest.fn();
+global.fetch = mockFetch;
+
 describe('promptTemplateService', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
   describe('fillFundTemplateVariables', () => {
     it('should fill fund template variables correctly', () => {
       const context: FundAIQueryContext = {
@@ -193,6 +212,293 @@ describe('promptTemplateService', () => {
       const template = '指数：{name}，代码：{code}';
       const result = fillTemplateVariables(template, context);
       expect(result).toBe('指数：上证指数，代码：000001');
+    });
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// 新增测试：模板加载和查询
+// ═══════════════════════════════════════════════════════════════════════════════
+
+describe('promptTemplateService - template loading', () => {
+  beforeEach(() => {
+    resetCache();
+    jest.clearAllMocks();
+  });
+
+  describe('loadAllTemplates', () => {
+    it('should load templates from config files', async () => {
+      // Mock responses for all config files
+      mockFetch
+        .mockImplementationOnce(() => Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve({
+            id: 'fund-analysis',
+            name: '基金分析',
+            description: 'AI助手首次打开时的欢迎消息和分析模板',
+            templates: [
+              { enabled: true, template: '基金分析模板内容 {name} {code}' }
+            ]
+          })
+        }))
+        .mockImplementationOnce(() => Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve({
+            id: 'index-analysis',
+            name: '指数分析',
+            description: '指数分析模板',
+            templates: [
+              { enabled: true, template: '指数分析模板内容 {name} {code}' }
+            ]
+          })
+        }))
+        .mockImplementationOnce(() => Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve({
+            templates: [
+              { id: 'fund-info-summary', name: '信息汇总', type: 'fund-common-question', template: '请列出最新的和本基金相关的国内外信息' }
+            ]
+          })
+        }))
+        .mockImplementationOnce(() => Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve({
+            templates: [
+              { id: 'index-info-summary', name: '信息汇总', type: 'index-common-question', template: '请列出最新的和本指数相关的信息' }
+            ]
+          })
+        }))
+        .mockImplementationOnce(() => Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve({
+            templates: [
+              { id: 'investment-draft-analysis', name: '投资计划分析', template: '投资计划分析模板' }
+            ]
+          })
+        }))
+        .mockImplementationOnce(() => Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve({
+            templates: [
+              { id: 'portfolio-analysis', name: '投资组合综合分析', enabled: true, template: '投资组合分析模板' },
+              { id: 'portfolio-risk', name: '投资组合风险评估', enabled: false, template: '投资组合风险评估模板' }
+            ]
+          })
+        }))
+        .mockImplementationOnce(() => Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve({
+            templates: [
+              { id: 'bg-holiday', name: '假期查询', enabled: true, template: '假期查询模板' }
+            ]
+          })
+        }));
+
+      await loadAllTemplates();
+
+      // 验证基金分析模板加载成功
+      const fundTemplate = getById(TEMPLATE_IDS.FUND_ANALYSIS);
+      expect(fundTemplate).toBeDefined();
+      expect(fundTemplate?.name).toBe('基金分析');
+
+      // 验证指数分析模板加载成功
+      const indexTemplate = getById(TEMPLATE_IDS.INDEX_ANALYSIS);
+      expect(indexTemplate).toBeDefined();
+    });
+
+    it('should only cache enabled templates', async () => {
+      // Mock responses - portfolio-risk is disabled
+      mockFetch
+        .mockImplementationOnce(() => Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve({
+            id: 'fund-analysis',
+            name: '基金分析',
+            templates: [{ enabled: true, template: 'test' }]
+          })
+        }))
+        .mockImplementationOnce(() => Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve({
+            id: 'index-analysis',
+            name: '指数分析',
+            templates: [{ enabled: true, template: 'test' }]
+          })
+        }))
+        .mockImplementationOnce(() => Promise.resolve({ ok: true, json: () => Promise.resolve({ templates: [] }) }))
+        .mockImplementationOnce(() => Promise.resolve({ ok: true, json: () => Promise.resolve({ templates: [] }) }))
+        .mockImplementationOnce(() => Promise.resolve({ ok: true, json: () => Promise.resolve({ templates: [] }) }))
+        .mockImplementationOnce(() => Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve({
+            templates: [
+              { id: 'portfolio-analysis', name: '投资组合综合分析', enabled: true, template: 'test' },
+              { id: 'portfolio-risk', name: '投资组合风险评估', enabled: false, template: 'test' }
+            ]
+          })
+        }))
+        .mockImplementationOnce(() => Promise.resolve({ ok: true, json: () => Promise.resolve({ templates: [] }) }));
+
+      await loadAllTemplates();
+
+      // portfolio-risk 在配置中 enabled=false
+      const riskTemplate = getById(TEMPLATE_IDS.PORTFOLIO_RISK);
+      expect(riskTemplate).toBeNull();
+    });
+
+    it('should not load twice', async () => {
+      mockFetch
+        .mockImplementationOnce(() => Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve({
+            id: 'fund-analysis',
+            name: '基金分析',
+            templates: [{ enabled: true, template: 'test' }]
+          })
+        }))
+        .mockImplementationOnce(() => Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve({
+            id: 'index-analysis',
+            name: '指数分析',
+            templates: [{ enabled: true, template: 'test' }]
+          })
+        }))
+        .mockImplementationOnce(() => Promise.resolve({ ok: true, json: () => Promise.resolve({ templates: [] }) }))
+        .mockImplementationOnce(() => Promise.resolve({ ok: true, json: () => Promise.resolve({ templates: [] }) }))
+        .mockImplementationOnce(() => Promise.resolve({ ok: true, json: () => Promise.resolve({ templates: [] }) }))
+        .mockImplementationOnce(() => Promise.resolve({ ok: true, json: () => Promise.resolve({ templates: [] }) }))
+        .mockImplementationOnce(() => Promise.resolve({ ok: true, json: () => Promise.resolve({ templates: [] }) }));
+
+      await loadAllTemplates();
+      await loadAllTemplates(); // 第二次调用应该被忽略
+
+      // 验证只加载了一次（fetch 调用次数应该等于配置文件数量 7）
+      expect(mockFetch).toHaveBeenCalledTimes(7);
+    });
+  });
+
+  describe('getById', () => {
+    it('should return template by id', async () => {
+      mockFetch
+        .mockImplementationOnce(() => Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve({
+            id: 'fund-analysis',
+            name: '基金分析',
+            templates: [{ enabled: true, template: 'test' }]
+          })
+        }))
+        .mockImplementationOnce(() => Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve({
+            id: 'index-analysis',
+            name: '指数分析',
+            templates: [{ enabled: true, template: 'test' }]
+          })
+        }))
+        .mockImplementationOnce(() => Promise.resolve({ ok: true, json: () => Promise.resolve({ templates: [] }) }))
+        .mockImplementationOnce(() => Promise.resolve({ ok: true, json: () => Promise.resolve({ templates: [] }) }))
+        .mockImplementationOnce(() => Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve({
+            templates: [
+              { id: 'investment-draft-analysis', name: '投资计划分析', template: '投资计划分析模板' }
+            ]
+          })
+        }))
+        .mockImplementationOnce(() => Promise.resolve({ ok: true, json: () => Promise.resolve({ templates: [] }) }))
+        .mockImplementationOnce(() => Promise.resolve({ ok: true, json: () => Promise.resolve({ templates: [] }) }));
+
+      await loadAllTemplates();
+
+      const template = getById(TEMPLATE_IDS.INVESTMENT_DRAFT_ANALYSIS);
+      expect(template).toBeDefined();
+      expect(template?.id).toBe('investment-draft-analysis');
+    });
+
+    it('should return null for unknown id', () => {
+      const template = getById('unknown-id');
+      expect(template).toBeNull();
+    });
+  });
+
+  describe('getByType', () => {
+    it('should return all templates with matching type', async () => {
+      mockFetch
+        .mockImplementationOnce(() => Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve({
+            id: 'fund-analysis',
+            name: '基金分析',
+            templates: [{ enabled: true, template: 'test' }]
+          })
+        }))
+        .mockImplementationOnce(() => Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve({
+            id: 'index-analysis',
+            name: '指数分析',
+            templates: [{ enabled: true, template: 'test' }]
+          })
+        }))
+        .mockImplementationOnce(() => Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve({
+            templates: [
+              { id: 'fund-info-summary', name: '信息汇总', type: 'fund-common-question', template: 'test1' },
+              { id: 'fund-profit-loss', name: '盈亏分析', type: 'fund-common-question', template: 'test2' }
+            ]
+          })
+        }))
+        .mockImplementationOnce(() => Promise.resolve({ ok: true, json: () => Promise.resolve({ templates: [] }) }))
+        .mockImplementationOnce(() => Promise.resolve({ ok: true, json: () => Promise.resolve({ templates: [] }) }))
+        .mockImplementationOnce(() => Promise.resolve({ ok: true, json: () => Promise.resolve({ templates: [] }) }))
+        .mockImplementationOnce(() => Promise.resolve({ ok: true, json: () => Promise.resolve({ templates: [] }) }));
+
+      await loadAllTemplates();
+
+      const questions = getByType(TEMPLATE_TYPES.FUND_COMMON_QUESTION);
+      expect(questions.length).toBeGreaterThan(0);
+      expect(questions.every(q => q.type === TEMPLATE_TYPES.FUND_COMMON_QUESTION)).toBe(true);
+    });
+
+    it('should return empty array for unknown type', () => {
+      const templates = getByType('unknown-type');
+      expect(templates).toEqual([]);
+    });
+  });
+
+  describe('fillTemplate', () => {
+    it('should fill template variables', () => {
+      const template = '基金：{name}，代码：{code}';
+      const result = fillTemplate(template, { name: '测试基金', code: '000001' });
+      expect(result).toBe('基金：测试基金，代码：000001');
+    });
+
+    it('should show "未设置" for undefined values', () => {
+      const template = '值：{value}';
+      const result = fillTemplate(template, { value: undefined });
+      expect(result).toBe('值：未设置');
+    });
+
+    it('should show "未设置" for null values', () => {
+      const template = '值：{value}';
+      const result = fillTemplate(template, { value: null });
+      expect(result).toBe('值：未设置');
+    });
+
+    it('should stringify object values', () => {
+      const template = '数据：{data}';
+      const result = fillTemplate(template, { data: { key: 'value' } });
+      expect(result).toContain('"key"');
+      expect(result).toContain('"value"');
+    });
+
+    it('should handle number values', () => {
+      const template = '金额：{amount}';
+      const result = fillTemplate(template, { amount: 1234.56 });
+      expect(result).toBe('金额：1234.56');
     });
   });
 });

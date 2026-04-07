@@ -1,5 +1,7 @@
 // services/aiPortfolioService.ts
-import { queryAI, PromptTemplate, StreamCallback } from './aiService';
+import { queryAI, StreamCallback } from './aiService';
+import { getById, TEMPLATE_IDS } from './promptTemplateService';
+import { PromptTemplate } from '../types/promptTemplateTypes';
 import { AIConfiguration } from './aiConfigService';
 
 /**
@@ -14,32 +16,6 @@ export interface PortfolioItem {
   costPrice?: number;    // 持仓成本（保留字段）
 }
 
-/**
- * 加载投资组合分析模板
- */
-export async function loadPortfolioAnalysisTemplate(): Promise<PromptTemplate | null> {
-  try {
-    const response = await fetch('./assets/config/ai-portfolio-analysis-templates.json', { cache: 'no-store' });
-
-    if (!response.ok) {
-      console.error(`Failed to load portfolio templates: HTTP ${response.status}`);
-      return null;
-    }
-
-    const data = await response.json();
-
-    if (data && data.templates && Array.isArray(data.templates)) {
-      // 返回第一个启用的模板
-      const enabledTemplate = data.templates.find((t: PromptTemplate) => t.enabled);
-      return enabledTemplate || null;
-    }
-
-    return null;
-  } catch (error) {
-    console.error('Failed to load portfolio analysis templates:', error);
-    return null;
-  }
-}
 
 /**
  * 格式化投资组合数据为文本
@@ -74,8 +50,8 @@ export async function analyzePortfolio(
   portfolioData: PortfolioItem[],
   onChunk?: StreamCallback
 ): Promise<{ content: string; success: boolean; error?: string }> {
-  // 加载模板
-  const template = await loadPortfolioAnalysisTemplate();
+  // 获取模板
+  const template = getById(TEMPLATE_IDS.PORTFOLIO_ANALYSIS);
 
   if (!template) {
     return {

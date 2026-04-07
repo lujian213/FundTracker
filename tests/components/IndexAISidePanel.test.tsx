@@ -35,11 +35,15 @@ jest.mock('../../services/aiService', () => ({
   AIQueryContext: {},
 }));
 
-jest.mock('../../services/commonQuestionsService', () => ({
-  getCommonQuestions: jest.fn().mockResolvedValue([
+jest.mock('../../services/promptTemplateService', () => ({
+  getByType: jest.fn().mockReturnValue([
     { id: 'trend-prediction', name: '走势预测', template: '走势预测模板' },
   ]),
-  applyTemplateVariables: jest.fn((template) => template),
+  fillTemplateVariables: jest.fn((template) => template),
+  TEMPLATE_TYPES: {
+    FUND_COMMON_QUESTION: 'fund-common-question',
+    INDEX_COMMON_QUESTION: 'index-common-question',
+  },
 }));
 
 describe('IndexAISidePanel', () => {

@@ -1,7 +1,10 @@
 import { ValuationData } from '../types';
 import { AIConfiguration, getAIConfig } from './aiConfigService';
 import { FundAIQueryContext, IndexAIQueryContext } from '../types/aiServiceTypes';
-import { fillTemplateVariables as fillMarketTemplateVariables } from './promptTemplateService';
+import { fillTemplateVariables as fillMarketTemplateVariables, getById, TEMPLATE_IDS } from './promptTemplateService';
+
+// Re-export PromptTemplate for backward compatibility
+export type { PromptTemplate } from '../types/promptTemplateTypes';
 
 export interface AIQueryContext {
   fundName?: string;
@@ -23,82 +26,6 @@ export interface AIResponse {
   content: string;
   success: boolean;
   error?: string;
-}
-
-export interface PromptTemplate {
-  id: string;
-  name: string;
-  description: string;
-  enabled: boolean;
-  template: string;
-  maxTokens?: number;
-  temperature?: number;
-}
-
-// 模板配置文件路径映射
-const TEMPLATE_CONFIG_PATHS: Record<'fund' | 'index', string> = {
-  fund: './assets/config/ai-fund-prompt-templates.json',
-  index: './assets/config/ai-index-prompt-templates.json'
-};
-
-// 模板缓存
-const templateCache: Map<'fund' | 'index', PromptTemplate[]> = new Map();
-
-/**
- * 通用模板加载函数（带缓存）
- * @param marketType 市场类型 ('fund' 或 'index')
- */
-async function loadTemplatesByMarketType(marketType: 'fund' | 'index'): Promise<PromptTemplate[]> {
-  // 检查缓存
-  const cached = templateCache.get(marketType);
-  if (cached) {
-    return cached;
-  }
-
-  const configPath = TEMPLATE_CONFIG_PATHS[marketType];
-  const typeName = marketType === 'index' ? '指数' : '基金';
-
-  try {
-    const response = await fetch(configPath);
-
-    if (!response.ok) {
-      console.error(`加载${typeName}模板失败: HTTP ${response.status} ${response.statusText}`);
-      return [];
-    }
-
-    const data = await response.json();
-
-    if (data && data.templates && Array.isArray(data.templates)) {
-      // 存入缓存
-      templateCache.set(marketType, data.templates);
-      return data.templates;
-    } else {
-      console.error(`无效的${typeName}模板数据结构:`, data);
-      return [];
-    }
-  } catch (error) {
-    console.error(`加载${typeName}提示词模板失败:`, error);
-    return [];
-  }
-}
-
-/**
- * 通用模板获取函数
- * @param marketType 市场类型
- * @param templateId 可选的模板ID
- */
-export async function getEnabledTemplateByMarketType(
-  marketType: 'fund' | 'index',
-  templateId?: string
-): Promise<PromptTemplate | null> {
-  const templates = await loadTemplatesByMarketType(marketType);
-
-  if (templateId) {
-    const template = templates.find(t => t.id === templateId && t.enabled);
-    return template || null;
-  } else {
-    return templates.find(t => t.enabled) || null;
-  }
 }
 
 /**
@@ -374,14 +301,12 @@ export async function queryAIWithTemplate(
   context?: AIQueryContext,
   onChunk?: StreamCallback
 ): Promise<AIResponse> {
-  const template = await getEnabledTemplateByMarketType('fund', templateId);
+  const template = getById(templateId || TEMPLATE_IDS.FUND_ANALYSIS);
 
   if (!template) {
-    const templates = await loadTemplatesByMarketType('fund');
-    const enabledCount = templates.filter(t => t.enabled).length;
     const errorMsg = templateId
-      ? `模板 "${templateId}" 未找到或未启用`
-      : `没有启用的模板 (共${templates.length}个模板, ${enabledCount}个已启用)`;
+      ? `模板 "${templateId}" 未找到`
+      : `没有找到基金分析模板`;
     console.error(errorMsg);
     return {
       content: errorMsg,
@@ -411,10 +336,11 @@ export async function queryAIWithMarketTemplate(
   context?: FundAIQueryContext | IndexAIQueryContext,
   onChunk?: StreamCallback
 ): Promise<AIResponse> {
-  const template = await getEnabledTemplateByMarketType(marketType);
+  const templateId = marketType === 'fund' ? TEMPLATE_IDS.FUND_ANALYSIS : TEMPLATE_IDS.INDEX_ANALYSIS;
+  const template = getById(templateId);
 
   if (!template) {
-    const errorMsg = `没有启用的${marketType === 'index' ? '指数' : '基金'}模板`;
+    const errorMsg = `没有找到${marketType === 'index' ? '指数' : '基金'}分析模板`;
     console.error(errorMsg);
     return {
       content: errorMsg,

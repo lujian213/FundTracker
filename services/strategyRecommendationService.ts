@@ -3,7 +3,7 @@ import { queryAI, AIResponse } from './aiService';
 import { getAIConfig } from './aiConfigService';
 import { getAvailableStrategiesInfo } from './strategyRegistry';
 import { formatDateDisplay } from '../utils/dateFormat';
-import { loadBackgroundJobPrompts } from './backgroundJobService';
+import { getById, TEMPLATE_IDS } from './promptTemplateService';
 
 export interface StrategyRecommendationResult {
   code: string;
@@ -106,9 +106,8 @@ export async function refreshStrategyRecommendations(
     throw new Error('未配置 AI API Key');
   }
 
-  // 加载提示词模板
-  const prompts = await loadBackgroundJobPrompts();
-  const prompt = prompts.find(p => p.type === 'strategy');
+  // 获取提示词模板
+  const prompt = getById(TEMPLATE_IDS.BG_STRATEGY);
   if (!prompt) {
     throw new Error('未找到策略推荐的提示词模板');
   }
