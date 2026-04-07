@@ -334,6 +334,9 @@ function calculateDeliveryDates(): void {
   const year = new Date().getFullYear();
   const results: Array<{ date: string; content: string; description: string; market?: string }> = [];
 
+  // 只加载一次日历数据，避免重复调用 loadCalendarData
+  const calendarData = loadCalendarData();
+
   // Helper: 获取某月的第N个星期几
   function getNthWeekdayOfMonth(year: number, month: number, weekday: number, n: number): Date {
     const firstDay = new Date(year, month, 1);
@@ -349,11 +352,10 @@ function calculateDeliveryDates(): void {
     return new Date(year, month, 1);
   }
 
-  // Helper: 检查是否为节假日（需要考虑A股节假日）
+  // Helper: 检查是否为节假日（使用预加载的日历数据）
   function isHoliday(date: Date): boolean {
     const dateStr = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
-    const data = loadCalendarData();
-    const events = data[dateStr] || [];
+    const events = calendarData[dateStr] || [];
     return events.some(e => e.type === 'holiday_china');
   }
 
@@ -1042,6 +1044,9 @@ const AppContent: React.FC = () => {
     return allIndices.find(idx => normalizeIndexSymbol(idx.info.symbol) === viewingIndexSymbol) || null;
   }, [viewingIndexSymbol, displayDomesticIndices, displayGlobalIndices]);
 
+  // 缓存即将到来的日历事件，避免每次渲染都重新计算
+  const upcomingCalendarEvents = useMemo(() => getFirstEventInWorkdays(4), []);
+
   // 从 cacheService 获取基金历史数据
   const fundHistories = useMemo(() => {
     const allHistories = cacheService.getAllHistories();
@@ -1102,8 +1107,7 @@ const AppContent: React.FC = () => {
                 <i className="fas fa-calendar-alt"></i>
               </button>
               {(() => {
-                const nextEvents = getFirstEventInWorkdays(4);
-                if (nextEvents.length > 0) {
+                if (upcomingCalendarEvents.length > 0) {
                   return (
                     <div
                       className="absolute top-0 right-0 w-3 h-3 bg-red-500 rounded-full border-2 border-white"
@@ -1116,11 +1120,10 @@ const AppContent: React.FC = () => {
               })()}
               {/* Tooltip - 鼠标悬停时显示 */}
               {showCalendarTooltip && (() => {
-                const nextEvents = getFirstEventInWorkdays(4);
-                if (nextEvents.length > 0) {
+                if (upcomingCalendarEvents.length > 0) {
                   return (
                     <CalendarEventTooltip
-                      events={nextEvents}
+                      events={upcomingCalendarEvents}
                       title="即将到来的事件"
                       style={{
                         position: 'absolute',

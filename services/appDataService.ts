@@ -102,6 +102,16 @@ export function saveInvestmentDraft(date: string, draft: Record<string, DraftEnt
   if (!data.investmentDrafts) {
     data.investmentDrafts = {};
   }
+
+  const existingDraft = data.investmentDrafts[date];
+  const existingCount = existingDraft ? Object.values(existingDraft).filter((d: any) => d.operation !== '不操作').length : 0;
+  const newCount = draft ? Object.values(draft).filter((d: any) => d.operation !== '不操作').length : 0;
+
+  // 如果新数据为空且已有数据不为空，不覆盖（防止 React StrictMode 双重调用导致数据丢失）
+  if (newCount === 0 && existingCount > 0) {
+    return;
+  }
+
   data.investmentDrafts[date] = draft;
 }
 

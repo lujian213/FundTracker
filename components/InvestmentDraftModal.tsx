@@ -135,9 +135,9 @@ const InvestmentDraftModal: React.FC<InvestmentDraftModalProps> = ({
     return () => {
       if (draftSaveTimerRef.current) {
         clearTimeout(draftSaveTimerRef.current);
-        // 组件卸载时立即保存
-        saveAllDraftsToStorage();
       }
+      // 组件卸载时总是保存，确保数据不丢失
+      saveAllDraftsToStorage();
     };
   }, [draftData]);
 

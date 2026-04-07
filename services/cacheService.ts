@@ -77,14 +77,22 @@ function applyAccuracyEnhancements(
 
   if (valuationDate && latestHistoryDate && valuationDate <= latestHistoryDate) {
     // Use the most recent historical data as the valuation data
+    const newCurrentPrice = latestHistory.value;
+    const newPreviousPrice = previousHistory ? previousHistory.value : valuation.previousPrice;
+    // 重新计算涨跌幅
+    const newChangePercentage = previousHistory
+      ? ((newCurrentPrice - newPreviousPrice) / newPreviousPrice) * 100
+      : valuation.changePercentage;
+
     result = {
       ...result,
-      currentPrice: latestHistory.value,
+      currentPrice: newCurrentPrice,
       realtimeDate: latestHistoryDate,
       valuationDate: latestHistoryDate,
-      // Adjust previous value to be the historical previous
-      previousPrice: previousHistory ? previousHistory.value : valuation.previousPrice,
+      lastUpdated: `${latestHistoryDate} 15:00`,  // 净值收盘时间，格式保持一致
+      previousPrice: newPreviousPrice,
       netWorthDate: previousHistory ? toLocalDateKey(previousHistory.date) : valuation.netWorthDate,
+      changePercentage: newChangePercentage,
     };
     rule1Applied = true;
   }
@@ -103,20 +111,32 @@ function applyAccuracyEnhancements(
     if (closestHistory) {
       // If valuationDate equals netWorthDate, use that day's NAV to replace the valuation
       if (currentValuationDate === currentNetWorthDate) {
+        const newCurrentPrice = closestHistory.value;
+        const newPreviousPrice = sortedHistoryDesc.find(h => toLocalDateKey(h.date) < currentValuationDate)?.value || valuation.previousPrice;
+        // 重新计算涨跌幅
+        const newChangePercentage = ((newCurrentPrice - newPreviousPrice) / newPreviousPrice) * 100;
+
         result = {
           ...result,
-          currentPrice: closestHistory.value,
+          currentPrice: newCurrentPrice,
           realtimeDate: toLocalDateKey(closestHistory.date),
           valuationDate: toLocalDateKey(closestHistory.date),
-          previousPrice: sortedHistoryDesc.find(h => toLocalDateKey(h.date) < currentValuationDate)?.value || valuation.previousPrice,
+          lastUpdated: `${toLocalDateKey(closestHistory.date)} 15:00`,  // 净值收盘时间，格式保持一致
+          previousPrice: newPreviousPrice,
           netWorthDate: toLocalDateKey(closestHistory.date),
+          changePercentage: newChangePercentage,
         };
       } else {
+        const newPreviousPrice = closestHistory.value;
+        // 重新计算涨跌幅（currentPrice 保持不变，previousPrice 变化）
+        const newChangePercentage = ((result.currentPrice - newPreviousPrice) / newPreviousPrice) * 100;
+
         // Otherwise, just update previousPrice and netWorthDate
         result = {
           ...result,
-          previousPrice: closestHistory.value,
+          previousPrice: newPreviousPrice,
           netWorthDate: toLocalDateKey(closestHistory.date),
+          changePercentage: newChangePercentage,
         };
       }
     }

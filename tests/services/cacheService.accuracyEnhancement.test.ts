@@ -238,4 +238,193 @@ describe('Cache Service - Accuracy Enhancement', () => {
       expect(result?.currentPrice).toBeCloseTo(1.1553);  // 04-01 history value (closest to 04-02)
     });
   });
+
+  describe('changePercentage recalculation', () => {
+    test('Rule 1: should recalculate changePercentage when prices are adjusted', () => {
+      // 场景：估值数据使用历史数据替换后，涨跌幅需要重新计算
+      // 原估值：currentPrice=0.6297, previousPrice=0.6396 → -1.54%
+      // 调整后：currentPrice=0.6396 (04-03净值), previousPrice=0.6391 (04-02净值) → ~+0.08%
+      const historyData: HistoricalPoint[] = [
+        { date: new Date('2026-04-01').getTime(), value: 0.6506, equityReturn: 0 },
+        { date: new Date('2026-04-02').getTime(), value: 0.6391, equityReturn: -1.76 },
+        { date: new Date('2026-04-03').getTime(), value: 0.6396, equityReturn: 0.08 },
+      ];
+
+      const valuationData: ValuationData = {
+        symbol: '012349',
+        name: '天弘恒生科技ETF联接C',
+        currentPrice: 0.6297,  // 过时的估值
+        previousPrice: 0.6396,
+        changePercentage: -1.54,  // 原涨跌幅（错误）
+        lastUpdated: '2026-04-02 16:00',
+        realtimeDate: '2026-04-02',
+        valuationDate: '2026-04-02 16:00',
+        netWorthDate: '2026-04-03',
+        sourceUrl: 'http://example.com'
+      };
+
+      cacheService.setValuation('012349', valuationData);
+      cacheService.setHistory('012349', historyData);
+
+      const result = cacheService.getValuation('012349');
+
+      expect(result).toBeDefined();
+      // Rule 1 应生效：valuationDate(04-02) < latestHistoryDate(04-03)
+      expect(result?.currentPrice).toBeCloseTo(0.6396);  // 使用04-03净值
+      expect(result?.previousPrice).toBeCloseTo(0.6391);  // 使用04-02净值
+
+      // 涨跌幅应该重新计算：(0.6396 - 0.6391) / 0.6391 * 100 ≈ 0.078%
+      const expectedChangePercentage = ((0.6396 - 0.6391) / 0.6391) * 100;
+      expect(result?.changePercentage).toBeCloseTo(expectedChangePercentage, 2);
+      // 不应该是原来的 -1.54%
+      expect(result?.changePercentage).not.toBeCloseTo(-1.54, 1);
+    });
+
+    test('Rule 2 branch A: should recalculate changePercentage when valuation equals netWorthDate', () => {
+      // 场景：Rule 2分支A生效，替换估值数据
+      // 关键：valuationDate要大于latestHistoryDate，且等于netWorthDate
+      // 这样closestHistory会是latestHistory（03-31），previousPrice会是03-30
+      const historyData: HistoricalPoint[] = [
+        { date: new Date('2026-03-29').getTime(), value: 1.1400, equityReturn: 0 },
+        { date: new Date('2026-03-30').getTime(), value: 1.1500, equityReturn: 0.88 },
+        { date: new Date('2026-03-31').getTime(), value: 1.1600, equityReturn: 0.87 },
+      ];
+
+      const valuationData: ValuationData = {
+        symbol: 'testRule2A',
+        name: 'Test Fund',
+        currentPrice: 1.2000,  // 过时估值
+        previousPrice: 1.1000,
+        changePercentage: 9.09,  // 原涨跌幅（错误）
+        lastUpdated: '2026-04-01 16:00',
+        realtimeDate: '2026-04-01',
+        valuationDate: '2026-04-01 16:00',
+        netWorthDate: '2026-04-01',  // 与valuationDate日期相同，触发Rule 2
+        sourceUrl: 'http://example.com'
+      };
+
+      cacheService.setValuation('testRule2A', valuationData);
+      cacheService.setHistory('testRule2A', historyData);
+
+      const result = cacheService.getValuation('testRule2A');
+
+      expect(result).toBeDefined();
+      // Rule 2 分支A生效
+      // valuationDate日期=04-01 > latestHistoryDate=03-31，所以Rule 1不生效
+      // currentValuationDate = 04-01 (从valuationDate提取日期部分)
+      // currentNetWorthDate = 04-01
+      // closestHistory = 03-31 (满足 <= 04-01)
+      // previousPrice查找 < 04-01，先检查03-31(日期03-31<04-01)，所以previousPrice=1.1600
+      expect(result?.currentPrice).toBeCloseTo(1.1600);  // closestHistory (03-31)
+      expect(result?.previousPrice).toBeCloseTo(1.1600);  // 也是03-31，因为03-31 < 04-01
+
+      // 这种情况下涨跌幅为0
+      const expectedChangePercentage = 0;
+      expect(result?.changePercentage).toBeCloseTo(expectedChangePercentage, 2);
+    });
+
+    test('Rule 2 branch B: should recalculate changePercentage when only previousPrice changes', () => {
+      // 场景：Rule 2分支B生效（valuationDate < netWorthDate）
+      // 这是边缘情况：估值日期比净值确认日期早
+      // 构造数据使Rule 1不生效（valuationDate > latestHistoryDate）
+      // 同时Rule 2条件满足（valuationDate < netWorthDate）
+      const historyData: HistoricalPoint[] = [
+        { date: new Date('2026-03-28').getTime(), value: 1.1300, equityReturn: 0 },
+        { date: new Date('2026-03-29').getTime(), value: 1.1400, equityReturn: 0.88 },
+      ];
+
+      const valuationData: ValuationData = {
+        symbol: 'testRule2B',
+        name: 'Test Fund',
+        currentPrice: 1.2000,  // 保持不变
+        previousPrice: 1.1000,  // 会被调整
+        changePercentage: 9.09,  // 原涨跌幅（错误）
+        lastUpdated: '2026-03-30 16:00',
+        realtimeDate: '2026-03-30',
+        valuationDate: '2026-03-30 16:00',  // 晚于latestHistoryDate(03-29)，Rule 1不生效
+        netWorthDate: '2026-03-31',  // 早于valuationDate，触发Rule 2分支B
+        sourceUrl: 'http://example.com'
+      };
+
+      cacheService.setValuation('testRule2B', valuationData);
+      cacheService.setHistory('testRule2B', historyData);
+
+      const result = cacheService.getValuation('testRule2B');
+
+      expect(result).toBeDefined();
+      // Rule 1 不生效（03-30 > 03-29）
+      // Rule 2 检查：03-30 <= 03-31? Yes，且不等于，所以分支B生效
+      // closestHistory = 03-29 (1.1400)，因为 03-29 <= 03-30
+      expect(result?.currentPrice).toBeCloseTo(1.2000);  // 保持不变
+      expect(result?.previousPrice).toBeCloseTo(1.1400);  // 调整为closestHistory
+
+      // 涨跌幅重新计算：(1.2000 - 1.1400) / 1.1400 * 100 ≈ 5.26%
+      const expectedChangePercentage = ((1.2000 - 1.1400) / 1.1400) * 100;
+      expect(result?.changePercentage).toBeCloseTo(expectedChangePercentage, 2);
+    });
+  });
+
+  describe('lastUpdated format consistency', () => {
+    test('Rule 1: lastUpdated should use net worth date with time format', () => {
+      const historyData: HistoricalPoint[] = [
+        { date: new Date('2026-04-01').getTime(), value: 1.1553, equityReturn: 0 },
+        { date: new Date('2026-04-02').getTime(), value: 1.1342, equityReturn: -1.83 },
+        { date: new Date('2026-04-03').getTime(), value: 1.1351, equityReturn: 0.08 },
+      ];
+
+      const valuationData: ValuationData = {
+        symbol: 'testLastUpdated',
+        name: 'Test Fund',
+        currentPrice: 1.1167,
+        previousPrice: 1.1342,
+        changePercentage: -1.54,
+        lastUpdated: '2026-04-02 16:00',
+        realtimeDate: '2026-04-02',
+        valuationDate: '2026-04-02 16:00',
+        netWorthDate: '2026-04-03',
+        sourceUrl: 'http://example.com'
+      };
+
+      cacheService.setValuation('testLastUpdated', valuationData);
+      cacheService.setHistory('testLastUpdated', historyData);
+
+      const result = cacheService.getValuation('testLastUpdated');
+
+      expect(result).toBeDefined();
+      // lastUpdated 应更新为净值日期 + 时间格式
+      expect(result?.lastUpdated).toBe('2026-04-03 15:00');
+      expect(result?.realtimeDate).toBe('2026-04-03');
+      expect(result?.valuationDate).toBe('2026-04-03');
+    });
+
+    test('Rule 2 branch A: lastUpdated should use net worth date with time format', () => {
+      const historyData: HistoricalPoint[] = [
+        { date: new Date('2026-03-30').getTime(), value: 1.1500, equityReturn: 0 },
+        { date: new Date('2026-03-31').getTime(), value: 1.1600, equityReturn: 0.87 },
+      ];
+
+      const valuationData: ValuationData = {
+        symbol: 'testLastUpdatedR2A',
+        name: 'Test Fund',
+        currentPrice: 1.2000,
+        previousPrice: 1.1000,
+        changePercentage: 9.09,
+        lastUpdated: '2026-04-01 16:00',
+        realtimeDate: '2026-04-01',
+        valuationDate: '2026-04-01',
+        netWorthDate: '2026-04-01',
+        sourceUrl: 'http://example.com'
+      };
+
+      cacheService.setValuation('testLastUpdatedR2A', valuationData);
+      cacheService.setHistory('testLastUpdatedR2A', historyData);
+
+      const result = cacheService.getValuation('testLastUpdatedR2A');
+
+      expect(result).toBeDefined();
+      // lastUpdated 应更新为净值日期 + 时间格式
+      // closestHistory 是 03-31
+      expect(result?.lastUpdated).toBe('2026-03-31 15:00');
+    });
+  });
 });
