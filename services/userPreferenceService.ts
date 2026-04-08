@@ -16,7 +16,23 @@ export type { UserPreference, SortOrder };
 const STORAGE_KEY = STORAGE_KEYS.USER_PREFERENCE;
 const OLD_KEYS = OLD_STORAGE_KEYS.USER_PREFERENCE;
 
-export function getUserPreference(): UserPreference {
+// ═══════════════════════════════════════════════════════════════════════════════
+// 内存缓存
+// ═══════════════════════════════════════════════════════════════════════════════
+
+let cachedPreference: UserPreference | null = null;
+
+/**
+ * 重置内存缓存（仅用于测试）
+ */
+export function resetCache(): void {
+  cachedPreference = null;
+}
+
+/**
+ * 从 localStorage 加载数据到缓存
+ */
+function loadFromStorage(): UserPreference {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (raw) {
@@ -29,7 +45,26 @@ export function getUserPreference(): UserPreference {
   return { ...DEFAULT_USER_PREFERENCE };
 }
 
+/**
+ * 获取缓存（懒加载）
+ */
+function getCache(): UserPreference {
+  if (!cachedPreference) {
+    cachedPreference = loadFromStorage();
+  }
+  return cachedPreference;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// 公共 API
+// ═══════════════════════════════════════════════════════════════════════════════
+
+export function getUserPreference(): UserPreference {
+  return getCache();
+}
+
 export function saveUserPreference(pref: UserPreference): void {
+  cachedPreference = pref;
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(pref));
   } catch (e) {
@@ -38,7 +73,7 @@ export function saveUserPreference(pref: UserPreference): void {
 }
 
 export function getSortOrder(): SortOrder {
-  const pref = getUserPreference();
+  const pref = getCache();
   const order = pref.sortOrder;
   if (order === 'asc' || order === 'desc') {
     return order;
@@ -47,13 +82,13 @@ export function getSortOrder(): SortOrder {
 }
 
 export function saveSortOrder(order: SortOrder): void {
-  const pref = getUserPreference();
+  const pref = getCache();
   pref.sortOrder = order;
   saveUserPreference(pref);
 }
 
 export function getDraftModalHeight(): number | null {
-  const pref = getUserPreference();
+  const pref = getCache();
   const height = pref.draftModalHeight;
   if (height === null || (typeof height === 'number' && height > 0)) {
     return height;
@@ -62,12 +97,14 @@ export function getDraftModalHeight(): number | null {
 }
 
 export function saveDraftModalHeight(height: number | null): void {
-  const pref = getUserPreference();
+  const pref = getCache();
   pref.draftModalHeight = height;
   saveUserPreference(pref);
 }
 
-// ─── 迁移接口（由 localStorageService 统一调用，迁移完成后可删除）────────────────
+// ═══════════════════════════════════════════════════════════════════════════════
+// 迁移接口（由 localStorageService 统一调用，迁移完成后可删除）
+// ═══════════════════════════════════════════════════════════════════════════════
 
 export function needsUserPreferenceMigration(): boolean {
   if (localStorage.getItem(STORAGE_KEY)) return false;

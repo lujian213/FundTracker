@@ -30,7 +30,23 @@ export type {
 const STORAGE_KEY = STORAGE_KEYS.SYSTEM_CONFIG;
 const OLD_KEYS = OLD_STORAGE_KEYS.SYSTEM_CONFIG;
 
-export function getSystemConfig(): SystemConfig {
+// ═══════════════════════════════════════════════════════════════════════════════
+// 内存缓存
+// ═══════════════════════════════════════════════════════════════════════════════
+
+let cachedConfig: SystemConfig | null = null;
+
+/**
+ * 重置内存缓存（仅用于测试）
+ */
+export function resetCache(): void {
+  cachedConfig = null;
+}
+
+/**
+ * 从 localStorage 加载数据到缓存
+ */
+function loadFromStorage(): SystemConfig {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (raw) {
@@ -43,7 +59,26 @@ export function getSystemConfig(): SystemConfig {
   return { ...DEFAULT_SYSTEM_CONFIG };
 }
 
+/**
+ * 获取缓存（懒加载）
+ */
+function getCache(): SystemConfig {
+  if (!cachedConfig) {
+    cachedConfig = loadFromStorage();
+  }
+  return cachedConfig;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// 公共 API
+// ═══════════════════════════════════════════════════════════════════════════════
+
+export function getSystemConfig(): SystemConfig {
+  return getCache();
+}
+
 export function saveSystemConfig(config: SystemConfig): void {
+  cachedConfig = config;
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(config));
   } catch (e) {
@@ -56,7 +91,7 @@ function isValidTimeFormat(time: string): boolean {
 }
 
 export function getBackupConfig(): BackupConfigSection {
-  const config = getSystemConfig();
+  const config = getCache();
   const autoExportTime = config.backup?.autoExportTime ?? DEFAULT_SYSTEM_CONFIG.backup.autoExportTime;
   const autoBackupEnabled = config.backup?.autoBackupEnabled ?? DEFAULT_SYSTEM_CONFIG.backup.autoBackupEnabled;
 
@@ -67,51 +102,47 @@ export function getBackupConfig(): BackupConfigSection {
 }
 
 export function saveBackupConfig(cfg: BackupConfigSection): void {
-  const config = getSystemConfig();
+  const config = getCache();
   config.backup = cfg;
   saveSystemConfig(config);
 }
 
 export function getSyncConfig(): SyncConfigSection {
-  const config = getSystemConfig();
-  return config.sync;
+  return getCache().sync;
 }
 
 export function saveSyncConfig(cfg: SyncConfigSection): void {
-  const config = getSystemConfig();
+  const config = getCache();
   config.sync = cfg;
   saveSystemConfig(config);
 }
 
 export function getSyncFilterConfig(): SyncFilterConfigSection | undefined {
-  const config = getSystemConfig();
-  return config.sync.filter;
+  return getCache().sync.filter;
 }
 
 export function saveSyncFilterConfig(cfg: SyncFilterConfigSection): void {
-  const config = getSystemConfig();
+  const config = getCache();
   config.sync.filter = cfg;
   saveSystemConfig(config);
 }
 
 export function getAIConfig(): AIConfigSection {
-  const config = getSystemConfig();
-  return config.ai;
+  return getCache().ai;
 }
 
 export function saveAIConfig(ai: AIConfigSection): void {
-  const config = getSystemConfig();
+  const config = getCache();
   config.ai = ai;
   saveSystemConfig(config);
 }
 
 export function getAIConfigManager(): AIConfigManagerSection {
-  const config = getSystemConfig();
-  return config.ai.manager;
+  return getCache().ai.manager;
 }
 
 export function saveAIConfigManager(manager: AIConfigManagerSection): void {
-  const config = getSystemConfig();
+  const config = getCache();
   config.ai.manager = manager;
   saveSystemConfig(config);
 }
@@ -123,7 +154,7 @@ export function getActiveAIConfig(): AIConfigProfileSection | null {
 }
 
 export function getFeatureConfig(): FeatureConfigSection {
-  const config = getSystemConfig();
+  const config = getCache();
   return {
     initialPriceAdjustmentEnabled: config.features?.initialPriceAdjustmentEnabled ?? DEFAULT_SYSTEM_CONFIG.features.initialPriceAdjustmentEnabled,
     jobLogEnabled: config.features?.jobLogEnabled ?? DEFAULT_SYSTEM_CONFIG.features.jobLogEnabled,
@@ -131,7 +162,7 @@ export function getFeatureConfig(): FeatureConfigSection {
 }
 
 export function saveFeatureConfig(cfg: FeatureConfigSection): void {
-  const config = getSystemConfig();
+  const config = getCache();
   config.features = cfg;
   saveSystemConfig(config);
 }
@@ -147,7 +178,9 @@ export function setFeatureEnabled(featureKey: keyof FeatureConfigSection, enable
   saveFeatureConfig(features);
 }
 
-// ─── 迁移接口（由 localStorageService 统一调用，迁移完成后可删除）────────────────
+// ═══════════════════════════════════════════════════════════════════════════════
+// 迁移接口（由 localStorageService 统一调用，迁移完成后可删除）
+// ═══════════════════════════════════════════════════════════════════════════════
 
 export function needsSystemConfigMigration(): boolean {
   if (localStorage.getItem(STORAGE_KEY)) return false;

@@ -2,6 +2,7 @@ import { defineConfig, devices } from '@playwright/test';
 
 export default defineConfig({
   testDir: './smoke-tests',
+  testIgnore: ['**/testDataPrepare.spec.ts'],  // 默认 exclude testDataPrepare（运行时注释掉）
   fullyParallel: false,  // 串行执行，避免资源竞争
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 2 : 0,
