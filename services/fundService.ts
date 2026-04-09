@@ -35,7 +35,7 @@ export function prepareHistoryForProfitCalculation(params: {
 
   if (!history || history.length === 0) return [];
 
-  // 排序历史数据
+  // 排序历史数据（去重逻辑需要按日期排序）
   const sorted = history.slice().sort((a, b) => (a.date as number) - (b.date as number));
 
   // 获取优选价格
@@ -824,13 +824,17 @@ export async function fetchFundHistory(symbol: string): Promise<HistoricalPoint[
   const code = symbol.padStart(6, '0');
 
   // 1. Check cacheService (in-memory + pre-loaded from localStorage)
+  // 数据已在存储时规范化，直接返回即可
   const cached = marketFundService.getHistory(code);
-  if (cached) {
-    return normalizeAndSyncHistory(code, cached);
+  if (cached && cached.length > 0) {
+    return cached;
   }
 
   // 2. Fallback to module-level in-memory cache (populated in the same session before cacheService existed)
-  if (historyCache[code]) return normalizeAndSyncHistory(code, historyCache[code]);
+  // 数据已在存储时规范化，直接返回即可
+  if (historyCache[code] && historyCache[code].length > 0) {
+    return historyCache[code];
+  }
 
   // 3. Fetch from network
   const ts = formatYMDHMS(new Date());
@@ -1037,7 +1041,6 @@ export async function computeOverallProfit(opts: { symbols?: string[]; fromDate?
     } catch (e) { syms = []; }
   }
 
-
   const includedFundTimelines: Record<string, ProfitPoint[]> = {};
   const perFundRows: OverallFundRow[] = [];
   const fundStartDates: Record<string, string> = {}; // 收集每个基金的建仓日期
@@ -1132,6 +1135,7 @@ export async function computeOverallProfit(opts: { symbols?: string[]; fromDate?
       });
 
       const timeline = computeProfitTimeline({ history: preparedHistory, trades, initialPosition: initialPosition || 0, initialPrice: initialPrice ?? null, fromDate: fundStartDate, toDate: toDate ?? null });
+
      if (!timeline || timeline.length === 0) continue;
 
       includedFundTimelines[sym] = timeline;

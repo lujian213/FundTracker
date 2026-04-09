@@ -158,7 +158,7 @@ export default function usePositionTrend(params: UsePositionTrendParams = {}) {
     } finally {
       setLoading(false);
     }
-  }, [portfolioSymbols, computedRange, maxPoints]);
+  }, [portfolioSymbols, computedRange, maxPoints, valuationsOverride]);
 
   const [data, setData] = useState<PositionTrendSeries | null>(null);
 

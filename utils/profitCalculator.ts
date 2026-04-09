@@ -22,8 +22,8 @@ export function computeProfitTimeline(params: {
   const { history, trades, initialPosition, initialPrice, fromDate, toDate, historyEndDate } = params;
   if (!history || history.length === 0) return [];
 
-  // normalize and sort history ascending by date
-  const sortedHistory = [...history].sort((a, b) => (a.date as number) - (b.date as number));
+  // 数据已在 prepareHistoryForProfitCalculation 中排序，直接使用
+  const sortedHistory = history;
 
   // map trades by date string and also build cumulative sums when iterating
   const tradesByDate: Record<string, TradeRecord[]> = {};

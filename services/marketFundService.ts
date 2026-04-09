@@ -669,6 +669,17 @@ export function getHistory(symbol: string): HistoricalPoint[] {
 export function updateHistory(symbol: string, history: HistoricalPoint[]): void {
   const existing = funds.get(symbol);
   if (existing) {
+    // 检查数据是否真的有变化，避免不必要的写入
+    const oldHistory = existing.history;
+    if (oldHistory && oldHistory.length === history.length) {
+      // 快速比较：只比较最后一个点的日期和值（最新数据）
+      const oldLast = oldHistory[oldHistory.length - 1];
+      const newLast = history[history.length - 1];
+      if (oldLast && newLast && oldLast.date === newLast.date && oldLast.value === newLast.value) {
+        // 数据相同，跳过写入
+        return;
+      }
+    }
     existing.history = history;
     saveToStorage();
   } else {

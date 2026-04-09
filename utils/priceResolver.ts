@@ -63,7 +63,8 @@ export function resolvePreferredPrice(input: ResolvePreferredPriceInput): Resolv
   const today = isIsoDate(input.todayDate) ? input.todayDate : toLocalDateKey(new Date());
   const targetDate = input.targetDate;
 
-  const history = (input.history || []).slice().sort((a, b) => (a.date as number) - (b.date as number));
+  // 数据已在 fetchFundHistory 中规范化并排序，直接使用
+  const history = input.history || [];
   const historyByDate: Record<string, number> = {};
   for (const p of history) {
     const key = toLocalDateKey(p.date);

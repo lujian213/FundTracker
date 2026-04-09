@@ -51,12 +51,14 @@ function loadFromStorage(): SystemConfig {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (raw) {
       const parsed = JSON.parse(raw);
-      return { ...DEFAULT_SYSTEM_CONFIG, ...parsed };
+      // 使用深拷贝避免修改 DEFAULT_SYSTEM_CONFIG
+      return JSON.parse(JSON.stringify({ ...DEFAULT_SYSTEM_CONFIG, ...parsed }));
     }
   } catch (e) {
     console.error('Error reading system config:', e);
   }
-  return { ...DEFAULT_SYSTEM_CONFIG };
+  // 使用深拷贝返回默认配置的独立副本
+  return JSON.parse(JSON.stringify(DEFAULT_SYSTEM_CONFIG));
 }
 
 /**

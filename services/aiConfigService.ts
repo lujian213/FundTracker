@@ -11,7 +11,15 @@ import {
   getAIConfigManager as getAIManagerFromStorage,
   saveAIConfigManager as saveAIManagerToStorage,
   getActiveAIConfig as getActiveConfigFromStorage,
+  resetCache as resetStorageCache,
 } from './systemConfigService';
+
+/**
+ * 重置底层存储的内存缓存（仅用于测试）
+ */
+export function resetCache(): void {
+  resetStorageCache();
+}
 
 // ─── 核心接口 ──────────────────────────────────────────────────────────────────
 

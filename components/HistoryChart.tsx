@@ -197,14 +197,14 @@ const HistoryChart: React.FC<HistoryChartProps> = ({
             </>
           );
         })()}
-        <path d={area} fill="url(#history-gradient)" className="transition-all duration-700" />
-        <path d={path} fill="none" stroke={stroke} strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" className="transition-all duration-700" />
+        <path d={area} fill="url(#history-gradient)" />
+        <path d={path} fill="none" stroke={stroke} strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
 
         {Object.keys(maPaths || {}).map(k => {
           const n = parseInt(k, 10);
           const d = (maPaths || {})[n];
           if (!d || !visibleMAs[n]) return null;
-          return <path key={`ma-${k}`} d={d} fill="none" stroke={MA_COLORS[n] || '#2563eb'} strokeWidth={n === 5 ? 2 : 1.5} strokeLinecap="round" className="transition-all duration-700" />;
+          return <path key={`ma-${k}`} d={d} fill="none" stroke={MA_COLORS[n] || '#2563eb'} strokeWidth={n === 5 ? 2 : 1.5} strokeLinecap="round" />;
         })}
 
         <circle cx={points[points.length - 1]?.x} cy={points[points.length - 1]?.y} r="6" fill={stroke} className="animate-pulse" />
@@ -302,7 +302,6 @@ const HistoryChart: React.FC<HistoryChartProps> = ({
                 strokeWidth="1.5"
                 strokeLinecap="round"
                 strokeLinejoin="round"
-                className="transition-all duration-700"
               />
             )}
           </g>

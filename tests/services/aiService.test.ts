@@ -1,6 +1,6 @@
 import { queryAI, AIResponse, AIQueryContext } from '../../services/aiService';
 import { fillTemplateVariables } from '../../services/promptTemplateService';
-import { getAIConfig, AIConfiguration, saveAIConfig, validateAIConfig, hasValidAIConfig } from '../../services/aiConfigService';
+import { getAIConfig, AIConfiguration, saveAIConfig, validateAIConfig, hasValidAIConfig, resetCache as resetAIConfigCache } from '../../services/aiConfigService';
 import { AIConfigProfile } from '../../types/aiConfigTypes';
 import { FundAIQueryContext } from '../../types/aiServiceTypes';
 
@@ -8,6 +8,7 @@ describe('AI Services', () => {
   describe('aiConfigService', () => {
     beforeEach(() => {
       localStorage.clear();
+      resetAIConfigCache(); // 使用 aiConfigService 导出的 resetCache
     });
 
     test('should save and retrieve AI configuration', () => {
@@ -126,6 +127,7 @@ describe('AI Services', () => {
     beforeEach(() => {
       jest.clearAllMocks();
       localStorage.clear();
+      resetAIConfigCache(); // 使用 aiConfigService 导出的 resetCache
     });
 
     test('should return error response when invalid config is provided', async () => {
