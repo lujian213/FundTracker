@@ -1,8 +1,8 @@
 import React from 'react';
 import { render, screen, waitFor } from '@testing-library/react';
 import App from '../../App';
-import { MarketIndex } from '../../types';
-import { resetCache as resetIndexCache } from '../../services/indexService';
+import { MarketIndex, IndexInfo } from '../../types';
+import { resetCache as resetIndexCache, saveAllIndexInfos } from '../../services/indexService';
 
 jest.mock('../../components/MarketNewsTicker', () => ({
   MarketNewsTicker: () => <div data-testid="market-news-ticker" />,
@@ -66,14 +66,14 @@ describe('App index fallback rendering', () => {
     localStorage.clear();
     jest.clearAllMocks();
 
-    // 使用新的统一存储格式
-    localStorage.setItem('fund_indices_info', JSON.stringify([
+    // 使用 service 设置指数数据
+    resetIndexCache();
+    const testIndices: IndexInfo[] = [
       { symbol: '1.000001', name: '上证指数', current: 0, change: 0, changePercent: 0, lastUpdated: '' },
       { symbol: '0.399001', name: '深证成指', current: 0, change: 0, changePercent: 0, lastUpdated: '' },
       { symbol: '100.NDX', name: '纳斯达克100', current: 0, change: 0, changePercent: 0, lastUpdated: '' },
-    ]));
-
-    resetIndexCache(); // 重新加载 indexService 缓存（必须在 localStorage 设置之后）
+    ];
+    saveAllIndexInfos(testIndices);
 
     fetchFundDataMock.mockResolvedValue(null);
     forceFetchFundHistoryMock.mockResolvedValue([]);

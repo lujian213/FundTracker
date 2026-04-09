@@ -95,16 +95,32 @@ const InvestmentDraftModal: React.FC<InvestmentDraftModalProps> = ({
       // Initialize draft data with existing data or default values
       const initialDraftData: Record<string, DraftEntry> = {};
 
+      // 从持久化数据恢复 AI 建议状态
+      const restoredAIAdvice: Record<string, AIAdviceWithScore> = {};
+
       fundsWithPositions.forEach(fund => {
-        initialDraftData[fund.symbol] = existingData[fund.symbol] || {
+        const existing = existingData[fund.symbol];
+        initialDraftData[fund.symbol] = existing || {
           fundSymbol: fund.symbol,
           operation: '不操作',
           amount: '',
           note: ''
         };
+
+        // 如果存在 AI 建议信息，恢复到 aiAdvice 状态
+        if (existing?.aiReason !== undefined && existing?.aiScore !== undefined) {
+          restoredAIAdvice[fund.symbol] = {
+            fundCode: fund.symbol,
+            operation: existing.operation as '买入' | '卖出',
+            amount: parseFloat(existing.amount) || 0,
+            reason: existing.aiReason,
+            score: existing.aiScore,
+          };
+        }
       });
 
       setDraftData(initialDraftData);
+      setAIAdvice(restoredAIAdvice);
     } catch (e) {
       console.error('Error initializing draft data:', e);
     }
@@ -223,6 +239,7 @@ const InvestmentDraftModal: React.FC<InvestmentDraftModalProps> = ({
         operation: '不操作',
         amount: '',
         note: ''
+        // 重置时清除 AI 建议信息
       };
 
       return {
@@ -315,7 +332,10 @@ const InvestmentDraftModal: React.FC<InvestmentDraftModalProps> = ({
             fundSymbol: symbol,
             operation: advice.operation,
             amount: String(advice.amount),
-            note: noteValue
+            note: noteValue,
+            // 持久化 AI 建议信息
+            aiReason: advice.reason,
+            aiScore: advice.score,
           };
           newAIAdvice[symbol] = advice;
         }
@@ -592,7 +612,7 @@ const InvestmentDraftModal: React.FC<InvestmentDraftModalProps> = ({
 
         <div className="px-6 flex-1 min-h-0 pb-1">
           <div className="border border-gray-100 rounded-xl overflow-hidden h-full flex flex-col">
-            <div className="overflow-hidden flex-1" style={{ overflowY: 'auto' }}>
+            <div className="overflow-hidden flex-1" style={{ overflowY: 'auto', paddingRight: '8px' }}>
               <table className="w-full text-sm">
                 <thead className="sticky top-0 z-10 bg-gray-50">
                   <tr className="border-b border-gray-200" style={{ height: '35px' }}>

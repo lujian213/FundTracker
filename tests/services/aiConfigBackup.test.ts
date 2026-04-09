@@ -1,17 +1,19 @@
 import { AIConfigProfile } from '../../types/aiConfigTypes';
+import { STORAGE_KEYS, OLD_STORAGE_KEYS } from '../../services/storageKeys';
+import * as aiConfigService from '../../services/aiConfigService';
 
 describe('AI Configuration Backup and Restore', () => {
   beforeEach(() => {
     // 清空localStorage中的AI配置（整合后的统一key）
-    localStorage.removeItem('fund_system_config');
-    localStorage.removeItem('ai_configs'); // 兼容旧key
+    localStorage.removeItem(STORAGE_KEYS.SYSTEM_CONFIG);
+    localStorage.removeItem(OLD_STORAGE_KEYS.SYSTEM_CONFIG.AI_CONFIGS); // 兼容旧key
     jest.resetModules();
   });
 
   afterEach(() => {
     // 清空localStorage中的AI配置
-    localStorage.removeItem('fund_system_config');
-    localStorage.removeItem('ai_configs'); // 兼容旧key
+    localStorage.removeItem(STORAGE_KEYS.SYSTEM_CONFIG);
+    localStorage.removeItem(OLD_STORAGE_KEYS.SYSTEM_CONFIG.AI_CONFIGS); // 兼容旧key
   });
 
   test('should backup AI configuration without API keys and restore without API keys', () => {
@@ -75,7 +77,7 @@ describe('AI Configuration Backup and Restore', () => {
     expect(backup.activeConfigId).toBe(config2.id);
 
     // 清空当前配置（模拟恢复过程）
-    localStorage.removeItem('fund_system_config');
+    localStorage.removeItem(STORAGE_KEYS.SYSTEM_CONFIG);
 
     // 重新导入模块以获取清空后的状态
     jest.resetModules();
@@ -165,7 +167,7 @@ describe('AI Configuration Backup and Restore', () => {
     expect(backupConfig.apiKey).toBeUndefined(); // 备份中不应该包含apiKey字段
 
     // 恢复
-    localStorage.removeItem('fund_system_config');
+    localStorage.removeItem(STORAGE_KEYS.SYSTEM_CONFIG);
     jest.resetModules();
     const { restoreAIConfigBackup: restoreBackup, getAIConfigManager: getManagerAfter } = require('../../services/aiConfigService');
     restoreBackup(backup);

@@ -4,6 +4,8 @@ import '@testing-library/jest-dom';
 import InvestmentDraftModal from '../../components/InvestmentDraftModal';
 import { Ticker, ValuationData, MarketType } from '../../types';
 import * as marketFundService from '../../services/marketFundService';
+import * as appDataService from '../../services/appDataService';
+import { STORAGE_KEYS } from '../../services/storageKeys';
 
 // Mock marketFundService.getValuation to return null (use marketData directly)
 jest.mock('../../services/marketFundService', () => ({
@@ -234,9 +236,9 @@ describe('InvestmentDraftModal', () => {
     const amountInput = screen.getAllByRole('textbox')[0];
     fireEvent.change(amountInput, { target: { value: '1000' } });
 
-    // 等待防抖完成后检查 localStorage
+    // 等待防抖完成后检查 localStorage（使用常量）
     await waitFor(() => {
-      const savedData = localStorage.getItem('fund_investment_draft');
+      const savedData = localStorage.getItem(STORAGE_KEYS.INVESTMENT_DRAFT);
       expect(savedData).not.toBeNull();
 
       const parsedData = JSON.parse(savedData!);
@@ -463,5 +465,212 @@ describe('InvestmentDraftModal AI Advice', () => {
     // 初始状态不应有 spinner
     const button = screen.getByTitle('AI辅助');
     expect(button.querySelector('.fa-wand-magic-sparkles')).toBeInTheDocument();
+  });
+});
+
+describe('InvestmentDraftModal AI 建议持久化', () => {
+  beforeEach(() => {
+    localStorage.clear();
+    marketFundService.resetCache();
+    appDataService.resetCache();
+  });
+
+  test('AI 建议信息保存到 localStorage', async () => {
+    const mockPortfolio: Ticker[] = [
+      { id: '1', symbol: '000001', name: '测试基金', market: MarketType.FUND }
+    ];
+
+    marketFundService.addFund('000001', '测试基金');
+    marketFundService.updatePosition('000001', {
+      fullCapacity: 10000,
+      initialPosition: 0,
+      startDate: '2026-01-01',
+      initialPrice: 2.0
+    });
+
+    // 使用 service 预设带有 AI 建议的草稿数据
+    const draftEntry = {
+      fundSymbol: '000001',
+      operation: '买入' as const,
+      amount: '1000',
+      note: '+2.50%',
+      aiReason: '市场趋势向上',
+      aiScore: 0.85
+    };
+    appDataService.saveInvestmentDraft('2026-03-17', { '000001': draftEntry });
+    appDataService.saveAllDraftsToStorage();
+    // 清除缓存以强制从 localStorage 加载（模拟重新打开窗口）
+    appDataService.resetCache();
+
+    render(
+      <InvestmentDraftModal
+        portfolio={mockPortfolio}
+        onClose={jest.fn()}
+      />
+    );
+
+    // 验证 AI 建议图标显示
+    await waitFor(() => {
+      const infoIcon = screen.getByTitle('测试基金').closest('tr')?.querySelector('.fa-info-circle');
+      expect(infoIcon).toBeInTheDocument();
+    });
+
+    // 触发 hover 显示 tooltip
+    const infoIcon = screen.getByTitle('测试基金').closest('tr')?.querySelector('.fa-info-circle');
+    if (infoIcon) {
+      fireEvent.mouseEnter(infoIcon);
+    }
+
+    // 验证 tooltip 内容包含 AI 建议信息
+    await waitFor(() => {
+      expect(screen.getByText(/市场趋势向上/)).toBeInTheDocument();
+      expect(screen.getByText(/得分: 0.85/)).toBeInTheDocument();
+    });
+  });
+
+  test('窗口重入后恢复 AI 建议状态', async () => {
+    const mockPortfolio: Ticker[] = [
+      { id: '1', symbol: '000001', name: '测试基金', market: MarketType.FUND }
+    ];
+
+    marketFundService.addFund('000001', '测试基金');
+    marketFundService.updatePosition('000001', {
+      fullCapacity: 10000,
+      initialPosition: 0,
+      startDate: '2026-01-01',
+      initialPrice: 2.0
+    });
+
+    // 使用 service 预设带有 AI 建议的草稿数据
+    const draftEntry = {
+      fundSymbol: '000001',
+      operation: '卖出' as const,
+      amount: '500',
+      note: '-1.20%',
+      aiReason: '建议减仓',
+      aiScore: 0.72
+    };
+    appDataService.saveInvestmentDraft('2026-03-17', { '000001': draftEntry });
+    appDataService.saveAllDraftsToStorage();
+    // 清除缓存以强制从 localStorage 加载
+    appDataService.resetCache();
+
+    const { unmount } = render(
+      <InvestmentDraftModal
+        portfolio={mockPortfolio}
+        onClose={jest.fn()}
+      />
+    );
+
+    // 验证 AI 建议图标显示
+    await waitFor(() => {
+      const infoIcon = screen.getByTitle('测试基金').closest('tr')?.querySelector('.fa-info-circle');
+      expect(infoIcon).toBeInTheDocument();
+    });
+
+    // 触发 hover 显示 tooltip
+    const infoIcon = screen.getByTitle('测试基金').closest('tr')?.querySelector('.fa-info-circle');
+    if (infoIcon) {
+      fireEvent.mouseEnter(infoIcon);
+    }
+
+    // 验证 tooltip 内容包含 AI 建议信息
+    await waitFor(() => {
+      expect(screen.getByText(/建议减仓/)).toBeInTheDocument();
+      expect(screen.getByText(/得分: 0.72/)).toBeInTheDocument();
+    });
+
+    // 卸载组件
+    unmount();
+
+    // 清除缓存以模拟重新加载
+    appDataService.resetCache();
+
+    // 重新渲染（模拟重入）
+    render(
+      <InvestmentDraftModal
+        portfolio={mockPortfolio}
+        onClose={jest.fn()}
+      />
+    );
+
+    // 验证 AI 建议仍然显示
+    await waitFor(() => {
+      const infoIconAfterUnmount = screen.getByTitle('测试基金').closest('tr')?.querySelector('.fa-info-circle');
+      expect(infoIconAfterUnmount).toBeInTheDocument();
+    });
+
+    // 触发 hover 显示 tooltip
+    const infoIconAfterUnmount = screen.getByTitle('测试基金').closest('tr')?.querySelector('.fa-info-circle');
+    if (infoIconAfterUnmount) {
+      fireEvent.mouseEnter(infoIconAfterUnmount);
+    }
+
+    // 验证 tooltip 内容仍然包含 AI 建议信息
+    await waitFor(() => {
+      expect(screen.getByText(/建议减仓/)).toBeInTheDocument();
+      expect(screen.getByText(/得分: 0.72/)).toBeInTheDocument();
+    });
+  });
+
+  test('重置功能清除 AI 建议信息', async () => {
+    const mockPortfolio: Ticker[] = [
+      { id: '1', symbol: '000001', name: '测试基金', market: MarketType.FUND }
+    ];
+
+    marketFundService.addFund('000001', '测试基金');
+    marketFundService.updatePosition('000001', {
+      fullCapacity: 10000,
+      initialPosition: 0,
+      startDate: '2026-01-01',
+      initialPrice: 2.0
+    });
+
+    // 使用 service 预设带有 AI 建议的草稿数据
+    const draftEntry = {
+      fundSymbol: '000001',
+      operation: '买入' as const,
+      amount: '1000',
+      note: '+2.50%',
+      aiReason: '市场趋势向上',
+      aiScore: 0.85
+    };
+    appDataService.saveInvestmentDraft('2026-03-17', { '000001': draftEntry });
+    appDataService.saveAllDraftsToStorage();
+    // 清除缓存以强制从 localStorage 加载
+    appDataService.resetCache();
+
+    render(
+      <InvestmentDraftModal
+        portfolio={mockPortfolio}
+        onClose={jest.fn()}
+      />
+    );
+
+    // 等待 AI 建议图标显示
+    await waitFor(() => {
+      const infoIcon = screen.getByTitle('测试基金').closest('tr')?.querySelector('.fa-info-circle');
+      expect(infoIcon).toBeInTheDocument();
+    });
+
+    // 点击重置按钮
+    const resetButton = screen.getByTitle('重置');
+    fireEvent.click(resetButton);
+
+    // 验证 AI 建议图标消失
+    await waitFor(() => {
+      const infoIconAfterReset = screen.getByTitle('测试基金').closest('tr')?.querySelector('.fa-info-circle');
+      expect(infoIconAfterReset).not.toBeInTheDocument();
+    });
+
+    // 等待防抖后验证 localStorage 中 AI 信息被清除（使用常量）
+    await waitFor(() => {
+      const savedData = localStorage.getItem(STORAGE_KEYS.INVESTMENT_DRAFT);
+      expect(savedData).not.toBeNull();
+      const parsedData = JSON.parse(savedData!);
+      expect(parsedData['2026-03-17']['000001'].operation).toBe('不操作');
+      expect(parsedData['2026-03-17']['000001'].aiReason).toBeUndefined();
+      expect(parsedData['2026-03-17']['000001'].aiScore).toBeUndefined();
+    }, { timeout: 1000 });
   });
 });

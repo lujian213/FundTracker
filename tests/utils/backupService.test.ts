@@ -9,6 +9,7 @@
  */
 
 import { BackupData, MarketType, ValuationData, HistoricalPoint } from '../../types';
+import { STORAGE_KEYS, OLD_STORAGE_KEYS } from '../../services/storageKeys';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -211,7 +212,7 @@ describe('buildBackupData', () => {
 
   test('reads autoExportTime and autoBackupEnabled from fund_system_config', async () => {
     const { bs } = loadBoth();
-    localStorage.setItem('fund_system_config', JSON.stringify({
+    localStorage.setItem(STORAGE_KEYS.SYSTEM_CONFIG, JSON.stringify({
       version: 1,
       backup: { autoExportTime: '09:30', autoBackupEnabled: true }
     }));
@@ -311,12 +312,12 @@ describe('applyBackupData', () => {
 
   // Helper: pre-populate some old data to verify overwrite
   function seedOldData() {
-    localStorage.setItem('fund_portfolio', JSON.stringify([{ id: 'old', symbol: '999999', name: '旧基金', market: 'Fund' }]));
-    localStorage.setItem('fund_trades', JSON.stringify({ '999999': [{ id: 'old-t', date: '2024-01-01', type: 'buy', shares: 100, price: 1, fee: 0 }] }));
-    localStorage.setItem('fund_position_999999', JSON.stringify({ fullCapacity: 5000, initialPosition: 0, startDate: null, initialPrice: null }));
-    localStorage.setItem('fund_indices_config', JSON.stringify(['9.999999']));
-    localStorage.setItem('fund_global_indices_config', JSON.stringify(['999.OLD']));
-    localStorage.setItem('fund_history_999999', JSON.stringify([{ date: 1000000, value: 1, equityReturn: 0 }]));
+    localStorage.setItem(OLD_STORAGE_KEYS.FUND.PORTFOLIO, JSON.stringify([{ id: 'old', symbol: '999999', name: '旧基金', market: 'Fund' }]));
+    localStorage.setItem(OLD_STORAGE_KEYS.FUND.TRADES, JSON.stringify({ '999999': [{ id: 'old-t', date: '2024-01-01', type: 'buy', shares: 100, price: 1, fee: 0 }] }));
+    localStorage.setItem(`${OLD_STORAGE_KEYS.FUND.POSITION_PREFIX}999999`, JSON.stringify({ fullCapacity: 5000, initialPosition: 0, startDate: null, initialPrice: null }));
+    localStorage.setItem(OLD_STORAGE_KEYS.INDEX.INDICES_CONFIG, JSON.stringify(['9.999999']));
+    localStorage.setItem(OLD_STORAGE_KEYS.INDEX.GLOBAL_INDICES_CONFIG, JSON.stringify(['999.OLD']));
+    localStorage.setItem(`${OLD_STORAGE_KEYS.INDEX.HISTORY_PREFIX}999999`, JSON.stringify([{ date: 1000000, value: 1, equityReturn: 0 }]));
   }
 
   test('returns correct portfolio, indicesConfig', async () => {
@@ -364,7 +365,7 @@ describe('applyBackupData', () => {
     await bs.applyBackupData(BASE_BACKUP);
 
     // 旧的 localStorage key 应被清理
-    expect(localStorage.getItem('fund_position_999999')).toBeNull();
+    expect(localStorage.getItem(`${OLD_STORAGE_KEYS.FUND.POSITION_PREFIX}999999`)).toBeNull();
     // 验证通过 marketFundService 获取新 position
     const pos = mfs.getPosition('000001');
     expect(pos).not.toBeNull();
@@ -378,7 +379,7 @@ describe('applyBackupData', () => {
     await bs.applyBackupData(BASE_BACKUP);
 
     // History for old fund is preserved
-    expect(localStorage.getItem('fund_history_999999')).not.toBeNull();
+    expect(localStorage.getItem(`${OLD_STORAGE_KEYS.INDEX.HISTORY_PREFIX}999999`)).not.toBeNull();
   });
 
   test('writes new indices config to localStorage', async () => {
@@ -387,7 +388,7 @@ describe('applyBackupData', () => {
     await bs.applyBackupData(BASE_BACKUP);
 
     // 检查新 key: fund_all_indices_data（完整 MarketIndex[]）
-    const idx = JSON.parse(localStorage.getItem('fund_all_indices_data')!);
+    const idx = JSON.parse(localStorage.getItem(STORAGE_KEYS.INDEX_DATA)!);
     const symbols = idx.map((m: any) => m.info.symbol);
     expect(symbols).toEqual(['1.000001', '100.NDX']);
   });
@@ -458,7 +459,7 @@ describe('applyBackupData', () => {
     const backup = { ...BASE_BACKUP, config: { autoExportTime: '08:30', autoBackupEnabled: true } };
     await bs.applyBackupData(backup);
 
-    const raw = localStorage.getItem('fund_system_config');
+    const raw = localStorage.getItem(STORAGE_KEYS.SYSTEM_CONFIG);
     const parsed = JSON.parse(raw!);
     expect(parsed.backup).toEqual({ autoExportTime: '08:30', autoBackupEnabled: true });
   });
@@ -468,7 +469,7 @@ describe('applyBackupData', () => {
     const backup = { ...BASE_BACKUP, config: { autoExportTime: '08:30', autoBackupEnabled: false } };
     await bs.applyBackupData(backup);
 
-    const raw = localStorage.getItem('fund_system_config');
+    const raw = localStorage.getItem(STORAGE_KEYS.SYSTEM_CONFIG);
     const parsed = JSON.parse(raw!);
     expect(parsed.backup).toEqual({ autoExportTime: '08:30', autoBackupEnabled: false });
   });
@@ -478,7 +479,7 @@ describe('applyBackupData', () => {
     const backup = { ...BASE_BACKUP, config: { autoExportTime: '08:30' } }; // No autoBackupEnabled
     await bs.applyBackupData(backup);
 
-    const raw = localStorage.getItem('fund_system_config');
+    const raw = localStorage.getItem(STORAGE_KEYS.SYSTEM_CONFIG);
     const parsed = JSON.parse(raw!);
     expect(parsed.backup).toEqual({ autoExportTime: '08:30', autoBackupEnabled: false });
   });
@@ -544,7 +545,7 @@ describe('applyBackupData', () => {
 
   test('compat: missing config field uses stored default', async () => {
     const { bs } = loadBoth();
-    localStorage.setItem('fund_backup_config', JSON.stringify({ autoExportTime: '07:00' }));
+    localStorage.setItem(OLD_STORAGE_KEYS.SYSTEM_CONFIG.BACKUP_CONFIG, JSON.stringify({ autoExportTime: '07:00' }));
     const backup = { ...BASE_BACKUP, config: undefined as any };
     // Should not throw; config not written if absent
     await expect(bs.applyBackupData(backup)).resolves.not.toThrow();
@@ -664,7 +665,7 @@ describe('真实备份文件导入测试', () => {
     expect(result.portfolio).toHaveLength(21);
 
     // 验证 fund_all_funds_data 中的数据
-    const fundData = JSON.parse(localStorage.getItem('fund_all_funds_data')!);
+    const fundData = JSON.parse(localStorage.getItem(STORAGE_KEYS.FUND_DATA)!);
     expect(fundData).toHaveLength(21);
 
     // 验证第一个基金的结构
@@ -726,7 +727,7 @@ describe('真实备份文件导入测试', () => {
     await bs.applyBackupData(REAL_BACKUP);
 
     // 验证 fund_all_indices_data 中的数据
-    const indexData = JSON.parse(localStorage.getItem('fund_all_indices_data')!);
+    const indexData = JSON.parse(localStorage.getItem(STORAGE_KEYS.INDEX_DATA)!);
     // 4个国内指数 + 3个全球指数 = 7个
     expect(indexData).toHaveLength(7);
 
@@ -757,7 +758,7 @@ describe('真实备份文件导入测试', () => {
     await bs.applyBackupData(REAL_BACKUP);
 
     // 验证指数顺序：国内指数 + 全球指数
-    const indexData = JSON.parse(localStorage.getItem('fund_all_indices_data')!);
+    const indexData = JSON.parse(localStorage.getItem(STORAGE_KEYS.INDEX_DATA)!);
     const symbols = indexData.map((m: any) => m.info.symbol);
 
     // 验证顺序：先国内（4个），后全球（3个）
@@ -859,7 +860,7 @@ describe('导入后导出一致性测试', () => {
     });
 
     // 构建导出数据
-    const indexData = JSON.parse(localStorage.getItem('fund_all_indices_data') || '[]');
+    const indexData = JSON.parse(localStorage.getItem(STORAGE_KEYS.INDEX_DATA) || '[]');
     const indicesConfig = indexData.map((m: any) => m.info.symbol);
     const marketIndices = indexData;
 
@@ -890,7 +891,7 @@ describe('导入后导出一致性测试', () => {
     await bs.applyBackupData(REAL_BACKUP);
 
     // 从 localStorage 获取当前指数状态
-    const indexData = JSON.parse(localStorage.getItem('fund_all_indices_data') || '[]');
+    const indexData = JSON.parse(localStorage.getItem(STORAGE_KEYS.INDEX_DATA) || '[]');
     const indicesConfig = indexData.map((m: any) => m.info.symbol);
     const marketIndices = indexData;
 
@@ -930,7 +931,7 @@ describe('导入后导出一致性测试', () => {
     await bs.applyBackupData(REAL_BACKUP);
 
     // 从 localStorage 获取当前状态
-    const indexData = JSON.parse(localStorage.getItem('fund_all_indices_data') || '[]');
+    const indexData = JSON.parse(localStorage.getItem(STORAGE_KEYS.INDEX_DATA) || '[]');
     const indicesConfig = indexData.map((m: any) => m.info.symbol);
     const marketIndices = indexData;
     const symbols = mfs.getAllFundSymbols();
@@ -971,7 +972,7 @@ describe('导入后导出一致性测试', () => {
     await bs.applyBackupData(REAL_BACKUP);
 
     // 从 localStorage 获取当前状态
-    const indexData = JSON.parse(localStorage.getItem('fund_all_indices_data') || '[]');
+    const indexData = JSON.parse(localStorage.getItem(STORAGE_KEYS.INDEX_DATA) || '[]');
     const indicesConfig = indexData.map((m: any) => m.info.symbol);
     const marketIndices = indexData;
     const symbols = mfs.getAllFundSymbols();
@@ -1017,7 +1018,7 @@ describe('导入后导出一致性测试', () => {
     await bs.applyBackupData(REAL_BACKUP);
 
     // 从 localStorage 获取当前状态
-    const indexData = JSON.parse(localStorage.getItem('fund_all_indices_data') || '[]');
+    const indexData = JSON.parse(localStorage.getItem(STORAGE_KEYS.INDEX_DATA) || '[]');
     const indicesConfig = indexData.map((m: any) => m.info.symbol);
     const marketIndices = indexData;
     const symbols = mfs.getAllFundSymbols();
@@ -1043,7 +1044,7 @@ describe('导入后导出一致性测试', () => {
     await bs.applyBackupData(REAL_BACKUP);
 
     // 从 localStorage 获取当前状态
-    const indexData = JSON.parse(localStorage.getItem('fund_all_indices_data') || '[]');
+    const indexData = JSON.parse(localStorage.getItem(STORAGE_KEYS.INDEX_DATA) || '[]');
     const indicesConfig = indexData.map((m: any) => m.info.symbol);
     const marketIndices = indexData;
     const symbols = mfs.getAllFundSymbols();
@@ -1165,9 +1166,9 @@ describe('导入-导出-再导入循环一致性测试', () => {
     fund_system_config: any;
   } {
     return {
-      fund_all_funds_data: JSON.parse(localStorage.getItem('fund_all_funds_data') || '[]'),
-      fund_all_indices_data: JSON.parse(localStorage.getItem('fund_all_indices_data') || '[]'),
-      fund_system_config: JSON.parse(localStorage.getItem('fund_system_config') || '{}'),
+      fund_all_funds_data: JSON.parse(localStorage.getItem(STORAGE_KEYS.FUND_DATA) || '[]'),
+      fund_all_indices_data: JSON.parse(localStorage.getItem(STORAGE_KEYS.INDEX_DATA) || '[]'),
+      fund_system_config: JSON.parse(localStorage.getItem(STORAGE_KEYS.SYSTEM_CONFIG) || '{}'),
     };
   }
 

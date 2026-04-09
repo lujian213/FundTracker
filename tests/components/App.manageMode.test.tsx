@@ -1,9 +1,10 @@
 import React from 'react';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import App from '../../App';
-import { MarketIndex, ValuationData } from '../../types';
-import { resetCache as resetIndexCache } from '../../services/indexService';
+import { MarketIndex, ValuationData, IndexInfo } from '../../types';
+import { resetCache as resetIndexCache, saveAllIndexInfos, getAllIndexInfos } from '../../services/indexService';
 import * as marketFundService from '../../services/marketFundService';
+import { STORAGE_KEYS } from '../../services/storageKeys';
 
 jest.mock('../../components/MarketNewsTicker', () => ({
   MarketNewsTicker: () => <div data-testid="market-news" />,
@@ -97,10 +98,10 @@ describe('App manage mode', () => {
   });
 
   test('manage button is enabled due to default indices when no funds or indices are configured', () => {
-    localStorage.setItem('fund_portfolio', JSON.stringify([]));
-    localStorage.setItem('fund_indices_info', JSON.stringify([]));
+    // 使用 service 清空数据
     marketFundService.resetCache();
     resetIndexCache();
+    // 不添加任何基金或指数
 
     render(<App />);
 
@@ -110,13 +111,15 @@ describe('App manage mode', () => {
   });
 
   test('enters unified manage mode and shows shared selection actions', async () => {
-    localStorage.setItem('fund_portfolio', JSON.stringify([{ id: 'fund-1', symbol: '000001', name: 'Sample Fund', market: 'Fund' }]));
-    localStorage.setItem('fund_indices_info', JSON.stringify([
+    // 使用 service 设置测试数据
+    marketFundService.resetCache();
+    marketFundService.addFund('000001', 'Sample Fund');
+    resetIndexCache();
+    const testIndices: IndexInfo[] = [
       { symbol: '1.000001', name: '上证指数', current: 3200, change: 0, changePercent: 0, lastUpdated: '' },
       { symbol: '100.NDX', name: '纳斯达克100', current: 15000, change: 0, changePercent: 0, lastUpdated: '' }
-    ]));
-    marketFundService.resetCache();
-    resetIndexCache();
+    ];
+    saveAllIndexInfos(testIndices);
 
     render(<App />);
 
@@ -135,13 +138,15 @@ describe('App manage mode', () => {
   });
 
   test('confirm removes selected fund, domestic index, and global index together', async () => {
-    localStorage.setItem('fund_portfolio', JSON.stringify([{ id: 'fund-1', symbol: '000001', name: 'Sample Fund', market: 'Fund' }]));
-    localStorage.setItem('fund_indices_info', JSON.stringify([
+    // 使用 service 设置测试数据
+    marketFundService.resetCache();
+    marketFundService.addFund('000001', 'Sample Fund');
+    resetIndexCache();
+    const testIndices: IndexInfo[] = [
       { symbol: '1.000001', name: '上证指数', current: 3200, change: 0, changePercent: 0, lastUpdated: '' },
       { symbol: '100.NDX', name: '纳斯达克100', current: 15000, change: 0, changePercent: 0, lastUpdated: '' }
-    ]));
-    marketFundService.resetCache();
-    resetIndexCache();
+    ];
+    saveAllIndexInfos(testIndices);
 
     render(<App />);
 
@@ -163,8 +168,8 @@ describe('App manage mode', () => {
     // 基金被删除
     expect(screen.queryByText('Sample Fund')).not.toBeInTheDocument();
 
-    // 验证 localStorage 已重置为默认指数（6个）- 使用新的统一key
-    const storedIndices = JSON.parse(localStorage.getItem('fund_all_indices_data') || '[]');
+    // 验证 localStorage 已重置为默认指数（6个）- 使用常量
+    const storedIndices = JSON.parse(localStorage.getItem(STORAGE_KEYS.INDEX_DATA) || '[]');
     expect(storedIndices.length).toBe(6);
 
     // 删除后 App 会使用默认指数（DEFAULT_INDICES 包含上证指数和纳斯达克100）
@@ -173,13 +178,15 @@ describe('App manage mode', () => {
   });
 
   test('cancel exits manage mode without deleting selected items', async () => {
-    localStorage.setItem('fund_portfolio', JSON.stringify([{ id: 'fund-1', symbol: '000001', name: 'Sample Fund', market: 'Fund' }]));
-    localStorage.setItem('fund_indices_info', JSON.stringify([
+    // 使用 service 设置测试数据
+    marketFundService.resetCache();
+    marketFundService.addFund('000001', 'Sample Fund');
+    resetIndexCache();
+    const testIndices: IndexInfo[] = [
       { symbol: '1.000001', name: '上证指数', current: 3200, change: 0, changePercent: 0, lastUpdated: '' },
       { symbol: '100.NDX', name: '纳斯达克100', current: 15000, change: 0, changePercent: 0, lastUpdated: '' }
-    ]));
-    marketFundService.resetCache();
-    resetIndexCache();
+    ];
+    saveAllIndexInfos(testIndices);
 
     render(<App />);
 
@@ -202,13 +209,15 @@ describe('App manage mode', () => {
   });
 
   test('shows pending deletion count only after items are selected', async () => {
-    localStorage.setItem('fund_portfolio', JSON.stringify([{ id: 'fund-1', symbol: '000001', name: 'Sample Fund', market: 'Fund' }]));
-    localStorage.setItem('fund_indices_info', JSON.stringify([
+    // 使用 service 设置测试数据
+    marketFundService.resetCache();
+    marketFundService.addFund('000001', 'Sample Fund');
+    resetIndexCache();
+    const testIndices: IndexInfo[] = [
       { symbol: '1.000001', name: '上证指数', current: 3200, change: 0, changePercent: 0, lastUpdated: '' },
       { symbol: '100.NDX', name: '纳斯达克100', current: 15000, change: 0, changePercent: 0, lastUpdated: '' }
-    ]));
-    marketFundService.resetCache();
-    resetIndexCache();
+    ];
+    saveAllIndexInfos(testIndices);
 
     render(<App />);
 

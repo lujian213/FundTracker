@@ -106,9 +106,12 @@ export function saveInvestmentDraft(date: string, draft: Record<string, DraftEnt
   const existingDraft = data.investmentDrafts[date];
   const existingCount = existingDraft ? Object.values(existingDraft).filter((d: any) => d.operation !== '不操作').length : 0;
   const newCount = draft ? Object.values(draft).filter((d: any) => d.operation !== '不操作').length : 0;
+  const newRecordCount = draft ? Object.keys(draft).length : 0;
 
-  // 如果新数据为空且已有数据不为空，不覆盖（防止 React StrictMode 双重调用导致数据丢失）
-  if (newCount === 0 && existingCount > 0) {
+  // 如果新数据完全没有记录（空的空对象）且已有数据不为空，不覆盖
+  // 这是为了防止 React StrictMode 双重调用导致初始化空数据覆盖已有数据
+  // 但如果有记录（即使都是"不操作"），说明是正常的重置操作，应该保存
+  if (newRecordCount === 0 && existingCount > 0) {
     return;
   }
 

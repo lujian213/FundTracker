@@ -23,11 +23,14 @@ jest.mock('../../services/marketFundService', () => ({
   updateValuation: jest.fn(),
   appendIntradayPoint: jest.fn(),
   updateHistory: jest.fn(),
+  addFund: jest.fn(),
+  resetCache: jest.fn(),
 }));
 
-// Ensure a clean localStorage and seed portfolio
-localStorage.clear();
-localStorage.setItem('fund_portfolio', JSON.stringify([{ id: '1', symbol: '000001', market: 'Fund' }]));
+// 使用 service 设置测试数据
+const marketFundService = require('../../services/marketFundService');
+marketFundService.resetCache();
+marketFundService.addFund('000001', 'Sample Fund');
 
 describe('Deep refresh auto-trigger helper', () => {
   beforeEach(() => { jest.resetModules(); jest.clearAllMocks(); });

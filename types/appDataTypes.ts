@@ -27,6 +27,9 @@ export interface DraftEntry {
   operation: '买入' | '卖出' | '不操作';
   amount: string;
   note: string;
+  // AI 建议相关字段（可选）
+  aiReason?: string;
+  aiScore?: number;
 }
 
 export interface ComboTrades {
