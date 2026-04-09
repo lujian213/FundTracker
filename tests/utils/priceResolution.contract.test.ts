@@ -61,9 +61,10 @@ describe('price resolution contract', () => {
       initialPosition: 10,
       initialPrice: 1
     });
+    // 存入估值数据（computeOverallProfit 现在只从缓存获取）
+    marketFundService.updateValuation('111111', valuation);
 
     _deps.fetchFundHistory = jest.fn().mockResolvedValue(history);
-    _deps.fetchFundData = jest.fn().mockResolvedValue(valuation as any);
 
     const summary = await computeOverallProfit({});
     const fundTimeline = summary.perFundTimelines?.['111111'] || [];

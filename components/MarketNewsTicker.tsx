@@ -9,14 +9,11 @@ const MARQUEE_DURATION_MS = 60000;
 
 export const MarketNewsTicker: React.FC = () => {
   const { errors: jobErrors } = useTimerJobErrors();
-  const { news, loading, error, loadNews, reloadTrigger } = useNews();
+  const { news, reloadTrigger } = useNews();
   // 记录每个错误ID的滚动次数
   const [scrollCounts, setScrollCounts] = useState<Map<string, number>>(new Map());
 
-  // Load news when reloadTrigger changes (triggered by scheduler)
-  useEffect(() => {
-    loadNews();
-  }, [reloadTrigger, loadNews]);
+  // reloadTrigger 变化时，news 已经由 service 更新，无需额外操作
 
   // 每 MARQUEE_DURATION_MS 毫秒增加所有当前显示错误的滚动次数
   useEffect(() => {
@@ -77,15 +74,7 @@ export const MarketNewsTicker: React.FC = () => {
       </div>
 
       <div className="flex-1 relative overflow-hidden h-full flex items-center bg-gray-50/50">
-        {loading && displayItems.length === 0 ? (
-          <div className="px-4 text-[10px] text-gray-400 italic">正在接入行情快讯...</div>
-        ) : error && displayItems.length === 0 ? (
-          <div className="px-4 text-[10px] text-amber-600 flex items-center">
-            <i className="fas fa-wifi-slash mr-2 opacity-60"></i>
-            行情同步受阻 (可能是网络波动或非交易时段)
-            <button onClick={loadNews} className="ml-2 font-bold underline hover:text-red-600">重试</button>
-          </div>
-        ) : displayItems.length > 0 ? (
+        {displayItems.length > 0 ? (
           <div className="absolute whitespace-nowrap flex items-center h-full animate-marquee hover:[animation-play-state:paused] cursor-pointer">
             {[...displayItems, ...displayItems].map((item, idx) => (
               item.isError ? (

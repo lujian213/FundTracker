@@ -1,6 +1,5 @@
-import { createContext, useContext, useState, useCallback, ReactNode } from 'react';
+import { createContext, useContext, useState, useCallback, ReactNode, useEffect } from 'react';
 import * as marketNewsService from '../services/marketNewsService';
-import { JobResult } from '../types';
 
 export type { NewsItem } from '../services/marketNewsService';
 
@@ -8,64 +7,38 @@ type NewsItem = marketNewsService.NewsItem;
 
 interface NewsContextValue {
   news: NewsItem[];
-  loading: boolean;
-  error: boolean;
-  setNews: (news: NewsItem[]) => void;
-  setLoading: (loading: boolean) => void;
-  setError: (error: boolean) => void;
   reload: () => void;
   reloadTrigger: number;
-  loadNews: () => Promise<JobResult<NewsItem[]>>;
 }
 
 const NewsContext = createContext<NewsContextValue>({
   news: [],
-  loading: true,
-  error: false,
-  setNews: () => {},
-  setLoading: () => {},
-  setError: () => {},
   reload: () => {},
   reloadTrigger: 0,
-  loadNews: async () => ({ success: true }),
 });
 
 export const NewsProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
-  // 初始化时从缓存读取，实现秒开
-  const [news, setNews] = useState<NewsItem[]>(() => marketNewsService.getNews());
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(false);
   const [reloadTrigger, setReloadTrigger] = useState(0);
 
+  const [news, setNews] = useState<NewsItem[]>(() => marketNewsService.getNews());
+
   const reload = useCallback(() => {
+    // 从 service 重新读取缓存
+    setNews(marketNewsService.getNews());
     setReloadTrigger(prev => prev + 1);
   }, []);
 
-  const loadNews = useCallback(async () => {
-    try {
-      setLoading(true);
-      setError(false);
-      const result = await marketNewsService.fetchMarketNews();
-
-      if (result.success && result.data && result.data.length > 0) {
-        marketNewsService.setNews(result.data);
-        setNews(result.data);
-        return { success: true, data: result.data };
-      } else {
-        setNews([]);
-        setError(true);
-        return { success: false, message: result.message };
-      }
-    } catch (e: unknown) {
-      setError(true);
-      return { success: false, message: (e as Error).message || '未知错误' };
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+  // 监听缓存更新事件
+  useEffect(() => {
+    const handleCacheUpdate = () => {
+      reload();
+    };
+    window.addEventListener('news-cache-updated', handleCacheUpdate);
+    return () => window.removeEventListener('news-cache-updated', handleCacheUpdate);
+  }, [reload]);
 
   return (
-    <NewsContext.Provider value={{ news, loading, error, setNews, setLoading, setError, reload, reloadTrigger, loadNews }}>
+    <NewsContext.Provider value={{ news, reload, reloadTrigger }}>
       {children}
     </NewsContext.Provider>
   );

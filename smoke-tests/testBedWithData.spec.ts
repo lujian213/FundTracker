@@ -89,8 +89,11 @@ test.describe('testBedWithData', () => {
     }
     console.log(`Mock 时间: ${mockData.timestamp}`);
 
-    // 创建共享的浏览器上下文，并在页面加载前 mock Date
-    sharedContext = await browser.newContext();
+    // 创建共享的浏览器上下文，设置时区为东8区，并在页面加载前 mock Date
+    sharedContext = await browser.newContext({
+      locale: 'zh-CN',
+      timezoneId: 'Asia/Shanghai',
+    });
 
     // 使用 addInitScript 在每个页面加载前 mock Date
     await sharedContext.addInitScript((mockTime) => {
@@ -121,9 +124,28 @@ test.describe('testBedWithData', () => {
 
     sharedPage = await sharedContext.newPage();
 
+    // 拦截外部网络请求，阻止后台任务获取真实数据
+    await sharedPage.route('**/*', (route) => {
+      const url = route.request().url();
+      // 允许本地资源和数据请求
+      if (url.startsWith('http://localhost') ||
+          url.startsWith('ws://localhost') ||
+          url.includes('/assets/')) {
+        route.continue();
+      } else {
+        // 阻止外部网络请求
+        route.abort();
+      }
+    });
+
     // 先导航到页面（必须先有页面才能操作 localStorage）
     await sharedPage.goto('/', { waitUntil: 'load' });
     await expect(sharedPage.locator('#root')).toBeVisible();
+
+    // 清除之前的 localStorage 数据，确保干净状态
+    await sharedPage.evaluate(() => {
+      localStorage.clear();
+    });
 
     // 导入 mock data 到 localStorage
     await importMockData(sharedPage, mockData.data);
@@ -131,6 +153,18 @@ test.describe('testBedWithData', () => {
     // 刷新页面以加载导入的数据到 React 状态
     await sharedPage.reload({ waitUntil: 'load' });
     await expect(sharedPage.locator('#root')).toBeVisible();
+
+    // 注入新闻数据并触发事件让 NewsContext 更新
+    await sharedPage.evaluate((newsData) => {
+      if ((window as any).__ROOT__ && newsData.length > 0) {
+        (window as any).__ROOT__.marketNewsService.setNews(newsData);
+        // setNews 会自动触发 'news-cache-updated' 事件，NewsContext 会自动刷新
+      }
+      // 禁用定时器，防止后台任务执行
+      if ((window as any).__ROOT__?.timerJobScheduler) {
+        (window as any).__ROOT__.timerJobScheduler.stop();
+      }
+    }, mockData.newsCache || []);
 
     console.log('测试基座准备完成');
   });
@@ -621,9 +655,9 @@ test.describe('testBedWithData', () => {
     const timeValue = await timeInput.inputValue();
     expect(timeValue).toBe('16:00');
 
-    // 关闭开关
-    const autoBackupToggleDiv = page.locator('div.w-11.h-6.rounded-full').first();
-    await autoBackupToggleDiv.click();
+    // 关闭开关（点击 label 来触发 checkbox）
+    const autoBackupToggleLabel = page.locator('label.cursor-pointer').first();
+    await autoBackupToggleLabel.click();
 
     // 验证开关已关闭（自动等待）
     await expect(autoBackupCheckbox).not.toBeChecked({ timeout: 2000 });
@@ -635,7 +669,7 @@ test.describe('testBedWithData', () => {
     await expect(page.locator('text=已关闭')).toBeVisible();
 
     // 重新打开开关，恢复状态
-    await autoBackupToggleDiv.click();
+    await autoBackupToggleLabel.click();
     await expect(autoBackupCheckbox).toBeChecked({ timeout: 2000 });
 
     console.log('备份管理验证完成');
@@ -865,5 +899,538 @@ test.describe('testBedWithData', () => {
     await expect(positionsModal).not.toBeVisible();
 
     console.log('基金持仓测试完成');
+  });
+
+  // ═══════════════════════════════════════════════════════════════════════════════
+  // 测试用例 6：整体盈亏测试
+  // ═══════════════════════════════════════════════════════════════════════════════
+
+  test('整体盈亏测试', async () => {
+    const page = sharedPage!;
+
+    // ══════════════════════════════════════════════════════════════════════════════
+    // 1. 点击"盈利"按钮，弹出"整体盈亏"窗口
+    // ══════════════════════════════════════════════════════════════════════════════
+    const profitButton = page.locator('button:has-text("盈利")');
+    await profitButton.click();
+
+    // 验证窗口已打开
+    const profitModal = page.locator('h3:has-text("整体盈亏")');
+    await expect(profitModal).toBeVisible({ timeout: 10000 });
+
+    // 等待加载完成
+    await page.waitForTimeout(2000);
+
+    // ══════════════════════════════════════════════════════════════════════════════
+    // 2. 验证表格有21条数据，图表有超过10个数据点
+    // ══════════════════════════════════════════════════════════════════════════════
+    const tableRows = page.locator('table tbody tr');
+    expect(await tableRows.count()).toBe(21);
+    console.log('表格数据验证完成: 21条记录');
+
+    // 验证图表数据点
+    const chartPoints = page.locator('[data-testid^="overall-profit-point-"]');
+    const pointCount = await chartPoints.count();
+    expect(pointCount).toBeGreaterThan(10);
+    console.log(`图表数据点验证完成: ${pointCount}个数据点`);
+
+    // ══════════════════════════════════════════════════════════════════════════════
+    // 3. 验证图表x轴范围和期间累计显示
+    // ══════════════════════════════════════════════════════════════════════════════
+    const periodTotal = page.locator('[data-testid="overall-period-total"]');
+    await expect(periodTotal).toBeVisible();
+    const periodText = await periodTotal.textContent();
+    expect(periodText).toContain('2026/02/12');
+    expect(periodText).toContain('2026/04/08');
+    console.log(`期间累计验证完成: ${periodText}`);
+
+    // 验证数据点hover tooltip
+    const firstPoint = chartPoints.first();
+    await firstPoint.hover();
+    const tooltip = page.locator('[data-testid="overall-profit-tooltip"]');
+    await expect(tooltip).toBeVisible({ timeout: 3000 });
+    console.log('图表hover tooltip验证完成');
+
+    // ══════════════════════════════════════════════════════════════════════════════
+    // 4. 验证日期选择器初始值
+    // ══════════════════════════════════════════════════════════════════════════════
+    const dateInputs = page.locator('input[type="date"]');
+    const fromDate = await dateInputs.nth(0).inputValue();
+    const toDate = await dateInputs.nth(1).inputValue();
+    expect(toDate).toBe('2026-04-08');
+    expect(fromDate).toBe('2026-04-07');
+    console.log(`日期选择器初始值验证完成: 日期1=${fromDate}, 日期2=${toDate}`);
+
+    // ══════════════════════════════════════════════════════════════════════════════
+    // 5. 验证表格默认按差额倒序排列
+    // ══════════════════════════════════════════════════════════════════════════════
+    const diffCells = await page.locator('table tbody tr td:nth-child(4)').allTextContents();
+    const diffValues = diffCells.map(text => {
+      // 差额单元格格式: "+1,234.56" 或 "-1,234.56" 或 "-"
+      // 需要先去掉逗号分隔符再解析
+      const cleanText = text.replace(/,/g, '');
+      if (cleanText.trim() === '-') return 0;  // "-" 表示值为0
+      const match = cleanText.match(/[-+]?\d+\.?\d*/);
+      return match ? parseFloat(match[0]) : 0;
+    });
+    for (let i = 1; i < diffValues.length; i++) {
+      expect(diffValues[i - 1]).toBeGreaterThanOrEqual(diffValues[i]);
+    }
+    console.log('差额倒序排列验证完成');
+
+    // ══════════════════════════════════════════════════════════════════════════════
+    // 6. 验证第2列和第3列支持排序
+    // ══════════════════════════════════════════════════════════════════════════════
+    // 默认 diff 列是降序排序，from/to 列无排序
+    // 点击第2列表头（from 列）
+    const column2Header = page.locator('thead th button').first();
+    await column2Header.click();
+    await page.waitForTimeout(500);
+
+    // 验证 from 列变为降序排序（.fa-sort-down 存在）
+    const fromSortIcon = page.locator('thead th button').first().locator('.fa-sort-down');
+    await expect(fromSortIcon).toHaveCount(1, { timeout: 3000 });
+    console.log('第2列排序验证完成');
+
+    // 点击第3列表头（to 列）
+    const column3Header = page.locator('thead th button').nth(1);
+    await column3Header.click();
+    await page.waitForTimeout(500);
+
+    // 验证 to 列变为降序排序
+    const toSortIcon = page.locator('thead th button').nth(1).locator('.fa-sort-down');
+    await expect(toSortIcon).toHaveCount(1, { timeout: 3000 });
+    console.log('第3列排序验证完成');
+
+    // ══════════════════════════════════════════════════════════════════════════════
+    // 7. 点击图表数据点更新日期选择器
+    // ══════════════════════════════════════════════════════════════════════════════
+    // 找到 2026/03/23 对应的数据点（大约在中间位置）
+    const middlePoint = chartPoints.nth(Math.floor(pointCount / 2));
+    await middlePoint.click();
+    await page.waitForTimeout(500);
+
+    // 验证日期已更新
+    const newToDate = await dateInputs.nth(1).inputValue();
+    console.log(`点击数据点后日期2更新为: ${newToDate}`);
+    // 日期应该不再是 2026-04-08
+    expect(newToDate).not.toBe('2026-04-08');
+
+    // ══════════════════════════════════════════════════════════════════════════════
+    // 8. 点击"本月"按钮
+    // ══════════════════════════════════════════════════════════════════════════════
+    const thisMonthButton = page.locator('button:has-text("本月")');
+    await thisMonthButton.click();
+    await page.waitForTimeout(500);
+
+    const thisMonthFrom = await dateInputs.nth(0).inputValue();
+    const thisMonthTo = await dateInputs.nth(1).inputValue();
+    expect(thisMonthFrom).toBe('2026-03-31');
+    expect(thisMonthTo).toBe('2026-04-08');
+    console.log(`本月按钮验证完成: ${thisMonthFrom} ~ ${thisMonthTo}`);
+
+    // ══════════════════════════════════════════════════════════════════════════════
+    // 9. 点击"上月"按钮
+    // ══════════════════════════════════════════════════════════════════════════════
+    const lastMonthButton = page.locator('button:has-text("上月")');
+    await lastMonthButton.click();
+    await page.waitForTimeout(500);
+
+    const lastMonthFrom = await dateInputs.nth(0).inputValue();
+    const lastMonthTo = await dateInputs.nth(1).inputValue();
+    expect(lastMonthFrom).toBe('2026-02-28');
+    expect(lastMonthTo).toBe('2026-03-31');
+    console.log(`上月按钮验证完成: ${lastMonthFrom} ~ ${lastMonthTo}`);
+
+    // ══════════════════════════════════════════════════════════════════════════════
+    // 10. 点击"本年"按钮
+    // ══════════════════════════════════════════════════════════════════════════════
+    const thisYearButton = page.locator('button:has-text("本年")');
+    await thisYearButton.click();
+    await page.waitForTimeout(500);
+
+    const thisYearFrom = await dateInputs.nth(0).inputValue();
+    const thisYearTo = await dateInputs.nth(1).inputValue();
+    expect(thisYearFrom).toBe('2025-12-31');
+    expect(thisYearTo).toBe('2026-04-08');
+    console.log(`本年按钮验证完成: ${thisYearFrom} ~ ${thisYearTo}`);
+
+    // ══════════════════════════════════════════════════════════════════════════════
+    // 11. 点击"去年"按钮，表格为空
+    // ══════════════════════════════════════════════════════════════════════════════
+    const lastYearButton = page.locator('button:has-text("去年")');
+    await lastYearButton.click();
+    await page.waitForTimeout(500);
+
+    const lastYearFrom = await dateInputs.nth(0).inputValue();
+    const lastYearTo = await dateInputs.nth(1).inputValue();
+    expect(lastYearFrom).toBe('2024-12-31');
+    expect(lastYearTo).toBe('2025-12-31');
+    console.log(`去年按钮验证完成: ${lastYearFrom} ~ ${lastYearTo}`);
+
+    // 验证表格为空
+    const emptyRows = await page.locator('table tbody tr').count();
+    expect(emptyRows).toBe(0);
+    console.log('去年表格为空验证完成');
+
+    // ══════════════════════════════════════════════════════════════════════════════
+    // 12. 日期超出范围显示错误提示
+    // ══════════════════════════════════════════════════════════════════════════════
+    await dateInputs.nth(1).fill('2026-05-28');
+    await page.waitForTimeout(500);
+
+    const errorMessage = page.locator('text=规则错误');
+    await expect(errorMessage).toBeVisible();
+    console.log('日期超出范围错误提示验证完成');
+
+    // ══════════════════════════════════════════════════════════════════════════════
+    // 13. 点击"重置"按钮恢复初始状态
+    // ══════════════════════════════════════════════════════════════════════════════
+    const resetButton = page.locator('button:has-text("重置")');
+    await resetButton.click();
+    await page.waitForTimeout(500);
+
+    const resetFrom = await dateInputs.nth(0).inputValue();
+    const resetTo = await dateInputs.nth(1).inputValue();
+    expect(resetFrom).toBe('2026-02-12');
+    expect(resetTo).toBe('2026-04-08');
+    console.log(`重置按钮验证完成: ${resetFrom} ~ ${resetTo}`);
+
+    // 验证表格恢复到21条数据
+    const restoredRows = await page.locator('table tbody tr').count();
+    expect(restoredRows).toBe(21);
+    console.log('表格恢复验证完成');
+
+    // ══════════════════════════════════════════════════════════════════════════════
+    // 14. 关闭窗口
+    // ══════════════════════════════════════════════════════════════════════════════
+    await page.click('button[aria-label="关闭整体盈亏窗口"]');
+    await expect(profitModal).not.toBeVisible();
+
+    console.log('整体盈亏测试完成');
+  });
+
+  // ═══════════════════════════════════════════════════════════════════════════════
+  // 测试用例 7：交易窗口测试
+  // ═══════════════════════════════════════════════════════════════════════════════
+
+  test('交易窗口测试', async () => {
+    const page = sharedPage!;
+
+    // ══════════════════════════════════════════════════════════════════════════════
+    // 1. 点击"交易"按钮，弹出"基金交易明细"窗口
+    // ══════════════════════════════════════════════════════════════════════════════
+    const tradeButton = page.locator('button:has-text("交易")');
+    await tradeButton.click();
+
+    const tradeModal = page.locator('h3:has-text("基金交易明细")');
+    await expect(tradeModal).toBeVisible();
+
+    // ══════════════════════════════════════════════════════════════════════════════
+    // 2. 验证日期选择框显示最新交易日期
+    // ══════════════════════════════════════════════════════════════════════════════
+    const dateText = page.locator('button').filter({ hasText: '2026-04' }).first();
+    await expect(dateText).toBeVisible();
+    console.log('交易窗口验证完成：有交易日期显示');
+
+    // ══════════════════════════════════════════════════════════════════════════════
+    // 3. 验证表格有交易记录
+    // ══════════════════════════════════════════════════════════════════════════════
+    const tableRows = page.locator('table tbody tr');
+    const rowCount = await tableRows.count();
+    expect(rowCount).toBeGreaterThan(0);
+    console.log(`交易记录验证完成: ${rowCount}条`);
+
+    // 验证总计栏存在
+    const statsRow = page.locator('tfoot td');
+    await expect(statsRow).toBeVisible();
+    const statsText = await statsRow.textContent();
+    expect(statsText).toContain('买入');
+    expect(statsText).toContain('卖出');
+    console.log('总计栏验证完成');
+
+    // ══════════════════════════════════════════════════════════════════════════════
+    // 4. 点击"组合交易"，弹出"组合交易管理"窗口
+    // ══════════════════════════════════════════════════════════════════════════════
+    const comboButton = page.locator('button:has-text("组合交易")');
+    await comboButton.click();
+
+    const comboModal = page.locator('h3:has-text("组合交易管理")');
+    await expect(comboModal).toBeVisible();
+    console.log('组合交易窗口打开验证完成');
+
+    // ══════════════════════════════════════════════════════════════════════════════
+    // 5. 验证"已有组合"里面显示2个组合
+    // ══════════════════════════════════════════════════════════════════════════════
+    const comboItems = page.locator('div.flex.flex-wrap button');
+    const comboCount = await comboItems.count();
+    expect(comboCount).toBeGreaterThanOrEqual(2);
+    console.log(`已有组合验证完成: ${comboCount}个`);
+
+    // ══════════════════════════════════════════════════════════════════════════════
+    // 6. 点击"纳斯达克"，验证表格显示记录
+    // ══════════════════════════════════════════════════════════════════════════════
+    const nasdaqButton = page.locator('button').filter({ hasText: /^纳斯达克$/ });
+    await nasdaqButton.click();
+
+    // 等待表格渲染
+    const comboTableBody = page.locator('div.border.border-gray-100.rounded-xl tbody tr');
+    await expect(comboTableBody.first()).toBeVisible();
+    const comboRowCount = await comboTableBody.count();
+    expect(comboRowCount).toBeGreaterThan(0);
+    console.log(`纳斯达克组合验证完成: ${comboRowCount}条记录`);
+
+    // ══════════════════════════════════════════════════════════════════════════════
+    // 7. 添加新组合"新组合"
+    // ══════════════════════════════════════════════════════════════════════════════
+    const newComboInput = page.locator('input[placeholder="请输入组合名称"]');
+    await newComboInput.fill('新组合');
+
+    const addComboButton = page.locator('button:has-text("添加组合交易")');
+    await expect(addComboButton).not.toBeDisabled();
+    await addComboButton.click();
+
+    const newComboButton = page.locator('button').filter({ hasText: /^新组合$/ });
+    await expect(newComboButton).toBeVisible();
+    console.log('新组合添加验证完成');
+
+    // ══════════════════════════════════════════════════════════════════════════════
+    // 8. 修改"博时黄金ETF联接C"的买入金额和手续费
+    // ══════════════════════════════════════════════════════════════════════════════
+    const boshiRow = page.locator('tr').filter({ has: page.locator('button[title="重置"]') }).filter({ hasText: '博时黄金ETF联接C' });
+    await expect(boshiRow).toBeVisible();
+
+    // 填写金额和手续费
+    const amountInput = boshiRow.locator('input[type="number"]').first();
+    const feeInput = boshiRow.locator('input[type="number"]').nth(1);
+    await amountInput.fill('1000');
+    await feeInput.fill('10');
+    console.log('博时黄金金额修改验证完成');
+
+    // ══════════════════════════════════════════════════════════════════════════════
+    // 9. 点击保存按钮
+    // ══════════════════════════════════════════════════════════════════════════════
+    const saveButton = page.locator('button:has-text("保存")');
+    await saveButton.click();
+
+    const successMessage = page.locator('text=保存成功');
+    await expect(successMessage).toBeVisible({ timeout: 5000 });
+    console.log('保存验证完成');
+
+    // 关闭组合交易窗口
+    const closeComboButton = page.locator('div:has(> h3:has-text("组合交易管理")) button[aria-label="关闭"]');
+    await closeComboButton.click();
+    await expect(comboModal).not.toBeVisible();
+
+    // ══════════════════════════════════════════════════════════════════════════════
+    // 10. 再次打开组合交易，验证3个组合
+    // ══════════════════════════════════════════════════════════════════════════════
+    await comboButton.click();
+    await expect(comboModal).toBeVisible();
+
+    const comboItemsAfter = page.locator('div.flex.flex-wrap button');
+    const comboCountAfter = await comboItemsAfter.count();
+    expect(comboCountAfter).toBeGreaterThanOrEqual(3);
+    console.log(`再次验证组合数量: ${comboCountAfter}个`);
+
+    // ══════════════════════════════════════════════════════════════════════════════
+    // 11. 点击"新组合"，验证博时黄金数据
+    // ══════════════════════════════════════════════════════════════════════════════
+    await newComboButton.click();
+
+    const boshiRowAfter = page.locator('tr').filter({ has: page.locator('button[title="重置"]') }).filter({ hasText: '博时黄金ETF联接C' });
+    const amountInputAfter = boshiRowAfter.locator('input[type="number"]').first();
+    const feeInputAfter = boshiRowAfter.locator('input[type="number"]').nth(1);
+    await expect(amountInputAfter).toHaveValue('1000');
+    await expect(feeInputAfter).toHaveValue('10');
+    console.log('新组合数据验证完成');
+
+    // ══════════════════════════════════════════════════════════════════════════════
+    // 12. 删除"新组合"
+    // ══════════════════════════════════════════════════════════════════════════════
+    const newComboItem = page.locator('div.inline-flex.items-center').filter({
+      has: page.locator('button:has-text("新组合")')
+    });
+    const deleteButton = newComboItem.locator('button[title="删除"]');
+    await deleteButton.click();
+
+    const confirmDeleteButton = page.locator('button:has-text("确认删除")');
+    await confirmDeleteButton.click();
+    await expect(newComboButton).not.toBeVisible();
+    console.log('新组合删除验证完成');
+
+    // 关闭组合交易窗口
+    await closeComboButton.click();
+    await expect(comboModal).not.toBeVisible();
+
+    // ══════════════════════════════════════════════════════════════════════════════
+    // 13. 点击"批量输入"按钮
+    // ══════════════════════════════════════════════════════════════════════════════
+    const batchInputButton = page.locator('button:has-text("批量输入")');
+    await batchInputButton.click();
+
+    const batchModal = page.locator('h3:has-text("批量交易录入")');
+    await expect(batchModal).toBeVisible();
+    console.log('批量输入窗口打开验证完成');
+
+    // 验证交易日期
+    const batchDateText = page.locator('button').filter({ hasText: '2026-04' }).first();
+    await expect(batchDateText).toBeVisible();
+
+    // 验证组合交易面板存在
+    const batchDialogContent = page.locator('[role="dialog"]').filter({ has: batchModal });
+    const comboTitleInBatch = batchDialogContent.locator('span.text-xs.font-medium.text-gray-700:has-text("组合交易")');
+    await expect(comboTitleInBatch).toBeVisible();
+    console.log('组合交易面板验证完成');
+
+    // 验证组合交易按钮数量
+    const batchComboButtons = page.locator('div.p-3.bg-white button.inline-flex.bg-blue-50');
+    await expect(batchComboButtons.first()).toBeVisible();
+    const batchComboCount = await batchComboButtons.count();
+    expect(batchComboCount).toBe(2);
+    console.log(`组合交易按钮验证完成: ${batchComboCount}个`);
+
+    // 验证基金分组数量
+    const fundGroupRows = page.locator('tr.bg-blue-50');
+    const groupCount = await fundGroupRows.count();
+    expect(groupCount).toBe(21);
+    console.log(`基金分组验证完成: ${groupCount}个`);
+
+    // ══════════════════════════════════════════════════════════════════════════════
+    // 14. 点击"日常定投"
+    // ══════════════════════════════════════════════════════════════════════════════
+    const dailyInvestButton = page.locator('button:has-text("日常定投")');
+    await dailyInvestButton.click();
+
+    // 等待交易记录渲染
+    const batchTable = page.locator('table');
+    const groupsWithTrades = batchTable.locator('tbody tr:not(.bg-blue-50)').filter({
+      has: page.locator('input')
+    });
+    await expect(groupsWithTrades.first()).toBeVisible();
+    const groupsWithTradesCount = await groupsWithTrades.count();
+    expect(groupsWithTradesCount).toBeGreaterThanOrEqual(8);
+    console.log(`日常定投验证完成: ${groupsWithTradesCount}条交易记录`);
+
+    // ══════════════════════════════════════════════════════════════════════════════
+    // 15. 在"广发半导体设备ETF联接C"添加买入交易
+    // ══════════════════════════════════════════════════════════════════════════════
+    const guangfaHeaderRow = batchTable.locator('tr.bg-blue-50').filter({
+      hasText: '广发半导体设备ETF联接C'
+    });
+    await expect(guangfaHeaderRow).toBeVisible();
+
+    const addRecordButton = guangfaHeaderRow.locator('button:has-text("添加记录")');
+    await addRecordButton.click();
+
+    const guangfaFirstTradeRow = guangfaHeaderRow.locator('xpath=following-sibling::tr[td[contains(text(), "第")]]').first();
+    await expect(guangfaFirstTradeRow).toBeVisible();
+
+    const typeSelect = guangfaFirstTradeRow.locator('select').first();
+    await typeSelect.selectOption('buy');
+
+    const totalInput = guangfaFirstTradeRow.locator('input[placeholder="输入总额"]').first();
+    const tradeFeeInput = guangfaFirstTradeRow.locator('input[type="number"].border-gray-200').first();
+    await totalInput.fill('1000');
+    await tradeFeeInput.fill('10');
+
+    const sharesInput = guangfaFirstTradeRow.locator('input[placeholder="自动计算"]').first();
+    const sharesValue = await sharesInput.inputValue();
+    expect(parseFloat(sharesValue)).toBeCloseTo(529.67, 0);
+    console.log(`广发半导体买入验证完成: 份额=${sharesValue}`);
+
+    // ══════════════════════════════════════════════════════════════════════════════
+    // 16. 在"华夏国证半导体芯片ETF联接C"添加卖出交易
+    // ══════════════════════════════════════════════════════════════════════════════
+    const huaxiaHeaderRow = batchTable.locator('tr.bg-blue-50').filter({
+      hasText: '华夏国证半导体芯片ETF联接C'
+    });
+    await expect(huaxiaHeaderRow).toBeVisible();
+
+    const addRecordButton2 = huaxiaHeaderRow.locator('button:has-text("添加记录")');
+    await addRecordButton2.click();
+
+    const huaxiaFirstTradeRow = huaxiaHeaderRow.locator('xpath=following-sibling::tr[td[contains(text(), "第")]]').first();
+    await expect(huaxiaFirstTradeRow).toBeVisible();
+
+    const typeSelect2 = huaxiaFirstTradeRow.locator('select').first();
+    await typeSelect2.selectOption('sell');
+
+    const sharesInput2 = huaxiaFirstTradeRow.locator('input[placeholder="输入份额"]').first();
+    const tradeFeeInput2 = huaxiaFirstTradeRow.locator('input[type="number"].border-gray-200').first();
+    await sharesInput2.fill('1000');
+    await tradeFeeInput2.fill('10');
+
+    const totalInput2 = huaxiaFirstTradeRow.locator('input[placeholder="自动计算"]').first();
+    const totalValue = await totalInput2.inputValue();
+    expect(parseFloat(totalValue)).toBeGreaterThan(0);
+    console.log(`华夏国证卖出验证完成: 总额=${totalValue}`);
+
+    // ══════════════════════════════════════════════════════════════════════════════
+    // 17. 验证总计栏显示
+    // ══════════════════════════════════════════════════════════════════════════════
+    const batchStatsBar = batchDialogContent.locator('tfoot.bg-gray-50');
+    const batchStatsText = await batchStatsBar.textContent();
+    expect(batchStatsText).toContain('买入');
+    expect(batchStatsText).toContain('卖出');
+    console.log('批量输入总计栏验证完成');
+
+    // ══════════════════════════════════════════════════════════════════════════════
+    // 18. 删除华夏国证第一条记录
+    // ══════════════════════════════════════════════════════════════════════════════
+    const huaxiaFirstRow = huaxiaHeaderRow.locator('xpath=following-sibling::tr[td[contains(text(), "第")]]').first();
+    const deleteRecordButton = huaxiaFirstRow.locator('button:has(i.fa-trash-alt)');
+    await deleteRecordButton.click();
+
+    const batchStatsTextAfterDelete = await batchStatsBar.textContent();
+    expect(batchStatsTextAfterDelete).toContain('卖出 0');
+    console.log('删除记录验证完成');
+
+    // ══════════════════════════════════════════════════════════════════════════════
+    // 19. 关闭批量输入窗口（有确认对话框）
+    // ══════════════════════════════════════════════════════════════════════════════
+    const closeBatchButton = page.locator('div:has(> h3:has-text("批量交易录入")) button[aria-label="关闭"]');
+    await closeBatchButton.click();
+
+    const confirmDialog = page.locator('h3:has-text("确认关闭")');
+    await expect(confirmDialog).toBeVisible();
+
+    const confirmCloseButton = page.locator('button:has-text("确认")');
+    await confirmCloseButton.click();
+    await expect(batchModal).not.toBeVisible();
+    console.log('批量输入窗口关闭验证完成');
+
+    // ══════════════════════════════════════════════════════════════════════════════
+    // 20. 验证日期选择窗口
+    // ══════════════════════════════════════════════════════════════════════════════
+    const dateSelectButton = page.locator('button').filter({ hasText: '2026-04' }).first();
+    await dateSelectButton.click();
+
+    const dayPicker = page.locator('.rdp-day');
+    await expect(dayPicker.first()).toBeVisible();
+    await page.keyboard.press('Escape');
+
+    // ══════════════════════════════════════════════════════════════════════════════
+    // 21. 再次打开批量输入，直接关闭（无确认对话框）
+    // ══════════════════════════════════════════════════════════════════════════════
+    await batchInputButton.click();
+    await expect(batchModal).toBeVisible();
+
+    const closeBatchButton2 = page.locator('div:has(> h3:has-text("批量交易录入")) button[aria-label="关闭"]');
+    await closeBatchButton2.click();
+    await expect(batchModal).not.toBeVisible();
+
+    const confirmDialog2 = page.locator('h3:has-text("确认关闭")');
+    await expect(confirmDialog2).not.toBeVisible();
+    console.log('无数据关闭验证完成');
+
+    // ══════════════════════════════════════════════════════════════════════════════
+    // 22. 关闭交易窗口
+    // ══════════════════════════════════════════════════════════════════════════════
+    const closeTradeButton = page.locator('div:has(> h3:has-text("基金交易明细")) button[aria-label="关闭"]');
+    await closeTradeButton.click();
+    await expect(tradeModal).not.toBeVisible();
+
+    console.log('交易窗口测试完成');
   });
 });

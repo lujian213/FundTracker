@@ -244,11 +244,8 @@ describe('computeOverallProfit', () => {
       initialPosition: 10,
       initialPrice: 1
     });
-
-    _deps.fetchFundHistory = jest.fn().mockResolvedValue([
-      { date: new Date('2026-03-01 15:00').getTime(), value: 1.1, equityReturn: 0 },
-    ]);
-    _deps.fetchFundData = jest.fn().mockResolvedValue({
+    // 存入估值数据（computeOverallProfit 现在只从缓存获取）
+    marketFundService.updateValuation('111111', {
       symbol: '111111',
       name: 'A',
       currentPrice: 2.2,
@@ -260,6 +257,10 @@ describe('computeOverallProfit', () => {
       valuationDate: today,
       sourceUrl: '',
     });
+
+    _deps.fetchFundHistory = jest.fn().mockResolvedValue([
+      { date: new Date('2026-03-01 15:00').getTime(), value: 1.1, equityReturn: 0 },
+    ]);
     getTradesForSymbol.mockReturnValue([]);
 
     const result = await (fundService as any).computeOverallProfit({});

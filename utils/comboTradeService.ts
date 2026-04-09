@@ -103,6 +103,13 @@ export function loadComboTradesFromStorage(): ComboTrade[] {
  * 保存组合交易数据到 localStorage
  */
 export function saveComboTradesToStorage(comboTrades: Record<string, ComboTrade>): void {
+  // 先清除不在传入对象中的组合
+  const currentList = loadComboTradeList();
+  currentList.forEach(combo => {
+    if (!comboTrades[combo.id]) {
+      deleteComboTradeFromCache(combo.id);
+    }
+  });
   // 更新内存缓存
   Object.entries(comboTrades).forEach(([id, combo]) => {
     saveComboTradeToCache(id, combo);

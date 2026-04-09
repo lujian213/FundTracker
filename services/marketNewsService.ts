@@ -28,9 +28,14 @@ export function getNews(): NewsItem[] {
 
 /**
  * 设置市场热点缓存
+ * 同时触发事件通知 UI 更新
  */
 export function setNews(items: NewsItem[]): void {
   newsCache = items;
+  // 触发事件通知 NewsContext 更新
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent('news-cache-updated'));
+  }
 }
 
 /**
@@ -65,6 +70,7 @@ async function fetchJson<T>(url: string, timeout: number = 10000): Promise<T> {
 /**
  * 获取市场热点新闻（领涨板块或热门个股）
  *
+ * 成功获取后会自动更新缓存。
  * 返回 JobResult 结构，包含成功/失败状态和数据
  */
 export async function fetchMarketNews(): Promise<JobResult<NewsItem[]>> {
@@ -136,6 +142,9 @@ export async function fetchMarketNews(): Promise<JobResult<NewsItem[]>> {
           altUrls
         };
       });
+
+      // 更新缓存
+      setNews(newsItems);
 
       return { success: true, data: newsItems };
     }

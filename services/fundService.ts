@@ -1113,14 +1113,15 @@ export async function computeOverallProfit(opts: { symbols?: string[]; fromDate?
       // Desired end date: user-specified toDate, otherwise today's date (local YYYY-MM-DD).
       const desiredEndDate = toDate ?? todayLocal;
 
-      // 获取估值数据
+      // 获取估值数据（只从缓存中获取，不进行网络请求）
+      // 估值数据应由后台任务定期更新并存储在 localStorage 中
       let fd: ValuationData | null = null;
       try {
         fd = marketFundService.getValuation(sym.padStart(6, '0'))
             ?? marketFundService.getValuation(sym)
-            ?? await _deps.fetchFundData(sym);
+            ?? null;
       } catch (e) {
-        // ignore fetch errors
+        // ignore errors
       }
 
       // 使用公共函数准备历史数据（与 ProfitModal 一致）

@@ -4,6 +4,7 @@ import { fetchFundData, fetchFundDatas, forceFetchFundHistories, fetchMarketIndi
 import { toLocalDateKey } from './utils/priceResolver';
 import * as marketFundService from './services/marketFundService';
 import * as indexService from './services/indexService';
+import * as marketNewsService from './services/marketNewsService';
 import { INDEX_NAME_MAP, isDomesticIndex, isGlobalIndex, DEFAULT_INDEX_SYMBOLS, DEFAULT_INDICES } from './services/indexService';
 import { isFeatureEnabled, getSyncConfig, saveSyncConfig } from './services/systemConfigService';
 import { getSortOrder, saveSortOrder, SortOrder } from './services/userPreferenceService';
@@ -47,6 +48,7 @@ import { refreshFundProfiles } from './services/fundProfileService';
 import { updateCalendarData, getEventsForYear, getUpcomingEvents, loadCalendarData, getFirstEventInWorkdays } from './services/calendarService';
 import { formatDateDisplay } from './utils/dateFormat';
 import { verifyStorageMigration } from './services/localStorageService';
+import { mountRoot } from './services/rootService';
 import { loadAllTemplates } from './services/promptTemplateService';
 
 const createPlaceholderIndex = (symbol: string): MarketIndex => {
@@ -798,7 +800,6 @@ const AppContent: React.FC = () => {
 
   // Timer Job Scheduler: handles fund valuation, history, and market index refresh
   const { addError } = useTimerJobErrors();
-  const { reload: reloadNews, loadNews } = useNews();
 
   useEffect(() => {
     const scheduler = getTimerJobScheduler();
@@ -839,7 +840,8 @@ const AppContent: React.FC = () => {
     });
 
     scheduler.registerHandler('news-refresh', async () => {
-      return await loadNews();
+      // fetchMarketNews 成功后会自动更新缓存并触发事件，NewsContext 会自动刷新
+      return await marketNewsService.fetchMarketNews();
     });
 
     // 注册后台任务处理器
@@ -885,7 +887,7 @@ const AppContent: React.FC = () => {
     scheduler.start();
 
     return () => scheduler.stop();
-  }, [portfolio, runBatchUpdate, runBatchHistoryUpdate, refreshMarketIndicesAsync, refreshIndexHistoryAsync, addError, reloadNews]);
+  }, [portfolio, runBatchUpdate, runBatchHistoryUpdate, refreshMarketIndicesAsync, refreshIndexHistoryAsync, addError]);
 
   // 自动导出定时器
   useEffect(() => {
@@ -1468,6 +1470,8 @@ const AppContent: React.FC = () => {
 };
 
 const App: React.FC = () => {
+  // 挂载 Root 到 window（供测试用例访问）
+  mountRoot();
   return (
     <TimerJobErrorProvider>
       <NewsProvider>
