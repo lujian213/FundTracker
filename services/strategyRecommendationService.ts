@@ -4,6 +4,7 @@ import { getAIConfig } from './aiConfigService';
 import { getAvailableStrategiesInfo } from './strategyRegistry';
 import { formatDateDisplay } from '../utils/dateFormat';
 import { getById, TEMPLATE_IDS } from './promptTemplateService';
+import * as marketFundService from './marketFundService';
 
 export interface StrategyRecommendationResult {
   code: string;
@@ -149,6 +150,21 @@ export async function refreshStrategyRecommendations(
       result.strategy_id,
       result.reason
     );
+
+    // 持久化更新到 marketFundService
+    if (result.strategy_id && result.reason) {
+      marketFundService.updateTicker(result.code, {
+        recommended_strategy: {
+          strategy_id: result.strategy_id,
+          reason: result.reason,
+        },
+      });
+    } else {
+      // 清空推荐策略
+      marketFundService.updateTicker(result.code, {
+        recommended_strategy: undefined,
+      } as any);
+    }
   }
 
   onPortfolioUpdate(updatedPortfolio);

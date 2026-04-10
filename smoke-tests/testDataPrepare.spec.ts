@@ -16,17 +16,6 @@ import fs from 'fs';
  * 注意：此测试默认被 exclude 在 smoke test 之外
  */
 
-// 需要持久化的 localStorage key（6 个 service 的整合 key）
-const STORAGE_KEYS_TO_DUMP = [
-  'fund_user_preference',
-  'fund_system_config',
-  'fund_calendar',
-  'fund_investment_draft',
-  'fund_combo_trade',
-  'fund_all_funds_data',
-  'fund_all_indices_data',
-];
-
 // Private data 文件路径
 const PRIVATE_DATA_FILE = path.join(process.cwd(), 'debug', 'private_data.json');
 
@@ -67,41 +56,6 @@ function getTimestampString(): string {
   const minutes = String(now.getMinutes()).padStart(2, '0');
   const seconds = String(now.getSeconds()).padStart(2, '0');
   return `${year}-${month}-${day}_${hours}-${minutes}-${seconds}`;
-}
-
-/**
- * Mask 敏感信息
- */
-function maskSensitiveData(data: Record<string, any>): Record<string, any> {
-  const maskedData = JSON.parse(JSON.stringify(data));
-
-  // Mask 同步配置中的用户名和密码
-  if (maskedData['fund_system_config']) {
-    const config = JSON.parse(maskedData['fund_system_config']);
-    if (config.sync) {
-      if (config.sync.eggfundUsername) {
-        config.sync.eggfundUsername = '***MASKED***';
-      }
-      if (config.sync.eggfundPassword) {
-        config.sync.eggfundPassword = '***MASKED***';
-      }
-    }
-    maskedData['fund_system_config'] = JSON.stringify(config);
-  }
-
-  // Mask AI 配置中的 API 密钥
-  if (maskedData['fund_system_config']) {
-    const config = JSON.parse(maskedData['fund_system_config']);
-    if (config.ai && config.ai.manager && config.ai.manager.configs) {
-      config.ai.manager.configs = config.ai.manager.configs.map((c: any) => ({
-        ...c,
-        apiKey: '***MASKED***'
-      }));
-    }
-    maskedData['fund_system_config'] = JSON.stringify(config);
-  }
-
-  return maskedData;
 }
 
 /**
@@ -356,74 +310,24 @@ async function closeJobLogModal(page: Page) {
 
 /**
  * Dump localStorage 数据
+ * 复用 dataSnapshotService.buildSnapshotData() 函数
  */
 async function dumpLocalStorage(page: Page): Promise<string> {
   const timestamp = getTimestampString();
   const filename = `mock-data_${timestamp}.json`;
   const filepath = path.join(process.cwd(), '__mocks__', filename);
 
-  // 获取 localStorage 数据
-  const localStorageData = await page.evaluate(() => {
-    const data: Record<string, string> = {};
-    for (let i = 0; i < localStorage.length; i++) {
-      const key = localStorage.key(i);
-      if (key) {
-        data[key] = localStorage.getItem(key) || '';
-      }
+  // 复用应用中的 buildSnapshotData 函数
+  const snapshotData = await page.evaluate(() => {
+    const root = (window as any).__ROOT__;
+    if (!root?.dataSnapshotService?.buildSnapshotData) {
+      throw new Error('dataSnapshotService.buildSnapshotData not available');
     }
-    return data;
+    return root.dataSnapshotService.buildSnapshotData();
   });
-
-  // 获取 marketNewsService 缓存数据 - 从页面 DOM 提取
-  const newsCache = await page.evaluate(() => {
-    // MarketNewsTicker 组件渲染的新闻在 a 元素中
-    const newsLinks = document.querySelectorAll('.animate-marquee a[href]:not([href="#"])');
-    const items: { id: string; title: string; time: string; url: string }[] = [];
-
-    newsLinks.forEach(link => {
-      const timeEl = link.querySelector('span.text-gray-400');
-      const titleEl = link.querySelector('span.text-gray-600');
-      const href = link.getAttribute('href') || '';
-
-      if (timeEl && titleEl && href) {
-        // 去重 - animate-marquee 会重复渲染两遍
-        const title = titleEl.textContent || '';
-        const time = timeEl.textContent || '';
-        const key = `${time}-${title}`;
-        if (!items.some(i => `${i.time}-${i.title}` === key)) {
-          items.push({
-            id: `news-${items.length}`,
-            title,
-            time,
-            url: href,
-          });
-        }
-      }
-    });
-
-    return items;
-  });
-
-  // 只保留需要的 key
-  const filteredData: Record<string, string> = {};
-  for (const key of STORAGE_KEYS_TO_DUMP) {
-    if (localStorageData[key]) {
-      filteredData[key] = localStorageData[key];
-    }
-  }
-
-  // Mask 敏感信息
-  const maskedData = maskSensitiveData(filteredData);
-
-  // 构建输出数据
-  const outputData = {
-    timestamp: new Date().toISOString(),
-    data: maskedData,
-    newsCache,
-  };
 
   // 写入文件
-  fs.writeFileSync(filepath, JSON.stringify(outputData, null, 2));
+  fs.writeFileSync(filepath, JSON.stringify(snapshotData, null, 2));
   console.log(`数据已保存到: ${filepath}`);
 
   return filepath;

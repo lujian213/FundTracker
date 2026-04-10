@@ -6,6 +6,7 @@
  */
 
 import { Ticker, FundProfile, StockPosition, StageIncrease, JobResult, MarketType } from '../types';
+import * as marketFundService from './marketFundService';
 
 const EASTMONEY_URL = 'https://fund.eastmoney.com/{symbol}.html';
 
@@ -393,6 +394,11 @@ export async function refreshFundProfiles(
       updates.has(t.symbol) ? { ...t, profile: updates.get(t.symbol) } : t
     );
     onPortfolioUpdate(updatedPortfolio);
+
+    // 持久化更新到 marketFundService
+    for (const [symbol, profile] of updates) {
+      marketFundService.updateTicker(symbol, { profile });
+    }
   }
 
   if (failCount === 0) {

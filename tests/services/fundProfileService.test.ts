@@ -7,6 +7,13 @@ import {
   refreshFundProfiles,
 } from '../../services/fundProfileService';
 
+// Mock marketFundService
+jest.mock('../../services/marketFundService', () => ({
+  updateTicker: jest.fn(),
+}));
+
+const marketFundService = require('../../services/marketFundService');
+
 describe('fundProfileService', () => {
   describe('parseStockPositions', () => {
     test('parses stock positions from HTML', () => {
@@ -431,6 +438,10 @@ describe('fundProfileService', () => {
     // 无延时的 delay 函数，用于测试
     const noDelay = () => Promise.resolve();
 
+    beforeEach(() => {
+      jest.clearAllMocks();
+    });
+
     test('returns success when no funds in portfolio', async () => {
       const getPortfolio = jest.fn().mockReturnValue([]);
       const onPortfolioUpdate = jest.fn();
@@ -600,6 +611,66 @@ describe('fundProfileService', () => {
 
       // 只有1只基金，不需要延时
       expect(mockDelay).not.toHaveBeenCalled();
+    });
+
+    test('persists profile to marketFundService.updateTicker', async () => {
+      const portfolio: Ticker[] = [
+        { id: '1', symbol: '000001', name: '基金A', market: MarketType.FUND },
+        { id: '2', symbol: '000002', name: '基金B', market: MarketType.FUND },
+      ];
+      const getPortfolio = jest.fn().mockReturnValue(portfolio);
+      const onPortfolioUpdate = jest.fn();
+      const profile1 = createMockProfile();
+      const profile2 = { ...createMockProfile(), fetched_at: '2026-04-10T12:00:00.000Z' };
+      const mockFetch = jest.fn()
+        .mockResolvedValueOnce(profile1)
+        .mockResolvedValueOnce(profile2);
+
+      await refreshFundProfiles(getPortfolio, onPortfolioUpdate, mockFetch, noDelay);
+
+      // 验证 updateTicker 被调用，持久化 profile
+      expect(marketFundService.updateTicker).toHaveBeenCalledTimes(2);
+      expect(marketFundService.updateTicker).toHaveBeenCalledWith('000001', { profile: profile1 });
+      expect(marketFundService.updateTicker).toHaveBeenCalledWith('000002', { profile: profile2 });
+    });
+
+    test('does not call updateTicker when all fetches fail', async () => {
+      const portfolio: Ticker[] = [
+        { id: '1', symbol: '000001', name: '基金A', market: MarketType.FUND },
+      ];
+      const getPortfolio = jest.fn().mockReturnValue(portfolio);
+      const onPortfolioUpdate = jest.fn();
+      const mockFetch = jest.fn().mockResolvedValue(null);
+
+      await refreshFundProfiles(getPortfolio, onPortfolioUpdate, mockFetch, noDelay);
+
+      // 所有获取失败，不应该调用 updateTicker
+      expect(marketFundService.updateTicker).not.toHaveBeenCalled();
+    });
+
+    test('calls updateTicker only for successfully fetched funds', async () => {
+      const portfolio: Ticker[] = [
+        { id: '1', symbol: '000001', name: '基金A', market: MarketType.FUND },
+        { id: '2', symbol: '000002', name: '基金B', market: MarketType.FUND },
+        { id: '3', symbol: '000003', name: '基金C', market: MarketType.FUND },
+      ];
+      const getPortfolio = jest.fn().mockReturnValue(portfolio);
+      const onPortfolioUpdate = jest.fn();
+      const profile1 = createMockProfile();
+      const profile3 = { ...createMockProfile(), fetched_at: '2026-04-10T13:00:00.000Z' };
+      const mockFetch = jest.fn()
+        .mockResolvedValueOnce(profile1)  // 基金A 成功
+        .mockResolvedValueOnce(null)      // 基金B 失败
+        .mockResolvedValueOnce(profile3); // 基金C 成功
+
+      await refreshFundProfiles(getPortfolio, onPortfolioUpdate, mockFetch, noDelay);
+
+      // 只有成功的基金调用 updateTicker
+      expect(marketFundService.updateTicker).toHaveBeenCalledTimes(2);
+      expect(marketFundService.updateTicker).toHaveBeenCalledWith('000001', { profile: profile1 });
+      expect(marketFundService.updateTicker).toHaveBeenCalledWith('000003', { profile: profile3 });
+      // 基金B 没有被调用
+      expect(marketFundService.updateTicker).not.toHaveBeenCalledWith('000002', expect.anything());
     });
   });
 });

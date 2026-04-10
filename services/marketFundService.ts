@@ -426,6 +426,24 @@ export function getFundInfo(symbol: string): FundInfo | null {
 }
 
 /**
+ * 更新基金的 Ticker 信息（如 profile、recommended_strategy 等）
+ * 会同步更新内存缓存和 localStorage
+ */
+export function updateTicker(symbol: string, tickerUpdate: Partial<Ticker>): void {
+  const existing = funds.get(symbol);
+  if (existing) {
+    existing.info = {
+      ...existing.info,
+      ticker: {
+        ...existing.info.ticker,
+        ...tickerUpdate,
+      },
+    };
+    saveToStorage();
+  }
+}
+
+/**
  * 添加新基金
  */
 export function addFund(symbol: string, name: string): void {

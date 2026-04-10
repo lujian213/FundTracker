@@ -32,7 +32,7 @@ describe('calendarService', () => {
           { type: 'holiday' as const, content: '清明节', description: '清明节放假' },
         ],
       };
-      localStorage.setItem(STORAGE_KEYS.CALENDAR, JSON.stringify(testData));
+      saveCalendarData(testData);
 
       const result = loadCalendarData();
       expect(result).toEqual(testData);
@@ -65,7 +65,7 @@ describe('calendarService', () => {
           { type: 'holiday' as const, content: '清明节', description: '清明节放假' },
         ],
       };
-      localStorage.setItem(STORAGE_KEYS.CALENDAR, JSON.stringify(testData));
+      saveCalendarData(testData);
 
       const result = getEventsForDate('2026-04-04');
       expect(result).toHaveLength(1);
@@ -76,7 +76,7 @@ describe('calendarService', () => {
       const testData = {
         '2026-04-04': [{ type: 'holiday' as const, content: '清明节' }],
       };
-      localStorage.setItem(STORAGE_KEYS.CALENDAR, JSON.stringify(testData));
+      saveCalendarData(testData);
 
       const result = getEventsForDate('2026-04-05');
       expect(result).toEqual([]);
@@ -90,7 +90,7 @@ describe('calendarService', () => {
         '2026-04-15': [{ type: 'delivery' as const, content: '期权交割日' }],
         '2026-05-01': [{ type: 'holiday' as const, content: '劳动节' }],
       };
-      localStorage.setItem(STORAGE_KEYS.CALENDAR, JSON.stringify(testData));
+      saveCalendarData(testData);
 
       const result = getEventsForMonth(2026, 3); // April is month 3 (0-indexed)
       expect(Object.keys(result)).toHaveLength(2);
@@ -107,7 +107,7 @@ describe('calendarService', () => {
         '2026-12-25': [{ type: 'holiday' as const, content: '圣诞节' }],
         '2027-01-01': [{ type: 'holiday' as const, content: '元旦' }],
       };
-      localStorage.setItem(STORAGE_KEYS.CALENDAR, JSON.stringify(testData));
+      saveCalendarData(testData);
 
       const result = getEventsForYear(2026);
       expect(Object.keys(result)).toHaveLength(2);
@@ -150,7 +150,7 @@ describe('calendarService', () => {
           { type: 'delivery' as const, content: '交割日', description: '交割' },
         ],
       };
-      localStorage.setItem(STORAGE_KEYS.CALENDAR, JSON.stringify(existingData));
+      saveCalendarData(existingData);
 
       // Update with new holiday - should replace holiday, keep delivery
       const newEvents = [
@@ -170,7 +170,7 @@ describe('calendarService', () => {
       const existingData = {
         '2026-04-04': [{ type: 'holiday_china' as const, content: '清明节' }],
       };
-      localStorage.setItem(STORAGE_KEYS.CALENDAR, JSON.stringify(existingData));
+      saveCalendarData(existingData);
 
       // Update with new events for different date
       const newEvents = [
@@ -188,7 +188,7 @@ describe('calendarService', () => {
       const existingData = {
         '2026-04-04': [{ type: 'holiday_china' as const, content: '清明节' }],
       };
-      localStorage.setItem(STORAGE_KEYS.CALENDAR, JSON.stringify(existingData));
+      saveCalendarData(existingData);
 
       // Update with empty events - should remove existing
       updateCalendarData('holiday_china', []);
@@ -203,7 +203,7 @@ describe('calendarService', () => {
       const testData = {
         '2026-04-04': [{ type: 'holiday' as const, content: '清明节' }],
       };
-      localStorage.setItem(STORAGE_KEYS.CALENDAR, JSON.stringify(testData));
+      saveCalendarData(testData);
 
       clearCalendarData();
 
@@ -226,7 +226,7 @@ describe('calendarService', () => {
       const testData = {
         [todayStr]: [{ type: 'holiday_china' as const, content: '今日节假日' }],
       };
-      localStorage.setItem(STORAGE_KEYS.CALENDAR, JSON.stringify(testData));
+      saveCalendarData(testData);
 
       const result = getUpcomingEvents(3);
       expect(result.length).toBeGreaterThanOrEqual(1);
@@ -243,7 +243,7 @@ describe('calendarService', () => {
           { type: 'delivery' as const, content: '交割日' },
         ],
       };
-      localStorage.setItem(STORAGE_KEYS.CALENDAR, JSON.stringify(testData));
+      saveCalendarData(testData);
 
       const result = getUpcomingEvents(3);
       expect(result.length).toBe(2);
@@ -254,6 +254,8 @@ describe('calendarService', () => {
 
   describe('getFirstEventInWorkdays', () => {
     test('returns empty array when no events in range', () => {
+      // 显式清除日历数据，确保干净状态
+      saveCalendarData({});
       const result = getFirstEventInWorkdays(4);
       expect(result).toEqual([]);
     });
@@ -265,7 +267,7 @@ describe('calendarService', () => {
       const testData = {
         [todayStr]: [{ type: 'holiday_china' as const, content: '今日节假日', description: '放假' }],
       };
-      localStorage.setItem(STORAGE_KEYS.CALENDAR, JSON.stringify(testData));
+      saveCalendarData(testData);
 
       const result = getFirstEventInWorkdays(4);
       expect(result).toHaveLength(1);
@@ -283,7 +285,7 @@ describe('calendarService', () => {
           { type: 'delivery' as const, content: '交割日', description: '期权交割' },
         ],
       };
-      localStorage.setItem(STORAGE_KEYS.CALENDAR, JSON.stringify(testData));
+      saveCalendarData(testData);
 
       const result = getFirstEventInWorkdays(4);
       expect(result).toHaveLength(2);
@@ -298,7 +300,7 @@ describe('calendarService', () => {
       const testData = {
         [todayStr]: [{ type: 'holiday_china' as const, content: '今日事件' }],
       };
-      localStorage.setItem(STORAGE_KEYS.CALENDAR, JSON.stringify(testData));
+      saveCalendarData(testData);
 
       const result = getFirstEventInWorkdays(4);
       // 今天有事件就应该返回，即使是周末
