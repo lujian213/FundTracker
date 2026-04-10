@@ -1476,7 +1476,7 @@ test.describe('testBedWithData', () => {
     const page = sharedPage!;
 
     // ══════════════════════════════════════════════════════════════════════════════
-    // 1. 点击主界面上的"投顾"按钮，弹出"智能投顾"窗口
+    // 1. 点击主界面上的"投顾"按钮，弹出"今日投资提示"窗口
     // ══════════════════════════════════════════════════════════════════════════════
     const investButton = page.locator('button:has-text("投顾")');
     await expect(investButton).toBeVisible();
@@ -1505,27 +1505,76 @@ test.describe('testBedWithData', () => {
     if (rowCount > 0) {
       console.log(`投顾窗口内容验证完成: ${rowCount}条投资建议`);
 
-      // 验证总计栏
+      // ══════════════════════════════════════════════════════════════════════════════
+      // 3. 验证每一行都有星星或大拇指图标
+      // ══════════════════════════════════════════════════════════════════════════════
+      // 逐行验证每行至少有一个星星或大拇指图标
+      for (let i = 0; i < rowCount; i++) {
+        const row = tableRows.nth(i);
+        // 星星图标在 td 中（fa-star）
+        const starInRow = row.locator('i.fa-star');
+        // 大拇指图标是 emoji 👍 在 span[role="img"] 中
+        const thumbsUpInRow = row.locator('span[role="img"]').filter({ hasText: '👍' });
+
+        const starCount = await starInRow.count();
+        const thumbsUpCount = await thumbsUpInRow.count();
+
+        // 每行至少有一个图标
+        expect(starCount + thumbsUpCount).toBeGreaterThan(0);
+      }
+      console.log('每一行图标验证完成');
+
+      // 验证总计栏（在跳转测试之前验证，因为跳转会关闭投顾窗口）
       const totalRow = page.locator('tfoot td');
       await expect(totalRow).toBeVisible();
       const totalText = await totalRow.textContent();
       expect(totalText).toContain('总计');
       console.log(`总计栏验证完成: ${totalText}`);
+
+      // ══════════════════════════════════════════════════════════════════════════════
+      // 4. 点击买入或卖出文字，验证跳转到虚拟交易窗口
+      // ══════════════════════════════════════════════════════════════════════════════
+      // 找到第一个有买入或卖出链接的单元格
+      const buyLink = page.locator('table tbody a:has-text("买入")').first();
+      const sellLink = page.locator('table tbody a:has-text("卖出")').first();
+
+      // 检查是否存在买入或卖出链接
+      const hasBuyLink = await buyLink.isVisible({ timeout: 1000 }).catch(() => false);
+      const hasSellLink = await sellLink.isVisible({ timeout: 1000 }).catch(() => false);
+
+      if (hasBuyLink || hasSellLink) {
+        // 点击第一个可用的链接（买入或卖出）
+        const linkToClick = hasBuyLink ? buyLink : sellLink;
+        await linkToClick.click();
+
+        // 验证虚拟交易窗口打开（窗口中显示基金名称和"虚拟交易"）
+        // VirtualTradeModal 的标题结构: h3（基金名称） + span（"虚拟交易"）
+        const virtualTradeSpan = page.locator('span:has-text("虚拟交易")');
+        await expect(virtualTradeSpan).toBeVisible({ timeout: 5000 });
+        console.log('虚拟交易窗口跳转验证完成');
+
+        // 关闭虚拟交易窗口（点击 x 按钮）
+        const closeVirtualTradeButton = page.locator('.bg-white.rounded-lg.shadow-lg button:has(i.fa-times)').first();
+        if (await closeVirtualTradeButton.isVisible({ timeout: 1000 }).catch(() => false)) {
+          await closeVirtualTradeButton.click();
+          await expect(virtualTradeSpan).not.toBeVisible({ timeout: 2000 });
+        }
+      } else {
+        console.log('没有找到买入或卖出链接（可能所有建议都是持有）');
+      }
     } else {
       await expect(noAdviceMessage).toBeVisible();
       console.log('投顾窗口显示: 没有符合条件的投资建议');
     }
 
     // ══════════════════════════════════════════════════════════════════════════════
-    // 3. 对页面进行快照供 review
+    // 5. 对页面进行快照供 review
     // ══════════════════════════════════════════════════════════════════════════════
     await page.screenshot({ path: 'test-results/investment-modal-screenshot.png', fullPage: true });
     console.log('投顾窗口快照已保存: test-results/investment-modal-screenshot.png');
 
     // 验证没有报错（检查页面控制台是否有 JavaScript 错误）
-    // 使用 page.evaluate 检查是否有全局错误标志
     const hasPageError = await page.evaluate(() => {
-      // 检查是否有全局错误
       return (window as any).__pageError || false;
     });
     expect(hasPageError).toBe(false);
@@ -1537,11 +1586,15 @@ test.describe('testBedWithData', () => {
     console.log('无报错验证完成');
 
     // ══════════════════════════════════════════════════════════════════════════════
-    // 3. 关闭投顾窗口
+    // 6. 关闭投顾窗口（如果窗口仍然打开）
     // ══════════════════════════════════════════════════════════════════════════════
-    const closeButton = page.locator('button[aria-label="关闭投资提示窗口"]');
-    await closeButton.click();
-    await expect(investModal).not.toBeVisible();
+    // 如果点击了买入/卖出链接，投顾窗口已经关闭，不需要再次关闭
+    const investModalVisible = await investModal.isVisible({ timeout: 1000 }).catch(() => false);
+    if (investModalVisible) {
+      const closeButton = page.locator('button[aria-label="关闭投资提示窗口"]');
+      await closeButton.click();
+      await expect(investModal).not.toBeVisible();
+    }
 
     console.log('投顾窗口测试完成');
   });

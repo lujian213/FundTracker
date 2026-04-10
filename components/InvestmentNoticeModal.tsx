@@ -18,6 +18,115 @@ import { calculateRealProfit, getStoredPosition, getTradesForFund } from '../uti
 import { loadAllStrategies } from '../services/strategyRegistry';
 import * as marketFundService from '../services/marketFundService';
 
+// 批次大小：每批并行处理5个基金
+const BATCH_SIZE = 5;
+
+/**
+ * 处理单个基金的计算（包括策略执行和实盘盈亏计算）
+ * 此函数用于并行化处理
+ */
+interface FundProcessInput {
+  fund: Ticker;
+  sortedHistory: HistoricalPoint[];
+  startDate: string;
+  initialShares: number;
+  strategyMap: Record<string, any>;
+  marketData?: Record<string, ValuationData>;
+}
+
+async function processFund(
+  input: FundProcessInput
+): Promise<InvestmentRecommendation | null> {
+  const { fund, sortedHistory, startDate, initialShares, strategyMap, marketData } = input;
+  const valuation = marketData ? marketData[fund.symbol] : null;
+
+  try {
+    // Use values already calculated in first pass
+    const currentPrice = sortedHistory[sortedHistory.length - 1]?.value;
+
+    // Calculate initialCash following VirtualTradeModal's logic
+    let finalInitialCash = defaultVirtualCash;
+    try {
+      const pos = marketFundService.getPosition(fund.symbol);
+      const fullCapacity = pos?.fullCapacity || 0;
+
+      if (fullCapacity > 0) {
+        const shares = initialShares || 0;
+        const startDatePoint = sortedHistory.find(h => toLocalDateKey(h.date) === startDate);
+        const nav = startDatePoint ? startDatePoint.value : null;
+
+        if (nav !== null && nav > 0) {
+          const cash = (fullCapacity - shares) * nav;
+          finalInitialCash = Math.max(cash, 0);
+        }
+      }
+    } catch (e) {
+      console.error(`Failed to calculate initial cash for ${fund.symbol}:`, e);
+    }
+
+    // Run all strategies in parallel
+    const strategyPromises: Array<[string, Promise<VirtualTradeResult>]> = [];
+    for (const [key, strategy] of Object.entries(strategyMap)) {
+      const promise = Promise.resolve().then(() => {
+        try {
+          return runVirtualTrade(strategy, sortedHistory, {
+            startDate,
+            initialCash: finalInitialCash,
+            initialShares,
+            currentPrice: valuation?.currentPrice ?? currentPrice,
+            realtimeDate: valuation?.realtimeDate ?? toLocalDateKey(new Date()),
+            previousPrice: valuation?.previousPrice ?? null,
+            netWorthDate: valuation?.netWorthDate,
+          });
+        } catch (error) {
+          console.error(`Error running strategy ${key} for fund ${fund.symbol}:`, error);
+          return { timeline: [], summary: { initialTotal: 0, finalTotal: 0, totalProfit: 0 }, todayTip: null };
+        }
+      });
+      strategyPromises.push([key, promise]);
+    }
+
+    // Execute all strategies in parallel
+    const strategyResultsArray = await Promise.all(strategyPromises.map(([_, p]) => p));
+    const strategyResults: Record<string, VirtualTradeResult> = {};
+
+    for (let i = 0; i < strategyPromises.length; i++) {
+      const [key] = strategyPromises[i];
+      strategyResults[key] = strategyResultsArray[i];
+    }
+
+    // Calculate real profit
+    const fundMarketData = marketData ? marketData[fund.symbol] : null;
+    const storedPosition = getStoredPosition(fund.symbol);
+    const trades = getTradesForFund(fund.symbol);
+    const realProfit = await calculateRealProfit(
+      fund.symbol,
+      startDate,
+      sortedHistory,
+      storedPosition,
+      trades,
+      fundMarketData
+    );
+
+    // Create recommendation
+    const recommendation: InvestmentRecommendation = {
+      fund,
+      realProfit,
+      realProfitLoading: false,
+    };
+
+    for (const [key, result] of Object.entries(strategyResults)) {
+      (recommendation as any)[key] = result.todayTip;
+      (recommendation as any)[`${key}Profit`] = result.summary.totalProfit;
+    }
+
+    return recommendation;
+  } catch (err) {
+    console.error(`Error processing fund ${fund.symbol}:`, err);
+    return null;
+  }
+}
+
 
 interface InvestmentNoticeModalProps {
   portfolio: Ticker[];
@@ -140,110 +249,38 @@ const InvestmentNoticeModal: React.FC<InvestmentNoticeModalProps> = ({
 
         const results: InvestmentRecommendation[] = [];
 
-        // Process funds one by one with the already obtained shares data
-        for (const fundData of validFundData) {
-          if (!fundData || cancelled) continue;
+        // 批次并行处理基金
+        for (let batchStart = 0; batchStart < validFundData.length; batchStart += BATCH_SIZE) {
+          if (cancelled) return;
 
-          const { fund, history: sortedHistory, startDate, initialShares } = fundData;
+          const batch = validFundData.slice(batchStart, batchStart + BATCH_SIZE);
 
-          // Get valuation data for this fund if marketData is provided
-          const valuation = marketData ? marketData[fund.symbol] : null;
-
-          try {
-// Precompute SMAs for this history to share between strategies (similar to VirtualTradeModal)
-            // Note: We're no longer using local cache here since we removed the cache in runVirtualTrade
-            // The computeMultipleSMAs function handles the calculations directly
-
-            // Use values already calculated in first pass
-            const currentPrice = sortedHistory[sortedHistory.length - 1]?.value;
-
-            // Calculate initialCash following VirtualTradeModal's logic
-            let finalInitialCash = defaultVirtualCash; // Default fallback
-            try {
-              // 使用 marketFundService 获取持仓配置
-              const pos = marketFundService.getPosition(fund.symbol);
-              const fullCapacity = pos?.fullCapacity || 0;
-
-              if (fullCapacity > 0) {
-                // Get current shares on startDate (already calculated in first pass)
-                const shares = initialShares || 0;
-                // Get NAV on startDate
-                const startDatePoint = sortedHistory.find(h => toLocalDateKey(h.date) === startDate);
-                const nav = startDatePoint ? startDatePoint.value : null;
-
-                if (nav !== null && nav > 0) {
-                  const cash = (fullCapacity - shares) * nav;
-                  finalInitialCash = Math.max(cash, 0);
-                }
-              }
-            } catch (e) {
-              console.error(`Failed to calculate initial cash for ${fund.symbol}:`, e);
-              // Keep default value
-            }
-
-            // Run all strategies with parameters matching VirtualTradeModal's default behavior
-            // Use the dynamically loaded strategies instead of hardcoded ones
-            const strategyResults: Record<string, VirtualTradeResult> = {};
-
-            for (const [key, strategy] of Object.entries(strategyMap)) {
-              try {
-                strategyResults[key] = runVirtualTrade(strategy, sortedHistory, {
-                  startDate,  // Use value from first pass
-                  initialCash: finalInitialCash,  // Use VirtualTradeModal's cash calculation logic
-                  initialShares,  // Use value from first pass
-                  currentPrice: valuation?.currentPrice ?? currentPrice,
-                  realtimeDate: valuation?.realtimeDate ?? toLocalDateKey(new Date()),
-                  previousPrice: valuation?.previousPrice ?? null, // Use valuation.previousPrice like VirtualTradeModal
-                  netWorthDate: valuation?.netWorthDate,
-                });
-              } catch (error) {
-                console.error(`Error running strategy ${key} for fund ${fund.symbol}:`, error);
-                // Provide a default result if strategy fails
-                strategyResults[key] = { timeline: [], summary: { initialTotal: 0, finalTotal: 0, totalProfit: 0 }, todayTip: null };
-              }
-            }
-
-            // Get market data for this fund if marketData is provided
-            const fundMarketData = marketData ? marketData[fund.symbol] : null;
-
-            // Calculate real profit for this fund using shared utility
-            const storedPosition = getStoredPosition(fund.symbol);
-            const trades = getTradesForFund(fund.symbol);
-            const realProfit = await calculateRealProfit(
-              fund.symbol,
-              startDate,
-              sortedHistory,
-              storedPosition,
-              trades,
-              fundMarketData
-            );
-
-            // Create recommendation record using the dynamically obtained results
-            // Ensure it follows the expected interface for compatibility with UI
-            const recommendation: InvestmentRecommendation = {
+          // 并行处理当前批次的所有基金
+          const batchPromises = batch.map(fundData => {
+            if (!fundData) return Promise.resolve(null);
+            const { fund, history: sortedHistory, startDate, initialShares } = fundData;
+            return processFund({
               fund,
-              realProfit, // Add the calculated real profit
-              realProfitLoading: false, // Initially not loading since it's calculated synchronously
-            };
+              sortedHistory,
+              startDate,
+              initialShares,
+              strategyMap,
+              marketData
+            });
+          });
 
-            // Add strategy results dynamically
-            for (const [key, result] of Object.entries(strategyResults)) {
-              // Store strategy recommendation and profit dynamically
-              (recommendation as any)[key] = result.todayTip;
-              (recommendation as any)[`${key}Profit`] = result.summary.totalProfit;
-            }
+          // 执行当前批次的并行处理
+          const batchResults = await Promise.all(batchPromises);
 
+          // 收集批次结果
+          for (const recommendation of batchResults) {
+            if (!recommendation) continue;
             results.push(recommendation);
-
-          } catch (err) {
-            // Continue with other funds
           }
 
-          // Yield to main thread periodically to keep UI responsive
-          if (results.length % 5 === 0) { // Every 5 funds
-            await new Promise(resolve => setTimeout(resolve, 0));
-            if (cancelled) return;
-          }
+          // Yield to main thread between batches to keep UI responsive
+          await new Promise(resolve => setTimeout(resolve, 0));
+          if (cancelled) return;
         }
 
         if (!cancelled) {
