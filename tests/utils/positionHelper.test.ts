@@ -1,7 +1,13 @@
-import { computePositions, POSITION_COLORS } from '../../utils/positionHelper';
+import { computePositions, POSITION_COLORS, getUnitsForDate } from '../../utils/positionHelper';
 import { setTradesForSymbol } from '../../hooks/useTrades';
 import { Ticker, ValuationData, MarketType } from '../../types';
 import { resetCache as resetMarketFundCache, updatePosition } from '../../services/marketFundService';
+import { fetchFundHistory } from '../../services/fundService';
+
+// Mock fetchFundHistory for getUnitsForDate tests
+jest.mock('../../services/fundService', () => ({
+  fetchFundHistory: jest.fn(),
+}));
 
 // ── helpers ───────────────────────────────────────────────────────────────────
 
@@ -216,6 +222,186 @@ describe('POSITION_COLORS', () => {
     for (const color of POSITION_COLORS) {
       expect(color).toMatch(/^hsl\(\d+,\d+%,\d+%\)$/);
     }
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// getUnitsForDate 测试
+// ═══════════════════════════════════════════════════════════════════════════════
+
+describe('getUnitsForDate', () => {
+  beforeEach(() => {
+    localStorage.clear();
+    resetMarketFundCache();
+    jest.clearAllMocks();
+  });
+
+  // helper: create mock history point
+  function makeHistoryPoint(dateStr: string, value: number) {
+    const ts = new Date(`${dateStr} 15:00`).getTime();
+    return { date: ts, value, equityReturn: 0 };
+  }
+
+  test('returns 0 when date is earlier than storedStartDate', async () => {
+    // 设置建仓日期为 2026-02-01，初始份额 10000
+    updatePosition('000001', {
+      fullCapacity: 100000,
+      initialPosition: 10000,
+      startDate: '2026-02-01',
+      initialPrice: 1.0,
+    });
+
+    // 查询 2026-01-15（早于建仓日期）的份额
+    const units = await getUnitsForDate('000001', '2026-01-15', 100000);
+
+    // 应返回 0，而非 fallback 计算的份额
+    expect(units).toBe(0);
+  });
+
+  test('returns initialPosition when date equals storedStartDate', async () => {
+    updatePosition('000001', {
+      fullCapacity: 100000,
+      initialPosition: 10000,
+      startDate: '2026-02-01',
+      initialPrice: 1.0,
+    });
+
+    const units = await getUnitsForDate('000001', '2026-02-01');
+
+    expect(units).toBe(10000);
+  });
+
+  test('returns correct shares when date is after storedStartDate with trades', async () => {
+    updatePosition('000001', {
+      fullCapacity: 100000,
+      initialPosition: 10000,
+      startDate: '2026-02-01',
+      initialPrice: 1.0,
+    });
+
+    // 设置交易记录
+    setTradesForSymbol('000001', [
+      { id: 'b1', date: '2026-02-10', type: 'buy', shares: 5000, price: 1.2, fee: 10 },
+      { id: 's1', date: '2026-02-20', type: 'sell', shares: 2000, price: 1.3, fee: 5 },
+    ] as any);
+
+    // 查询 2026-02-25 的份额：10000 + 5000 - 2000 = 13000
+    const units = await getUnitsForDate('000001', '2026-02-25');
+
+    expect(units).toBe(13000);
+  });
+
+  test('returns shares considering only trades before target date', async () => {
+    updatePosition('000001', {
+      fullCapacity: 100000,
+      initialPosition: 10000,
+      startDate: '2026-02-01',
+      initialPrice: 1.0,
+    });
+
+    setTradesForSymbol('000001', [
+      { id: 'b1', date: '2026-02-10', type: 'buy', shares: 5000, price: 1.2, fee: 10 },
+      { id: 'b2', date: '2026-02-20', type: 'buy', shares: 3000, price: 1.25, fee: 8 },
+    ] as any);
+
+    // 查询 2026-02-15 的份额：只计算 02-10 的交易
+    // 10000 + 5000 = 15000（02-20 的交易还未发生）
+    const units = await getUnitsForDate('000001', '2026-02-15');
+
+    expect(units).toBe(15000);
+  });
+
+  test('uses fallback when no position config exists', async () => {
+    // 没有持仓配置
+    (fetchFundHistory as jest.Mock).mockResolvedValue([
+      makeHistoryPoint('2026-01-15', 1.5),
+    ]);
+
+    // fallbackCash = 100000，净值 = 1.5
+    // 份额 = 100000 / 1.5 ≈ 66666.67
+    const units = await getUnitsForDate('000002', '2026-01-15', 100000);
+
+    expect(units).toBeCloseTo(66666.67, 0);
+  });
+
+  test('returns null when date is earlier than startDate and no fallback', async () => {
+    updatePosition('000001', {
+      fullCapacity: 100000,
+      initialPosition: 10000,
+      startDate: '2026-02-01',
+      initialPrice: 1.0,
+    });
+
+    // 不提供 fallbackCash
+    const units = await getUnitsForDate('000001', '2026-01-15');
+
+    // 返回 0（因为日期早于建仓日期）
+    expect(units).toBe(0);
+  });
+
+  test('handles trade date as timestamp correctly', async () => {
+    updatePosition('000001', {
+      fullCapacity: 100000,
+      initialPosition: 10000,
+      startDate: '2026-02-01',
+      initialPrice: 1.0,
+    });
+
+    // 使用 timestamp 作为交易日期
+    const ts = new Date('2026-02-10 15:00').getTime();
+    setTradesForSymbol('000001', [
+      { id: 'b1', date: ts, type: 'buy', shares: 5000, price: 1.2, fee: 10 },
+    ] as any);
+
+    const units = await getUnitsForDate('000001', '2026-02-15');
+
+    expect(units).toBe(15000);
+  });
+
+  test('returns 0 when shares become zero after trades', async () => {
+    updatePosition('000001', {
+      fullCapacity: 100000,
+      initialPosition: 10000,
+      startDate: '2026-02-01',
+      initialPrice: 1.0,
+    });
+
+    // 卖出全部份额
+    setTradesForSymbol('000001', [
+      { id: 's1', date: '2026-02-10', type: 'sell', shares: 10000, price: 1.2, fee: 10 },
+    ] as any);
+
+    const units = await getUnitsForDate('000001', '2026-02-15');
+
+    expect(units).toBe(0);
+  });
+
+  test('finds nav on exact date for fallback calculation', async () => {
+    // 无持仓配置
+    (fetchFundHistory as jest.Mock).mockResolvedValue([
+      makeHistoryPoint('2026-01-10', 1.0),
+      makeHistoryPoint('2026-01-15', 1.5),
+      makeHistoryPoint('2026-01-20', 2.0),
+    ]);
+
+    const units = await getUnitsForDate('000002', '2026-01-15', 100000);
+
+    // 使用 2026-01-15 的净值 1.5
+    expect(units).toBeCloseTo(66666.67, 0);
+  });
+
+  test('uses latest nav before target date when exact date not available', async () => {
+    // 无持仓配置
+    (fetchFundHistory as jest.Mock).mockResolvedValue([
+      makeHistoryPoint('2026-01-10', 1.0),
+      makeHistoryPoint('2026-01-20', 2.0),
+    ]);
+
+    // 查询 2026-01-15，但没有该日期的净值数据
+    // 应使用 2026-01-10 的净值 1.0
+    const units = await getUnitsForDate('000002', '2026-01-15', 100000);
+
+    expect(units).toBeCloseTo(100000, 0);
   });
 });
 

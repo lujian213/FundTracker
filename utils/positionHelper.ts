@@ -166,7 +166,8 @@ export function computePositions(
  *    it is associated with a startDate that equals isoDate, return that initialPosition.
  *  - Otherwise, try to compute the latest known shares up to that date by aggregating trades whose date <= target date
  *    combined with stored initialPosition (if any).
- *  - If no shares found or shares === 0, fallback to using fallbackCash / navOnDate (if nav available).
+ *  - If date is earlier than storedStartDate, return 0 (user didn't hold the fund yet).
+ *  - If no shares found or shares === 0 and no position config exists, fallback to using fallbackCash / navOnDate.
  * Returns null if unable to compute (e.g., no nav and no config/trades).
  */
 export async function getUnitsForDate(symbol: string, isoDate: string, fallbackCash?: number): Promise<number | null> {
@@ -179,6 +180,12 @@ export async function getUnitsForDate(symbol: string, isoDate: string, fallbackC
     // if stored startDate matches isoDate and an initialPosition exists, prefer it
     if (storedStartDate === isoDate && storedInitialPosition > 0) {
       return Math.round(storedInitialPosition * 100) / 100;
+    }
+
+    // ⚠️ 关键修复：如果日期早于建仓日期，直接返回 0，不使用 fallback
+    // 这表示用户在那个时候还没有持有该基金
+    if (storedStartDate && isoDate < storedStartDate) {
+      return 0;
     }
 
     // otherwise aggregate trades up to the end of isoDate
@@ -219,9 +226,19 @@ export async function getUnitsForDate(symbol: string, isoDate: string, fallbackC
     }
 
     const shares = baseInitial + buyShares - sellShares;
-    if (shares > 0) return Math.round(shares * 100) / 100;
 
-    // if shares not available or zero, fallback to fallbackCash / navOnDate
+    // 如果有持仓配置（storedStartDate 存在且日期晚于建仓日期）
+    // 且份额计算结果 <= 0，返回 0（表示已清仓）
+    if (storedStartDate && isoDate >= storedStartDate) {
+      return shares > 0 ? Math.round(shares * 100) / 100 : 0;
+    }
+
+    // 如果有初始份额但没有 startDate（旧数据），shares > 0 时返回
+    if (storedInitialPosition > 0 && !storedStartDate && shares > 0) {
+      return Math.round(shares * 100) / 100;
+    }
+
+    // 无持仓配置时，使用 fallback 逻辑
     if (!fallbackCash || fallbackCash <= 0) return null;
 
     // fetch history and find nav on isoDate (prefer exact local date match, otherwise latest <= end of date)
