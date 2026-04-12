@@ -1598,4 +1598,432 @@ test.describe('testBedWithData', () => {
 
     console.log('投顾窗口测试完成');
   });
+
+  test('草稿窗口测试', async () => {
+    const page = sharedPage!;
+
+    // 授予剪贴板读取权限
+    await page.context().grantPermissions(['clipboard-read', 'clipboard-write']);
+
+    // ══════════════════════════════════════════════════════════════════════════════
+    // 1. 点击"草稿"按钮，弹出窗口
+    // ══════════════════════════════════════════════════════════════════════════════
+    await page.click('button:has-text("草稿")');
+    const draftModal = page.locator('h3:has-text("投资计划草稿")');
+    await expect(draftModal).toBeVisible({ timeout: 5000 });
+
+    // ══════════════════════════════════════════════════════════════════════════════
+    // 2-4. 批量验证：表格数据、工具栏按钮、AI提示图标
+    // ══════════════════════════════════════════════════════════════════════════════
+    const initialCheck = await page.evaluate(() => {
+      const rows = document.querySelectorAll('table tbody tr');
+      const result = {
+        rowCount: rows.length,
+        actionRows: [] as { index: number; symbol: string; hasCheckbox: boolean; amount: string; shares: string; operation: string }[],
+        noActionRows: [] as { index: number; symbol: string }[],
+        hasAiAssistBtn: !!document.querySelector('button[title="AI辅助"]'),
+        hasAiAnalysisBtn: !!document.querySelector('button[title="AI分析"]'),
+        hasCopyBtn: !!document.querySelector('button[title="复制内容到剪贴板"]'),
+        aiIconRows: [] as { index: number; symbol: string; note: string }[],
+        emptyNoteRows: [] as number[],
+      };
+
+      rows.forEach((row, idx) => {
+        const operationSelect = row.querySelector('td:nth-child(7) select') as HTMLSelectElement | null;
+        const operation = operationSelect?.value || '不操作';
+        const symbol = row.querySelector('td:nth-child(3)')?.textContent?.trim() || '';
+        const checkbox = row.querySelector('td:nth-child(1) input[type="checkbox"]');
+        const amountInput = row.querySelector('td:nth-child(8) input') as HTMLInputElement | null;
+        const sharesTd = row.querySelector('td:nth-child(9)');
+        const noteInput = row.querySelector('td:nth-child(10) input') as HTMLInputElement | null;
+        const aiIcon = row.querySelector('i.fa-info-circle.text-blue-500');
+
+        if (operation !== '不操作') {
+          result.actionRows.push({
+            index: idx, symbol, hasCheckbox: !!checkbox,
+            amount: amountInput?.value || '', shares: sharesTd?.textContent?.trim() || '', operation
+          });
+        } else {
+          result.noActionRows.push({ index: idx, symbol });
+        }
+
+        if (aiIcon && noteInput?.value?.trim()) {
+          result.aiIconRows.push({ index: idx, symbol, note: noteInput.value });
+        }
+
+        if (noteInput && noteInput.value === '') {
+          result.emptyNoteRows.push(idx);
+        }
+      });
+
+      return result;
+    });
+
+    // 验证表格行数
+    expect(initialCheck.rowCount).toBe(21);
+
+    // 验证有操作的行都有金额、份额和多选框
+    for (const row of initialCheck.actionRows) {
+      expect(row.amount).toBeTruthy();
+      expect(row.shares).not.toBe('-');
+      expect(row.hasCheckbox).toBe(true);
+    }
+
+    // 验证工具栏按钮
+    expect(initialCheck.hasAiAssistBtn).toBe(true);
+    expect(initialCheck.hasAiAnalysisBtn).toBe(true);
+    expect(initialCheck.hasCopyBtn).toBe(true);
+
+    // 验证有AI提示图标
+    expect(initialCheck.aiIconRows.length).toBeGreaterThan(0);
+
+    // ══════════════════════════════════════════════════════════════════════════════
+    // 5. 点击第一个有AI提示图标的行的重置按钮
+    // ══════════════════════════════════════════════════════════════════════════════
+    const firstAiRow = initialCheck.aiIconRows[0];
+    const tableRows = page.locator('table tbody tr');
+    const targetRow = tableRows.nth(firstAiRow.index);
+
+    // 点击重置按钮
+    await targetRow.locator('button[title="重置"]').click();
+
+    // ══════════════════════════════════════════════════════════════════════════════
+    // 6. 验证重置效果：AI图标消失、注释清空、操作变为不操作
+    // ══════════════════════════════════════════════════════════════════════════════
+    const afterReset = await page.evaluate((rowIndex) => {
+      const row = document.querySelectorAll('table tbody tr')[rowIndex];
+      if (!row) return null;
+      return {
+        hasAiIcon: !!row.querySelector('i.fa-info-circle.text-blue-500'),
+        note: (row.querySelector('td:nth-child(10) input') as HTMLInputElement)?.value || '',
+        operation: (row.querySelector('td:nth-child(7) select') as HTMLSelectElement)?.value || '',
+        amount: row.querySelector('td:nth-child(8)')?.textContent?.trim() || '',
+      };
+    }, firstAiRow.index);
+
+    expect(afterReset?.hasAiIcon).toBe(false);
+    expect(afterReset?.note).toBe('');
+    expect(afterReset?.operation).toBe('不操作');
+    expect(afterReset?.amount).toContain('-');
+
+    // ══════════════════════════════════════════════════════════════════════════════
+    // 7-8. 点击"+"按钮，验证注释填充涨跌幅
+    // ══════════════════════════════════════════════════════════════════════════════
+    if (initialCheck.emptyNoteRows.length > 0) {
+      const emptyRow = tableRows.nth(initialCheck.emptyNoteRows[0]);
+      const gainLossText = await emptyRow.locator('td:nth-child(6)').textContent();
+      await emptyRow.locator('button[title="添加涨跌幅到注释"]').click();
+      const noteAfter = await emptyRow.locator('td:nth-child(10) input').inputValue();
+      expect(noteAfter).toMatch(/[+-]?\d+\.\d+%/);
+    }
+
+    // ══════════════════════════════════════════════════════════════════════════════
+    // 9-10. 选中3个checkbox，复制到剪贴板验证
+    // ══════════════════════════════════════════════════════════════════════════════
+    // 重新查找有checkbox的行（因为之前操作可能改变了状态）
+    const checkboxRows = await tableRows.evaluateAll(rows => {
+      const result: { index: number; operation: string }[] = [];
+      for (let i = 0; i < rows.length; i++) {
+        const checkbox = rows[i].querySelector('td:nth-child(1) input[type="checkbox"]');
+        const operationSelect = rows[i].querySelector('td:nth-child(7) select') as HTMLSelectElement;
+        if (checkbox && operationSelect?.value !== '不操作') {
+          result.push({ index: i, operation: operationSelect.value });
+        }
+      }
+      return result;
+    });
+
+    if (checkboxRows.length >= 3) {
+      for (let i = 0; i < 3; i++) {
+        await tableRows.nth(checkboxRows[i].index).locator('td:nth-child(1) input[type="checkbox"]').check();
+      }
+      await page.click('button[title="复制内容到剪贴板"]');
+
+      const clipboardContent = await page.evaluate(() => navigator.clipboard.readText());
+      expect(clipboardContent).toContain('今日操作');
+      expect(clipboardContent).toContain(checkboxRows[0].operation);
+    }
+
+    // ══════════════════════════════════════════════════════════════════════════════
+    // 12-17. 详情窗口测试
+    // ══════════════════════════════════════════════════════════════════════════════
+    // 点击第一行基金名称打开详情
+    const firstFundName = await tableRows.first().locator('td:nth-child(3)').textContent();
+    await tableRows.first().locator('td:nth-child(3)').click();
+    const detailModal = page.locator('#fund-details-modal h2');
+    await expect(detailModal).toBeVisible({ timeout: 5000 });
+    await expect(detailModal).toContainText(firstFundName!.split('(')[0].trim());
+
+    // 点击第二行切换详情
+    const secondFundName = await tableRows.nth(1).locator('td:nth-child(3)').textContent();
+    await tableRows.nth(1).locator('td:nth-child(3)').click();
+    await expect(detailModal).toContainText(secondFundName!.split('(')[0].trim(), { timeout: 3000 });
+
+    // 关闭详情窗口
+    await page.evaluate(() => {
+      const btn = document.querySelector('#fund-details-modal button:has(i.fa-times)') as HTMLButtonElement;
+      if (btn) btn.click();
+    });
+    await expect(page.locator('#fund-details-modal')).not.toBeVisible({ timeout: 2000 });
+
+    // ══════════════════════════════════════════════════════════════════════════════
+    // 18-20. 数据持久化测试
+    // ══════════════════════════════════════════════════════════════════════════════
+    // 重新查找不操作行进行修改
+    const noOpRowIndex = await tableRows.evaluateAll(rows => {
+      for (let i = 0; i < rows.length; i++) {
+        const operationSelect = rows[i].querySelector('td:nth-child(7) select') as HTMLSelectElement;
+        if (operationSelect?.value === '不操作') return i;
+      }
+      return -1;
+    });
+
+    if (noOpRowIndex >= 0) {
+      const noOpRow = tableRows.nth(noOpRowIndex);
+      const noOpFundName = await noOpRow.locator('td:nth-child(3)').textContent();
+
+      // 批量修改：选择买入、输入金额、输入注释
+      await noOpRow.locator('select').first().selectOption('买入');
+      await noOpRow.locator('input[type="text"]').first().fill('1000');
+      await noOpRow.locator('input[placeholder="注释"]').fill('abc');
+
+      // 验证份额自动填充
+      const sharesText = await noOpRow.locator('td:nth-child(9)').textContent();
+      expect(sharesText).not.toBe('-');
+
+      // 等待防抖保存（DEBOUNCE_DELAY = 500ms）
+      await page.waitForTimeout(600);
+
+      // 关闭再打开验证持久化
+      await page.click('button[aria-label="关闭投资计划窗口"]');
+      await expect(draftModal).not.toBeVisible();
+
+      await page.click('button:has-text("草稿")');
+      await expect(draftModal).toBeVisible({ timeout: 5000 });
+
+      // 验证数据保留
+      const reopenedRow = page.locator('table tbody tr').filter({ hasText: noOpFundName!.split('(')[0].trim() }).first();
+      await expect(reopenedRow.locator('select').first()).toHaveValue('买入');
+      await expect(reopenedRow.locator('input[type="text"]').first()).toHaveValue('1000');
+      await expect(reopenedRow.locator('input[placeholder="注释"]')).toHaveValue('abc');
+    }
+
+    // ══════════════════════════════════════════════════════════════════════════════
+    // 21. 关闭窗口
+    // ══════════════════════════════════════════════════════════════════════════════
+    await page.click('button[aria-label="关闭投资计划窗口"]');
+    await expect(draftModal).not.toBeVisible();
+
+    console.log('草稿窗口测试完成');
+  });
+
+  // ═══════════════════════════════════════════════════════════════════════════════
+  // 测试用例 10：指数卡片测试
+  // ═══════════════════════════════════════════════════════════════════════════════
+
+  test('指数卡片测试', async () => {
+    const page = sharedPage!;
+
+    // ══════════════════════════════════════════════════════════════════════════════
+    // 1. 点击 COMEX 黄金指数卡片，弹出详情窗口
+    // ══════════════════════════════════════════════════════════════════════════════
+    const rightAside = page.locator('aside').last();
+    await rightAside.locator('div.bg-white.rounded-2xl').filter({ has: page.locator('h4:has-text("COMEX黄金")') }).click();
+
+    const indexModal = page.locator('#index-details-modal h2');
+    await expect(indexModal).toBeVisible({ timeout: 5000 });
+
+    // ══════════════════════════════════════════════════════════════════════════════
+    // 2. 批量验证：基本信息、AI按钮、日内图表
+    // ══════════════════════════════════════════════════════════════════════════════
+    const initialInfo = await page.evaluate(() => {
+      const modal = document.querySelector('#index-details-modal');
+      if (!modal) return null;
+
+      // 获取 localStorage 数据
+      const indicesRaw = localStorage.getItem('fund_all_indices_data');
+      const indices = indicesRaw ? JSON.parse(indicesRaw) : [];
+      const comex = indices.find((i: any) => i.info.symbol === '101.GC00Y');
+
+      return {
+        mockData: comex,
+        hasAiButton: !!modal.querySelector('button[title="AI助手"]'),
+        intradayCount: comex?.intraday?.length || 0,
+      };
+    });
+
+    expect(indexModal).toContainText(initialInfo?.mockData?.info?.name || 'COMEX黄金');
+    expect(initialInfo?.hasAiButton).toBe(true);
+    expect(initialInfo?.intradayCount).toBeGreaterThan(2);
+
+    // 验证指数代码和当前值
+    await expect(page.locator('#index-details-modal span.bg-gray-100.text-gray-500')).toHaveText(initialInfo?.mockData?.info?.symbol || '101.GC00Y');
+    const formattedValue = initialInfo?.mockData?.info?.current?.toLocaleString() || '';
+    await expect(page.locator('#index-details-modal span.text-2xl')).toContainText(formattedValue);
+
+    // ══════════════════════════════════════════════════════════════════════════════
+    // 3-5. 日内趋势图验证
+    // ══════════════════════════════════════════════════════════════════════════════
+    await expect(page.locator('button:has-text("日内趋势图")')).toHaveClass(/bg-white border/);
+    const chartContainer = page.locator('#index-details-modal svg').first();
+    await expect(chartContainer).toBeVisible({ timeout: 5000 });
+
+    // Hover 日内图表
+    const intradayBounds = await chartContainer.boundingBox();
+    if (intradayBounds) {
+      await page.mouse.move(intradayBounds.x + intradayBounds.width * 0.5, intradayBounds.y + intradayBounds.height * 0.3);
+    }
+    await expect(page.locator('#index-details-modal div.h-12.bg-white')).toBeVisible();
+
+    // ══════════════════════════════════════════════════════════════════════════════
+    // 6-9. 历史趋势图验证
+    // ══════════════════════════════════════════════════════════════════════════════
+    await page.click('button:has-text("历史趋势图")');
+    await expect(page.locator('button:has-text("历史趋势图")')).toHaveClass(/bg-white border/, { timeout: 2000 });
+    await expect(chartContainer).toBeVisible({ timeout: 5000 });
+
+    // 批量获取历史图表信息
+    const historyInfo = await page.evaluate(() => {
+      const modal = document.querySelector('#index-details-modal');
+      if (!modal) return null;
+      const svg = modal.querySelector('svg');
+      if (!svg) return null;
+
+      const hoverRects = svg.querySelectorAll('rect[fill="transparent"][width="10"]');
+      const volumeBars = svg.querySelectorAll('.volume-chart rect');
+      const paths = svg.querySelectorAll('path[fill="none"]');
+
+      let ma5 = false, ma10 = false, ma20 = false;
+      paths.forEach(p => {
+        const stroke = p.getAttribute('stroke');
+        if (stroke === '#eab308') ma5 = true;
+        if (stroke === '#2563eb') ma10 = true;
+        if (stroke === '#ec4899') ma20 = true;
+      });
+
+      // 查找日期标签
+      const texts = svg.querySelectorAll('text');
+      let dateLabel = null;
+      texts.forEach(t => {
+        const text = t.textContent || '';
+        if (text.match(/^\d{1,2}\/\d{1,2}$/)) dateLabel = text;
+      });
+
+      return {
+        dataPointCount: hoverRects.length,
+        hasVolumeChart: volumeBars.length > 0,
+        maStatus: { ma5, ma10, ma20 },
+        dateLabel,
+      };
+    });
+
+    expect(historyInfo?.dataPointCount).toBeGreaterThan(10);
+    expect(historyInfo?.hasVolumeChart).toBe(true);
+
+    // ══════════════════════════════════════════════════════════════════════════════
+    // 8. 均线按钮验证
+    // ══════════════════════════════════════════════════════════════════════════════
+    const ma5Button = page.locator('button:has-text("MA5")');
+    const ma10Button = page.locator('button:has-text("MA10")');
+    const ma20Button = page.locator('button:has-text("MA20")');
+    const allSelectButton = page.locator('button:has(i.fa-check-square), button:has(i.fa-square)').filter({ hasText: '全选' });
+
+    await expect(ma5Button).toBeVisible();
+    await expect(ma10Button).toBeVisible();
+    await expect(ma20Button).toBeVisible();
+    await expect(allSelectButton).toBeVisible();
+
+    // Hover 历史图表验证信息栏
+    const historyBounds = await chartContainer.boundingBox();
+    if (historyBounds) {
+      await page.mouse.move(historyBounds.x + historyBounds.width * 0.4, historyBounds.y + 30);
+    }
+    const infoBar = page.locator('#index-details-modal div.h-12.bg-white');
+    await expect(infoBar).toBeVisible();
+    const infoText = await infoBar.textContent();
+    expect(infoText).toContain('时间');
+    expect(infoText).toContain('净值');
+
+    // ══════════════════════════════════════════════════════════════════════════════
+    // 10-15. 均线切换测试（批量验证）
+    // ══════════════════════════════════════════════════════════════════════════════
+    // 全选取消均线
+    await allSelectButton.click();
+    const afterUnselect = await page.evaluate(() => {
+      const svg = document.querySelector('#index-details-modal svg');
+      if (!svg) return { maCount: 0 };
+      const paths = svg.querySelectorAll('path[fill="none"]');
+      let maCount = 0;
+      paths.forEach(p => {
+        const stroke = p.getAttribute('stroke');
+        if (stroke && stroke !== '#2563eb') maCount++;
+      });
+      return { maCount };
+    });
+    expect(afterUnselect?.maCount).toBe(0);
+
+    // 点击 MA5、MA10、MA20 添加均线
+    await ma5Button.click();
+    await ma10Button.click();
+    await ma20Button.click();
+
+    // 验证三条均线显示
+    const afterAdd = await page.evaluate(() => {
+      const svg = document.querySelector('#index-details-modal svg');
+      if (!svg) return { ma5: false, ma10: false, ma20: false };
+      const paths = svg.querySelectorAll('path[fill="none"]');
+      let ma5 = false, ma10 = false, ma20 = false;
+      paths.forEach(p => {
+        const stroke = p.getAttribute('stroke');
+        if (stroke === '#eab308') ma5 = true;
+        if (stroke === '#2563eb') ma10 = true;
+        if (stroke === '#ec4899') ma20 = true;
+      });
+      return { ma5, ma10, ma20 };
+    });
+    expect(afterAdd?.ma5).toBe(true);
+    expect(afterAdd?.ma10).toBe(true);
+    expect(afterAdd?.ma20).toBe(true);
+
+    // 取消 MA10
+    await ma10Button.click();
+    const afterRemoveMa10 = await page.evaluate(() => {
+      const svg = document.querySelector('#index-details-modal svg');
+      if (!svg) return true;
+      const texts = svg.querySelectorAll('text');
+      for (const t of texts) {
+        const text = t.textContent || '';
+        if (text.startsWith('MA10:') && !text.includes('—')) return false;
+      }
+      return true;
+    });
+    expect(afterRemoveMa10).toBe(true);
+
+    // 全选恢复所有均线
+    await allSelectButton.click();
+    const finalMaStatus = await page.evaluate(() => {
+      const svg = document.querySelector('#index-details-modal svg');
+      if (!svg) return { ma5: false, ma10: false, ma20: false };
+      const paths = svg.querySelectorAll('path[fill="none"]');
+      let ma5 = false, ma10 = false, ma20 = false;
+      paths.forEach(p => {
+        const stroke = p.getAttribute('stroke');
+        if (stroke === '#eab308') ma5 = true;
+        if (stroke === '#2563eb') ma10 = true;
+        if (stroke === '#ec4899') ma20 = true;
+      });
+      return { ma5, ma10, ma20 };
+    });
+    expect(finalMaStatus?.ma5).toBe(true);
+    expect(finalMaStatus?.ma10).toBe(true);
+    expect(finalMaStatus?.ma20).toBe(true);
+
+    // ══════════════════════════════════════════════════════════════════════════════
+    // 16. 关闭窗口
+    // ══════════════════════════════════════════════════════════════════════════════
+    await page.click('#index-details-modal button:has(i.fa-times)');
+    await expect(indexModal).not.toBeVisible();
+
+    console.log('指数卡片测试完成');
+  });
 });
