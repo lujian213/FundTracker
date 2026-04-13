@@ -3562,7 +3562,7 @@ test.describe('testBedWithData', () => {
   });
 
   // ══════════════════════════════════════════════════════════════════════════════
-  // 测试 11.7: 基金交易增删改测试
+  // 测试 100.1: 基金交易增删改测试
   // ══════════════════════════════════════════════════════════════════════════════
   test('基金交易增删改测试', async () => {
     const page = sharedPage!;
@@ -3710,5 +3710,443 @@ test.describe('testBedWithData', () => {
     await expect(fundModal).not.toBeVisible();
 
     console.log('基金交易增删改测试完成');
+  });
+
+  // ══════════════════════════════════════════════════════════════════════════════
+  // 测试 100.2: 批量交易录入测试
+  // ══════════════════════════════════════════════════════════════════════════════
+  test('批量交易录入测试', async () => {
+    const page = sharedPage!;
+
+    // ══════════════════════════════════════════════════════════════════════════════
+    // 1. 打开基金交易明细窗口
+    // ══════════════════════════════════════════════════════════════════════════════
+    const tradeBtn = page.locator('button:has-text("交易")').filter({ hasText: '交易', hasNot: page.locator('text=批量') });
+    await tradeBtn.click();
+
+    const transactionsModal = page.locator('.fixed.inset-0').filter({ hasText: '基金交易明细' }).filter({ has: page.locator('h3') });
+    await expect(transactionsModal).toBeVisible({ timeout: 3000 });
+
+    console.log('基金交易明细窗口已打开');
+
+    // ══════════════════════════════════════════════════════════════════════════════
+    // 2. 点击批量输入按钮，打开批量交易录入窗口
+    // ══════════════════════════════════════════════════════════════════════════════
+    const batchInputBtn = transactionsModal.locator('button:has-text("批量输入")');
+    await batchInputBtn.click();
+
+    const batchInputModal = page.locator('.fixed.inset-0').filter({ hasText: '批量交易录入' }).filter({ has: page.locator('h3') });
+    await expect(batchInputModal).toBeVisible({ timeout: 3000 });
+
+    console.log('批量交易录入窗口已打开');
+
+    // ══════════════════════════════════════════════════════════════════════════════
+    // 3. 验证交易日期选择器存在，并获取默认日期
+    // ══════════════════════════════════════════════════════════════════════════════
+    // 默认日期是前一个交易日（跳过周末），mockDateStr = '2026-04-10' (周五)，前一个交易日 = '2026-04-09' (周四)
+    const datePickerBtn = batchInputModal.locator('button:has(i.fa-calendar-alt)').first();
+
+    // 获取默认日期并验证
+    const defaultDate = await datePickerBtn.textContent();
+    expect(defaultDate?.trim()).toBe(mockDatePrevStr);
+
+    console.log(`默认交易日期: ${defaultDate}`);
+
+    // ══════════════════════════════════════════════════════════════════════════════
+    // 4. 设置交易日期为 mock 日期（必须在添加交易行之前）
+    // ══════════════════════════════════════════════════════════════════════════════
+    // 注意：组件在日期变化时会重置所有交易行，所以必须先设置日期
+    await datePickerBtn.click();
+
+    // 等待日历选择器出现并点击 mock 日期
+    const dayPicker = batchInputModal.locator('.absolute.z-20').filter({ has: page.locator('.rdp') });
+    await dayPicker.locator(`table tbody td button:has-text("${mockDayNum}")`).click();
+
+    // 验证日期已更新
+    const updatedDate = await datePickerBtn.textContent();
+    expect(updatedDate?.trim()).toBe(mockDateStr);
+
+    console.log(`交易日期已更新为: ${mockDateStr}`);
+
+    // ══════════════════════════════════════════════════════════════════════════════
+    // 5. 找到第一个基金分组，点击添加记录按钮
+    // ══════════════════════════════════════════════════════════════════════════════
+    // 等待表格加载并点击添加记录
+    const firstFundGroup = batchInputModal.locator('tr.bg-blue-50').first();
+    await firstFundGroup.locator('button:has-text("添加记录")').click();
+
+    // 验证新增的交易行出现
+    const firstTradeRow = batchInputModal.locator('tbody tr').filter({ hasText: '第 1 条' }).first();
+    await expect(firstTradeRow).toBeVisible({ timeout: 2000 });
+
+    const firstFundName = await firstFundGroup.locator('td span').first().textContent();
+    console.log(`第一个基金: ${firstFundName}, 交易行已添加`);
+
+    // ══════════════════════════════════════════════════════════════════════════════
+    // 6. 输入交易数据
+    // ══════════════════════════════════════════════════════════════════════════════
+    // 输入手续费和总额（买入时份额自动计算）
+    await firstTradeRow.locator('td').nth(4).locator('input[type="number"]').fill('10');
+    await firstTradeRow.locator('td').nth(5).locator('input[type="number"]').fill('1000');
+
+    // 验证份额已自动计算（应该大于0）
+    const sharesValue = await firstTradeRow.locator('td').nth(3).locator('input[type="number"]').inputValue();
+    const sharesNum = parseFloat(sharesValue || '0');
+    expect(sharesNum).toBeGreaterThan(0);
+
+    console.log(`交易数据已输入: 手续费=10, 总额=1000, 份额=${sharesNum}`);
+
+    // ══════════════════════════════════════════════════════════════════════════════
+    // 7. 点击保存按钮
+    // ══════════════════════════════════════════════════════════════════════════════
+    await batchInputModal.locator('button:has-text("保存")').click();
+    await expect(batchInputModal).not.toBeVisible({ timeout: 3000 });
+
+    console.log('交易已保存，批量交易录入窗口已关闭');
+
+    // ══════════════════════════════════════════════════════════════════════════════
+    // 8. 验证基金交易明细窗口刷新，新交易出现在列表中
+    // ══════════════════════════════════════════════════════════════════════════════
+    // 选择 mock 日期查看交易
+    const dateSelectBtn = transactionsModal.locator('button:has(i.fa-calendar-alt)');
+    await dateSelectBtn.click();
+
+    // 点击 mock 日期
+    const txDayPicker = transactionsModal.locator('.absolute.z-20').filter({ has: page.locator('.rdp') });
+    await txDayPicker.locator(`table tbody td button:has-text("${mockDayNum}")`).click();
+
+    // 验证交易列表中出现新添加的交易
+    const tradeRows = transactionsModal.locator('table tbody tr').filter({ hasText: '买入' });
+    const tradeCount = await tradeRows.count();
+    expect(tradeCount).toBeGreaterThan(0);
+
+    // 验证基金名称出现在表格中
+    const tableContent = await transactionsModal.locator('table tbody').textContent();
+    expect(tableContent).toContain('买入');
+    expect(tableContent).toContain(firstFundName?.split('(')[0] || '');
+
+    console.log(`交易明细验证: ${tradeCount}条买入交易`);
+
+    // ══════════════════════════════════════════════════════════════════════════════
+    // 9. 关闭基金交易明细窗口
+    // ══════════════════════════════════════════════════════════════════════════════
+    await transactionsModal.locator('button[aria-label="关闭"]').click();
+    await expect(transactionsModal).not.toBeVisible({ timeout: 3000 });
+
+    console.log('基金交易明细窗口已关闭');
+
+    // ══════════════════════════════════════════════════════════════════════════════
+    // 10. 重新打开基金交易明细窗口，验证交易仍然存在
+    // ══════════════════════════════════════════════════════════════════════════════
+    await tradeBtn.click();
+    await expect(transactionsModal).toBeVisible({ timeout: 3000 });
+
+    // 不需要手动选择日期，窗口打开后会自动显示有交易的日期
+    const tradeRowsAfter = transactionsModal.locator('table tbody tr').filter({ hasText: '买入' });
+    const tradeCountAfter = await tradeRowsAfter.count();
+    expect(tradeCountAfter).toBe(tradeCount);
+
+    console.log(`重入验证: ${tradeCountAfter}条买入交易仍然存在`);
+
+    // ══════════════════════════════════════════════════════════════════════════════
+    // 11. 关闭基金交易明细窗口
+    // ══════════════════════════════════════════════════════════════════════════════
+    await transactionsModal.locator('button[aria-label="关闭"]').click();
+    await expect(transactionsModal).not.toBeVisible({ timeout: 3000 });
+
+    console.log('批量交易录入测试完成');
+  });
+
+  // ══════════════════════════════════════════════════════════════════════════════
+  // 测试 100.3: 组合交易增删测试
+  // ══════════════════════════════════════════════════════════════════════════════
+  test('组合交易增删测试', async () => {
+    const page = sharedPage!;
+
+    // ══════════════════════════════════════════════════════════════════════════════
+    // 1. 打开基金交易明细窗口 → 组合交易管理窗口
+    // ══════════════════════════════════════════════════════════════════════════════
+    const tradeBtn = page.locator('button:has-text("交易")').filter({ hasText: '交易', hasNot: page.locator('text=批量') });
+    await tradeBtn.click();
+
+    const transactionsModal = page.locator('.fixed.inset-0').filter({ hasText: '基金交易明细' }).filter({ has: page.locator('h3') });
+    await expect(transactionsModal).toBeVisible({ timeout: 3000 });
+    await transactionsModal.locator('button:has-text("组合交易")').click();
+
+    const comboModal = page.locator('.fixed.inset-0').filter({ hasText: '组合交易管理' }).filter({ has: page.locator('h3') });
+    await expect(comboModal).toBeVisible({ timeout: 3000 });
+    console.log('交易明细 → 组合交易管理窗口已打开');
+
+    // ══════════════════════════════════════════════════════════════════════════════
+    // 2. 记录初始状态并删除第一个组合
+    // ══════════════════════════════════════════════════════════════════════════════
+    const comboTags = comboModal.locator('div.flex.flex-wrap > div');
+    const initialComboCount = await comboTags.count();
+
+    const firstComboTag = comboTags.first();
+    const deletedComboName = await firstComboTag.locator('button').first().textContent();
+
+    // 删除第一个组合
+    await firstComboTag.locator('button').nth(1).click();
+    await page.locator('.fixed.inset-0').filter({ hasText: '确认删除' }).locator('button:has-text("确认删除")').click();
+
+    expect(await comboTags.count()).toBe(initialComboCount - 1);
+    console.log(`删除组合"${deletedComboName}"成功, 剩余${initialComboCount - 1}个`);
+
+    // ══════════════════════════════════════════════════════════════════════════════
+    // 3. 添加新组合并编辑
+    // ══════════════════════════════════════════════════════════════════════════════
+    const newComboName = `测试组合100.3`;
+    await comboModal.locator('input[placeholder="请输入组合名称"]').fill(newComboName);
+    await comboModal.locator('button:has-text("添加组合交易")').click();
+
+    const newComboTag = comboTags.filter({ hasText: newComboName });
+    await expect(newComboTag).toBeVisible({ timeout: 2000 });
+    await newComboTag.locator('button').first().click();
+
+    // 设置买入金额和手续费
+    const editTable = comboModal.locator('table');
+    await expect(editTable).toBeVisible({ timeout: 2000 });
+    const firstFundRow = editTable.locator('tbody tr').first();
+    await firstFundRow.locator('input[type="number"]').first().fill('500');
+    await firstFundRow.locator('input[type="number"]').nth(1).fill('5');
+
+    // 保存
+    await comboModal.locator('button:has-text("保存")').click();
+    await expect(comboModal.locator('text=保存成功')).toBeVisible({ timeout: 3000 });
+    console.log(`添加组合"${newComboName}"成功, 金额=500, 手续费=5`);
+
+    // ══════════════════════════════════════════════════════════════════════════════
+    // 4. 关闭窗口后重新打开验证
+    // ══════════════════════════════════════════════════════════════════════════════
+    await comboModal.locator('button[aria-label="关闭"]').click();
+    await transactionsModal.locator('button[aria-label="关闭"]').click();
+
+    await tradeBtn.click();
+    await expect(transactionsModal).toBeVisible({ timeout: 3000 });
+    await transactionsModal.locator('button:has-text("组合交易")').click();
+    await expect(comboModal).toBeVisible({ timeout: 3000 });
+
+    // ══════════════════════════════════════════════════════════════════════════════
+    // 5. 验证数据持久化
+    // ══════════════════════════════════════════════════════════════════════════════
+    const newComboAfter = comboTags.filter({ hasText: newComboName });
+    await expect(newComboAfter).toBeVisible({ timeout: 2000 });
+    expect(await comboTags.filter({ hasText: deletedComboName || '' }).count()).toBe(0);
+
+    // 验证内容一致
+    await newComboAfter.locator('button').first().click();
+    await expect(editTable).toBeVisible({ timeout: 2000 });
+    const amountAfter = await editTable.locator('tbody tr').first().locator('input[type="number"]').first().inputValue();
+    const feeAfter = await editTable.locator('tbody tr').first().locator('input[type="number"]').nth(1).inputValue();
+    expect(parseFloat(amountAfter)).toBe(500);
+    expect(parseFloat(feeAfter)).toBe(5);
+    console.log(`重入验证: 新组合存在(金额=${amountAfter},手续费=${feeAfter}), 被删除组合消失`);
+
+    // ══════════════════════════════════════════════════════════════════════════════
+    // 6. 打开批量交易录入窗口验证组合交易列表
+    // ══════════════════════════════════════════════════════════════════════════════
+    await comboModal.locator('button[aria-label="关闭"]').click();
+    await transactionsModal.locator('button:has-text("批量输入")').click();
+
+    const batchInputModal = page.locator('.fixed.inset-0').filter({ hasText: '批量交易录入' }).filter({ has: page.locator('h3') });
+    await expect(batchInputModal).toBeVisible({ timeout: 3000 });
+
+    const comboPanel = batchInputModal.locator('div.mb-4.border.border-gray-100').filter({ hasText: '组合交易' });
+    await expect(comboPanel).toBeVisible({ timeout: 2000 });
+    await expect(comboPanel.locator('button').filter({ hasText: newComboName })).toBeVisible({ timeout: 2000 });
+    expect(await comboPanel.locator('button').filter({ hasText: deletedComboName || '' }).count()).toBe(0);
+    console.log(`批量输入组合交易验证: 新组合存在, 被删除组合消失`);
+
+    // ══════════════════════════════════════════════════════════════════════════════
+    // 7. 关闭所有窗口
+    // ══════════════════════════════════════════════════════════════════════════════
+    await batchInputModal.locator('button[aria-label="关闭"]').click();
+    await transactionsModal.locator('button[aria-label="关闭"]').click();
+
+    console.log('组合交易增删测试完成');
+  });
+
+  // ══════════════════════════════════════════════════════════════════════════════
+  // 测试 100.4: 主界面管理功能测试
+  // ══════════════════════════════════════════════════════════════════════════════
+  test('主界面管理功能测试', async () => {
+    const page = sharedPage!;
+
+    // ══════════════════════════════════════════════════════════════════════════════
+    // 1. 记录初始状态
+    // ══════════════════════════════════════════════════════════════════════════════
+    // 记录初始基金数量
+    const fundCards = page.locator('div.bg-white.rounded-2xl.border').filter({ has: page.locator('h3') });
+    const initialFundCount = await fundCards.count();
+
+    // 记录初始大盘指数顺序（获取前两个指数的名称）
+    const leftAside = page.locator('aside').first();
+    const domesticIndexCards = leftAside.locator('div.bg-white.rounded-2xl');
+    const firstDomesticName = await domesticIndexCards.first().locator('h4').textContent();
+    const secondDomesticName = await domesticIndexCards.nth(1).locator('h4').textContent();
+
+    console.log(`初始状态: 基金=${initialFundCount}个, 大盘指数前两个=${firstDomesticName}, ${secondDomesticName}`);
+
+    // ══════════════════════════════════════════════════════════════════════════════
+    // 2. 点击管理按钮进入管理模式
+    // ══════════════════════════════════════════════════════════════════════════════
+    const manageBtn = page.locator('button:has-text("管理")');
+    await manageBtn.click();
+
+    // 验证进入管理模式（出现"管理模式"文字）
+    const manageModeHeader = page.locator('span:has-text("管理模式")');
+    await expect(manageModeHeader).toBeVisible({ timeout: 3000 });
+
+    // 验证出现"保存"和"取消"按钮
+    const saveBtn = page.locator('button:has-text("保存")');
+    const cancelBtn = page.locator('button:has-text("取消")');
+    await expect(saveBtn).toBeVisible({ timeout: 2000 });
+    await expect(cancelBtn).toBeVisible({ timeout: 2000 });
+
+    console.log('管理模式已进入');
+
+    // ══════════════════════════════════════════════════════════════════════════════
+    // 3. 选中第一个基金卡片和第三个大盘指数卡片（不是第二个，避免与拖拽操作重叠）
+    // ══════════════════════════════════════════════════════════════════════════════
+    // 选中第一个基金（点击删除选择按钮 - 管理模式下右上角的radio按钮）
+    const firstFundCard = fundCards.first();
+    // 管理模式下的选择按钮是带有 aria-pressed 属性的 button
+    const firstFundSelectBtn = firstFundCard.locator('button[aria-pressed]');
+    await firstFundSelectBtn.dispatchEvent('click');
+    await expect(firstFundSelectBtn).toHaveAttribute('aria-pressed', 'true', { timeout: 3000 });
+
+    // 记录第三个指数的名称（将被删除）
+    const thirdDomesticName = await domesticIndexCards.nth(2).locator('h4').textContent();
+
+    // 选中第三个大盘指数卡片（删除第三个，拖拽第一个到第二个位置）
+    const thirdDomesticCard = domesticIndexCards.nth(2);
+    const thirdDomesticSelectBtn = thirdDomesticCard.locator('button[aria-pressed]');
+    await thirdDomesticSelectBtn.dispatchEvent('click');
+    await expect(thirdDomesticSelectBtn).toHaveAttribute('aria-pressed', 'true', { timeout: 3000 });
+
+    // 验证"2个项目待删除"出现
+    const deleteCountText = page.locator('text=/\\d+个项目待删除/');
+    await expect(deleteCountText).toBeVisible({ timeout: 2000 });
+
+    console.log(`已选中1个基金和第3个指数(${thirdDomesticName})`);
+
+    // ══════════════════════════════════════════════════════════════════════════════
+    // 4. 拖拽调整大盘指数顺序（将第一个拖到第二个位置）
+    // ══════════════════════════════════════════════════════════════════════════════
+    const firstDomesticCard = domesticIndexCards.first();
+    const secondDomesticCard = domesticIndexCards.nth(1);
+    await firstDomesticCard.dragTo(secondDomesticCard);
+    await page.waitForTimeout(500);
+
+    console.log('已拖拽调整指数顺序(第一个拖到第二个位置)');
+
+    // ══════════════════════════════════════════════════════════════════════════════
+    // 5. 点击取消按钮，验证主界面没有变化
+    // ══════════════════════════════════════════════════════════════════════════════
+    await cancelBtn.click();
+
+    // 验证退出管理模式
+    await expect(manageModeHeader).not.toBeVisible({ timeout: 3000 });
+
+    // 验证基金数量不变
+    const fundCountAfterCancel = await fundCards.count();
+    expect(fundCountAfterCancel).toBe(initialFundCount);
+
+    // 验证大盘指数顺序不变
+    const domesticIndexCardsAfterCancel = leftAside.locator('div.bg-white.rounded-2xl');
+    const firstDomesticNameAfterCancel = await domesticIndexCardsAfterCancel.first().locator('h4').textContent();
+    const secondDomesticNameAfterCancel = await domesticIndexCardsAfterCancel.nth(1).locator('h4').textContent();
+    expect(firstDomesticNameAfterCancel).toBe(firstDomesticName);
+    expect(secondDomesticNameAfterCancel).toBe(secondDomesticName);
+
+    console.log(`取消后验证: 基金=${fundCountAfterCancel}个, 大盘指数顺序不变`);
+
+    // ══════════════════════════════════════════════════════════════════════════════
+    // 6. 再次进入管理模式，重复操作
+    // ══════════════════════════════════════════════════════════════════════════════
+    await manageBtn.click();
+    await expect(manageModeHeader).toBeVisible({ timeout: 3000 });
+    await expect(saveBtn).toBeVisible({ timeout: 2000 });
+    await expect(cancelBtn).toBeVisible({ timeout: 2000 });
+
+    // 等待管理模式完全激活
+    await page.waitForTimeout(500);
+
+    // 重新获取卡片引用（因为重新进入管理模式）
+    const domesticIndexCards2 = leftAside.locator('div.bg-white.rounded-2xl');
+
+    // 先选中第一个基金
+    const firstFundSelectBtn2 = fundCards.first().locator('button[aria-pressed]');
+    await firstFundSelectBtn2.dispatchEvent('click');
+    await expect(firstFundSelectBtn2).toHaveAttribute('aria-pressed', 'true', { timeout: 3000 });
+
+    // 选中第三个大盘指数（与拖拽操作不重叠）
+    const thirdDomesticCard2 = domesticIndexCards2.nth(2);
+    const thirdDomesticSelectBtn2 = thirdDomesticCard2.locator('button[aria-pressed]');
+    await thirdDomesticSelectBtn2.dispatchEvent('click');
+    await expect(thirdDomesticSelectBtn2).toHaveAttribute('aria-pressed', 'true', { timeout: 3000 });
+
+    // 验证"2个项目待删除"出现
+    await expect(page.locator('text=/\\d+个项目待删除/')).toBeVisible({ timeout: 2000 });
+
+    // 拖拽调整顺序（将第一个拖到第二个位置）
+    // 原始顺序：[上证, 深证, 创业板, 恒生科技]
+    // 拖拽后顺序：[深证, 上证, 创业板, 恒生科技]
+    const firstDomesticCard2 = domesticIndexCards2.first();
+    const secondDomesticCard2 = domesticIndexCards2.nth(1);
+    await firstDomesticCard2.dragTo(secondDomesticCard2);
+    await page.waitForTimeout(300);
+
+    console.log('再次进入管理模式，已选中2个项目并拖拽调整顺序');
+
+    // ══════════════════════════════════════════════════════════════════════════════
+    // 7. 点击保存按钮，验证主界面变化
+    // ══════════════════════════════════════════════════════════════════════════════
+    await saveBtn.click();
+
+    // 验证退出管理模式
+    await expect(manageModeHeader).not.toBeVisible({ timeout: 3000 });
+
+    // 验证基金数量减少1个
+    const fundCountAfterSave = await fundCards.count();
+    expect(fundCountAfterSave).toBe(initialFundCount - 1);
+
+    // 验证大盘指数数量减少1个（原来4个，删除了1个）
+    const domesticIndexCardsAfterSave = leftAside.locator('div.bg-white.rounded-2xl');
+    const domesticCountAfterSave = await domesticIndexCardsAfterSave.count();
+    expect(domesticCountAfterSave).toBe(3);
+
+    // 被删除的指数（原来的第三个）应该消失
+    const deletedIndexCard = domesticIndexCardsAfterSave.filter({ hasText: thirdDomesticName || '' });
+    expect(await deletedIndexCard.count()).toBe(0);
+
+    // 验证指数顺序发生变化
+    // 原始顺序：[上证, 深证, 创业板, 恒生科技]
+    // 操作：删除创业板(第3个)，拖拽上证到深证位置(第1个拖到第2个)
+    // 拖拽后pending order：[深证, 上证, 创业板, 恒生科技]
+    // 删除创业板后最终顺序：[深证, 上证, 恒生科技]
+    // 所以保存后第一个应该是"深证成指"，第二个应该是"上证指数"
+    const firstDomesticNameAfterSave = await domesticIndexCardsAfterSave.first().locator('h4').textContent();
+    const secondDomesticNameAfterSave = await domesticIndexCardsAfterSave.nth(1).locator('h4').textContent();
+
+    // 顺序验证：第一个变成原来的第二个，第二个变成原来的第一个
+    expect(firstDomesticNameAfterSave).toBe(secondDomesticName); // 深证成指
+    expect(secondDomesticNameAfterSave).toBe(firstDomesticName); // 上证指数
+
+    console.log(`保存后验证: 基金=${fundCountAfterSave}个(减少1个), 大盘指数=${domesticCountAfterSave}个(减少1个), 被删除指数"${thirdDomesticName}"消失, 顺序变化: [${firstDomesticNameAfterSave}, ${secondDomesticNameAfterSave}, ...]`);
+
+    // ══════════════════════════════════════════════════════════════════════════════
+    // 8. 验证被删除的基金消失
+    // ══════════════════════════════════════════════════════════════════════════════
+    // 验证基金卡片数量确实减少
+    expect(fundCountAfterSave).toBeLessThan(initialFundCount);
+
+    // 验证全球市场指数数量不变（我们没有选中全球指数）
+    const rightAside = page.locator('aside').last();
+    const globalIndexCount = await rightAside.locator('div.bg-white.rounded-2xl').count();
+    expect(globalIndexCount).toBe(3);
+
+    console.log('主界面管理功能测试完成');
   });
 });

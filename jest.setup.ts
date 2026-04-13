@@ -5,6 +5,16 @@ import { TextDecoder, TextEncoder } from 'util';
 global.TextDecoder = TextDecoder as any;
 global.TextEncoder = TextEncoder as any;
 
+// Mock fetch for Jest environment (promptTemplateService uses fetch)
+global.fetch = jest.fn(() =>
+  Promise.resolve({
+    ok: false,
+    status: 404,
+    json: () => Promise.resolve({}),
+    text: () => Promise.resolve(''),
+  })
+) as any;
+
 // 静默测试中预期的 console 输出，减少日志噪音
 const originalLog = console.log;
 const originalError = console.error;
@@ -52,7 +62,8 @@ console.warn = (...args: unknown[]) => {
         message.includes('[TimerJob] Failed to load config') ||
         message.includes('加载常用问题配置失败') ||
         message.includes('[BackgroundJob] AI response is not an array') ||
-        message.includes('[StrategyRecommendation] AI response is not an array')) {
+        message.includes('[StrategyRecommendation] AI response is not an array') ||
+        message.includes('Failed to load template config')) {
       return;
     }
   }

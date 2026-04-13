@@ -10,6 +10,7 @@ interface IndexCardProps {
   status?: CardStatus;
   isSelectionMode?: boolean;
   isSelected?: boolean;
+  isDragging?: boolean;
   onSelect?: (selectionKey: ManageSelectionKey) => void;
   onClick?: () => void;
   selectionKey: ManageSelectionKey;
@@ -20,6 +21,7 @@ const IndexCard: React.FC<IndexCardProps> = ({
   status = 'unknown',
   isSelectionMode = false,
   isSelected = false,
+  isDragging = false,
   onSelect,
   onClick,
   selectionKey
@@ -64,7 +66,10 @@ const IndexCard: React.FC<IndexCardProps> = ({
   return (
     <div
       onClick={handleClick}
-      className={`bg-white rounded-2xl pt-3 pb-2 px-3 shadow-sm border transition-all min-w-[150px] lg:min-w-0 relative group cursor-pointer hover:shadow-md ${isSelected ? 'border-blue-500 ring-4 ring-blue-500/10' : isSelectionMode ? 'border-blue-200 ring-2 ring-blue-50' : 'border-gray-100'} animate-in fade-in duration-300`}
+      className={`bg-white rounded-2xl pt-3 pb-2 px-3 shadow-sm border transition-all min-w-[150px] lg:min-w-0 relative group cursor-pointer hover:shadow-md
+        ${isDragging ? 'opacity-50 scale-105 shadow-lg border-blue-500' : ''}
+        ${isSelected ? 'border-blue-500 ring-4 ring-blue-500/10' : isSelectionMode ? 'border-2 border-dashed border-blue-400 cursor-grab' : 'border-gray-100'}
+        animate-in fade-in duration-300`}
     >
       {/* Status dot — top-left corner */}
       <div

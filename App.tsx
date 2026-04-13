@@ -1,15 +1,18 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { Ticker, ValuationData, MarketType, MarketIndex, BackupData, CardStatus, ManageItemType, ManageSelectionKey, JobResult, HistoricalPoint, FundInfo } from './types';
+import { DndContext, DragEndEvent } from '@dnd-kit/core';
+import { SortableContext, verticalListSortingStrategy, arrayMove } from '@dnd-kit/sortable';
+import { Ticker, ValuationData, MarketType, MarketIndex, BackupData, CardStatus, ManageItemType, ManageSelectionKey, JobResult, HistoricalPoint, FundInfo, IndexInfo } from './types';
 import { fetchFundData, fetchFundDatas, forceFetchFundHistories, fetchMarketIndices, fetchIndexHistories, maybeTriggerHistoryRefresh, normalizeIndexSymbol } from './services/fundService';
 import { toLocalDateKey } from './utils/priceResolver';
 import * as marketFundService from './services/marketFundService';
 import * as indexService from './services/indexService';
 import * as marketNewsService from './services/marketNewsService';
-import { INDEX_NAME_MAP, isDomesticIndex, isGlobalIndex, DEFAULT_INDEX_SYMBOLS, DEFAULT_INDICES } from './services/indexService';
+import { INDEX_NAME_MAP, isDomesticIndex, isGlobalIndex, DEFAULT_INDEX_SYMBOLS, DEFAULT_INDICES, saveAllIndexInfos, getIndexSymbolsByCategory } from './services/indexService';
 import { isFeatureEnabled, getSyncConfig, saveSyncConfig } from './services/systemConfigService';
 import { getSortOrder, saveSortOrder, SortOrder } from './services/userPreferenceService';
 import { TickerCard } from './components/TickerCard';
 import IndexCard from './components/IndexCard';
+import SortableIndexCard from './components/SortableIndexCard';
 import { AddTickerModal } from './components/AddTickerModal';
 import { ConfirmDialog } from './components/ConfirmDialog';
 import { FundDetailsModal } from './components/FundDetailsModal';
@@ -484,7 +487,15 @@ const AppContent: React.FC = () => {
   const [fundStatuses, setFundStatuses] = useState<Record<string, CardStatus>>({});
   const [indexStatuses, setIndexStatuses] = useState<Record<string, CardStatus>>({});
 
-  // viewingSymbol 和 viewingFromDraft 合并为一个状态对象，确保同时更新
+  const [pendingIndexOrder, setPendingIndexOrder] = useState<{
+    domestic: string[];
+    global: string[];
+  } | null>(null);
+
+  const [originalIndexOrder, setOriginalIndexOrder] = useState<{
+    domestic: string[];
+    global: string[];
+  } | null>(null);
   const [viewingFund, setViewingFund] = useState<{ symbol: string; fromDraft: boolean } | null>(null);
   // 跟踪上一次 viewingFund 是否为非 null，用于判断是否需要进场动画
   const wasViewingFundOpenRef = useRef<boolean>(false);
@@ -516,7 +527,40 @@ const AppContent: React.FC = () => {
   const clearSelectionMode = useCallback(() => {
     setSelectedItems(new Set());
     setIsSelectionMode(false);
+    setPendingIndexOrder(null);
+    setOriginalIndexOrder(null);
   }, []);
+
+  const enterSelectionMode = useCallback(() => {
+    setSelectedItems(new Set());
+    setIsSelectionMode(true);
+    const currentOrder = getIndexSymbolsByCategory();
+    setPendingIndexOrder(currentOrder);
+    setOriginalIndexOrder(currentOrder);
+  }, []);
+
+  const handleIndexDragEnd = useCallback((event: DragEndEvent) => {
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
+
+    const activeSymbol = active.id as string;
+    const overSymbol = over.id as string;
+    const isDomestic = isDomesticIndex(activeSymbol);
+
+    if (!pendingIndexOrder) return;
+
+    if (isDomestic) {
+      const oldIndex = pendingIndexOrder.domestic.indexOf(activeSymbol);
+      const newIndex = pendingIndexOrder.domestic.indexOf(overSymbol);
+      if (oldIndex === -1 || newIndex === -1) return;
+      setPendingIndexOrder({ ...pendingIndexOrder, domestic: arrayMove(pendingIndexOrder.domestic, oldIndex, newIndex) });
+    } else {
+      const oldIndex = pendingIndexOrder.global.indexOf(activeSymbol);
+      const newIndex = pendingIndexOrder.global.indexOf(overSymbol);
+      if (oldIndex === -1 || newIndex === -1) return;
+      setPendingIndexOrder({ ...pendingIndexOrder, global: arrayMove(pendingIndexOrder.global, oldIndex, newIndex) });
+    }
+  }, [pendingIndexOrder]);
 
   const toggleSelection = useCallback((key: ManageSelectionKey) => {
     setSelectedItems(prev => {
@@ -528,38 +572,78 @@ const AppContent: React.FC = () => {
   }, []);
 
   const confirmSelectionDeletion = useCallback(() => {
-    if (selectedItems.size === 0) return;
+    if (selectedItems.size === 0 && !pendingIndexOrder) return;
 
-    setPortfolio(prev => prev.filter(t => !selectedItems.has(createManageSelectionKey('fund', t.id))));
+    let finalIndicesConfig = indicesConfig;
+    let indicesToDelete: string[] = [];
+    let finalMarketIndices: MarketIndex[] | null = null;
 
-    // 单次遍历：分离要删除和保留的指数
-    const toDelete: string[] = [];
-    const remaining = indicesConfig.filter(symbol => {
-      const normalSymbol = normalizeIndexSymbol(symbol);
-      const shouldDelete = selectedItems.has(createManageSelectionKey('index', normalSymbol)) ||
-                           selectedItems.has(createManageSelectionKey('global_index', normalSymbol));
-      if (shouldDelete) {
-        toDelete.push(symbol);
-        return false;
+    // 1. 执行删除逻辑
+    if (selectedItems.size > 0) {
+      setPortfolio(prev => prev.filter(t => !selectedItems.has(createManageSelectionKey('fund', t.id))));
+
+      const remaining = indicesConfig.filter(symbol => {
+        const normalSymbol = normalizeIndexSymbol(symbol);
+        const shouldDelete = selectedItems.has(createManageSelectionKey('index', normalSymbol)) ||
+                             selectedItems.has(createManageSelectionKey('global_index', normalSymbol));
+        if (shouldDelete) {
+          indicesToDelete.push(symbol);
+          return false;
+        }
+        return true;
+      });
+
+      if (indicesToDelete.length > 0) {
+        indexService.removeIndexInfos(indicesToDelete.map(normalizeIndexSymbol));
       }
-      return true;
-    });
 
-    // 执行删除
-    if (toDelete.length > 0) {
-      indexService.removeIndexInfos(toDelete.map(normalizeIndexSymbol));
+      if (remaining.length === 0) {
+        indexService.resetToDefaults();
+        finalIndicesConfig = DEFAULT_INDEX_SYMBOLS;
+        setPendingIndexOrder(null);
+      } else {
+        finalIndicesConfig = remaining;
+      }
     }
 
-    // 更新状态
-    if (remaining.length === 0) {
-      indexService.resetToDefaults();
-      setIndicesConfig(DEFAULT_INDEX_SYMBOLS);
-    } else {
-      setIndicesConfig(remaining);
+    // 2. 保存指数顺序（如果有 pendingIndexOrder 且指数未全部删除）
+    if (pendingIndexOrder && !indicesToDelete.includes(DEFAULT_INDEX_SYMBOLS[0]) && finalIndicesConfig.length > 0) {
+      const indicesMap = new Map<string, MarketIndex>(
+        indexService.getAllMarketIndices().map(idx => [idx.info.symbol, idx])
+      );
+
+      const allSymbols = [...pendingIndexOrder.domestic, ...pendingIndexOrder.global]
+        .filter(symbol => !indicesToDelete.includes(symbol));
+
+      const { allInfos, newMarketIndices } = allSymbols.reduce<{ allInfos: IndexInfo[]; newMarketIndices: MarketIndex[] }>(
+        (acc, symbol) => {
+          const idx = indicesMap.get(symbol);
+          if (idx) {
+            acc.allInfos.push(idx.info);
+            acc.newMarketIndices.push(idx);
+          }
+          return acc;
+        },
+        { allInfos: [], newMarketIndices: [] }
+      );
+
+      if (allInfos.length > 0) {
+        saveAllIndexInfos(allInfos);
+        finalIndicesConfig = allSymbols.filter(symbol => indicesMap.has(symbol));
+        finalMarketIndices = newMarketIndices;
+      }
+    }
+
+    // 3. 统一更新状态（避免多次重渲染）
+    if (finalIndicesConfig !== indicesConfig) {
+      setIndicesConfig(finalIndicesConfig);
+    }
+    if (finalMarketIndices) {
+      setMarketIndices(finalMarketIndices);
     }
 
     clearSelectionMode();
-  }, [selectedItems, clearSelectionMode, indicesConfig]);
+  }, [selectedItems, clearSelectionMode, indicesConfig, pendingIndexOrder]);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -596,9 +680,14 @@ const AppContent: React.FC = () => {
   useEffect(() => {
     if (!isSelectionMode) return;
 
+    // 生成有效选择键：根据指数类型使用正确的 key 类型
     const validKeys = new Set<ManageSelectionKey>([
       ...portfolio.map(item => createManageSelectionKey('fund', item.id)),
-      ...indicesConfig.map(symbol => createManageSelectionKey('index', normalizeIndexSymbol(symbol))),
+      ...indicesConfig.map(symbol => {
+        const normalSymbol = normalizeIndexSymbol(symbol);
+        // 根据指数类型决定使用 'index' 还是 'global_index'
+        return createManageSelectionKey(isDomesticIndex(normalSymbol) ? 'index' : 'global_index', normalSymbol);
+      }),
     ]);
 
     setSelectedItems(prev => {
@@ -759,6 +848,17 @@ const AppContent: React.FC = () => {
   const displayGlobalIndices = useMemo(
     () => marketIndices.filter(m => isGlobalIndex(m.info.symbol)),
     [marketIndices]
+  );
+
+  // 用于快速查找的 Map（避免 render 中的 O(n²) find 操作）
+  const domesticIndexMap = useMemo(
+    () => new Map(displayDomesticIndices.map(i => [i.info.symbol, i])),
+    [displayDomesticIndices]
+  );
+
+  const globalIndexMap = useMemo(
+    () => new Map(displayGlobalIndices.map(i => [i.info.symbol, i])),
+    [displayGlobalIndices]
   );
 
   const refreshAll = useCallback(async () => {
@@ -1024,25 +1124,6 @@ const AppContent: React.FC = () => {
     refreshMarketIndicesAsync(true);
   }, [pendingImportData, runBatchUpdate, refreshMarketIndicesAsync]);
 
-  const renderIndexCard = (idx: MarketIndex, type: 'index' | 'global_index', status: CardStatus = 'unknown') => {
-    const selectionKey = createManageSelectionKey(type, normalizeIndexSymbol(idx.info.symbol));
-    const isSelected = selectedItems.has(selectionKey);
-
-    return (
-      <IndexCard
-        key={idx.info.symbol}
-        idx={idx}
-        type={type}
-        status={status}
-        isSelectionMode={isSelectionMode}
-        isSelected={isSelected}
-        onSelect={toggleSelection}
-        onClick={() => setViewingIndexSymbol(normalizeIndexSymbol(idx.info.symbol))}
-        selectionKey={selectionKey}
-      />
-    );
-  };
-
   // 从 indices 中查找当前查看的指数（确保使用最新数据）
   const viewingIndex = useMemo(() => {
     if (!viewingIndexSymbol) return null;
@@ -1193,7 +1274,7 @@ const AppContent: React.FC = () => {
                     <button onClick={() => setShowTransactions(true)} className="px-4 py-1.5 rounded-full bg-blue-600 shadow-md text-[11px] font-bold text-white hover:bg-blue-700 transition-all">交易</button>
                     <button onClick={() => setIsInvestmentNoticeModalOpen(true)} className="px-4 py-1.5 rounded-full bg-blue-600 shadow-md text-[11px] font-bold text-white hover:bg-blue-700 transition-all">投顾</button>
                     <button onClick={() => setIsInvestmentDraftModalOpen(true)} className="px-4 py-1.5 rounded-full bg-blue-600 shadow-md text-[11px] font-bold text-white hover:bg-blue-700 transition-all">草稿</button>
-                    <button disabled={manageableItemCount === 0} onClick={() => { setSelectedItems(new Set()); setIsSelectionMode(true); }} className={`px-4 py-1.5 rounded-full shadow-md text-[11px] font-bold text-white transition-all ${manageableItemCount === 0 ? 'bg-blue-300 cursor-not-allowed opacity-60' : 'bg-blue-600 hover:bg-blue-700'}`}>管理</button>
+                    <button disabled={manageableItemCount === 0} onClick={enterSelectionMode} className={`px-4 py-1.5 rounded-full shadow-md text-[11px] font-bold text-white transition-all ${manageableItemCount === 0 ? 'bg-blue-300 cursor-not-allowed opacity-60' : 'bg-blue-600 hover:bg-blue-700'}`}>管理</button>
                     <button onClick={() => setSortOrder(o => o === 'desc' ? 'asc' : 'desc')} className="w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center text-gray-500">
                       <i className={`fas fa-sort-amount-${sortOrder === 'asc' ? 'up' : 'down'}`}></i>
                     </button>
@@ -1202,7 +1283,7 @@ const AppContent: React.FC = () => {
               ) : (
                 <div className="h-full grid grid-cols-[auto_1fr_auto] items-center gap-3">
                   <h2 className="text-[10px] font-bold text-gray-400 uppercase tracking-widest leading-none m-0 flex items-center shrink-0">
-                    <span className="text-blue-600 font-black">批量删除</span>
+                    <span className="text-blue-600 font-black">管理模式</span>
                   </h2>
                   <div className="flex items-center justify-center min-w-0">
                     {selectedItems.size > 0 && (
@@ -1212,7 +1293,7 @@ const AppContent: React.FC = () => {
                     )}
                   </div>
                   <div className="flex items-center space-x-2 shrink-0 justify-self-end">
-                    <button disabled={selectedItems.size === 0} onClick={confirmSelectionDeletion} className={`px-4 py-1.5 rounded-full text-[10px] font-bold transition-all ${selectedItems.size === 0 ? 'bg-blue-100 text-blue-300 cursor-not-allowed border border-blue-100' : 'bg-blue-600 text-white hover:bg-blue-700 shadow-md'}`}>确认</button>
+                    <button disabled={selectedItems.size === 0 && (!pendingIndexOrder || JSON.stringify(pendingIndexOrder) === JSON.stringify(originalIndexOrder))} onClick={confirmSelectionDeletion} className={`px-4 py-1.5 rounded-full text-[10px] font-bold transition-all ${selectedItems.size === 0 && (!pendingIndexOrder || JSON.stringify(pendingIndexOrder) === JSON.stringify(originalIndexOrder)) ? 'bg-blue-100 text-blue-300 cursor-not-allowed border border-blue-100' : 'bg-blue-600 text-white hover:bg-blue-700 shadow-md'}`}>保存</button>
                     <button onClick={clearSelectionMode} className="px-4 py-1.5 rounded-full bg-white border border-blue-200 text-[10px] font-bold text-blue-600">取消</button>
                   </div>
                 </div>
@@ -1229,10 +1310,52 @@ const AppContent: React.FC = () => {
       <input type="file" ref={fileInputRef} onChange={handleImport} accept=".json" className="hidden" />
 
       <div className="max-w-6xl mx-auto px-4 py-3 grid grid-cols-1 lg:grid-cols-[200px_1fr_200px] gap-2.5 items-start">
+        {/* 国内指数区域 */}
         <aside className="space-y-1.5">
-          <div className="flex lg:flex-col overflow-x-auto lg:overflow-visible gap-1.5 pb-2 no-scrollbar">
-            {displayDomesticIndices.map(idx => renderIndexCard(idx, 'index', indexStatuses[normalizeIndexSymbol(idx.info.symbol)] ?? 'unknown'))}
-          </div>
+          <DndContext onDragEnd={handleIndexDragEnd}>
+            <SortableContext
+              items={pendingIndexOrder?.domestic ?? displayDomesticIndices.map(i => i.info.symbol)}
+              strategy={verticalListSortingStrategy}
+            >
+              <div className="flex lg:flex-col overflow-x-auto lg:overflow-visible gap-1.5 pb-2 no-scrollbar">
+                {(pendingIndexOrder?.domestic ?? displayDomesticIndices.map(i => i.info.symbol)).map(symbol => {
+                  const idx = domesticIndexMap.get(symbol) ?? indexService.getMarketIndex(symbol);
+                  if (!idx) return null;
+                  const selectionKey = createManageSelectionKey('index', normalizeIndexSymbol(idx.info.symbol));
+                  const isSelected = selectedItems.has(selectionKey);
+                  const status = indexStatuses[normalizeIndexSymbol(idx.info.symbol)] ?? 'unknown';
+
+                  if (isSelectionMode) {
+                    return (
+                      <SortableIndexCard
+                        key={idx.info.symbol}
+                        idx={idx}
+                        type="index"
+                        status={status}
+                        isSelectionMode={true}
+                        isSelected={isSelected}
+                        onSelect={toggleSelection}
+                        onClick={() => setViewingIndexSymbol(normalizeIndexSymbol(idx.info.symbol))}
+                        selectionKey={selectionKey}
+                      />
+                    );
+                  }
+                  return (
+                    <IndexCard
+                      key={idx.info.symbol}
+                      idx={idx}
+                      type="index"
+                      status={status}
+                      isSelectionMode={false}
+                      isSelected={false}
+                      onClick={() => setViewingIndexSymbol(normalizeIndexSymbol(idx.info.symbol))}
+                      selectionKey={selectionKey}
+                    />
+                  );
+                })}
+              </div>
+            </SortableContext>
+          </DndContext>
         </aside>
 
         <main>
@@ -1255,10 +1378,52 @@ const AppContent: React.FC = () => {
           </div>
         </main>
 
+        {/* 全球指数区域 */}
         <aside className="space-y-1.5">
-          <div className="flex lg:flex-col overflow-x-auto lg:overflow-visible gap-1.5 pb-2 no-scrollbar">
-            {displayGlobalIndices.map(idx => renderIndexCard(idx, 'global_index', indexStatuses[normalizeIndexSymbol(idx.info.symbol)] ?? 'unknown'))}
-          </div>
+          <DndContext onDragEnd={handleIndexDragEnd}>
+            <SortableContext
+              items={pendingIndexOrder?.global ?? displayGlobalIndices.map(i => i.info.symbol)}
+              strategy={verticalListSortingStrategy}
+            >
+              <div className="flex lg:flex-col overflow-x-auto lg:overflow-visible gap-1.5 pb-2 no-scrollbar">
+                {(pendingIndexOrder?.global ?? displayGlobalIndices.map(i => i.info.symbol)).map(symbol => {
+                  const idx = globalIndexMap.get(symbol) ?? indexService.getMarketIndex(symbol);
+                  if (!idx) return null;
+                  const selectionKey = createManageSelectionKey('global_index', normalizeIndexSymbol(idx.info.symbol));
+                  const isSelected = selectedItems.has(selectionKey);
+                  const status = indexStatuses[normalizeIndexSymbol(idx.info.symbol)] ?? 'unknown';
+
+                  if (isSelectionMode) {
+                    return (
+                      <SortableIndexCard
+                        key={idx.info.symbol}
+                        idx={idx}
+                        type="global_index"
+                        status={status}
+                        isSelectionMode={true}
+                        isSelected={isSelected}
+                        onSelect={toggleSelection}
+                        onClick={() => setViewingIndexSymbol(normalizeIndexSymbol(idx.info.symbol))}
+                        selectionKey={selectionKey}
+                      />
+                    );
+                  }
+                  return (
+                    <IndexCard
+                      key={idx.info.symbol}
+                      idx={idx}
+                      type="global_index"
+                      status={status}
+                      isSelectionMode={false}
+                      isSelected={false}
+                      onClick={() => setViewingIndexSymbol(normalizeIndexSymbol(idx.info.symbol))}
+                      selectionKey={selectionKey}
+                    />
+                  );
+                })}
+              </div>
+            </SortableContext>
+          </DndContext>
         </aside>
       </div>
 

@@ -23,7 +23,8 @@ test.describe('Smoke Tests', () => {
 
     await page.goto('/', { waitUntil: 'load' });
     await expect(page).toHaveTitle(/基金估值助手/);
-    await expect(page.locator('#root')).toBeVisible();
+    // 等待 React 应用渲染完成（页面主要内容出现）
+    await expect(page.locator('h1:has-text("极简基金估值")')).toBeVisible();
 
     // 检查关键错误
     const criticalErrors = consoleMessages.filter(msg =>

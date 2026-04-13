@@ -1,5 +1,5 @@
 import React from 'react';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, act, fireEvent } from '@testing-library/react';
 import App from '../../App';
 import { MarketIndex, ValuationData, IndexInfo } from '../../types';
 import { resetCache as resetIndexCache, saveAllIndexInfos, getAllIndexInfos } from '../../services/indexService';
@@ -85,6 +85,7 @@ describe('App manage mode', () => {
     localStorage.clear();
     jest.clearAllMocks();
     marketFundService.resetCache();
+    resetIndexCache(); // 确保 indices service 也被重置
 
     fetchFundDataMock.mockResolvedValue(fundData);
     forceFetchFundHistoryMock.mockResolvedValue([]);
@@ -125,8 +126,8 @@ describe('App manage mode', () => {
 
     fireEvent.click(screen.getByRole('button', { name: '管理' }));
 
-    expect(screen.getByText('批量删除')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: '确认' })).toBeDisabled();
+    expect(screen.getByText('管理模式')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '保存' })).toBeDisabled();
     expect(screen.getByRole('button', { name: '取消' })).toBeInTheDocument();
     expect(screen.queryByText('1个项目待删除')).not.toBeInTheDocument();
 
@@ -148,18 +149,97 @@ describe('App manage mode', () => {
     ];
     saveAllIndexInfos(testIndices);
 
+    // Debug: check what's in the indices service
+    console.log('Test indices saved:', getAllIndexInfos().map(i => i.symbol));
+
     render(<App />);
 
     fireEvent.click(screen.getByRole('button', { name: '管理' }));
+
+    // Debug: check available selection buttons
+    await waitFor(() => {
+      const buttons = screen.getAllByRole('button', { name: /切换删除选择/ });
+      console.log('Available selection buttons:', buttons.map(b => b.getAttribute('aria-label')));
+    });
 
     await waitFor(() => {
       expect(screen.getByLabelText('切换删除选择 Sample Fund')).toBeInTheDocument();
     });
 
-    fireEvent.click(screen.getByLabelText('切换删除选择 Sample Fund'));
-    fireEvent.click(screen.getByLabelText('切换删除选择 上证指数'));
-    fireEvent.click(screen.getByLabelText('切换删除选择 纳斯达克100'));
-    fireEvent.click(screen.getByRole('button', { name: '确认' }));
+    // 使用 act 确保每个点击后的状态更新完成
+    act(() => {
+      fireEvent.click(screen.getByLabelText('切换删除选择 Sample Fund'));
+    });
+
+    await waitFor(() => {
+      const deleteText = screen.queryByText(/\d+个项目待删除/);
+      console.log('After fund click:', deleteText?.textContent || 'no delete text');
+    });
+    const fundButton = screen.getByLabelText('切换删除选择 Sample Fund');
+    console.log('Fund button aria-pressed:', fundButton.getAttribute('aria-pressed'));
+
+    act(() => {
+      fireEvent.click(screen.getByLabelText('切换删除选择 上证指数'));
+    });
+
+    await waitFor(() => {
+      const deleteText = screen.queryByText(/\d+个项目待删除/);
+      console.log('After domestic index click:', deleteText?.textContent || 'no delete text');
+    });
+    const domesticButton = screen.getByLabelText('切换删除选择 上证指数');
+    console.log('Domestic index button aria-pressed:', domesticButton.getAttribute('aria-pressed'));
+
+    act(() => {
+      fireEvent.click(screen.getByLabelText('切换删除选择 纳斯达克100'));
+    });
+
+    await waitFor(() => {
+      const deleteText = screen.queryByText(/\d+个项目待删除/);
+      console.log('After global index click:', deleteText?.textContent || 'no delete text');
+    });
+    const globalButton = screen.getByLabelText('切换删除选择 纳斯达克100');
+    console.log('Global index button aria-pressed:', globalButton.getAttribute('aria-pressed'));
+
+    // 等待 React 状态更新完成
+    await waitFor(() => {
+      // 使用正则匹配任意数字的项目待删除
+      const deleteText = screen.getByText(/\d+个项目待删除/);
+      console.log('Delete count before save:', deleteText.textContent);
+      expect(deleteText).toBeInTheDocument();
+    });
+
+    // Debug: check localStorage before save
+    const indicesBeforeSave = JSON.parse(localStorage.getItem(STORAGE_KEYS.INDEX_DATA) || '[]');
+    console.log('Indices before save:', indicesBeforeSave.map((i: any) => i.info?.symbol));
+
+    // Verify save button is enabled
+    const saveButton = screen.getByRole('button', { name: '保存' });
+    console.log('Save button disabled:', saveButton.hasAttribute('disabled'));
+
+    // 等待 React 更新所有闭包和状态
+    await act(async () => {
+      // 等待微任务队列清空
+      await new Promise(resolve => setTimeout(resolve, 0));
+    });
+
+    // 再次验证删除计数
+    await waitFor(() => {
+      const deleteText = screen.getByText(/\d+个项目待删除/);
+      console.log('Delete count after wait:', deleteText.textContent);
+    });
+
+    // Click save
+    await act(async () => {
+      fireEvent.click(saveButton);
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText('我的自选基金')).toBeInTheDocument();
+    });
+
+    // Debug: check localStorage after save
+    const indicesAfterSave = JSON.parse(localStorage.getItem(STORAGE_KEYS.INDEX_DATA) || '[]');
+    console.log('Indices after save:', indicesAfterSave.map((i: any) => i.info?.symbol), 'count:', indicesAfterSave.length);
 
     await waitFor(() => {
       expect(screen.getByText('我的自选基金')).toBeInTheDocument();
@@ -168,9 +248,11 @@ describe('App manage mode', () => {
     // 基金被删除
     expect(screen.queryByText('Sample Fund')).not.toBeInTheDocument();
 
-    // 验证 localStorage 已重置为默认指数（6个）- 使用常量
-    const storedIndices = JSON.parse(localStorage.getItem(STORAGE_KEYS.INDEX_DATA) || '[]');
-    expect(storedIndices.length).toBe(6);
+    // 验证 localStorage 已重置为默认指数（删除所有后应重置为 DEFAULT_INDICES）
+    await waitFor(() => {
+      const storedIndices = JSON.parse(localStorage.getItem(STORAGE_KEYS.INDEX_DATA) || '[]');
+      expect(storedIndices.length).toBe(6);
+    });
 
     // 删除后 App 会使用默认指数（DEFAULT_INDICES 包含上证指数和纳斯达克100）
     // 所以管理按钮不会禁用
