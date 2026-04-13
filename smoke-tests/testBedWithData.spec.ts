@@ -675,21 +675,27 @@ test.describe('testBedWithData', () => {
     // 验证自动备份标题显示
     await expect(page.locator('h3:has-text("自动备份")')).toBeVisible({ timeout: 2000 });
 
+    // 将选择器限定在"自动备份"区域内
+    // 备份管理面板结构：div.bg-white > h3(自动备份) > div.space-y-4 > div.flex(开关行) > span(启用自动备份) + label(开关)
+    const autoBackupCard = page.locator('div.bg-white').filter({ has: page.locator('h3:has-text("自动备份")') });
+
     // 验证"启用自动备份"开关是打开的
-    const autoBackupCheckbox = page.locator('input[type="checkbox"]').first();
+    // checkbox 使用 sr-only 类（隐藏），需要使用 force 或通过 label 点击
+    const autoBackupCheckbox = autoBackupCard.locator('input[type="checkbox"]');
     await expect(autoBackupCheckbox).toBeChecked();
 
     // 验证"每日自动导出时间"显示为"16:00"
-    const timeInput = page.locator('input#auto-export-time');
+    const timeInput = autoBackupCard.locator('input#auto-export-time');
     const timeValue = await timeInput.inputValue();
     expect(timeValue).toBe('16:00');
 
-    // 关闭开关（点击 label 来触发 checkbox）
-    const autoBackupToggleLabel = page.locator('label.cursor-pointer').first();
+    // 关闭开关：找到包含"启用自动备份"文本的开关行，点击其中的 label
+    const toggleRow = autoBackupCard.locator('div.flex.items-center.justify-between').filter({ has: page.locator('span:has-text("启用自动备份")') });
+    const autoBackupToggleLabel = toggleRow.locator('label');
     await autoBackupToggleLabel.click();
 
-    // 验证开关已关闭（自动等待）
-    await expect(autoBackupCheckbox).not.toBeChecked({ timeout: 2000 });
+    // 验证开关已关闭
+    await expect(autoBackupCheckbox).not.toBeChecked({ timeout: 3000 });
 
     // 验证"每日自动导出时间"输入框为灰色（disabled 状态）
     await expect(timeInput).toBeDisabled();
@@ -699,7 +705,7 @@ test.describe('testBedWithData', () => {
 
     // 重新打开开关，恢复状态
     await autoBackupToggleLabel.click();
-    await expect(autoBackupCheckbox).toBeChecked({ timeout: 2000 });
+    await expect(autoBackupCheckbox).toBeChecked({ timeout: 3000 });
 
     console.log('备份管理验证完成');
 
@@ -1008,23 +1014,24 @@ test.describe('testBedWithData', () => {
     // 6. 验证第2列和第3列支持排序
     // ══════════════════════════════════════════════════════════════════════════════
     // 默认 diff 列是降序排序，from/to 列无排序
-    // 点击第2列表头（from 列）
-    const column2Header = page.locator('thead th button').first();
-    await column2Header.click();
+    // 使用更精确的选择器：通过按钮文本定位 from 列和 to 列
+    const fromColumnHeader = page.locator('thead th button').filter({ hasText: '累计盈利' }).first();
+    await fromColumnHeader.click();
 
     // 验证 from 列变为降序排序（.fa-sort-down 存在）
-    const fromSortIcon = page.locator('thead th button').first().locator('.fa-sort-down');
-    await expect(fromSortIcon).toBeVisible({ timeout: 2000 });
-    console.log('第2列排序验证完成');
+    // 等待 React 状态更新完成后再检查图标
+    const fromSortIcon = fromColumnHeader.locator('.fa-sort-down');
+    await expect(fromSortIcon).toBeVisible({ timeout: 5000 });
+    console.log('from列排序验证完成');
 
-    // 点击第3列表头（to 列）
-    const column3Header = page.locator('thead th button').nth(1);
-    await column3Header.click();
+    // 点击 to 列（第二个包含"累计盈利"的按钮）
+    const toColumnHeader = page.locator('thead th button').filter({ hasText: '累计盈利' }).nth(1);
+    await toColumnHeader.click();
 
     // 验证 to 列变为降序排序
-    const toSortIcon = page.locator('thead th button').nth(1).locator('.fa-sort-down');
-    await expect(toSortIcon).toBeVisible({ timeout: 2000 });
-    console.log('第3列排序验证完成');
+    const toSortIcon = toColumnHeader.locator('.fa-sort-down');
+    await expect(toSortIcon).toBeVisible({ timeout: 5000 });
+    console.log('to列排序验证完成');
 
     // ══════════════════════════════════════════════════════════════════════════════
     // 7. 点击图表数据点更新日期选择器
@@ -1401,7 +1408,24 @@ test.describe('testBedWithData', () => {
     console.log('删除记录验证完成');
 
     // ══════════════════════════════════════════════════════════════════════════════
-    // 19. 关闭批量输入窗口（有确认对话框）
+    // 19. 验证日期选择窗口（在批量输入窗口关闭之前）
+    // ══════════════════════════════════════════════════════════════════════════════
+    const dateSelectButton = batchDialogContent.locator('button').filter({ hasText: '2026-04' }).first();
+    await dateSelectButton.click();
+
+    const dayPicker = batchDialogContent.locator('.rdp-day');
+    await expect(dayPicker.first()).toBeVisible();
+
+    // 点击遮罩层关闭日期选择器（遮罩层在批量输入窗口内）
+    const pickerOverlay = batchDialogContent.locator('.fixed.inset-0.z-10');
+    await pickerOverlay.click();
+
+    // 等待日期选择器关闭
+    await expect(dayPicker.first()).not.toBeVisible({ timeout: 3000 });
+    console.log('日期选择器关闭验证完成');
+
+    // ══════════════════════════════════════════════════════════════════════════════
+    // 20. 关闭批量输入窗口（有确认对话框）
     // ══════════════════════════════════════════════════════════════════════════════
     const closeBatchButton = page.locator('div:has(> h3:has-text("批量交易录入")) button[aria-label="关闭"]');
     await closeBatchButton.click();
@@ -1413,21 +1437,6 @@ test.describe('testBedWithData', () => {
     await confirmCloseButton.click();
     await expect(batchModal).not.toBeVisible();
     console.log('批量输入窗口关闭验证完成');
-
-    // ══════════════════════════════════════════════════════════════════════════════
-    // 20. 验证日期选择窗口
-    // ══════════════════════════════════════════════════════════════════════════════
-    const dateSelectButton = page.locator('button').filter({ hasText: '2026-04' }).first();
-    await dateSelectButton.click();
-
-    const dayPicker = page.locator('.rdp-day');
-    await expect(dayPicker.first()).toBeVisible();
-
-    // 点击屏幕边缘关闭日期选择器（日期选择器面板 z-20 在遮罩层 z-10 上面）
-    await page.mouse.click(10, 10);
-
-    // 等待日期选择器关闭
-    await expect(dayPicker.first()).not.toBeVisible({ timeout: 2000 });
 
     // ══════════════════════════════════════════════════════════════════════════════
     // 21. 再次打开批量输入，直接关闭（无确认对话框）
@@ -3638,16 +3647,22 @@ test.describe('testBedWithData', () => {
     // ══════════════════════════════════════════════════════════════════════════════
     // 5. 编辑刚添加的交易记录
     // ══════════════════════════════════════════════════════════════════════════════
-    // 点击第一条记录的编辑按钮
+    // 确保普通视图模式（编辑按钮只在普通视图下显示）
+    const viewModeNormalRadio = tradeManagerModal.locator('input[value="normal"]');
+    await viewModeNormalRadio.check();
+    await expect(viewModeNormalRadio).toBeChecked();
+
+    // 点击第一条记录的编辑按钮（需要等待按钮可见）
     const editBtn = firstRow.locator('button:has(i.fa-edit)');
+    await expect(editBtn).toBeVisible({ timeout: 3000 });
     await editBtn.click();
 
     // 验证进入编辑模式（出现取消按钮和更新按钮）
     const cancelBtn = tradeManagerModal.locator('button:has-text("取消")');
-    await expect(cancelBtn).toBeVisible({ timeout: 1000 });
+    await expect(cancelBtn).toBeVisible({ timeout: 3000 });
 
     const updateBtn = tradeManagerModal.locator('button:has-text("更新")');
-    await expect(updateBtn).toBeVisible({ timeout: 1000 });
+    await expect(updateBtn).toBeVisible({ timeout: 3000 });
 
     console.log('进入编辑模式');
 

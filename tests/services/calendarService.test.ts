@@ -214,6 +214,8 @@ describe('calendarService', () => {
 
   describe('getUpcomingEvents', () => {
     test('returns empty array when no events', () => {
+      // 显式清除日历数据，确保干净状态
+      saveCalendarData({});
       const result = getUpcomingEvents(3);
       expect(result).toEqual([]);
     });

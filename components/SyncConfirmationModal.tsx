@@ -94,91 +94,7 @@ const SyncConfirmationModal: React.FC<Props> = ({
   }, [isOpen]);
 
   const loadDifferences = async () => {
-    try {
-      setLoading(true);
-
-      // Get sync configuration
-      const syncConfig = getSyncConfig();
-      if (!syncConfig.eggfundUsername || !syncConfig.eggfundPassword) {
-        setSyncMessage('请先在"同步配置"中设置 Eggfund 账户信息');
-        setLoading(false);
-        // 延迟关闭窗口，让用户看到错误信息
-        setTimeout(() => onClose(), 1500);
-        return;
-      }
-
-      const { eggfundUsername, eggfundPassword } = syncConfig;
-
-      // Step 1: Get all funds from eggfund
-      setLoadingMessage('正在获取 Eggfund 基金列表...');
-      const eggfundFunds = await getEggfundFunds(eggfundUsername, eggfundPassword);
-
-      // Step 2: Get current portfolio from marketFundService
-      const tickers = marketFundService.getAllTickers();
-
-      // Create mapping of fund code to name from portfolio
-      const fundCodeToNameMap: Record<string, string> = {};
-      tickers.forEach((fund) => {
-        fundCodeToNameMap[fund.symbol] = fund.name;
-      });
-
-      // Step 3: Find intersection of funds
-      const intersectingFunds = eggfundFunds.filter((fund: any) =>
-        tickers.some((pf) => pf.symbol === fund.id)
-      ).map((fund: any) => ({ code: fund.id, name: fund.name }));
-
-      if (intersectingFunds.length === 0) {
-        setSyncMessage('未找到与本地基金组合匹配的基金，无法进行同步');
-        setLoading(false);
-        setTimeout(() => onClose(), 1500);
-        return;
-      }
-
-      // Set available funds for the filter
-      setAvailableFunds(intersectingFunds);
-
-      // Step 4: For each intersecting fund, get trades from both systems and compare
-      setLoadingMessage(`正在获取 ${intersectingFunds.length} 个基金的交易记录...`);
-
-      // Store the eggfund data for potential reuse after sync
-      const allEggfundData: Record<string, any[]> = {};
-      const allDifferences: TradeDifference[] = [];
-
-      for (let i = 0; i < intersectingFunds.length; i++) {
-        const fundInfo = intersectingFunds[i];
-        const fundCode = fundInfo.code;
-
-        // Use fundInfo which already contains name
-        setLoadingMessage(`正在处理基金 ${fundInfo.name} (${i + 1}/${intersectingFunds.length})...`);
-
-        // Get local trades
-        const localTrades = getTradesForFund(fundCode);
-
-        // Get external trades from eggfund
-        try {
-          const externalTrades = await getHistoricalTrades(eggfundUsername, eggfundPassword, fundCode);
-
-          // Store the external trades data for potential reuse after sync
-          allEggfundData[fundCode] = externalTrades;
-
-          // Compare and get differences
-          const fundDifferences = compareTrades(localTrades, externalTrades, fundCode);
-          allDifferences.push(...fundDifferences);
-        } catch (error) {
-          console.error(`Error fetching trades for fund ${fundCode}:`, error);
-          // Continue with other funds
-        }
-      }
-
-      // Save the eggfund data for reuse after sync
-      setEggfundData(allEggfundData);
-      setDifferences(allDifferences);
-    } catch (error) {
-      console.error('Error during sync process:', error);
-      setSyncMessage('同步过程中发生错误，请检查网络连接和账户信息');
-    } finally {
-      setLoading(false);
-    }
+    await fetchSyncData({ closeOnNoMatch: true });
   };
 
   // Handle fund selection
@@ -277,33 +193,41 @@ const SyncConfirmationModal: React.FC<Props> = ({
     if (loading) {
       return;
     }
+    setSyncMessage('');
+    await fetchSyncData({ closeOnNoMatch: false, isRefresh: true });
+  };
+
+  /**
+   * 从 eggfund 获取数据并与本地数据对比
+   * @param options.closeOnNoMatch - 找不到匹配基金时是否关闭窗口
+   * @param options.isRefresh - 是否为刷新操作（影响提示文案）
+   */
+  const fetchSyncData = async (options: { closeOnNoMatch: boolean; isRefresh?: boolean }) => {
+    const { closeOnNoMatch, isRefresh = false } = options;
+    const actionPrefix = isRefresh ? '重新' : '';
 
     try {
       setLoading(true);
-      setSyncMessage(''); // 清空之前的同步消息
 
       // Get sync configuration
       const syncConfig = getSyncConfig();
       if (!syncConfig.eggfundUsername || !syncConfig.eggfundPassword) {
         setSyncMessage('请先在"同步配置"中设置 Eggfund 账户信息');
         setLoading(false);
+        if (closeOnNoMatch) {
+          setTimeout(() => onClose(), 1500);
+        }
         return;
       }
 
       const { eggfundUsername, eggfundPassword } = syncConfig;
 
       // Step 1: Get all funds from eggfund
-      setLoadingMessage('正在重新获取 Eggfund 基金列表...');
+      setLoadingMessage(`正在${actionPrefix}获取 Eggfund 基金列表...`);
       const eggfundFunds = await getEggfundFunds(eggfundUsername, eggfundPassword);
 
       // Step 2: Get current portfolio from marketFundService
       const tickers = marketFundService.getAllTickers();
-
-      // Create mapping of fund code to name from portfolio
-      const fundCodeToNameMap: Record<string, string> = {};
-      tickers.forEach((fund) => {
-        fundCodeToNameMap[fund.symbol] = fund.name;
-      });
 
       // Step 3: Find intersection of funds
       const intersectingFunds = eggfundFunds.filter((fund: any) =>
@@ -311,56 +235,73 @@ const SyncConfirmationModal: React.FC<Props> = ({
       ).map((fund: any) => ({ code: fund.id, name: fund.name }));
 
       if (intersectingFunds.length === 0) {
-        // 如果没有找到匹配的基金，显示警告但不关闭窗口
         setSyncMessage('未找到与本地基金组合匹配的基金，无法进行同步');
         setLoading(false);
-        return; // 仅退出本次同步操作，不关闭窗口
+        if (closeOnNoMatch) {
+          setTimeout(() => onClose(), 1500);
+        }
+        return;
       }
 
       // Set available funds for the filter
       setAvailableFunds(intersectingFunds);
 
-      // Step 4: For each intersecting fund, get trades from both systems and compare
-      setLoadingMessage(`正在重新获取 ${intersectingFunds.length} 个基金的交易记录...`);
+      // Step 4: 批量并行处理，每批5个基金
+      const BATCH_SIZE = 5;
+      setLoadingMessage(`正在${actionPrefix}获取 ${intersectingFunds.length} 个基金的交易记录...`);
 
       // Store the eggfund data for potential reuse after sync
       const allEggfundData: Record<string, any[]> = {};
       const allDifferences: TradeDifference[] = [];
 
-      for (let i = 0; i < intersectingFunds.length; i++) {
-        const fundInfo = intersectingFunds[i];
-        const fundCode = fundInfo.code;
+      // 分批处理
+      const batches: { code: string; name: string }[][] = [];
+      for (let i = 0; i < intersectingFunds.length; i += BATCH_SIZE) {
+        batches.push(intersectingFunds.slice(i, i + BATCH_SIZE));
+      }
 
-        // Use fundInfo which already contains name
-        setLoadingMessage(`正在重新处理基金 ${fundInfo.name} (${i + 1}/${intersectingFunds.length})...`);
+      for (let batchIndex = 0; batchIndex < batches.length; batchIndex++) {
+        const batch = batches[batchIndex];
+        setLoadingMessage(`正在处理批次 ${batchIndex + 1}/${batches.length} (${batch.length} 个基金)...`);
 
-        // Get local trades
-        const localTrades = getTradesForFund(fundCode);
+        // 并行处理当前批次
+        const batchResults = await Promise.all(
+          batch.map(async (fundInfo) => {
+            const fundCode = fundInfo.code;
 
-        // Get external trades from eggfund
-        try {
-          const externalTrades = await getHistoricalTrades(eggfundUsername, eggfundPassword, fundCode);
+            // Get local trades
+            const localTrades = getTradesForFund(fundCode);
 
-          // Store the external trades data for potential reuse after sync
-          allEggfundData[fundCode] = externalTrades;
+            // Get external trades from eggfund
+            try {
+              const externalTrades = await getHistoricalTrades(eggfundUsername, eggfundPassword, fundCode);
 
-          // Compare and get differences
-          const fundDifferences = compareTrades(localTrades, externalTrades, fundCode);
-          allDifferences.push(...fundDifferences);
-        } catch (error) {
-          console.error(`Error fetching trades for fund ${fundCode}:`, error);
-          // Continue with other funds
+              // Compare and get differences
+              const fundDifferences = compareTrades(localTrades, externalTrades, fundCode);
+
+              return { fundCode, externalTrades, fundDifferences };
+            } catch (error) {
+              console.error(`Error fetching trades for fund ${fundCode}:`, error);
+              return { fundCode, externalTrades: [], fundDifferences: [] };
+            }
+          })
+        );
+
+        // 收集结果
+        for (const result of batchResults) {
+          if (result.externalTrades.length > 0 || result.fundDifferences.length > 0) {
+            allEggfundData[result.fundCode] = result.externalTrades;
+            allDifferences.push(...result.fundDifferences);
+          }
         }
       }
 
       // Save the eggfund data for reuse after sync
       setEggfundData(allEggfundData);
       setDifferences(allDifferences);
-
-      setSyncMessage(`重新同步完成，共获取 ${allDifferences.length} 个交易差异`);
     } catch (error) {
-      console.error('重新同步过程中发生错误:', error);
-      setSyncMessage('重新同步过程中发生错误，请查看控制台了解详细信息');
+      console.error(`Error during ${actionPrefix}sync process:`, error);
+      setSyncMessage(`${actionPrefix}同步过程中发生错误，请检查网络连接和账户信息`);
     } finally {
       setLoading(false);
     }
@@ -778,26 +719,17 @@ const SyncConfirmationModal: React.FC<Props> = ({
             <div className="text-sm text-gray-600">
               显示 {filteredDifferences.length} 项，已选中 {selectedItems.length} 项
             </div>
-            <div className="flex space-x-3">
-              <button
-                onClick={onClose}
-                disabled={loading}  // 在loading期间禁用关闭按钮
-                className={`px-5 py-2.5 text-sm font-bold text-gray-400 hover:bg-gray-50 rounded-xl transition-colors ${loading ? 'opacity-50 cursor-not-allowed' : ''}`}
-              >
-                关闭窗口
-              </button>
-              <button
-                onClick={handleConfirm}
-                disabled={selectedItems.length === 0}
-                className={`px-5 py-2.5 text-sm font-bold rounded-xl transition-colors ${
-                  selectedItems.length === 0
-                    ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
-                    : 'bg-blue-600 text-white hover:bg-blue-700'
-                }`}
-              >
-                确认同步 ({selectedItems.length})
-              </button>
-            </div>
+            <button
+              onClick={handleConfirm}
+              disabled={selectedItems.length === 0}
+              className={`px-5 py-2.5 text-sm font-bold rounded-xl transition-colors ${
+                selectedItems.length === 0
+                  ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                  : 'bg-blue-600 text-white hover:bg-blue-700'
+              }`}
+            >
+              确认同步 ({selectedItems.length})
+            </button>
           </div>
         </div>
       </div>

@@ -358,8 +358,12 @@ export async function applyBackupData(imported: BackupData): Promise<AppliedData
     } catch { /* ignore */ }
   }
 
+  // ── 11. Return portfolio from marketFundService to preserve all Ticker fields ──
+  // 使用 marketFundService.getAllTickers() 获取完整 Ticker 数据
+  // 这样可以保留 profile、recommended_strategy、alert_list 等字段
+  // （这些字段存在于内存缓存中，但备份文件不包含它们）
   return {
-    portfolio: newPortfolio,
+    portfolio: marketFundService.getAllTickers(),
     indicesConfig: newIndicesConfig,
   };
 }

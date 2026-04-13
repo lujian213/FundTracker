@@ -30,6 +30,16 @@ export interface MockDataSnapshot {
 }
 
 /**
+ * 格式化日期为 YYYY-MM-DD 格式
+ */
+function formatDateString(date: Date): string {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+/**
  * 格式化时间戳为文件名格式：yyyy-MM-dd_HH-mm-ss
  */
 function formatTimestamp(date: Date): string {
@@ -80,13 +90,43 @@ function maskSystemConfig(rawConfig: string): string {
 }
 
 /**
+ * Filter investment drafts to only include today's drafts
+ *
+ * @param rawDrafts The raw investment drafts JSON string
+ * @param today Today's date in YYYY-MM-DD format
+ * @returns Filtered drafts JSON string (only today's drafts)
+ */
+function filterDraftsForToday(rawDrafts: string, today: string): string {
+  try {
+    const drafts = JSON.parse(rawDrafts);
+    if (typeof drafts !== 'object' || drafts === null) {
+      return rawDrafts;
+    }
+
+    // 只保留今天的草稿
+    const filtered: Record<string, any> = {};
+    if (drafts[today]) {
+      filtered[today] = drafts[today];
+    }
+
+    return JSON.stringify(filtered);
+  } catch {
+    // 解析失败则返回原始数据
+    return rawDrafts;
+  }
+}
+
+/**
  * 构建测试数据快照
  *
  * 收集 localStorage 数据、新闻缓存和时间戳
  * 自动 Mask 敏感信息
+ * 投资草稿仅导出当天的数据
  */
 export function buildSnapshotData(): MockDataSnapshot {
   const data: Record<string, string> = {};
+  const now = new Date();
+  const today = formatDateString(now);
 
   // 收集 7 个 localStorage key
   for (const key of KEYS_TO_DUMP) {
@@ -95,6 +135,9 @@ export function buildSnapshotData(): MockDataSnapshot {
       // 只有 fund_system_config 需要 mask
       if (key === STORAGE_KEYS.SYSTEM_CONFIG) {
         data[key] = maskSystemConfig(rawValue);
+      } else if (key === STORAGE_KEYS.INVESTMENT_DRAFT) {
+        // 投资草稿只导出当天的
+        data[key] = filterDraftsForToday(rawValue, today);
       } else {
         data[key] = rawValue;
       }
@@ -105,7 +148,7 @@ export function buildSnapshotData(): MockDataSnapshot {
   const newsCache = getNews();
 
   return {
-    timestamp: new Date().toISOString(),
+    timestamp: now.toISOString(),
     data,
     newsCache,
   };

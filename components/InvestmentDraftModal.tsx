@@ -10,7 +10,7 @@ import { ConfirmDialog } from './ConfirmDialog';
 import SimpleTooltip from './SimpleTooltip';
 import { formatMoneyWithSeparators } from '../utils/format';
 import { getDraftModalHeight, saveDraftModalHeight } from '../services/userPreferenceService';
-import { loadInvestmentDraft, saveInvestmentDraft, saveAllDraftsToStorage } from '../services/appDataService';
+import { loadInvestmentDraft, saveInvestmentDraft, saveAllDraftsToStorage, cleanOldDrafts } from '../services/appDataService';
 import * as marketFundService from '../services/marketFundService';
 import * as indexService from '../services/indexService';
 
@@ -84,6 +84,9 @@ const InvestmentDraftModal: React.FC<InvestmentDraftModalProps> = ({
     const today = toLocalDateKey(new Date());
 
     try {
+      // 清理过期草稿，只保留当天的
+      cleanOldDrafts(today);
+
       const existingData = loadInvestmentDraft(today);
 
       // Filter portfolio to only include funds that have position configuration with fullCapacity

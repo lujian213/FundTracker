@@ -26,14 +26,15 @@ describe('getUnitsForDate storedInitialPosition application rules', () => {
     resetMarketFundCache();
   });
 
-  test('does not apply stored initialPosition before its stored startDate', async () => {
+  test('returns 0 when date is before stored startDate (user did not hold fund yet)', async () => {
     // store an initialPosition with startDate 2026-02-13 using marketFundService
     updatePosition('ABC', { initialPosition: 100, startDate: '2026-02-13', fullCapacity: 0, initialPrice: null });
 
     // ask for date before the storedStartDate
     const unitsBefore = await getUnitsForDate('ABC', '2026-02-12', 1000);
-    // There are no trades and nav on 2026-02-12 exists (1.5), fallbackCash 1000 -> 1000/1.5 = 666.67
-    expect(unitsBefore).toBeCloseTo(1000 / 1.5, 2);
+    // 当日期早于建仓日期时，返回 0（用户在那个时候还没有持有该基金）
+    // 不使用 fallback 计算
+    expect(unitsBefore).toBe(0);
 
     // ask for exact stored startDate -> should return stored initialPosition
     const unitsOn = await getUnitsForDate('ABC', '2026-02-13', 1000);

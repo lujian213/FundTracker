@@ -523,9 +523,27 @@ export function appendIntradayPoint(
   lastUpdated?: string | number,
   tradeDate?: string
 ): void {
+  // DEBUG_START: 2026-04-13 调试appendIntradayPoint入参
+  console.log('[DEBUG] appendIntradayPoint 入参:', {
+    symbol,
+    value,
+    lastUpdated,
+    tradeDate,
+    currentTime: new Date().toLocaleTimeString(),
+    todayStr: toLocalDateKey(new Date()),
+  });
+  // DEBUG_END
+
   // 检查 tradeDate：如果不是今天，不添加日内点
   if (tradeDate) {
     const todayStr = toLocalDateKey(new Date());
+    // DEBUG_START: 2026-04-13 tradeDate检查结果
+    console.log('[DEBUG] tradeDate检查:', {
+      tradeDate,
+      todayStr,
+      result: tradeDate !== todayStr ? 'REJECT (直接return)' : 'PASS (继续执行)',
+    });
+    // DEBUG_END
     if (tradeDate !== todayStr) {
       return;
     }
@@ -533,6 +551,14 @@ export function appendIntradayPoint(
 
   // 构建 timestamp
   let ts = Date.now();
+  // DEBUG_START: 2026-04-13 时间戳构建过程
+  console.log('[DEBUG] 时间戳构建:', {
+    lastUpdated_type: typeof lastUpdated,
+    lastUpdated_value: lastUpdated,
+    isHHmmss: typeof lastUpdated === 'string' && /^\d{1,2}:\d{2}:\d{2}$/.test(lastUpdated),
+    default_ts: new Date(ts).toLocaleString(),
+  });
+  // DEBUG_END
   if (lastUpdated) {
     // 如果 lastUpdated 只包含时间格式 (HH:mm:ss)，需要结合 tradeDate 或使用当前日期
     if (typeof lastUpdated === 'string' && /^\d{1,2}:\d{2}:\d{2}$/.test(lastUpdated)) {
@@ -542,6 +568,12 @@ export function appendIntradayPoint(
       } else {
         dateStr = `${toLocalDateKey(new Date())} ${lastUpdated}`;
       }
+      // DEBUG_START: 2026-04-13 HH:mm:ss格式解析
+      console.log('[DEBUG] HH:mm:ss解析:', {
+        dateStr,
+        parsedTime: Date.parse(dateStr) ? new Date(Date.parse(dateStr)).toLocaleString() : '解析失败',
+      });
+      // DEBUG_END
       const parsed = Date.parse(dateStr);
       if (!Number.isNaN(parsed)) ts = parsed;
     } else {
@@ -550,16 +582,43 @@ export function appendIntradayPoint(
     }
   }
   const minuteTs = floorToMinute(ts);
+  // DEBUG_START: 2026-04-13 最终minuteTs
+  console.log('[DEBUG] 最终minuteTs:', new Date(minuteTs).toLocaleString());
+  // DEBUG_END
 
   const existing = indices.get(symbol);
   if (!existing) return;
 
+  // DEBUG_START: 2026-04-13 过滤前数据
+  console.log('[DEBUG] 过滤前数据:', {
+    symbol,
+    count: existing.intraday.length,
+    data: existing.intraday.slice(-5).map(p => ({
+      time: new Date(p.timestamp).toLocaleTimeString(),
+      value: p.value,
+    })),
+  });
+  // DEBUG_END
+
   // 过滤掉非当天数据和比新时间戳更晚的脏数据
   let intraday = existing.intraday.filter(p => isSameLocalDay(p.timestamp) && p.timestamp <= minuteTs);
+
+  // DEBUG_START: 2026-04-13 过滤后数据
+  console.log('[DEBUG] 过滤后数据:', {
+    symbol,
+    count: intraday.length,
+    minuteTs: new Date(minuteTs).toLocaleTimeString(),
+    filterCondition: `isSameLocalDay && timestamp <= ${minuteTs}`,
+    cleared: existing.intraday.length > 0 && intraday.length === 0 ? '*** 数据被清空！***' : '数据保留',
+  });
+  // DEBUG_END
 
   // 检查是否与上一个点值相同（跳过连续相同值）
   const last = intraday[intraday.length - 1];
   if (last && Object.is(last.value, value)) {
+    // DEBUG_START: 2026-04-13 值相同跳过
+    console.log('[DEBUG] 值相同跳过:', { value, lastValue: last.value });
+    // DEBUG_END
     // 值相同，不添加（保留最早的）
     return;
   }
@@ -569,13 +628,26 @@ export function appendIntradayPoint(
   // 如果同一分钟已有数据，替换；否则添加
   if (last && floorToMinute(last.timestamp) === minuteTs) {
     intraday[intraday.length - 1] = point;
+    // DEBUG_START: 2026-04-13 替换同分钟数据
+    console.log('[DEBUG] 替换同分钟数据:', new Date(minuteTs).toLocaleTimeString());
+    // DEBUG_END
   } else {
     intraday.push(point);
+    // DEBUG_START: 2026-04-13 新增数据点
+    console.log('[DEBUG] 新增数据点:', new Date(minuteTs).toLocaleTimeString());
+    // DEBUG_END
   }
 
   // 更新并保存
   existing.intraday = intraday;
   saveToStorage();
+  // DEBUG_START: 2026-04-13 最终保存结果
+  console.log('[DEBUG] 最终保存:', {
+    symbol,
+    count: existing.intraday.length,
+    lastPoint: existing.intraday.length > 0 ? new Date(existing.intraday[existing.intraday.length - 1].timestamp).toLocaleTimeString() : '无数据',
+  });
+  // DEBUG_END
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -810,19 +882,11 @@ export function verifyIndexMigration(deleteOldKeys: boolean = false): {
       }
     }
     if (orderMismatches.length > 0) {
-      details.push(`检测到顺序不一致，正在重新迁移...`);
-      // 删除新 key，触发重新迁移
-      localStorage.removeItem(STORAGE_KEYS.INDEX_DATA);
-      migrateFromOldKeys();
-      loadFromStorage();
-      details.push(`重新迁移完成`);
-      // 重新验证顺序
-      const newSymbols = getAllIndexSymbols();
-      if (JSON.stringify(newSymbols) === JSON.stringify(oldSymbols)) {
-        details.push(`重新迁移后顺序正确`);
-      } else {
-        details.push(`重新迁移后顺序仍不一致`);
-      }
+      // 只打印警告，不触发重新迁移
+      // 原因：重新迁移会删除新key的完整intraday数据，导致数据丢失
+      // 顺序不一致是正常情况（用户可能通过备份导入或界面操作调整了顺序）
+      details.push(`检测到顺序不一致（警告）`);
+      contentMismatches.push(`顺序不一致: ${orderMismatches.join(', ')}`);
     } else if (oldSymbols.length === newIndexSymbols.length) {
       details.push('指数顺序一致');
     }

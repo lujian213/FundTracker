@@ -574,6 +574,90 @@ describe('applyBackupData', () => {
     expect(result.indicesConfig).toContain('1.000001');
     expect(result.indicesConfig).toContain('0.399001');
   });
+
+  // ── Profile 保留测试 ───────────────────────────────────────────────────────────
+
+  test('导入备份后，applyBackupData 返回的 portfolio 应包含 localStorage 中已有的 profile', async () => {
+    const { mfs, bs } = loadBoth();
+    mfs.resetCache();
+
+    // 步骤1：模拟已有基金，并添加 profile 数据
+    mfs.addFund('000001', '华夏成长混合');
+    mfs.updateTicker('000001', {
+      profile: {
+        stock_positions: [{ stock_name: '腾讯控股', percentage: 10 }],
+        stage_increase: [{ stage: '近1周', increase_percentage: 1.5 }],
+        fetched_at: '2026-04-01T10:00:00Z',
+      },
+    });
+
+    // 验证 marketFundService 内存缓存中有 profile
+    const tickersBefore = mfs.getAllTickers();
+    expect(tickersBefore[0].profile).toBeDefined();
+    expect(tickersBefore[0].profile?.stock_positions).toHaveLength(1);
+
+    // 步骤2：导入不含 profile 的备份文件
+    const backupWithoutProfile: BackupData = {
+      portfolio: [{ symbol: '000001', name: '华夏成长混合' }],
+      indices: [],
+      positions: {},
+      trades: {},
+      config: { autoExportTime: '16:00' },
+    };
+
+    const result = await bs.applyBackupData(backupWithoutProfile);
+
+    // 步骤3：验证 marketFundService 内存缓存中 profile 还在（没有被覆盖）
+    const tickersAfter = mfs.getAllTickers();
+    expect(tickersAfter[0].profile).toBeDefined();
+    expect(tickersAfter[0].profile?.stock_positions).toHaveLength(1);
+    expect(tickersAfter[0].profile?.stock_positions[0].stock_name).toBe('腾讯控股');
+
+    // 步骤4：验证 applyBackupData 返回的 portfolio 包含 profile
+    // BUG：当前返回的 portfolio 不包含 profile，因为是从备份文件构造的
+    expect(result.portfolio[0].profile).toBeDefined();
+    expect(result.portfolio[0].profile?.stock_positions).toHaveLength(1);
+  });
+
+  test('导入备份后，applyBackupData 返回的 portfolio 应包含 localStorage 中已有的 recommended_strategy', async () => {
+    const { mfs, bs } = loadBoth();
+    mfs.resetCache();
+
+    // 步骤1：模拟已有基金，并添加 recommended_strategy 数据
+    mfs.addFund('000001', '华夏成长混合');
+    mfs.updateTicker('000001', {
+      recommended_strategy: {
+        strategy_id: 'trendFollowing',
+        reason: '适合趋势追踪',
+      },
+    });
+
+    // 验证 marketFundService 内存缓存中有 recommended_strategy
+    const tickersBefore = mfs.getAllTickers();
+    expect(tickersBefore[0].recommended_strategy).toBeDefined();
+    expect(tickersBefore[0].recommended_strategy?.strategy_id).toBe('trendFollowing');
+
+    // 步骤2：导入不含 recommended_strategy 的备份文件
+    const backupWithoutStrategy: BackupData = {
+      portfolio: [{ symbol: '000001', name: '华夏成长混合' }],
+      indices: [],
+      positions: {},
+      trades: {},
+      config: { autoExportTime: '16:00' },
+    };
+
+    const result = await bs.applyBackupData(backupWithoutStrategy);
+
+    // 步骤3：验证 marketFundService 内存缓存中 recommended_strategy 还在
+    const tickersAfter = mfs.getAllTickers();
+    expect(tickersAfter[0].recommended_strategy).toBeDefined();
+    expect(tickersAfter[0].recommended_strategy?.strategy_id).toBe('trendFollowing');
+
+    // 步骤4：验证 applyBackupData 返回的 portfolio 包含 recommended_strategy
+    // BUG：当前返回的 portfolio 不包含 recommended_strategy
+    expect(result.portfolio[0].recommended_strategy).toBeDefined();
+    expect(result.portfolio[0].recommended_strategy?.strategy_id).toBe('trendFollowing');
+  });
 });
 
 // ─── 真实备份文件导入测试 ─────────────────────────────────────────────────────────

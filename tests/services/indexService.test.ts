@@ -92,7 +92,7 @@ describe('indexService 迁移顺序测试', () => {
   });
 
   describe('验证函数检测顺序不一致', () => {
-    it('验证函数检测到顺序不一致时自动重新迁移', () => {
+    it('验证函数检测到顺序不一致时只打印警告', () => {
       const originalOrder = ['1.000001', '0.399001', '0.399006'];
       const wrongOrder = ['0.399001', '1.000001', '0.399006'];
 
@@ -107,7 +107,10 @@ describe('indexService 迁移顺序测试', () => {
       }));
       localStorageMock.setItem('fund_all_indices_info', JSON.stringify(oldInfos));
 
-      // 设置新数据（错误顺序）
+      // 设置新数据（错误顺序，包含intraday数据）
+      const mockIntraday = [
+        { timestamp: Date.now() - 3600000, value: 3100, equityReturn: 0.5 },
+      ];
       const newMarketIndices: MarketIndex[] = wrongOrder.map((symbol, idx) => ({
         info: {
           symbol,
@@ -117,7 +120,7 @@ describe('indexService 迁移顺序测试', () => {
           changePercent: 0,
           lastUpdated: ''
         },
-        intraday: [],
+        intraday: symbol === '1.000001' ? mockIntraday : [],
         history: []
       }));
       localStorageMock.setItem('fund_all_indices_data', JSON.stringify(newMarketIndices));
@@ -128,12 +131,15 @@ describe('indexService 迁移顺序测试', () => {
       // 验证迁移结果
       const result = indexService.verifyIndexMigration(false);
 
-      // 验证函数应该自动重新迁移并修复顺序
-      expect(result.details.some(d => d.includes('重新迁移'))).toBe(true);
+      // 验证函数应该只打印警告，不触发重新迁移
+      expect(result.details.some(d => d.includes('顺序不一致') && d.includes('警告'))).toBe(true);
+      expect(result.details.some(d => d.includes('重新迁移'))).toBe(false);
 
-      // 验证内存中的顺序已经正确
-      const currentSymbols = indexService.getAllIndexSymbols();
-      expect(currentSymbols).toEqual(originalOrder);
+      // 验证intraday数据被保留
+      const savedDataRaw = localStorageMock.getItem('fund_all_indices_data');
+      const savedData = savedDataRaw ? JSON.parse(savedDataRaw) : [];
+      const shanghaiIndex = savedData.find((m: MarketIndex) => m.info.symbol === '1.000001');
+      expect(shanghaiIndex?.intraday.length).toBe(1);
     });
 
     it('验证函数确认顺序一致', () => {
@@ -192,6 +198,112 @@ describe('indexService 迁移顺序测试', () => {
 
       const savedSymbols = indexService.getAllIndexSymbols();
       expect(savedSymbols).toEqual(customOrder);
+    });
+  });
+
+  describe('顺序不一致不应删除已有数据', () => {
+    it('验证顺序不一致时不应删除新key中的intraday数据', () => {
+      // 场景重现：导入备份后，新key有完整intraday，但顺序与旧key不同
+      const newOrder = ['1.000001', '0.399001', '0.399006', '100.HSI', '100.NDX', '100.SPX'];
+      const oldOrder = ['100.NDX', '100.SPX', '100.HSI', '1.000001', '0.399001', '0.399006']; // 旧key中的顺序不同
+
+      // 设置旧key（Phase 1的IndexInfo，顺序不同）
+      const oldInfos: IndexInfo[] = oldOrder.map((symbol, idx) => ({
+        symbol,
+        name: `旧顺序指数${idx}`,
+        current: 1000,
+        change: 0,
+        changePercent: 0,
+        lastUpdated: ''
+      }));
+      localStorageMock.setItem('fund_all_indices_info', JSON.stringify(oldInfos));
+
+      // 设置新key（包含完整的intraday数据）
+      const mockIntraday = [
+        { timestamp: Date.now() - 3600000, value: 3100, equityReturn: 0.5 },  // 1小时前
+        { timestamp: Date.now() - 1800000, value: 3110, equityReturn: 0.6 },  // 30分钟前
+        { timestamp: Date.now() - 60000, value: 3120, equityReturn: 0.7 },    // 1分钟前
+      ];
+      const newMarketIndices: MarketIndex[] = newOrder.map((symbol, idx) => ({
+        info: {
+          symbol,
+          name: `新顺序指数${idx}`,
+          current: 1000 + idx * 100,
+          change: idx,
+          changePercent: idx * 0.1,
+          lastUpdated: ''
+        },
+        intraday: symbol === '1.000001' ? mockIntraday : [],  // 上证指数有完整intraday
+        history: []
+      }));
+      localStorageMock.setItem('fund_all_indices_data', JSON.stringify(newMarketIndices));
+
+      // 重置缓存以加载新数据
+      indexService.resetCache();
+
+      // 调用验证函数
+      const result = indexService.verifyIndexMigration(false);
+
+      // 期望：顺序不一致应该只打印警告，不应触发重新迁移
+      // 当前问题：会触发重新迁移，删除新key的intraday数据
+
+      // 检查新key中的intraday数据是否被保留
+      const savedDataRaw = localStorageMock.getItem('fund_all_indices_data');
+      const savedData = savedDataRaw ? JSON.parse(savedDataRaw) : [];
+      const shanghaiIndex = savedData.find((m: MarketIndex) => m.info.symbol === '1.000001');
+
+      // 关键验证：intraday数据应该被保留，不应被删除
+      expect(shanghaiIndex?.intraday.length).toBe(3);
+      expect(shanghaiIndex?.intraday[0].value).toBe(3100);
+
+      // 验证不应该触发重新迁移（这是修复后的期望行为）
+      // 当前代码会触发重新迁移，导致测试失败
+      expect(result.details.some(d => d.includes('重新迁移'))).toBe(false);
+      expect(result.details.some(d => d.includes('顺序不一致') && d.includes('警告'))).toBe(true);
+    });
+
+    it('新key不存在时才应触发迁移', () => {
+      // 场景：新key不存在，需要从旧key迁移
+      const oldOrder = ['1.000001', '0.399001', '0.399006'];
+
+      // 只设置旧key，新key不存在
+      const oldInfos: IndexInfo[] = oldOrder.map((symbol, idx) => ({
+        symbol,
+        name: `指数${idx}`,
+        current: 1000,
+        change: 0,
+        changePercent: 0,
+        lastUpdated: ''
+      }));
+      localStorageMock.setItem('fund_all_indices_info', JSON.stringify(oldInfos));
+
+      // 设置独立的intraday key
+      const mockIntraday = [
+        { timestamp: Date.now() - 3600000, value: 3100, equityReturn: 0.5 },
+      ];
+      localStorageMock.setItem('fund_intraday_1.000001', JSON.stringify(mockIntraday));
+
+      // 重置缓存触发迁移
+      indexService.resetCache();
+
+      // 验证迁移完成：新key应该存在
+      const savedDataRaw = localStorageMock.getItem('fund_all_indices_data');
+      expect(savedDataRaw).not.toBeNull();
+
+      const savedData = savedDataRaw ? JSON.parse(savedDataRaw) : [];
+      // 验证迁移后有数据（至少包含旧key的指数）
+      expect(savedData.length).toBeGreaterThanOrEqual(3);
+
+      // 验证旧key的指数被迁移到新key中
+      const symbolsInNewKey = savedData.map((m: MarketIndex) => m.info.symbol);
+      expect(symbolsInNewKey).toContain('1.000001');
+      expect(symbolsInNewKey).toContain('0.399001');
+      expect(symbolsInNewKey).toContain('0.399006');
+
+      // 验证intraday数据被迁移（如果存在）
+      const shanghaiIndex = savedData.find((m: MarketIndex) => m.info.symbol === '1.000001');
+      // 注意：filterTodayIntraday会过滤当天数据，所以intraday可能为空
+      expect(shanghaiIndex).toBeDefined();
     });
   });
 });

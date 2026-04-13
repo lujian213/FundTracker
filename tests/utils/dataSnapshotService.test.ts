@@ -176,6 +176,52 @@ describe('dataSnapshotService', () => {
       const timestamp = new Date(result.timestamp);
       expect(timestamp.getTime()).not.toBeNaN();
     });
+
+    test('should only export today\'s investment drafts', () => {
+      // 模拟多天的草稿
+      const multiDayDrafts = {
+        '2026-04-01': { '000001': { fundSymbol: '000001', operation: '买入', amount: '1000', note: '' } },
+        '2026-04-02': { '000002': { fundSymbol: '000002', operation: '卖出', amount: '500', note: '' } },
+        '2026-04-13': { '000003': { fundSymbol: '000003', operation: '买入', amount: '2000', note: '' } },
+      };
+      localStorage.setItem(STORAGE_KEYS.INVESTMENT_DRAFT, JSON.stringify(multiDayDrafts));
+
+      // Mock 日期为 2026-04-13
+      const mockDate = new Date('2026-04-13T12:00:00');
+      jest.useFakeTimers();
+      jest.setSystemTime(mockDate);
+
+      const result = buildSnapshotData();
+
+      // 只导出当天的草稿
+      const exportedDrafts = JSON.parse(result.data[STORAGE_KEYS.INVESTMENT_DRAFT] || '{}');
+      expect(Object.keys(exportedDrafts)).toEqual(['2026-04-13']);
+      expect(exportedDrafts['2026-04-13']).toEqual(multiDayDrafts['2026-04-13']);
+
+      jest.useRealTimers();
+    });
+
+    test('should handle no drafts for today', () => {
+      // 只有历史草稿，没有今天的
+      const multiDayDrafts = {
+        '2026-04-01': { '000001': { fundSymbol: '000001', operation: '买入', amount: '1000', note: '' } },
+        '2026-04-02': { '000002': { fundSymbol: '000002', operation: '卖出', amount: '500', note: '' } },
+      };
+      localStorage.setItem(STORAGE_KEYS.INVESTMENT_DRAFT, JSON.stringify(multiDayDrafts));
+
+      // Mock 日期为 2026-04-13（没有草稿）
+      const mockDate = new Date('2026-04-13T12:00:00');
+      jest.useFakeTimers();
+      jest.setSystemTime(mockDate);
+
+      const result = buildSnapshotData();
+
+      // 今天没有草稿时，导出空对象
+      const exportedDrafts = JSON.parse(result.data[STORAGE_KEYS.INVESTMENT_DRAFT] || '{}');
+      expect(exportedDrafts).toEqual({});
+
+      jest.useRealTimers();
+    });
   });
 
   describe('downloadSnapshotFile', () => {

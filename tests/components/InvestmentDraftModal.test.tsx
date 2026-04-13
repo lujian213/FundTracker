@@ -6,6 +6,7 @@ import { Ticker, ValuationData, MarketType } from '../../types';
 import * as marketFundService from '../../services/marketFundService';
 import * as appDataService from '../../services/appDataService';
 import { STORAGE_KEYS } from '../../services/storageKeys';
+import { cleanOldDrafts } from '../../services/appDataService';
 
 // Mock marketFundService.getValuation to return null (use marketData directly)
 jest.mock('../../services/marketFundService', () => ({
@@ -473,6 +474,97 @@ describe('InvestmentDraftModal AI 建议持久化', () => {
     localStorage.clear();
     marketFundService.resetCache();
     appDataService.resetCache();
+  });
+
+  describe('清理过期草稿', () => {
+    test('打开草稿窗口时清理过期草稿，只保留当天的', async () => {
+      const mockPortfolio: Ticker[] = [
+        { id: '1', symbol: '000001', name: '测试基金', market: MarketType.FUND }
+      ];
+
+      marketFundService.addFund('000001', '测试基金');
+      marketFundService.updatePosition('000001', {
+        fullCapacity: 10000,
+        initialPosition: 0,
+        startDate: '2026-01-01',
+        initialPrice: 2.0
+      });
+
+      // 预设多天的草稿数据（包含历史草稿）
+      const oldDraft = { '000001': { fundSymbol: '000001', operation: '买入', amount: '1000', note: '历史草稿' } };
+      const todayDraft = { '000001': { fundSymbol: '000001', operation: '卖出', amount: '500', note: '当天草稿' } };
+
+      // 使用 appDataService 保存草稿（模拟多天累积）
+      appDataService.saveInvestmentDraft('2026-03-15', oldDraft);  // 历史草稿
+      appDataService.saveInvestmentDraft('2026-03-17', todayDraft); // 当天草稿
+      appDataService.saveAllDraftsToStorage();
+
+      // 清除缓存以强制从 localStorage 加载
+      appDataService.resetCache();
+
+      // 验证 localStorage 中有多个日期的草稿
+      const beforeOpen = localStorage.getItem(STORAGE_KEYS.INVESTMENT_DRAFT);
+      const parsedBefore = JSON.parse(beforeOpen!);
+      expect(Object.keys(parsedBefore)).toContain('2026-03-15');
+      expect(Object.keys(parsedBefore)).toContain('2026-03-17');
+
+      // 渲染草稿窗口（触发清理）
+      render(
+        <InvestmentDraftModal
+          portfolio={mockPortfolio}
+          onClose={jest.fn()}
+        />
+      );
+
+      // 等待清理完成
+      await waitFor(() => {
+        const afterOpen = localStorage.getItem(STORAGE_KEYS.INVESTMENT_DRAFT);
+        expect(afterOpen).not.toBeNull();
+        const parsedAfter = JSON.parse(afterOpen!);
+        // 只保留当天的草稿
+        expect(Object.keys(parsedAfter)).toEqual(['2026-03-17']);
+        // 历史草稿被清理
+        expect(parsedAfter['2026-03-15']).toBeUndefined();
+        // 当天草稿保留
+        expect(parsedAfter['2026-03-17']).toEqual(todayDraft);
+      }, { timeout: 1000 });
+    });
+
+    test('当天没有历史草稿时清理不影响', async () => {
+      const mockPortfolio: Ticker[] = [
+        { id: '1', symbol: '000001', name: '测试基金', market: MarketType.FUND }
+      ];
+
+      marketFundService.addFund('000001', '测试基金');
+      marketFundService.updatePosition('000001', {
+        fullCapacity: 10000,
+        initialPosition: 0,
+        startDate: '2026-01-01',
+        initialPrice: 2.0
+      });
+
+      // 只有当天的草稿，没有历史草稿
+      const todayDraft = { '000001': { fundSymbol: '000001', operation: '买入', amount: '1000', note: '' } };
+      appDataService.saveInvestmentDraft('2026-03-17', todayDraft);
+      appDataService.saveAllDraftsToStorage();
+      appDataService.resetCache();
+
+      render(
+        <InvestmentDraftModal
+          portfolio={mockPortfolio}
+          onClose={jest.fn()}
+        />
+      );
+
+      // 验证草稿保持不变
+      await waitFor(() => {
+        const afterOpen = localStorage.getItem(STORAGE_KEYS.INVESTMENT_DRAFT);
+        expect(afterOpen).not.toBeNull();
+        const parsedAfter = JSON.parse(afterOpen!);
+        expect(Object.keys(parsedAfter)).toEqual(['2026-03-17']);
+        expect(parsedAfter['2026-03-17']).toEqual(todayDraft);
+      }, { timeout: 1000 });
+    });
   });
 
   test('AI 建议信息保存到 localStorage', async () => {

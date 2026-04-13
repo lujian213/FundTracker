@@ -38,7 +38,12 @@ function getAppDataCache(): AppData {
 }
 
 function loadFromStorage(): AppData {
-  const data: AppData = { ...DEFAULT_APP_DATA };
+  // 深拷贝 DEFAULT_APP_DATA，避免浅拷贝导致嵌套对象共享引用
+  const data: AppData = {
+    calendar: { ...DEFAULT_APP_DATA.calendar },
+    investmentDrafts: { ...DEFAULT_APP_DATA.investmentDrafts },
+    comboTrades: { ...DEFAULT_APP_DATA.comboTrades },
+  };
 
   // 加载日历
   try {
@@ -126,6 +131,27 @@ export function saveAllDraftsToStorage(): void {
   }
 }
 
+/**
+ * 清理过期草稿，只保留指定日期的草稿
+ *
+ * @param keepDate 要保留的日期（YYYY-MM-DD格式）
+ */
+export function cleanOldDrafts(keepDate: string): void {
+  const data = getAppDataCache();
+  if (!data.investmentDrafts || Object.keys(data.investmentDrafts).length === 0) {
+    return;
+  }
+
+  // 删除不是保留日期的所有草稿
+  const keysToDelete = Object.keys(data.investmentDrafts).filter(date => date !== keepDate);
+  keysToDelete.forEach(date => {
+    delete data.investmentDrafts[date];
+  });
+
+  // 同步到 localStorage
+  saveAllDraftsToStorage();
+}
+
 // ═══════════════════════════════════════════════════════════════════════════════
 // 组合交易 - 独立存储
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -199,7 +225,15 @@ export function ensureAppDataMigration(): void {
     return;
   }
 
-  const newData: AppData = { ...DEFAULT_APP_DATA };
+  // 重置缓存，确保迁移时从 localStorage 加载干净数据
+  cachedData = null;
+
+  // 深拷贝 DEFAULT_APP_DATA，避免浅拷贝导致嵌套对象共享引用
+  const newData: AppData = {
+    calendar: { ...DEFAULT_APP_DATA.calendar },
+    investmentDrafts: { ...DEFAULT_APP_DATA.investmentDrafts },
+    comboTrades: { ...DEFAULT_APP_DATA.comboTrades },
+  };
 
   // 从旧的统一存储迁移
   try {

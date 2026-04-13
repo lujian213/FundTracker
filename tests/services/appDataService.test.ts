@@ -11,6 +11,7 @@ import {
   loadAllDrafts,
   saveInvestmentDraft,
   saveAllDraftsToStorage,
+  cleanOldDrafts,
   needsAppDataMigration,
   ensureAppDataMigration,
   resetCache,
@@ -105,6 +106,67 @@ describe('appDataService', () => {
     });
   });
 
+  describe('清理过期草稿', () => {
+    test('cleanOldDrafts 无草稿时不报错', () => {
+      // 空草稿情况（最先运行，确保干净状态）
+      cleanOldDrafts('2026-04-13');
+
+      const allDrafts = loadAllDrafts();
+      expect(allDrafts).toEqual({});
+    });
+
+    test('cleanOldDrafts 只保留指定日期的草稿', () => {
+      // 模拟多天的草稿
+      const draft1 = { '000001': { fundSymbol: '000001', operation: '买入', amount: '1000', note: '' } };
+      const draft2 = { '000002': { fundSymbol: '000002', operation: '卖出', amount: '500', note: '' } };
+      const draftToday = { '000003': { fundSymbol: '000003', operation: '买入', amount: '2000', note: '' } };
+
+      saveInvestmentDraft('2026-04-01', draft1);
+      saveInvestmentDraft('2026-04-02', draft2);
+      saveInvestmentDraft('2026-04-13', draftToday);
+      saveAllDraftsToStorage();
+
+      // 清理只保留 2026-04-13
+      cleanOldDrafts('2026-04-13');
+
+      const allDrafts = loadAllDrafts();
+      // 只有当天的草稿保留
+      expect(Object.keys(allDrafts)).toEqual(['2026-04-13']);
+      expect(allDrafts['2026-04-13']).toEqual(draftToday);
+      // 其他日期的草稿被删除
+      expect(allDrafts['2026-04-01']).toBeUndefined();
+      expect(allDrafts['2026-04-02']).toBeUndefined();
+    });
+
+    test('cleanOldDrafts 不删除当天草稿', () => {
+      const draftToday = { '000001': { fundSymbol: '000001', operation: '买入', amount: '1000', note: '' } };
+      saveInvestmentDraft('2026-04-13', draftToday);
+      saveAllDraftsToStorage();
+
+      cleanOldDrafts('2026-04-13');
+
+      const allDrafts = loadAllDrafts();
+      expect(Object.keys(allDrafts)).toEqual(['2026-04-13']);
+      expect(allDrafts['2026-04-13']).toEqual(draftToday);
+    });
+
+    test('cleanOldDrafts 清理后 localStorage 同步更新', () => {
+      const draft1 = { '000001': { fundSymbol: '000001', operation: '买入', amount: '1000', note: '' } };
+      const draftToday = { '000002': { fundSymbol: '000002', operation: '卖出', amount: '500', note: '' } };
+
+      saveInvestmentDraft('2026-04-01', draft1);
+      saveInvestmentDraft('2026-04-13', draftToday);
+      saveAllDraftsToStorage();
+
+      cleanOldDrafts('2026-04-13');
+
+      const stored = localStorage.getItem(STORAGE_KEYS.INVESTMENT_DRAFT);
+      expect(stored).toBeTruthy();
+      const parsed = JSON.parse(stored!);
+      expect(Object.keys(parsed)).toEqual(['2026-04-13']);
+    });
+  });
+
   describe('迁移', () => {
     test('needsAppDataMigration 返回 false 当新 key 已存在', () => {
       localStorage.setItem(STORAGE_KEYS.CALENDAR, '{}');
@@ -131,8 +193,15 @@ describe('appDataService', () => {
     });
 
     test('ensureAppDataMigration 正确迁移投资草稿', () => {
+      // 完全重置状态
+      localStorage.clear();
+      resetCache();
+
       const oldDraft = { '000001': { fundSymbol: '000001', operation: '买入', amount: '1000', note: '' } };
       localStorage.setItem('investment_draft_2026-04-01', JSON.stringify(oldDraft));
+
+      // 确保没有其他 key 干扰
+      expect(localStorage.getItem(STORAGE_KEYS.INVESTMENT_DRAFT)).toBeNull();
 
       ensureAppDataMigration();
 
