@@ -6,6 +6,7 @@ import * as marketFundService from '../services/marketFundService';
 export interface PositionEntry {
   symbol: string;
   name: string;
+  fullCapacity: number; // 满仓份额
   currentShares: number;
   marketValue: number;
   ratio: number; // 0-1, fraction of total market value
@@ -142,7 +143,7 @@ export function computePositions(
     const marketValue = currentShares * price;
     const name = ticker.name || (vd?.name ?? sym);
 
-    raw.push({ symbol: sym, name, currentShares, marketValue });
+    raw.push({ symbol: sym, name, fullCapacity, currentShares, marketValue });
   }
 
   // Sort by market value descending

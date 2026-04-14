@@ -273,48 +273,60 @@ const PositionsModal: React.FC<Props> = ({ portfolio, marketData, onClose, onSel
               <div className="overflow-y-auto flex-1 min-h-0">
                 <table className="w-full text-sm table-fixed border-collapse">
                   <colgroup>
-                    <col style={{ width: '42%' }} />
-                    <col style={{ width: '18%' }} />
-                    <col style={{ width: '24%' }} />
+                    <col style={{ width: '38%' }} />
                     <col style={{ width: '16%' }} />
+                    <col style={{ width: '22%' }} />
+                    <col style={{ width: '16%' }} />
+                    <col style={{ width: '8%' }} />
                   </colgroup>
                   <thead className="sticky top-0 z-10 bg-gray-50">
                     <tr className="border-b border-gray-200">
                       <th className="px-3 py-2 text-left text-xs font-semibold text-gray-500">基金名称</th>
+                      <th className="px-3 py-2 text-right text-xs font-semibold text-gray-500">满仓份额</th>
                       <th className="px-3 py-2 text-right text-xs font-semibold text-gray-500">持仓份额</th>
                       <th className="px-3 py-2 text-right text-xs font-semibold text-gray-500">市场价值</th>
                       <th className="px-3 py-2 text-right text-xs font-semibold text-gray-500">占比</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {entries.map((e) => (
-                      <tr key={e.symbol}
-                        className="border-b border-gray-50 hover:bg-gray-50 transition-colors"
-                        onMouseEnter={() => setHoveredSymbol(e.symbol)}
-                        onMouseLeave={() => setHoveredSymbol(null)}
-                      >
-                        <td className="px-3 py-2 text-left">
-                          <button
-                            className="flex items-center gap-1.5 text-left w-full min-w-0 hover:text-blue-600 transition-colors"
-                            title={`${e.name}（${e.symbol}）`}
-                            onClick={() => onSelectFund(e.symbol)}
-                          >
-                            <span className="flex-shrink-0 rounded-sm"
-                              style={{ width: 8, height: 8, background: e.color }} />
-                            <span className="truncate text-xs text-gray-700">
-                              {e.name}（{e.symbol}）
-                            </span>
-                          </button>
-                        </td>
-                        <td className="px-3 py-2 text-right text-xs text-gray-700">{fmtMoney(e.currentShares)}</td>
-                        <td className="px-3 py-2 text-right text-xs text-gray-700">{fmtMoney(e.marketValue)}</td>
-                        <td className="px-3 py-2 text-right text-xs text-gray-700">{(e.ratio * 100).toFixed(2)}%</td>
-                      </tr>
-                    ))}
+                    {entries.map((e) => {
+                      const positionRatioNum = e.fullCapacity > 0 ? (e.currentShares / e.fullCapacity * 100) : 0;
+                      const positionRatio = positionRatioNum.toFixed(2);
+                      const isOverCapacity = positionRatioNum > 100;
+                      return (
+                        <tr key={e.symbol}
+                          className="border-b border-gray-50 hover:bg-gray-50 transition-colors"
+                          onMouseEnter={() => setHoveredSymbol(e.symbol)}
+                          onMouseLeave={() => setHoveredSymbol(null)}
+                        >
+                          <td className="px-3 py-2 text-left">
+                            <button
+                              className="flex items-center gap-1.5 text-left w-full min-w-0 hover:text-blue-600 transition-colors"
+                              title={`${e.name}（${e.symbol}）`}
+                              onClick={() => onSelectFund(e.symbol)}
+                            >
+                              <span className="flex-shrink-0 rounded-sm"
+                                style={{ width: 8, height: 8, background: e.color }} />
+                              <span className="truncate text-xs text-gray-700">
+                                {e.name}（{e.symbol}）
+                              </span>
+                            </button>
+                          </td>
+                          <td className="px-3 py-2 text-right text-xs text-gray-700">{fmtMoney(e.fullCapacity)}</td>
+                          <td className={`px-3 py-2 text-right text-xs ${isOverCapacity ? 'text-red-600 font-semibold' : 'text-gray-700'}`}>
+                            {fmtMoney(e.currentShares)}
+                            <span className={`${isOverCapacity ? 'text-red-500' : 'text-gray-400'} ml-1`}>({positionRatio}%)</span>
+                          </td>
+                          <td className="px-3 py-2 text-right text-xs text-gray-700">{fmtMoney(e.marketValue)}</td>
+                          <td className="px-3 py-2 text-right text-xs text-gray-700">{(e.ratio * 100).toFixed(2)}%</td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                   <tfoot className="sticky bottom-0 z-10 bg-gray-50">
                     <tr className="border-t border-gray-200">
                       <td className="px-3 py-2 text-left text-xs font-bold text-gray-700">总计：{entries.length}条记录</td>
+                      <td className="px-3 py-2" />
                       <td className="px-3 py-2" />
                       <td className="px-3 py-2 text-right text-xs font-bold text-gray-700">{fmtMoney(totalMarketValue)}</td>
                       <td className="px-3 py-2 text-right text-xs font-bold text-gray-700">100%</td>

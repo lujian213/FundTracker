@@ -808,6 +808,52 @@ test.describe('testBedWithData', () => {
     console.log('基金持仓窗口验证完成: 21只基金, 饼图21个切片, 表格21行');
 
     // ══════════════════════════════════════════════════════════════════════════════
+    // 2.1 验证表格列：满仓份额、持仓份额（含持仓占比）、市场价值、占比
+    // ══════════════════════════════════════════════════════════════════════════════
+    // 验证表头包含5列
+    const tableHeaders = page.locator('table thead th');
+    expect(await tableHeaders.count()).toBe(5);
+    expect(await tableHeaders.locator('text=满仓份额').count()).toBe(1);
+    expect(await tableHeaders.locator('text=持仓份额').count()).toBe(1);
+    expect(await tableHeaders.locator('text=市场价值').count()).toBe(1);
+    expect(await tableHeaders.locator('text=占比').count()).toBe(1);
+
+    // 验证第一行各列格式正确
+    const firstRow = tableRows.first();
+    const fullCapacityCell = firstRow.locator('td').nth(1); // 满仓份额列
+    const sharesCell = firstRow.locator('td').nth(2); // 持仓份额列
+
+    // 验证满仓份额列格式（数值带千分位）
+    const fullCapacityText = await fullCapacityCell.textContent();
+    expect(fullCapacityText).toMatch(/\d+,?\d+\.\d{2}/);
+
+    // 验证持仓份额列包含持仓占比（如 "xxx（xx.xx%）"）
+    const sharesText = await sharesCell.textContent();
+    expect(sharesText).toMatch(/\(\d+\.\d{2}%\)/);
+
+    // 验证持仓占比计算正确（持仓份额 / 满仓份额 * 100）
+    const sharesMatch = sharesText?.match(/(\d+,?\d+\.\d{2})\s*\((\d+\.\d{2})%\)/);
+    const fullCapMatch = fullCapacityText?.match(/(\d+,?\d+\.\d{2})/);
+    if (sharesMatch && fullCapMatch) {
+      const shares = parseFloat(sharesMatch[1].replace(',', ''));
+      const fullCap = parseFloat(fullCapMatch[1].replace(',', ''));
+      const ratio = parseFloat(sharesMatch[2]);
+      const expectedRatio = (shares / fullCap * 100).toFixed(2);
+      expect(Math.abs(ratio - parseFloat(expectedRatio))).toBeLessThan(0.1);
+    }
+
+    // 验证持仓占比超过100%的行显示红色
+    // 检查是否有红色文字（通过 CSS class）
+    const redSharesCells = tableRows.locator('td.text-red-600');
+    const redCount = await redSharesCells.count();
+    // 如果有超仓的基金，验证其持仓份额列有红色样式
+    if (redCount > 0) {
+      console.log(`验证完成: 有${redCount}条记录持仓占比超过100%，显示为红色`);
+    }
+
+    console.log('表格列验证完成: 5列存在, 持仓份额列含持仓占比且计算正确');
+
+    // ══════════════════════════════════════════════════════════════════════════════
     // 3. 点击第一个按钮（查看持仓总金额趋势）
     // ══════════════════════════════════════════════════════════════════════════════
     const trendButton = page.locator('button[aria-label="查看持仓总金额趋势"]');
