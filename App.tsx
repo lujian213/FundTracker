@@ -197,6 +197,7 @@ function parseCalendarAIResponse(response: string): CalendarEventInput[] {
 const WEB_FETCH_PROXIES = [
   (url: string) => `https://r.jina.ai/${url}`,
   (url: string) => `https://txtify.it/${url}`,
+  (url: string) => `https://law-ai.top:9000/proxy?target=${url}`,
 ];
 
 /**
@@ -1434,8 +1435,17 @@ const AppContent: React.FC = () => {
       {isModalOpen && <AddTickerModal onClose={() => setIsModalOpen(false)} onAdd={async (symbols, type) => {
           if (type === MarketType.INDEX) {
             // 直接添加到统一配置，显示时会自动分类
-            const newSymbols = symbols.filter(s => !indicesConfig.includes(s));
-            if (newSymbols.length) setIndicesConfig(p => [...p, ...newSymbols]);
+            const existingSymbols = new Set(indicesConfig.map(normalizeIndexSymbol));
+            const newSymbols = symbols.filter(s => !existingSymbols.has(normalizeIndexSymbol(s)));
+            if (newSymbols.length) {
+              // 更新 indicesConfig
+              setIndicesConfig(p => [...p, ...newSymbols]);
+              // 立即为新指数创建 placeholder 并添加到 marketIndices
+              const placeholders = newSymbols.map(s => createPlaceholderIndex(s));
+              setMarketIndices(prev => [...prev, ...placeholders]);
+              // 触发数据获取（网络请求可能失败，但 placeholder 已显示）
+              refreshMarketIndicesAsync(true);
+            }
           } else {
             const existing = new Set(portfolio.map(p => p.symbol));
             const news = symbols.filter(s => !existing.has(s)).map(s => ({

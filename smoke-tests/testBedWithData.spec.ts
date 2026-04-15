@@ -502,8 +502,8 @@ test.describe('testBedWithData', () => {
     // ══════════════════════════════════════════════════════════════════════════════
     // 定义预期事件数据（根据实际mock数据）
     const expectedEvents: { date: string; expectedCount: number; description: string }[] = [
-      { date: '4/3', expectedCount: 3, description: '美股、港股和新加坡股市的节假日' },
-      { date: '4/6', expectedCount: 2, description: '港股清明节翌日休市等' },
+      { date: '4/3', expectedCount: 2, description: '美股和新加坡股市的节假日（耶稣受难日）' },
+      { date: '4/6', expectedCount: 1, description: 'A股清明节休市' },
       { date: '4/17', expectedCount: 2, description: 'A股和美股的交割日' },
       { date: '4/22', expectedCount: 1, description: 'A股的交割日' },
       { date: '4/29', expectedCount: 2, description: 'A股和港股的交割日' },
@@ -4194,5 +4194,156 @@ test.describe('testBedWithData', () => {
     expect(globalIndexCount).toBe(3);
 
     console.log('主界面管理功能测试完成');
+  });
+
+  // ═══════════════════════════════════════════════════════════════════════════════
+  // 测试用例 100.5：主界面添加基金和指数测试
+  // ═══════════════════════════════════════════════════════════════════════════════
+
+  test('主界面添加基金和指数测试', async () => {
+    const page = sharedPage!;
+
+    // ══════════════════════════════════════════════════════════════════════════════
+    // 1. 记录初始状态
+    // ══════════════════════════════════════════════════════════════════════════════
+    // 记录初始基金数量
+    const fundCards = page.locator('div.bg-white.rounded-2xl.border').filter({ has: page.locator('h3') });
+    const initialFundCount = await fundCards.count();
+
+    // 记录初始大盘指数数量
+    const leftAside = page.locator('aside').first();
+    const domesticIndexCards = leftAside.locator('div.bg-white.rounded-2xl');
+    const initialDomesticCount = await domesticIndexCards.count();
+
+    // 记录初始全球指数数量
+    const rightAside = page.locator('aside').last();
+    const globalIndexCards = rightAside.locator('div.bg-white.rounded-2xl');
+    const initialGlobalCount = await globalIndexCards.count();
+
+    console.log(`初始状态: 基金=${initialFundCount}个, 大盘指数=${initialDomesticCount}个, 全球指数=${initialGlobalCount}个`);
+
+    // ══════════════════════════════════════════════════════════════════════════════
+    // 2. 点击添加按钮进入添加模式（公募基金tab）
+    // ══════════════════════════════════════════════════════════════════════════════
+    const addBtn = page.locator('button.fixed.bottom-8.right-8.bg-red-600');
+    await addBtn.click();
+
+    // 验证添加窗口出现（使用更精确的选择器：背景遮罩层内的白色卡片）
+    const addModal = page.locator('div.fixed.inset-0.z-50').locator('div.bg-white.rounded-3xl');
+    await expect(addModal).toBeVisible({ timeout: 5000 });
+
+    // 验证默认是公募基金tab（标题显示"添加基金"）
+    const modalTitle = addModal.locator('h3');
+    await expect(modalTitle).toHaveText('添加基金', { timeout: 2000 });
+
+    console.log('添加窗口已打开（公募基金tab）');
+
+    // ══════════════════════════════════════════════════════════════════════════════
+    // 3. 在公募基金tab添加新的基金代码
+    // ══════════════════════════════════════════════════════════════════════════════
+    // 输入一个不在当前数据中的基金代码（005827 - 蓝筹精选）
+    const textarea = addModal.locator('textarea');
+    await textarea.fill('005827');
+
+    // 点击"添加代码"按钮
+    const submitBtn = addModal.locator('button[type="submit"]');
+    await submitBtn.click();
+
+    // 验证窗口关闭（整个遮罩层消失）
+    await expect(page.locator('div.fixed.inset-0.z-50')).not.toBeVisible({ timeout: 5000 });
+
+    // 等待基金卡片数量更新（条件等待替代硬编码等待）
+    await expect(fundCards).toHaveCount(initialFundCount + 1, { timeout: 3000 });
+    const fundCountAfterAdd = await fundCards.count();
+
+    console.log(`添加基金后: 基金=${fundCountAfterAdd}个（增加1个）`);
+
+    // ══════════════════════════════════════════════════════════════════════════════
+    // 4. 再次进入添加模式（指数行情tab - 大盘看点）
+    // ══════════════════════════════════════════════════════════════════════════════
+    await addBtn.click();
+
+    // 验证添加窗口出现
+    const addModal2 = page.locator('div.fixed.inset-0.z-50').locator('div.bg-white.rounded-3xl');
+    await expect(addModal2).toBeVisible({ timeout: 5000 });
+
+    // 验证标题是"添加基金"（默认公募基金tab）
+    await expect(addModal2.locator('h3')).toHaveText('添加基金', { timeout: 2000 });
+
+    // 切换到"指数行情"tab
+    const indexTabBtn = addModal2.locator('button:has-text("指数行情")');
+    await indexTabBtn.click();
+
+    // 验证标题变为"添加指数"
+    await expect(addModal2.locator('h3')).toHaveText('添加指数', { timeout: 2000 });
+
+    console.log('添加窗口已打开（指数行情tab）');
+
+    // ══════════════════════════════════════════════════════════════════════════════
+    // 5. 在指数行情tab添加国内指数代码（大盘看点）
+    // ══════════════════════════════════════════════════════════════════════════════
+    // 输入国内指数代码（1.000300 - 沪深300）
+    const textarea2 = addModal2.locator('textarea');
+    await textarea2.fill('1.000300');
+
+    // 点击"添加代码"按钮
+    const submitBtn2 = addModal2.locator('button[type="submit"]');
+    await submitBtn2.click();
+
+    // 验证窗口关闭
+    await expect(page.locator('div.fixed.inset-0.z-50')).not.toBeVisible({ timeout: 5000 });
+
+    // 等待大盘指数卡片数量更新（条件等待替代硬编码等待）
+    await expect(domesticIndexCards).toHaveCount(initialDomesticCount + 1, { timeout: 3000 });
+    const domesticCountAfterAdd = await domesticIndexCards.count();
+
+    console.log(`添加国内指数后: 大盘指数=${domesticCountAfterAdd}个（增加1个）`);
+
+    // ══════════════════════════════════════════════════════════════════════════════
+    // 6. 再次进入添加模式（指数行情tab - 全球市场）
+    // ══════════════════════════════════════════════════════════════════════════════
+    await addBtn.click();
+
+    // 验证添加窗口出现
+    const addModal3 = page.locator('div.fixed.inset-0.z-50').locator('div.bg-white.rounded-3xl');
+    await expect(addModal3).toBeVisible({ timeout: 5000 });
+
+    // 验证标题（应该默认是公募基金tab）
+    await expect(addModal3.locator('h3')).toHaveText('添加基金', { timeout: 2000 });
+
+    // 切换到"指数行情"tab
+    const indexTabBtn3 = addModal3.locator('button:has-text("指数行情")');
+    await indexTabBtn3.click();
+
+    // 验证标题变为"添加指数"
+    await expect(addModal3.locator('h3')).toHaveText('添加指数', { timeout: 2000 });
+
+    console.log('添加窗口已打开（指数行情tab - 全球市场）');
+
+    // ══════════════════════════════════════════════════════════════════════════════
+    // 7. 在指数行情tab添加多个全球指数代码（空格分隔）
+    // ══════════════════════════════════════════════════════════════════════════════
+    // 输入两个全球指数代码（100.SPX - 标普500, 100.DJI - 道琼斯）
+    const textarea3 = addModal3.locator('textarea');
+    await textarea3.fill('100.SPX 100.DJI');
+
+    // 点击"添加代码"按钮
+    const submitBtn3 = addModal3.locator('button[type="submit"]');
+    await submitBtn3.click();
+
+    // 验证窗口关闭
+    await expect(page.locator('div.fixed.inset-0.z-50')).not.toBeVisible({ timeout: 5000 });
+
+    // 等待全球指数卡片数量更新（条件等待替代硬编码等待）
+    await expect(globalIndexCards).toHaveCount(initialGlobalCount + 2, { timeout: 3000 });
+    const globalCountAfterAdd = await globalIndexCards.count();
+
+    console.log(`添加全球指数后: 全球指数=${globalCountAfterAdd}个（增加2个）`);
+
+    // ══════════════════════════════════════════════════════════════════════════════
+    // 8. 最终验证
+    // ══════════════════════════════════════════════════════════════════════════════
+    console.log(`最终状态: 基金=${fundCountAfterAdd}个, 大盘指数=${domesticCountAfterAdd}个, 全球指数=${globalCountAfterAdd}个`);
+    console.log('主界面添加基金和指数测试完成');
   });
 });
