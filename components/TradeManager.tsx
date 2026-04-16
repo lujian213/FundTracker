@@ -153,6 +153,7 @@ export const TradeManager: React.FC<{
   const selectedStats = useMemo(() => {
     let count = 0;
     let totalShares = 0;
+    let totalProfit = 0;
 
     for (const record of matchedRecords) {
       if (selectedIds.has(record.id)) {
@@ -163,6 +164,8 @@ export const TradeManager: React.FC<{
         if (!isSell) {
           count++;
           totalShares += record.remainingShares;
+          // 盈亏额 = 数量 * (当前价格 - 买入价格)
+          totalProfit += record.remainingShares * (currentPrice - record.price);
         }
       }
     }
@@ -170,7 +173,7 @@ export const TradeManager: React.FC<{
     // 市场价值 = 数量总和 * 最新估值
     const marketValue = totalShares * currentPrice;
 
-    return { count, totalShares, marketValue };
+    return { count, totalShares, marketValue, totalProfit };
   }, [matchedRecords, selectedIds, currentPrice]);
 
   // 选中处理函数
@@ -667,7 +670,12 @@ export const TradeManager: React.FC<{
             <div className="text-xs text-gray-400">共 {matchedRecords.length} 条记录  第 {page + 1} / {pageCount} 页</div>
             <div className="text-xs text-center flex-1 mx-4 truncate">
               {selectedStats.count > 0 ? (
-                <span className="text-black">已选中 {selectedStats.count} 条买入/建仓记录，数量合计 {formatNumber(selectedStats.totalShares, 2)}，市场价值约 {formatNumber(selectedStats.marketValue, 2)}</span>
+                <span className="text-black">
+                  选中{selectedStats.count}条记录，数量{formatNumber(selectedStats.totalShares, 2)}，市值{formatNumber(selectedStats.marketValue, 2)}，盈亏
+                  <span className={selectedStats.totalProfit > 0 ? 'text-red-500' : selectedStats.totalProfit < 0 ? 'text-green-500' : ''}>
+                    {selectedStats.totalProfit === 0 ? '0.00' : `${selectedStats.totalProfit > 0 ? '+' : '-'}${formatNumber(Math.abs(selectedStats.totalProfit), 2)}`}
+                  </span>
+                </span>
               ) : matchErrors.length > 0 ? (
                 <span className="text-red-500">{matchErrors.join('; ')}</span>
               ) : null}

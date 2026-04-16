@@ -301,3 +301,137 @@ describe('TradeManager FIFO/LIFO views', () => {
     expect(screen.getAllByText('80.00').length).toBeGreaterThanOrEqual(1);
   });
 });
+
+// ─── TradeManager selection stats tests ───────────────────────────────────
+describe('TradeManager selection stats (total profit)', () => {
+  beforeEach(() => {
+    (fetchFundHistory as jest.Mock).mockResolvedValue([]);
+    localStorage.clear();
+    resetMarketFundCache();
+  });
+
+  test('shows total profit when selecting buy records', async () => {
+    setTradesForSymbol('TEST001', [
+      { id: 'A', date: '2024-01-01', type: 'buy', shares: 100, price: 1.0, fee: 0 },
+      { id: 'B', date: '2024-01-02', type: 'buy', shares: 50, price: 1.2, fee: 0 },
+    ] as any);
+    render(<TradeManager symbol="TEST001" currentPrice={1.5} onClose={jest.fn()} />);
+    await waitFor(() => expect(fetchFundHistory).toHaveBeenCalled(), { timeout: 1000 });
+
+    // 点击选中第一条买入记录（找到表格行容器）
+    const row = screen.getByText('2024/01/02').closest('div[class*="border"]');
+    fireEvent.mouseDown(row!, { bubbles: true });
+    fireEvent.mouseUp(row!, { bubbles: true });
+
+    await waitFor(() => {
+      expect(screen.getByText(/选中.*条记录/)).toBeInTheDocument();
+    }, { timeout: 1000 });
+
+    // 验证盈亏计算：50 * (1.5 - 1.2) = 15，使用 span 选择器匹配总计盈亏
+    const profitSpans = screen.getAllByText('+15.00');
+    expect(profitSpans.length).toBeGreaterThanOrEqual(2);
+  });
+
+  test('shows positive profit in red', async () => {
+    setTradesForSymbol('TEST001', [
+      { id: 'A', date: '2024-01-01', type: 'buy', shares: 100, price: 1.0, fee: 0 },
+    ] as any);
+    render(<TradeManager symbol="TEST001" currentPrice={2.0} onClose={jest.fn()} />);
+    await waitFor(() => expect(fetchFundHistory).toHaveBeenCalled(), { timeout: 1000 });
+
+    // 选中记录
+    const row = screen.getByText('2024/01/01').closest('div[class*="border"]');
+    fireEvent.mouseDown(row!, { bubbles: true });
+    fireEvent.mouseUp(row!, { bubbles: true });
+
+    await waitFor(() => {
+      // 找到 span 元素中的盈亏值（信息栏的总计盈亏）
+      const profitSpans = screen.getAllByText('+100.00');
+      const spanEl = profitSpans.find(el => el.tagName === 'SPAN');
+      expect(spanEl).toHaveClass('text-red-500');
+    }, { timeout: 1000 });
+  });
+
+  test('shows negative profit in green', async () => {
+    setTradesForSymbol('TEST001', [
+      { id: 'A', date: '2024-01-01', type: 'buy', shares: 100, price: 2.0, fee: 0 },
+    ] as any);
+    render(<TradeManager symbol="TEST001" currentPrice={1.0} onClose={jest.fn()} />);
+    await waitFor(() => expect(fetchFundHistory).toHaveBeenCalled(), { timeout: 1000 });
+
+    // 选中记录
+    const row = screen.getByText('2024/01/01').closest('div[class*="border"]');
+    fireEvent.mouseDown(row!, { bubbles: true });
+    fireEvent.mouseUp(row!, { bubbles: true });
+
+    await waitFor(() => {
+      // 找到 span 元素中的盈亏值（信息栏的总计盈亏）
+      const profitSpans = screen.getAllByText('-100.00');
+      const spanEl = profitSpans.find(el => el.tagName === 'SPAN');
+      expect(spanEl).toHaveClass('text-green-500');
+    }, { timeout: 1000 });
+  });
+
+  test('calculates total profit for multiple selected records', async () => {
+    setTradesForSymbol('TEST001', [
+      { id: 'A', date: '2024-01-01', type: 'buy', shares: 100, price: 1.0, fee: 0 },
+      { id: 'B', date: '2024-01-02', type: 'buy', shares: 50, price: 1.2, fee: 0 },
+    ] as any);
+    render(<TradeManager symbol="TEST001" currentPrice={1.5} onClose={jest.fn()} />);
+    await waitFor(() => expect(fetchFundHistory).toHaveBeenCalled(), { timeout: 1000 });
+
+    // Ctrl + 点击选中两条记录
+    const row1 = screen.getByText('2024/01/02').closest('div[class*="border"]');
+    const row2 = screen.getByText('2024/01/01').closest('div[class*="border"]');
+    fireEvent.mouseDown(row1!, { bubbles: true, ctrlKey: true });
+    fireEvent.mouseUp(row1!, { bubbles: true });
+    fireEvent.mouseDown(row2!, { bubbles: true, ctrlKey: true });
+    fireEvent.mouseUp(row2!, { bubbles: true });
+
+    await waitFor(() => {
+      // 总盈亏：50*(1.5-1.2) + 100*(1.5-1.0) = 15 + 50 = 65
+      expect(screen.getByText('+65.00')).toBeInTheDocument();
+    }, { timeout: 1000 });
+  });
+
+  test('excludes sell records from total profit', async () => {
+    setTradesForSymbol('TEST001', [
+      { id: 'A', date: '2024-01-01', type: 'buy', shares: 100, price: 1.0, fee: 0 },
+      { id: 'B', date: '2024-01-02', type: 'sell', shares: 50, price: 1.5, fee: 0 },
+    ] as any);
+    render(<TradeManager symbol="TEST001" currentPrice={2.0} onClose={jest.fn()} />);
+    await waitFor(() => expect(fetchFundHistory).toHaveBeenCalled(), { timeout: 1000 });
+
+    // 选中两条记录（通过 Ctrl + 点击）
+    const buyRow = screen.getByText('2024/01/01').closest('div[class*="border"]');
+    const sellRow = screen.getByText('2024/01/02').closest('div[class*="border"]');
+    fireEvent.mouseDown(buyRow!, { bubbles: true, ctrlKey: true });
+    fireEvent.mouseUp(buyRow!, { bubbles: true });
+    fireEvent.mouseDown(sellRow!, { bubbles: true, ctrlKey: true });
+    fireEvent.mouseUp(sellRow!, { bubbles: true });
+
+    await waitFor(() => {
+      // 只计算买入记录的盈亏：100*(2.0-1.0) = 100
+      expect(screen.getAllByText('+100.00').length).toBeGreaterThanOrEqual(2);
+      expect(screen.getByText(/选中1条记录/)).toBeInTheDocument();
+    }, { timeout: 1000 });
+  });
+
+  test('formats profit with thousand separators', async () => {
+    setTradesForSymbol('TEST001', [
+      { id: 'A', date: '2024-01-01', type: 'buy', shares: 10000, price: 1.0, fee: 0 },
+    ] as any);
+    render(<TradeManager symbol="TEST001" currentPrice={2.0} onClose={jest.fn()} />);
+    await waitFor(() => expect(fetchFundHistory).toHaveBeenCalled(), { timeout: 1000 });
+
+    // 选中记录
+    const row = screen.getByText('2024/01/01').closest('div[class*="border"]');
+    fireEvent.mouseDown(row!, { bubbles: true });
+    fireEvent.mouseUp(row!, { bubbles: true });
+
+    await waitFor(() => {
+      // 10000*(2.0-1.0) = 10000
+      expect(screen.getAllByText('+10,000.00').length).toBeGreaterThanOrEqual(2);
+    }, { timeout: 1000 });
+  });
+});

@@ -502,7 +502,7 @@ test.describe('testBedWithData', () => {
     // ══════════════════════════════════════════════════════════════════════════════
     // 定义预期事件数据（根据实际mock数据）
     const expectedEvents: { date: string; expectedCount: number; description: string }[] = [
-      { date: '4/3', expectedCount: 2, description: '美股和新加坡股市的节假日（耶稣受难日）' },
+      { date: '4/3', expectedCount: 3, description: '美股、港股和新加坡股市的节假日（耶稣受难日）' },
       { date: '4/6', expectedCount: 1, description: 'A股清明节休市' },
       { date: '4/17', expectedCount: 2, description: 'A股和美股的交割日' },
       { date: '4/22', expectedCount: 1, description: 'A股的交割日' },
@@ -1387,6 +1387,16 @@ test.describe('testBedWithData', () => {
     });
     await expect(guangfaHeaderRow).toBeVisible();
 
+    // 从 localStorage 获取该基金的前值（批量交易使用已确认净值，而非估值）
+    const guangfaFundPrevPrice = await page.evaluate(() => {
+      const fundsRaw = localStorage.getItem('fund_all_funds_data');
+      const funds = fundsRaw ? JSON.parse(fundsRaw) : [];
+      const targetFund = funds.find((f: any) => f.info.ticker.symbol === '020640');
+      // 批量交易录入使用前值（已确认净值），而非当前估值
+      return targetFund?.info?.valuation?.previousPrice || 0;
+    });
+    console.log(`广发半导体基金前值: ${guangfaFundPrevPrice}`);
+
     const addRecordButton = guangfaHeaderRow.locator('button:has-text("添加记录")');
     await addRecordButton.click();
 
@@ -1403,8 +1413,10 @@ test.describe('testBedWithData', () => {
 
     const sharesInput = guangfaFirstTradeRow.locator('input[placeholder="自动计算"]').first();
     const sharesValue = await sharesInput.inputValue();
-    expect(parseFloat(sharesValue)).toBeCloseTo(489.35, 0);
-    console.log(`广发半导体买入验证完成: 份额=${sharesValue}`);
+    // 份额 = (总额 - 手续费) / 前值（使用已确认净值）
+    const expectedShares = guangfaFundPrevPrice > 0 ? (1000 - 10) / guangfaFundPrevPrice : 0;
+    expect(parseFloat(sharesValue)).toBeCloseTo(expectedShares, 1);
+    console.log(`广发半导体买入验证完成: 份额=${sharesValue}, 预期=${expectedShares.toFixed(2)} (前值=${guangfaFundPrevPrice})`);
 
     // ══════════════════════════════════════════════════════════════════════════════
     // 16. 在"华夏国证半导体芯片ETF联接C"添加卖出交易
@@ -2138,10 +2150,13 @@ test.describe('testBedWithData', () => {
     // 验证基金代码
     expect(fundInfo?.code).toBe('022364');
 
-    // 验证估值（使用格式化比较）
+    // 验证估值（使用数值比较，避免格式化差异）
     if (fundInfo?.mockData?.info?.valuation?.currentPrice) {
-      const formattedPrice = fundInfo.mockData.info.valuation.currentPrice.toLocaleString();
-      expect(fundInfo?.value).toContain(formattedPrice);
+      const mockPrice = fundInfo.mockData.info.valuation.currentPrice;
+      // 从 UI 显示的值中提取数值（可能包含逗号分隔符）
+      const displayPrice = parseFloat(fundInfo?.value?.replace(/[^\d.]/g, '') || '0');
+      // 允许小幅差异（UI 格式化可能截断部分小数位）
+      expect(displayPrice).toBeCloseTo(mockPrice, 2);
     }
 
     // ══════════════════════════════════════════════════════════════════════════════
