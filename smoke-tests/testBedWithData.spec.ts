@@ -3309,17 +3309,148 @@ test.describe('testBedWithData', () => {
     console.log(`买入记录=${buyCount}, 卖出记录=${sellCount}`);
 
     // ══════════════════════════════════════════════════════════════════════════════
-    // 14. 选择记录验证信息显示
+    // 14. 通过Ctrl+点击选择多条买入记录，验证选中统计信息
     // ══════════════════════════════════════════════════════════════════════════════
-    // 点击第一条记录（如果有checkbox）
-    const firstCheckbox = tradeManagerModal.locator('input[type="checkbox"]').first();
-    if (await firstCheckbox.isVisible()) {
-      await firstCheckbox.check();
+    // 确保在普通视图
+    await normalViewRadio.check();
+
+    // 获取表格行容器（带 border 类的行）
+    const tableRows = tradeManagerModal.locator('.flex.items-center.border.rounded');
+    const rowCount = await tableRows.count();
+    console.log(`表格行数: ${rowCount}`);
+
+    // 找到买入记录的行并选择前3条（通过Ctrl+点击）
+    let selectedCount = 0;
+    const maxSelect = 3;
+
+    for (let i = 0; i < rowCount && selectedCount < maxSelect; i++) {
+      const row = tableRows.nth(i);
+      const rowText = await row.textContent();
+
+      // 只选择买入记录（不选择卖出）
+      if (rowText?.includes('买入')) {
+        // Ctrl+点击选中
+        await row.click({ modifiers: ['Control'] });
+        selectedCount++;
+        await page.waitForTimeout(100);
+      }
+    }
+
+    console.log(`已选中 ${selectedCount} 条买入记录`);
+
+    if (selectedCount > 0) {
       await page.waitForTimeout(300);
 
-      // 验证选中信息显示
-      const selectedInfo = await tradeManagerModal.locator('text=选中').textContent();
+      // 验证选中信息显示（选中x条记录，数量xxx，市值xxx，盈亏xxx）
+      // 信息显示在窗口底部信息栏
+      const selectedInfoLocator = tradeManagerModal.locator('span.text-black').filter({ hasText: '选中' });
+      await expect(selectedInfoLocator).toBeVisible({ timeout: 3000 });
+
+      const selectedInfo = await selectedInfoLocator.textContent();
       console.log(`选中信息: ${selectedInfo}`);
+
+      // 解析选中信息，验证格式
+      expect(selectedInfo).toMatch(/选中\d+条记录/);
+      expect(selectedInfo).toMatch(/数量[\d,.]+/);
+      expect(selectedInfo).toMatch(/市值[\d,.]+/);
+      expect(selectedInfo).toMatch(/盈亏[+-]?[\d,.]+/);
+
+      // 验证选中记录的数量合计
+      // 获取选中记录中买入记录的数量总和
+      const buySharesSum = await page.evaluate(() => {
+        const fixedDialogs = document.querySelectorAll('.fixed.inset-0');
+        let tradeWindow: Element | null = null;
+        for (let i = 0; i < fixedDialogs.length; i++) {
+          const dialog = fixedDialogs[i];
+          if (dialog.textContent?.includes('交易管理') && dialog.querySelector('h3')) {
+            tradeWindow = dialog;
+            break;
+          }
+        }
+
+        if (!tradeWindow) return 0;
+
+        // 获取表格行中被选中的买入记录的份额
+        const selectedRows = tradeWindow.querySelectorAll('.ring-2.ring-blue-500');
+        let totalShares = 0;
+        for (const row of selectedRows) {
+          const cells = row.querySelectorAll('div');
+          if (cells.length >= 3) {
+            const typeCell = cells[1]?.textContent?.trim() || '';
+            // 只统计买入记录
+            if (typeCell === '买入' || typeCell === '建仓') {
+              const sharesCell = cells[2]?.textContent?.trim() || '';
+              const shares = parseFloat(sharesCell.replace(/,/g, '')) || 0;
+              totalShares += shares;
+            }
+          }
+        }
+        return totalShares;
+      });
+
+      console.log(`选中买入记录份额总和: ${buySharesSum}`);
+
+      // 验证市场价值 = 数量总和 * 当前价格
+      // 获取盈亏总计（买入记录的盈亏额总和）
+      const profitSum = await page.evaluate((currentPrice) => {
+        const fixedDialogs = document.querySelectorAll('.fixed.inset-0');
+        let tradeWindow: Element | null = null;
+        for (let i = 0; i < fixedDialogs.length; i++) {
+          const dialog = fixedDialogs[i];
+          if (dialog.textContent?.includes('交易管理') && dialog.querySelector('h3')) {
+            tradeWindow = dialog;
+            break;
+          }
+        }
+
+        if (!tradeWindow) return 0;
+
+        // 获取表格行中被选中的买入记录的盈亏额
+        const selectedRows = tradeWindow.querySelectorAll('.ring-2.ring-blue-500');
+        let totalProfit = 0;
+        for (const row of selectedRows) {
+          const cells = row.querySelectorAll('div');
+          if (cells.length >= 8) {
+            const typeCell = cells[1]?.textContent?.trim() || '';
+            // 只统计买入记录
+            if (typeCell === '买入' || typeCell === '建仓') {
+              const sharesCell = cells[2]?.textContent?.trim() || '';
+              const priceCell = cells[3]?.textContent?.trim() || '';
+              const shares = parseFloat(sharesCell.replace(/,/g, '')) || 0;
+              const tradePrice = parseFloat(priceCell) || 0;
+              // 盈亏额 = 份额 * (当前价格 - 买入价格)
+              totalProfit += shares * (currentPrice - tradePrice);
+            }
+          }
+        }
+        return totalProfit;
+      }, tradeManagerPrice);
+
+      console.log(`选中买入记录盈亏总和: ${profitSum.toFixed(2)}`);
+
+      // 验证市场价值计算正确
+      const expectedMarketValue = buySharesSum * tradeManagerPrice;
+      console.log(`预期市场价值: ${expectedMarketValue.toFixed(2)}`);
+
+      // 从选中信息中提取市值数值进行验证
+      const marketValueMatch = selectedInfo?.match(/市值([+-]?[\d,.]+)/);
+      if (marketValueMatch) {
+        const displayedMarketValue = parseFloat(marketValueMatch[1].replace(/,/g, ''));
+        expect(displayedMarketValue).toBeCloseTo(expectedMarketValue, 1);
+        console.log(`市场价值验证: 显示值=${displayedMarketValue}, 计算值=${expectedMarketValue.toFixed(2)}`);
+      }
+
+      // 从选中信息中提取盈亏数值进行验证
+      const profitMatch = selectedInfo?.match(/盈亏([+-]?[\d,.]+)/);
+      if (profitMatch) {
+        const displayedProfit = parseFloat(profitMatch[1].replace(/,/g, ''));
+        expect(displayedProfit).toBeCloseTo(profitSum, 2);
+        console.log(`盈亏总计验证: 显示值=${displayedProfit}, 计算值=${profitSum.toFixed(2)}`);
+      }
+
+      console.log('选中记录统计信息验证完成');
+    } else {
+      console.log('买入记录不足，跳过选中统计信息验证');
     }
 
     // ══════════════════════════════════════════════════════════════════════════════

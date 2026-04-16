@@ -671,8 +671,8 @@ export const TradeManager: React.FC<{
             <div className="text-xs text-center flex-1 mx-4 truncate">
               {selectedStats.count > 0 ? (
                 <span className="text-black">
-                  选中{selectedStats.count}条记录，数量{formatNumber(selectedStats.totalShares, 2)}，市值{formatNumber(selectedStats.marketValue, 2)}，盈亏
-                  <span className={selectedStats.totalProfit > 0 ? 'text-red-500' : selectedStats.totalProfit < 0 ? 'text-green-500' : ''}>
+                  选中<span className="font-bold">{selectedStats.count}</span>条记录，数量<span className="font-bold">{formatNumber(selectedStats.totalShares, 2)}</span>，市值<span className="font-bold">{formatNumber(selectedStats.marketValue, 2)}</span>，盈亏
+                  <span className={`font-bold ${selectedStats.totalProfit > 0 ? 'text-red-500' : selectedStats.totalProfit < 0 ? 'text-green-500' : ''}`}>
                     {selectedStats.totalProfit === 0 ? '0.00' : `${selectedStats.totalProfit > 0 ? '+' : '-'}${formatNumber(Math.abs(selectedStats.totalProfit), 2)}`}
                   </span>
                 </span>

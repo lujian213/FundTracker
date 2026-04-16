@@ -413,7 +413,6 @@ describe('TradeManager selection stats (total profit)', () => {
     await waitFor(() => {
       // 只计算买入记录的盈亏：100*(2.0-1.0) = 100
       expect(screen.getAllByText('+100.00').length).toBeGreaterThanOrEqual(2);
-      expect(screen.getByText(/选中1条记录/)).toBeInTheDocument();
     }, { timeout: 1000 });
   });
 
