@@ -23,8 +23,19 @@ const originalWarn = console.warn;
 console.log = (...args: unknown[]) => {
   const message = args[0];
   if (typeof message === 'string') {
-    // 忽略备份测试中的预期日志
-    if (message.includes('No aiConfig found in imported backup')) {
+    // 忽略测试中的调试日志
+    if (message.includes('No aiConfig found in imported backup') ||
+        message.includes('Test indices saved') ||
+        message.includes('Available selection buttons') ||
+        message.includes('After fund click') ||
+        message.includes('After domestic index click') ||
+        message.includes('After global index click') ||
+        message.includes('Delete count') ||
+        message.includes('Indices before save') ||
+        message.includes('Indices after save') ||
+        message.includes('Save button disabled') ||
+        message.includes('aria-pressed') ||
+        message.includes('[StorageMigration] 验证结果汇总')) {
       return;
     }
   }
@@ -46,7 +57,9 @@ console.error = (...args: unknown[]) => {
         message.includes('See https://reactjs.org/link/warning-keys') ||
         message.includes('Failed to load portfolio templates') ||
         message.includes('[Calendar] Failed to load calendar data') ||
-        message.includes('[TimerJob]')) {
+        message.includes('[TimerJob]') ||
+        message.includes('Error reading user preference') ||
+        message.includes('Error reading system config')) {
       return;
     }
   }
