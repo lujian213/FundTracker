@@ -727,15 +727,6 @@ export async function fetchSingleIndex(symbol: string, ignoreCache: boolean = fa
     const response: any = await fetchJson(realtimeUrl);
     const item = response?.data;
     if (item) {
-      // DEBUG_START: 2026-04-13 调试指数API返回值（收盘前后对比）
-      console.log('[DEBUG] fetchSingleIndex API响应:', {
-        symbol: secid,
-        time: new Date().toLocaleTimeString(),
-        f80_raw: item.f80,
-        f124_raw: item.f124,
-        f124_parsed: item.f124 ? new Date(item.f124 * 1000).toLocaleString() : '使用Date.now()',
-      });
-      // DEBUG_END
 
       const timestamp = item.f124 ? new Date(item.f124 * 1000) : new Date();
       const pad = (n: number) => n.toString().padStart(2, '0');
