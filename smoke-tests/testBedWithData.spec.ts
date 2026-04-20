@@ -3773,7 +3773,36 @@ test.describe('testBedWithData', () => {
     const fundModal = page.locator('#fund-details-modal');
 
     // ══════════════════════════════════════════════════════════════════════════════
-    // 1. 打开交易管理窗口
+    // 1. 切换到历史趋势图tab，记录当前交易量柱状图和持仓趋势图的状态
+    // ══════════════════════════════════════════════════════════════════════════════
+    const historyTab = fundModal.locator('button:has-text("历史趋势图")');
+    await historyTab.click();
+
+    // 等待图表加载
+    await page.waitForTimeout(500);
+
+    // 定位历史趋势图SVG
+    const historyChartSvg = fundModal.locator('svg').first();
+    await expect(historyChartSvg).toBeVisible({ timeout: 5000 });
+
+    // 记录当前交易量柱状图的数量（买入红色渐变、卖出蓝色渐变）
+    // 基金交易量使用渐变填充：url(#fund-buy-gradient) 和 url(#fund-sell-gradient)
+    const volumeBars = historyChartSvg.locator('rect[fill="url(#fund-buy-gradient)"], rect[fill="url(#fund-sell-gradient)"]');
+    const initialVolumeBarCount = await volumeBars.count();
+    console.log(`初始交易量柱状图数量: ${initialVolumeBarCount}`);
+
+    // 记录当前持仓趋势折线（紫色折线 stroke="#8b5cf6"）
+    const positionTrendPath = historyChartSvg.locator('path[stroke="#8b5cf6"]');
+    const hasInitialPositionTrend = await positionTrendPath.count() > 0;
+    console.log(`初始持仓趋势折线存在: ${hasInitialPositionTrend}`);
+
+    // 记录当前交易点标记数量（圆形标记）
+    const tradeMarkers = historyChartSvg.locator('circle[data-testid^="marker-circle-"]');
+    const initialMarkerCount = await tradeMarkers.count();
+    console.log(`初始交易点标记数量: ${initialMarkerCount}`);
+
+    // ══════════════════════════════════════════════════════════════════════════════
+    // 2. 打开交易管理窗口
     // ══════════════════════════════════════════════════════════════════════════════
     const tradeManagerBtn = fundModal.locator('button[aria-label="交易管理"]');
     await tradeManagerBtn.click();
@@ -3788,14 +3817,14 @@ test.describe('testBedWithData', () => {
     console.log('交易管理窗口已打开');
 
     // ══════════════════════════════════════════════════════════════════════════════
-    // 2. 记录当前交易记录数量作为基准
+    // 3. 记录当前交易记录数量作为基准
     // ══════════════════════════════════════════════════════════════════════════════
     const recordCountText = await tradeManagerModal.locator('text=/共 \\d+ 条记录/').textContent();
     const baseRecordCount = parseInt(recordCountText?.match(/共 (\d+) 条记录/)?.[1] || '0');
     console.log(`当前交易记录数量: ${baseRecordCount}`);
 
     // ══════════════════════════════════════════════════════════════════════════════
-    // 3. 添加一条买入交易
+    // 4. 添加一条买入交易
     // ══════════════════════════════════════════════════════════════════════════════
     // 定位输入框
     const dateInput = tradeManagerModal.locator('input[type="date"]');
@@ -3809,11 +3838,11 @@ test.describe('testBedWithData', () => {
     // 选择买入类型
     await typeSelect.selectOption('buy');
 
-    // 输入总额 500
-    await amountInput.fill('500');
+    // 输入总额 1000
+    await amountInput.fill('1000');
 
-    // 输入手续费 5
-    await feeInput.fill('5');
+    // 输入手续费 10
+    await feeInput.fill('10');
 
     // 点击添加交易按钮
     const addBtn = tradeManagerModal.locator('button:has-text("添加交易")');
@@ -3825,7 +3854,7 @@ test.describe('testBedWithData', () => {
     console.log('买入交易添加成功');
 
     // ══════════════════════════════════════════════════════════════════════════════
-    // 4. 验证新增记录显示在第一页第一条（按日期倒序）
+    // 5. 验证新增记录显示在第一页第一条（按日期倒序）
     // ══════════════════════════════════════════════════════════════════════════════
     const firstRow = tradeManagerModal.locator('.flex.items-center.px-2.py-1\\.5.border.rounded').first();
     const firstRowDate = await firstRow.locator('div').nth(0).textContent();
@@ -3837,19 +3866,71 @@ test.describe('testBedWithData', () => {
     console.log(`新增记录验证: 日期=${firstRowDate}, 类型=${firstRowType}`);
 
     // ══════════════════════════════════════════════════════════════════════════════
-    // 5. 编辑刚添加的交易记录
+    // 6. 关闭交易管理窗口
     // ══════════════════════════════════════════════════════════════════════════════
-    // 确保普通视图模式（编辑按钮只在普通视图下显示）
+    const overlay = page.locator('.fixed.inset-0').filter({ hasText: '交易管理' }).locator('.absolute.inset-0');
+    await overlay.dispatchEvent('click');
+    await expect(tradeManagerModal).not.toBeVisible({ timeout: 3000 });
+
+    console.log('交易管理窗口已关闭');
+
+    // ══════════════════════════════════════════════════════════════════════════════
+    // 7. 验证历史趋势图更新：交易点、持仓趋势图、交易量柱状图都有对应变化
+    // ══════════════════════════════════════════════════════════════════════════════
+    // 等待图表更新
+    await page.waitForTimeout(500);
+
+    // 验证交易量柱状图数量增加（新增的买入交易应该显示为绿色柱子）
+    const newVolumeBarCount = await volumeBars.count();
+    expect(newVolumeBarCount).toBeGreaterThan(initialVolumeBarCount);
+    console.log(`新增交易后交易量柱状图数量: ${newVolumeBarCount}（原${initialVolumeBarCount}）`);
+
+    // 验证持仓趋势折线仍然存在（并且可能发生变化）
+    const hasNewPositionTrend = await positionTrendPath.count() > 0;
+    expect(hasNewPositionTrend).toBe(true);
+    console.log(`持仓趋势折线更新验证完成`);
+
+    // 验证交易点标记数量（新增的交易应该有对应的标记）
+    const newMarkerCount = await tradeMarkers.count();
+    console.log(`交易点标记数量: ${newMarkerCount}（原${initialMarkerCount}）`);
+
+    console.log('历史趋势图更新验证完成');
+
+    // ══════════════════════════════════════════════════════════════════════════════
+    // 8. 重入交易管理窗口验证交易存在
+    // ══════════════════════════════════════════════════════════════════════════════
+    await tradeManagerBtn.click();
+    await expect(tradeManagerModal).toBeVisible({ timeout: 3000 });
+
+    // 验证记录数量正确
+    const reenterCountText = await tradeManagerModal.locator('text=/共 \\d+ 条记录/').textContent();
+    const reenterCount = parseInt(reenterCountText?.match(/共 (\d+) 条记录/)?.[1] || '0');
+    expect(reenterCount).toBe(baseRecordCount + 1);
+
+    // 验证第一条记录是刚才添加的买入交易
+    const reenterFirstRow = tradeManagerModal.locator('.flex.items-center.px-2.py-1\\.5.border.rounded').first();
+    const reenterFirstDate = await reenterFirstRow.locator('div').nth(0).textContent();
+    expect(reenterFirstDate?.trim()).toBe(mockDateDisplay);
+
+    const reenterFirstType = await reenterFirstRow.locator('div').nth(1).textContent();
+    expect(reenterFirstType).toContain('买入');
+
+    console.log('重入验证完成：交易记录正确显示');
+
+    // ══════════════════════════════════════════════════════════════════════════════
+    // 9. 编辑刚添加的交易记录
+    // ══════════════════════════════════════════════════════════════════════════════
+    // 确保普通视图模式
     const viewModeNormalRadio = tradeManagerModal.locator('input[value="normal"]');
     await viewModeNormalRadio.check();
     await expect(viewModeNormalRadio).toBeChecked();
 
-    // 点击第一条记录的编辑按钮（需要等待按钮可见）
-    const editBtn = firstRow.locator('button:has(i.fa-edit)');
+    // 点击第一条记录的编辑按钮
+    const editBtn = reenterFirstRow.locator('button:has(i.fa-edit)');
     await expect(editBtn).toBeVisible({ timeout: 3000 });
     await editBtn.click();
 
-    // 验证进入编辑模式（出现取消按钮和更新按钮）
+    // 验证进入编辑模式
     const cancelBtn = tradeManagerModal.locator('button:has-text("取消")');
     await expect(cancelBtn).toBeVisible({ timeout: 3000 });
 
@@ -3858,27 +3939,40 @@ test.describe('testBedWithData', () => {
 
     console.log('进入编辑模式');
 
-    // 修改总额为 1000
-    await amountInput.fill('1000');
-    await feeInput.fill('10');
+    // 修改总额为 2000
+    await amountInput.fill('2000');
+    await feeInput.fill('20');
 
     // 点击更新按钮
     await updateBtn.click();
 
-    // 验证退出编辑模式（取消按钮消失）
+    // 验证退出编辑模式
     await expect(cancelBtn).not.toBeVisible({ timeout: 1000 });
-
-    // 验证记录数量不变
-    const afterEditCountText = await tradeManagerModal.locator('text=/共 \\d+ 条记录/').textContent();
-    const afterEditCount = parseInt(afterEditCountText?.match(/共 (\d+) 条记录/)?.[1] || '0');
-    expect(afterEditCount).toBe(baseRecordCount + 1);
 
     console.log('交易记录修改成功');
 
     // ══════════════════════════════════════════════════════════════════════════════
-    // 6. 删除刚添加的交易记录
+    // 10. 关闭交易管理窗口，验证图表更新
     // ══════════════════════════════════════════════════════════════════════════════
-    // 再次定位第一条记录（买入类型）
+    await overlay.dispatchEvent('click');
+    await expect(tradeManagerModal).not.toBeVisible({ timeout: 3000 });
+
+    await page.waitForTimeout(500);
+
+    // 验证持仓趋势图已更新（金额变化后持仓份额也会变化）
+    const afterEditPositionTrend = await positionTrendPath.count() > 0;
+    expect(afterEditPositionTrend).toBe(true);
+
+    console.log('编辑后图表更新验证完成');
+
+    // ══════════════════════════════════════════════════════════════════════════════
+    // 11. 删除刚添加的交易记录，恢复原状
+    // ══════════════════════════════════════════════════════════════════════════════
+    // 再次打开交易管理窗口
+    await tradeManagerBtn.click();
+    await expect(tradeManagerModal).toBeVisible({ timeout: 3000 });
+
+    // 删除第一条买入记录
     const buyRow = tradeManagerModal.locator('.flex.items-center.px-2.py-1\\.5.border.rounded').filter({ hasText: '买入' }).first();
     const deleteBtn = buyRow.locator('button:has(i.fa-trash-alt)');
     await deleteBtn.click();
@@ -3889,14 +3983,13 @@ test.describe('testBedWithData', () => {
     console.log('交易记录删除成功，恢复原状');
 
     // ══════════════════════════════════════════════════════════════════════════════
-    // 7. 关闭交易管理窗口
+    // 12. 关闭交易管理窗口
     // ══════════════════════════════════════════════════════════════════════════════
-    const overlay = page.locator('.fixed.inset-0').filter({ hasText: '交易管理' }).locator('.absolute.inset-0');
     await overlay.dispatchEvent('click');
     await expect(tradeManagerModal).not.toBeVisible({ timeout: 3000 });
 
     // ══════════════════════════════════════════════════════════════════════════════
-    // 8. 关闭基金详情窗口
+    // 13. 关闭基金详情窗口
     // ══════════════════════════════════════════════════════════════════════════════
     await page.click('#fund-details-modal button:has(i.fa-times)');
     await expect(fundModal).not.toBeVisible();

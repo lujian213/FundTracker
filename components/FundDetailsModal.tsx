@@ -9,7 +9,7 @@ import { computeRatingFromHistory } from '../utils/ratingHelper';
 import { computeAvgCostPrice } from '../utils/positionHelper';
 import RatingTooltip from './RatingTooltip';
 import TradeManager from './TradeManager';
-import useTrades, { getTradesForSymbol } from '../hooks/useTrades';
+import useTrades from '../hooks/useTrades';
 import ProfitModal from './ProfitModal';
 import VirtualTradeModal from './VirtualTradeModal';
 import FundProfileModal from './FundProfileModal';
@@ -124,6 +124,9 @@ export const FundDetailsModal: React.FC<FundDetailsModalProps> = ({ data, onClos
     const enhanced = marketFundService.getValuation(data.symbol);
     return enhanced || data;
   }, [data.symbol, data]);
+
+  // holdings summary from trades - 移到前面以便后面的useMemo可以使用
+  const { trades: tradeList } = useTrades(data.symbol);
 
   // runtime dev flag: prefer NODE_ENV (works in Jest); Vite may replace this at build time
   const isDev = typeof process !== 'undefined' && process.env && process.env.NODE_ENV === 'development';
@@ -386,8 +389,8 @@ export const FundDetailsModal: React.FC<FundDetailsModalProps> = ({ data, onClos
       return { fundVolumeBars: [], positionTrendData: [], positionTrendPath: '' };
     }
 
-    // 获取交易记录
-    const trades = getTradesForSymbol(data.symbol);
+    // 使用 tradeList（来自 useTrades hook）代替直接调用 getTradesForSymbol
+    const trades = tradeList;
 
     // 读取初始仓位配置和建仓日期
     let initialShares = 0;
@@ -476,7 +479,7 @@ export const FundDetailsModal: React.FC<FundDetailsModalProps> = ({ data, onClos
     }
 
     return { fundVolumeBars, positionTrendData, positionTrendPath, maxBarShares };
-  }, [chartData, points, data.symbol, initialPosition]);
+  }, [chartData, points, data.symbol, initialPosition, tradeList]);
 
     // Risk analysis based on history + today's valuation through the shared isolated model
   const ratingInfo = useMemo(() => {
@@ -764,9 +767,6 @@ export const FundDetailsModal: React.FC<FundDetailsModalProps> = ({ data, onClos
     if (num < 0) return { type: 'negative' as const };
     return { type: 'ok' as const, value: (num / price).toFixed(2) };
   }, [calcAmount, calcPrice]);
-
-    // holdings summary from trades
-    const { trades: tradeList } = useTrades(data.symbol);
 
     // 使用 useRef 来缓存基金数据，避免在数据更新时重新渲染 AI 助手
     const aiFundDataRef = useRef<{
