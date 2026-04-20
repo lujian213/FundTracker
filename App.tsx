@@ -49,6 +49,7 @@ import { getAIConfig } from './services/aiConfigService';
 import { refreshStrategyRecommendations } from './services/strategyRecommendationService';
 import { refreshFundProfiles } from './services/fundProfileService';
 import { updateCalendarData, getEventsForYear, getUpcomingEvents, loadCalendarData, getFirstEventInWorkdays } from './services/calendarService';
+import { calculateDeliveryDates } from './services/deliveryDateService';
 import { formatDateDisplay } from './utils/dateFormat';
 import { verifyStorageMigration } from './services/localStorageService';
 import { mountRoot } from './services/rootService';
@@ -329,125 +330,6 @@ async function refreshCalendarHolidaysSG(): Promise<void> {
     '新加坡股市',
     'holiday_sg'
   );
-}
-
-/**
- * 计算交割日信息（基于已有节假日数据计算，不再使用AI）
- * 在每个calendar节假日任务执行结束后作为子任务调用
- */
-function calculateDeliveryDates(): void {
-  const year = new Date().getFullYear();
-  const results: Array<{ date: string; content: string; description: string; market?: string }> = [];
-
-  // 只加载一次日历数据，避免重复调用 loadCalendarData
-  const calendarData = loadCalendarData();
-
-  // Helper: 获取某月的第N个星期几
-  function getNthWeekdayOfMonth(year: number, month: number, weekday: number, n: number): Date {
-    const firstDay = new Date(year, month, 1);
-    let count = 0;
-    for (let d = 1; d <= 31; d++) {
-      const date = new Date(year, month, d);
-      if (date.getMonth() !== month) break;
-      if (date.getDay() === weekday) {
-        count++;
-        if (count === n) return date;
-      }
-    }
-    return new Date(year, month, 1);
-  }
-
-  // Helper: 检查是否为节假日（使用预加载的日历数据）
-  function isHoliday(date: Date): boolean {
-    const dateStr = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
-    const events = calendarData[dateStr] || [];
-    return events.some(e => e.type === 'holiday_china');
-  }
-
-  // Helper: 找到下一个营业日（跳过周末和节假日）
-  function getNextBusinessDay(date: Date): Date {
-    let next = new Date(date);
-    while (next.getDay() === 0 || next.getDay() === 6 || isHoliday(next)) {
-      next.setDate(next.getDate() + 1);
-    }
-    return next;
-  }
-
-  // Helper: 找到上一个营业日
-  function getPrevBusinessDay(date: Date): Date {
-    let prev = new Date(date);
-    while (prev.getDay() === 0 || prev.getDay() === 6 || isHoliday(prev)) {
-      prev.setDate(prev.getDate() - 1);
-    }
-    return prev;
-  }
-
-  // 月份遍历（1-12月）
-  for (let month = 0; month < 12; month++) {
-    // A股 - 中金所股指期货/期权交割日：每月第三个星期五
-    const thirdFriday = getNthWeekdayOfMonth(year, month, 5, 3);
-    let adjThirdFriday = thirdFriday;
-    // 遇法定节假日顺延至下一交易日
-    if (isHoliday(thirdFriday)) {
-      adjThirdFriday = getNextBusinessDay(thirdFriday);
-    }
-    results.push({
-      date: `${year}-${String(month + 1).padStart(2, '0')}-${String(adjThirdFriday.getDate()).padStart(2, '0')}`,
-      content: 'A股-中金所股指期货/期权交割日',
-      description: 'A股：每月第三个星期五，遇法定节假日顺延至下一交易日'
-    });
-
-    // A股 - 上交所/深交所ETF期权交割日：每月第四个星期三
-    const fourthWednesday = getNthWeekdayOfMonth(year, month, 3, 4);
-    let adjFourthWednesday = fourthWednesday;
-    if (isHoliday(fourthWednesday)) {
-      adjFourthWednesday = getNextBusinessDay(fourthWednesday);
-    }
-    results.push({
-      date: `${year}-${String(month + 1).padStart(2, '0')}-${String(adjFourthWednesday.getDate()).padStart(2, '0')}`,
-      content: 'A股-上交所/深交所ETF期权交割日',
-      description: 'A股：每月第四个星期三，遇法定节假日顺延'
-    });
-
-    // A股 - 富时中国A50指数期货（SGX）：每月倒数第二个营业日
-    // new Date(year, month + 2, 0) 获取month月的最后一天
-    let lastDay = new Date(year, month + 2, 0);
-    let secondLastBusinessDay = getPrevBusinessDay(lastDay);
-    results.push({
-      date: `${year}-${String(month + 1).padStart(2, '0')}-${String(secondLastBusinessDay.getDate()).padStart(2, '0')}`,
-      content: 'A股-富时中国A50指数期货（SGX）交割日',
-      description: 'A股：每月倒数第二个营业日，新加坡交易所规则'
-    });
-
-    // 港股 - 恒指期货及期权月度交割日：合约月份倒数第二个营业日
-    let hkLastDay = new Date(year, month + 2, 0);
-    let hkSecondLastBusinessDay = getPrevBusinessDay(hkLastDay);
-    results.push({
-      date: `${year}-${String(month + 1).padStart(2, '0')}-${String(hkSecondLastBusinessDay.getDate()).padStart(2, '0')}`,
-      content: '港股-恒指/国企股/科指期货及期权交割日',
-      description: '港股：合约月份倒数第二个营业日'
-    });
-
-    // 美股 - 月度期权到期日：每月第三个星期五
-    const usThirdFriday = getNthWeekdayOfMonth(year, month, 5, 3);
-    results.push({
-      date: `${year}-${String(month + 1).padStart(2, '0')}-${String(usThirdFriday.getDate()).padStart(2, '0')}`,
-      content: '美股-月度期权到期日',
-      description: '美股：每月第三个星期五'
-    });
-
-    // 美股 - 三巫日：3,6,9,12月的第三个星期五
-    if (month === 2 || month === 5 || month === 8 || month === 11) {
-      results.push({
-        date: `${year}-${String(month + 1).padStart(2, '0')}-${String(usThirdFriday.getDate()).padStart(2, '0')}`,
-        content: '美股-三巫日',
-        description: '美股：股指期货+股指期权+个股期权同时到期'
-      });
-    }
-  }
-
-  // 更新 calendar 数据
-  updateCalendarData('delivery', results);
 }
 
 const AppContent: React.FC = () => {
