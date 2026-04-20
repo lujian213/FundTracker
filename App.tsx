@@ -48,6 +48,7 @@ import { queryAI, AIResponse } from './services/aiService';
 import { getAIConfig } from './services/aiConfigService';
 import { refreshStrategyRecommendations } from './services/strategyRecommendationService';
 import { refreshFundProfiles } from './services/fundProfileService';
+import { fetchWithProxy } from './services/proxyService';
 import { updateCalendarData, getEventsForYear, getUpcomingEvents, loadCalendarData, getFirstEventInWorkdays } from './services/calendarService';
 import { calculateDeliveryDates } from './services/deliveryDateService';
 import { formatDateDisplay } from './utils/dateFormat';
@@ -192,38 +193,18 @@ function parseCalendarAIResponse(response: string): CalendarEventInput[] {
 }
 
 /**
- * 网页抓取代理服务列表
- * 按顺序尝试，直到成功或全部失败
- */
-const WEB_FETCH_PROXIES = [
-  (url: string) => `https://r.jina.ai/${url}`,
-  (url: string) => `https://txtify.it/${url}`,
-  (url: string) => `https://law-ai.top:9000/proxy?target=${url}`,
-];
-
-/**
- * 公共函数：从网站获取内容（通过代理抓取，支持备份代理）
+ * 公共函数：从网站获取内容（通过统一代理服务抓取）
  */
 async function fetchWebContent(url: string, logPrefix: string): Promise<string> {
-  let lastError: Error | null = null;
-
-  for (let i = 0; i < WEB_FETCH_PROXIES.length; i++) {
-    const proxyUrl = WEB_FETCH_PROXIES[i](url);
-    try {
-      const response = await fetch(proxyUrl);
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}`);
-      }
-      const content = await response.text();
-      return content;
-    } catch (e) {
-      lastError = e as Error;
-      console.warn(`[Calendar] ${logPrefix}代理${i + 1}失败:`, e);
-    }
+  try {
+    // 使用统一代理服务，不指定格式偏好（默认顺序）
+    const { content, proxyName } = await fetchWithProxy(url);
+    console.log(`[Calendar] ${logPrefix}使用代理 ${proxyName} 成功获取 ${url}`);
+    return content;
+  } catch (e) {
+    console.error(`[Calendar] ${logPrefix}所有代理均失败:`, e);
+    throw new Error(`无法获取网站内容: ${url}，任务失败`);
   }
-
-  console.error(`[Calendar] ${logPrefix}所有代理均失败`);
-  throw new Error(`无法获取网站内容: ${url}，任务失败`);
 }
 
 /**

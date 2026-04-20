@@ -7,23 +7,9 @@
 
 import { Ticker, FundProfile, StockPosition, StageIncrease, JobResult, MarketType } from '../types';
 import * as marketFundService from './marketFundService';
+import { fetchWithProxy } from './proxyService';
 
 const EASTMONEY_URL = 'https://fund.eastmoney.com/{symbol}.html';
-
-// 代理配置：每种代理有其 URL 生成函数和返回格式
-interface ProxyConfig {
-  name: string;
-  buildUrl: (url: string) => string;
-  format: 'html' | 'markdown';
-}
-
-const WEB_FETCH_PROXIES: ProxyConfig[] = [
-  // Markdown 格式的代理（r.jina.ai 转换网页为 Markdown）
-  { name: 'r.jina.ai', buildUrl: (url) => `https://r.jina.ai/${url}`, format: 'markdown' },
-  // HTML 格式的代理
-  { name: 'allorigins.win', buildUrl: (url) => `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`, format: 'html' },
-  { name: 'corsproxy.io', buildUrl: (url) => `https://corsproxy.io/?${encodeURIComponent(url)}`, format: 'html' },
-];
 
 // ============================================================
 // HTML 解析函数
@@ -168,9 +154,23 @@ export function parseStockPositionsFromMarkdown(markdown: string): StockPosition
           stockName = linkMatch[1];
         }
 
+        // 跳过"暂无数据"这类占位文本
+        if (stockName === '暂无数据' || stockName.includes('暂无')) {
+          continue;
+        }
+
         // 提取持仓占比中的数字
         const percentText = cells[1];
-        const percentMatch = percentText.match(/([\d.]+)%?/);
+
+        // 检查 percentText 是否是有效的百分比格式
+        // 有效格式应该直接是百分比数字（如 "9.45%"），不应该包含 URL 或其他文本
+        // 如果 percentText 包含 URL（http:// 或 eastmoney.com），则跳过
+        if (percentText.includes('http://') || percentText.includes('https://') ||
+            percentText.includes('eastmoney.com') || percentText.includes('fundf10')) {
+          continue;
+        }
+
+        const percentMatch = percentText.match(/([\d.]+)%/);
         if (percentMatch) {
           const percentage = parseFloat(percentMatch[1]);
           if (!isNaN(percentage) && percentage > 0 && percentage <= 100) {
@@ -287,42 +287,30 @@ export function parseFundProfileFromContent(content: string, format: 'html' | 'm
 
 /**
  * 通过代理获取网页内容并解析
+ * 使用统一的代理服务
  */
 async function fetchViaProxy(url: string): Promise<FundProfile | null> {
-  let lastError: Error | null = null;
+  try {
+    // 优先使用 markdown 格式（r.jina.ai），表格解析更方便
+    const { content, format, proxyName } = await fetchWithProxy(url, { preferFormat: 'markdown' });
+    console.log(`[FundProfile] 使用代理 ${proxyName} 成功获取 ${url}`);
 
-  for (const proxy of WEB_FETCH_PROXIES) {
-    const proxyUrl = proxy.buildUrl(url);
-    try {
-      const response = await fetch(proxyUrl);
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}`);
-      }
-      const content = await response.text();
+    // 根据返回格式选择解析方式
+    // raw 格式当作 HTML 处理，markdown 格式当作 Markdown 处理
+    const parseFormat = format === 'raw' ? 'html' : 'markdown';
+    const profile = parseFundProfileFromContent(content, parseFormat);
 
-      // 验证内容格式
-      if (proxy.format === 'html') {
-        // HTML 格式验证
-        if (!content.includes('<!DOCTYPE') && !content.includes('<html') && !content.includes('<body')) {
-          console.warn(`[FundProfile] ${proxy.name} 返回的不是有效HTML格式`);
-          throw new Error('返回内容不是有效的HTML格式');
-        }
-      }
-
-      // 尝试解析
-      const profile = parseFundProfileFromContent(content, proxy.format);
-      if (profile && (profile.stock_positions.length > 0 || profile.stage_increase.length > 0)) {
-        return profile;
-      }
-
-      // 解析结果为空，可能是数据问题，继续尝试下一个代理
-    } catch (e) {
-      lastError = e as Error;
-      console.warn(`[FundProfile] ${proxy.name} 失败:`, e);
+    if (profile && (profile.stock_positions.length > 0 || profile.stage_increase.length > 0)) {
+      return profile;
     }
-  }
 
-  throw lastError || new Error('所有代理均失败');
+    // 解析结果为空，可能是数据问题（如"暂无数据")
+    console.warn(`[FundProfile] 解析结果为空，可能该基金暂无持仓数据`);
+    return profile; // 返回空 profile，包含 fetched_at 时间戳
+  } catch (e) {
+    console.error(`[FundProfile] 获取失败:`, e);
+    throw e;
+  }
 }
 
 /**
