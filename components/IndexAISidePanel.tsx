@@ -1,5 +1,5 @@
 import React, { useCallback } from 'react';
-import { MarketIndex, HistoricalPoint, IntradayPoint } from '../types';
+import { MarketIndex, HistoricalPoint, IntradayPoint, VolumeData } from '../types';
 import AISidePanelBase from './AISidePanelBase';
 import { IndexAIQueryContext } from '../types/aiServiceTypes';
 
@@ -10,7 +10,7 @@ interface IndexAISidePanelProps {
   indexName: string;
   history?: HistoricalPoint[];
   maValues?: Record<number, (number | null)[]>;
-  volumeData?: { volume: number }[];
+  volumeData?: VolumeData[];
   intradayPoints?: IntradayPoint[];
 }
 

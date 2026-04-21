@@ -369,6 +369,7 @@ function jsonp<T>(url: string, callbackParam: string = 'cb', fundCode?: string, 
 
       const timeoutLimit = 8000;
       const timeoutId = setTimeout(() => {
+
         cleanup();
         if (fundCode) delete fundRegistry[fundCode];
         if (attempts < retryCount) {
@@ -382,7 +383,13 @@ function jsonp<T>(url: string, callbackParam: string = 'cb', fundCode?: string, 
       const cleanup = () => {
         clearTimeout(timeoutId);
         if (script.parentNode) script.parentNode.removeChild(script);
-        if (!isFundGz) delete (window as any)[callbackName];
+        if (!isFundGz) {
+          // 先设为空函数防止延迟响应报错，5秒后再真正删除避免垃圾积累
+          (window as any)[callbackName] = () => {};
+          setTimeout(() => {
+            try { delete (window as any)[callbackName]; } catch {}
+          }, 5000);
+        }
       };
 
       if (isFundGz && fundCode) {
@@ -765,11 +772,17 @@ export async function fetchSingleIndex(symbol: string, ignoreCache: boolean = fa
       const history = await fetchIndexHistory(symbol);
       if (history && history.length > 0) {
         const lastPoint = history[history.length - 1];
-        // 合并成交量和成交额
+
+        // 只有当历史数据最后一条的日期 == 当前交易日时，才使用其 volume/amount
+        // 否则当日应该没有历史数据，volume/amount 应该为 0
+        const lastPointDate = toLocalDateKey(lastPoint.date);
+        const tradeDateKey = currentInfo.tradeDate || '';
+        const useHistoryVolume = lastPointDate === tradeDateKey;
+
         const info: IndexInfo = {
           ...currentInfo,
-          volume: lastPoint.volume || 0,
-          amount: lastPoint.amount || 0,
+          volume: useHistoryVolume ? (lastPoint.volume || 0) : 0,
+          amount: useHistoryVolume ? (lastPoint.amount || 0) : 0,
         };
         // 更新 indexService
         indexService.updateRealtimeData(normalizedSymbol, info);
@@ -901,8 +914,95 @@ export async function forceFetchFundHistories(symbols: string[], onProgress?: ()
   return { success: true, data: undefined, message: `成功更新 ${successCount} 只基金历史净值` };
 }
 
+/**
+ * 将东方财富 secid 格式转换为腾讯证券指数代码格式
+ * @param secid 东方财富格式如 '1.000001', '0.399001', '100.HSI'
+ * @returns 腾讯格式如 'sh000001', 'sz399001', 'hkHSI'；不支持返回 null
+ */
+export function secidToTencentSymbol(secid: string): string | null {
+  const parts = secid.split('.');
+  if (parts.length !== 2) return null;
+
+  const [marketCode, indexCode] = parts;
+
+  // A股: 上交所(1) -> sh, 深交所(0) -> sz
+  if (marketCode === '1') return `sh${indexCode}`;
+  if (marketCode === '0') return `sz${indexCode}`;
+
+  // 港股/美股特殊处理 - 恒生系列指数
+  // 市场代码 100 和 124 都用于港股指数
+  if (secid === '100.HSI' || secid === '124.HSI') return 'hkHSI';
+  if (secid === '100.HSTECH' || secid === '124.HSTECH') return 'hkHSTECH';
+
+  // 美股指数
+  if (secid === '100.NDX' || secid === '100.NDX100') return 'usNDX';
+  if (secid === '100.SPX') return 'usSPX';
+
+  // 其他港股: 100.XXX 或 124.XXX -> hkXXX
+  if (marketCode === '100' || marketCode === '124') return `hk${indexCode}`;
+
+  // 商品期货(市场代码101) - 腾讯API暂不支持
+  // 101.GC00Y = 黄金期货, 101.SI00Y = 白银期货
+  // 返回 null 表示不支持此数据源
+
+  return null;
+}
+
+/**
+ * 从腾讯证券获取指数历史数据（备用数据源）
+ * 腾讯API不支持涨跌幅，需从连续收盘价计算
+ * @param secid 东方财富格式指数代码
+ * @returns HistoricalPoint 数组，失败返回 null
+ */
+async function fetchIndexHistoryFromTencent(secid: string): Promise<HistoricalPoint[] | null> {
+  const tencentSymbol = secidToTencentSymbol(secid);
+  if (!tencentSymbol) return null;
+
+  // 计算日期范围：从今天往前约400天（覆盖365个交易日）
+  const endDate = new Date();
+  const startDate = new Date();
+  startDate.setDate(startDate.getDate() - 400);
+
+  const formatDate = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+
+  const url = `https://proxy.finance.qq.com/ifzqgtimg/appstock/app/fqkline/get?_var=kline_day&param=${tencentSymbol},day,${formatDate(startDate)},${formatDate(endDate)},400,&r=${Math.random()}`;
+
+  try {
+    const response = await fetch(url);
+    const text = await response.text();
+
+    // 解析 JSON (格式: kline_day={...})
+    const jsonStr = text.substring(text.indexOf('{'));
+    const data = JSON.parse(jsonStr);
+
+    const dayData = data?.data?.[tencentSymbol]?.day;
+    if (!Array.isArray(dayData) || dayData.length === 0) return null;
+
+    // 转换为 HistoricalPoint
+    // 字段: [日期, 开盘, 收盘, 最高, 最低, 成交量(手)]
+    const points: Array<Partial<HistoricalPoint>> = dayData.map((item: string[], index: number) => {
+      const close = parseFloat(item[2]) || 0;
+      const prevClose = index > 0 ? (parseFloat(dayData[index - 1][2]) || 0) : (parseFloat(item[1]) || 0);
+      const equityReturn = prevClose > 0 ? ((close - prevClose) / prevClose) * 100 : 0;
+
+      return {
+        date: Date.parse(item[0]),  // 将 YYYY-MM-DD 转为时间戳
+        value: close,
+        equityReturn,
+        volume: parseFloat(item[5]) || 0,  // 腾讯API字段5是成交量(手)
+      };
+    });
+
+    const normalized = normalizeHistoryPoints(points);
+    return normalized;
+  } catch (e) {
+    return null;
+  }
+}
+
 // Index history: fetch Kline data for indices via push2his and convert to HistoricalPoint[]
 export async function fetchIndexHistory(symbol: string, ignoreCache: boolean = false): Promise<HistoricalPoint[]> {
+
    // 1. 先检查缓存
    const marketIndex = indexService.getMarketIndex(symbol);
    if (marketIndex && marketIndex.history.length > 0 && !ignoreCache) {
@@ -940,7 +1040,15 @@ export async function fetchIndexHistory(symbol: string, ignoreCache: boolean = f
       indexService.updateHistory(symbol, normalized);
       return normalized;
      }
-   } catch (e) {}
+   } catch (e) {
+     // 尝试腾讯备用数据源
+     const tencentResult = await fetchIndexHistoryFromTencent(secid);
+     if (tencentResult && tencentResult.length > 0) {
+       indexService.updateHistory(symbol, tencentResult);
+       return tencentResult;
+     }
+     // 所有尝试都失败，返回空数组（不输出日志）
+   }
    return [];
  }
 
@@ -953,10 +1061,12 @@ export async function fetchIndexHistory(symbol: string, ignoreCache: boolean = f
 export async function fetchIndexHistories(symbols: string[], ignoreCache: boolean = false, onProgress?: () => void): Promise<JobResult<void>> {
   if (symbols.length === 0) return { success: true, data: undefined };
 
+
   const errors: string[] = [];
   let successCount = 0;
 
-  for (const sym of symbols) {
+  for (let i = 0; i < symbols.length; i++) {
+    const sym = symbols[i];
     try {
       const res = await indexQueue.add(() => fetchIndexHistory(sym, ignoreCache));
       if (!res || res.length === 0) {

@@ -85,6 +85,8 @@ export const IndexDetailsModal: React.FC<IndexDetailsModalProps> = ({ data, onCl
 
     // 始终以实时指数值作为图中最新点
     // 当交易日期晚于历史数据最后日期时，追加当前点
+    // 注意：volume/amount 只使用当日数据，不使用历史数据作为 fallback
+    // 因为历史数据的 volume 是历史日期的，不应该显示为当日数据
     if (tradeDayKey > lastDayKey) {
       return [...history, {
         date: tradeTs,
@@ -95,14 +97,19 @@ export const IndexDetailsModal: React.FC<IndexDetailsModalProps> = ({ data, onCl
       }];
     }
 
-    // 当交易日期等于或早于历史数据最后日期时，更新最后一个点的价格和涨跌幅
+    // 当交易日期等于历史数据最后日期时，更新最后一个点
+    // 此时 lastHist 是当日的历史数据，可以使用
+    // 但如果历史数据获取失败，data.info.volume 是旧缓存的数据（日期不匹配），不应使用
+    // 判断：只有当 data.info.volume 存在且 > 0 时才使用，否则保留 lastHist 的值
+    // （如果 lastHist.volume == 0，说明当日确实没数据）
     const updated = [...history];
+    const shouldUseRealtimeVolume = data.info.volume !== undefined && data.info.volume > 0;
     updated[updated.length - 1] = {
       ...lastHist,
       value: data.info.current,
       equityReturn: data.info.changePercent || 0,
-      volume: data.info.volume ?? lastHist.volume,
-      amount: data.info.amount ?? lastHist.amount
+      volume: shouldUseRealtimeVolume ? data.info.volume : lastHist.volume,
+      amount: shouldUseRealtimeVolume ? data.info.amount : lastHist.amount
     };
     return updated;
   }, [history, data.info.tradeDate, data.info.current, data.info.changePercent, data.info.volume, data.info.amount]);
@@ -178,7 +185,7 @@ export const IndexDetailsModal: React.FC<IndexDetailsModalProps> = ({ data, onCl
       }
     }
 
-    // 计算成交量数据
+    // 计算成交量数据（用于柱状图）
     const volumeData: VolumeData[] = svgPoints.map((p, i) => {
       const data = p.data;
       const volume = data.volume || 0;

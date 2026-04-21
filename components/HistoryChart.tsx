@@ -89,7 +89,7 @@ const HistoryChart: React.FC<HistoryChartProps> = ({
   const volumeChartParams = useMemo(() => {
     if (!showVolume || !volumeData || volumeData.length === 0) return null;
 
-    const volumes = volumeData.map(v => v.volume);
+    const volumes = volumeData.map(v => v.volume || 0);
     const maxVolume = Math.max(...volumes, 1); // 避免除零
 
     return {
@@ -232,7 +232,7 @@ const HistoryChart: React.FC<HistoryChartProps> = ({
             />
             {/* 成交量柱状图 */}
             {volumeData.map((v, i) => {
-              const barHeight = (v.volume / volumeChartParams.maxVolume) * volumeChartParams.chartHeight;
+              const barHeight = ((v.volume || 0) / volumeChartParams.maxVolume) * volumeChartParams.chartHeight;
               const barWidth = Math.max(3, (points.length > 1 ? (points[1].x - points[0].x) * 0.7 : 6));
               return (
                 <rect

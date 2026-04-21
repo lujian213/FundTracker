@@ -194,7 +194,7 @@ class TimerJobSchedulerImpl implements TimerJobScheduler {
           this.executeJob(job);
         }
       } catch (e) {
-        console.error(`[TimerJob] Error checking job ${job.id}:`, e);
+        // 不输出中间错误日志
       }
     }
   }
@@ -273,7 +273,7 @@ class TimerJobSchedulerImpl implements TimerJobScheduler {
     } catch (error) {
       // 记录任务失败
       logTaskEnd(logId, 'failure', (error as Error).message);
-      console.error(`[TimerJob] ${job.name} (${job.id}) failed:`, error);
+      // 不输出中间错误日志，通过 errorCallbacks 通知上层
       for (const callback of this.errorCallbacks) {
         callback(job.id, job.name, error as Error);
       }

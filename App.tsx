@@ -198,11 +198,9 @@ function parseCalendarAIResponse(response: string): CalendarEventInput[] {
 async function fetchWebContent(url: string, logPrefix: string): Promise<string> {
   try {
     // 使用统一代理服务，不指定格式偏好（默认顺序）
-    const { content, proxyName } = await fetchWithProxy(url);
-    console.log(`[Calendar] ${logPrefix}使用代理 ${proxyName} 成功获取 ${url}`);
+    const { content } = await fetchWithProxy(url);
     return content;
   } catch (e) {
-    console.error(`[Calendar] ${logPrefix}所有代理均失败:`, e);
     throw new Error(`无法获取网站内容: ${url}，任务失败`);
   }
 }
@@ -770,7 +768,7 @@ const AppContent: React.FC = () => {
 
     // Register error callback
     scheduler.onError((jobId, jobName, error) => {
-      console.error(`[TimerJob] ${jobName} (${jobId}) failed:`, error);
+      // 不输出失败日志，由上层统一处理
       addError({
         jobName,
         message: error.message || 'Unknown error',

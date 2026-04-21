@@ -212,18 +212,19 @@ More content here to pass length check. This content should be longer than 100 c
       }
     });
 
-    test('law-ai proxy properly encodes target URL', () => {
+    test('law-ai proxy does not encode target URL', () => {
       const lawAiProxy = PROXY_LIST.find(p => p.name === 'law-ai');
       expect(lawAiProxy).toBeDefined();
 
       const targetUrl = 'https://example.com/path?query=value&foo=bar';
       const proxyUrl = lawAiProxy!.buildUrl(targetUrl);
 
-      // URL 应该被编码
+      // law-ai 代理不接受编码后的 URL
       expect(proxyUrl).toContain('target=');
-      // 编码后的 URL 应该包含编码后的特殊字符
-      expect(proxyUrl).toContain('%3A'); // : 编码为 %3A
-      expect(proxyUrl).toContain('%2F'); // / 编码为 %2F
+      // URL 不应该被编码
+      expect(proxyUrl).toContain('https://example.com');
+      expect(proxyUrl).not.toContain('%3A');
+      expect(proxyUrl).not.toContain('%2F');
     });
   });
 });

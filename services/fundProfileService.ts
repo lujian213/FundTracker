@@ -292,8 +292,7 @@ export function parseFundProfileFromContent(content: string, format: 'html' | 'm
 async function fetchViaProxy(url: string): Promise<FundProfile | null> {
   try {
     // 优先使用 markdown 格式（r.jina.ai），表格解析更方便
-    const { content, format, proxyName } = await fetchWithProxy(url, { preferFormat: 'markdown' });
-    console.log(`[FundProfile] 使用代理 ${proxyName} 成功获取 ${url}`);
+    const { content, format } = await fetchWithProxy(url, { preferFormat: 'markdown' });
 
     // 根据返回格式选择解析方式
     // raw 格式当作 HTML 处理，markdown 格式当作 Markdown 处理

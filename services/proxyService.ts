@@ -20,7 +20,7 @@ export interface ProxyConfig {
  */
 export const PROXY_LIST: ProxyConfig[] = [
   { name: 'r.jina.ai', buildUrl: (url) => `https://r.jina.ai/${url}`, format: 'markdown' },
-  { name: 'law-ai', buildUrl: (url) => `https://law-ai.top:9000/proxy?target=${encodeURIComponent(url)}`, format: 'raw' },
+  { name: 'law-ai', buildUrl: (url) => `https://law-ai.top:9000/proxy?target=${url}`, format: 'raw' },
   { name: 'allorigins', buildUrl: (url) => `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`, format: 'raw' },
   { name: 'corsproxy', buildUrl: (url) => `https://corsproxy.io/?${encodeURIComponent(url)}`, format: 'raw' },
   { name: 'txtify', buildUrl: (url) => `https://txtify.it/${url}`, format: 'markdown' },
@@ -81,7 +81,6 @@ export async function fetchWithProxy(
       };
     } catch (e) {
       errors.push({ proxy: proxy.name, error: e as Error });
-      console.warn(`[ProxyService] ${proxy.name} 失败:`, e);
     }
   }
 

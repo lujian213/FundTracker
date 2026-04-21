@@ -6,7 +6,8 @@ import {
   padSymbol,
   parseJsonpgzResponse,
   parseHistoryFromTrendData,
-  buildValuationFromFallback
+  buildValuationFromFallback,
+  secidToTencentSymbol
 } from '../../services/fundService';
 import { ValuationData, HistoricalPoint } from '../../types';
 
@@ -336,5 +337,31 @@ describe('normalizeIndexSymbol', () => {
   test('handles empty and whitespace input', () => {
     expect(normalizeIndexSymbol('')).toBe('');
     expect(normalizeIndexSymbol('   ')).toBe('');
+  });
+});
+
+describe('secidToTencentSymbol', () => {
+  test.each([
+    ['1.000001', 'sh000001'],    // 上证指数
+    ['1.000300', 'sh000300'],    // 沪深300
+    ['0.399001', 'sz399001'],    // 深证成指
+    ['0.399006', 'sz399006'],    // 创业板指
+    ['100.HSI', 'hkHSI'],        // 恒生指数
+    ['124.HSI', 'hkHSI'],        // 恒生指数(124市场代码)
+    ['100.HSTECH', 'hkHSTECH'],  // 恒生科技
+    ['124.HSTECH', 'hkHSTECH'],  // 恒生科技(124市场代码)
+    ['100.NDX', 'usNDX'],        // 纳斯达克100
+    ['100.NDX100', 'usNDX'],     // 纳斯达克100(NDX100代码)
+    ['100.SPX', 'usSPX'],        // 标普500
+    ['100.1234', 'hk1234'],      // 其他港股(100市场代码)
+    ['124.1234', 'hk1234'],      // 其他港股(124市场代码)
+    ['101.GC00Y', null],         // 商品期货(黄金)不支持
+    ['101.SI00Y', null],         // 商品期货(白银)不支持
+    ['invalid', null],           // 无效格式
+    ['', null],                  // 空字符串
+    ['1', null],                 // 缺少指数代码
+    ['2.000001', null],          // 不支持的市场代码
+  ])('secidToTencentSymbol("%s") -> "%s"', (input, expected) => {
+    expect(secidToTencentSymbol(input)).toBe(expected);
   });
 });

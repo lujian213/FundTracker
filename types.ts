@@ -138,8 +138,8 @@ export interface HistoricalPoint {
 // 成交量数据点（用于图表渲染）
 export interface VolumeData {
   x: number;           // SVG x 坐标
-  volume: number;      // 成交量（手）
-  amount?: number;     // 成交额（元）
+  volume: number;      // 成交量（手）- 主字段，两个数据源都有
+  amount?: number;     // 成交额（元）- 可选，仅东方财富有
   isUp: boolean;       // 是否上涨（决定柱状图颜色）
 }
 
