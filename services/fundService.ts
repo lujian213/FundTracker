@@ -287,8 +287,9 @@ function normalizeHistoryPoints(points: Array<Partial<HistoricalPoint>> | undefi
         equityReturn: Number.isFinite(equityReturn) ? equityReturn : 0,
       };
       // 只有指数数据才有成交量和成交额
-      if (Number.isFinite(volume) && volume > 0) result.volume = volume;
-      if (Number.isFinite(amount) && amount > 0) result.amount = amount;
+      // 注意：amount=0 表示数据不可用，也是有效值（如腾讯API不返回成交额）
+      if (Number.isFinite(volume) && volume >= 0) result.volume = volume;
+      if (Number.isFinite(amount) && amount >= 0) result.amount = amount;
       return result;
     })
     .filter((p): p is HistoricalPoint => p !== null)
@@ -949,6 +950,75 @@ export function secidToTencentSymbol(secid: string): string | null {
 }
 
 /**
+ * 合并腾讯证券数据与原有历史数据
+ *
+ * 合并规则：
+ * 1. 对于每一天的数据，比较收盘价和成交量
+ *    - 如果收盘价和成交量都相同，保留原有数据（包括成交额、涨跌幅等）
+ *    - 否则，使用腾讯数据（成交额设为0，涨跌幅从收盘价计算）
+ * 2. 如果腾讯数据包含原有数据中缺失的日期，添加该日期数据（成交额=0，涨跌幅计算）
+ *
+ * @param existingHistory 原有历史数据（可能包含成交额信息）
+ * @param tencentHistory 腾讯API返回的历史数据
+ * @returns 合并后的历史数据
+ */
+export function mergeHistoryWithTencentData(
+  existingHistory: HistoricalPoint[],
+  tencentHistory: HistoricalPoint[]
+): HistoricalPoint[] {
+  if (!tencentHistory || tencentHistory.length === 0) {
+    return existingHistory;
+  }
+  if (!existingHistory || existingHistory.length === 0) {
+    // 原有数据为空，返回腾讯数据（成交额已在fetchIndexHistoryFromTencent中设为0）
+    return tencentHistory;
+  }
+
+  // 构建原有数据的日期映射（用日期字符串作为key）
+  const existingMap = new Map<string, HistoricalPoint>();
+  for (const point of existingHistory) {
+    const dateKey = toLocalDateKey(point.date);
+    existingMap.set(dateKey, point);
+  }
+
+  // 合并结果
+  const merged: HistoricalPoint[] = [];
+
+  for (let i = 0; i < tencentHistory.length; i++) {
+    const tencentPoint = tencentHistory[i];
+    const dateKey = toLocalDateKey(tencentPoint.date);
+    const existingPoint = existingMap.get(dateKey);
+
+    if (!existingPoint) {
+      // 原有数据中不存在该日期，直接添加腾讯数据
+      merged.push(tencentPoint);
+    } else {
+      // 比较收盘价和成交量
+      const valueMatch = Math.abs(existingPoint.value - tencentPoint.value) < 0.01; // 允许小的浮点误差
+      const volumeMatch = existingPoint.volume === tencentPoint.volume ||
+                         (existingPoint.volume === undefined && tencentPoint.volume === 0);
+
+      if (valueMatch && volumeMatch) {
+        // 收盘价和成交量都匹配，保留原有数据（包括成交额信息）
+        merged.push(existingPoint);
+      } else {
+        // 数据有更新，使用腾讯数据，成交额设为0
+        const mergedPoint: HistoricalPoint = {
+          date: tencentPoint.date,
+          value: tencentPoint.value,
+          equityReturn: tencentPoint.equityReturn,
+          volume: tencentPoint.volume || 0,
+          amount: 0, // 数据有更新，成交额设为0
+        };
+        merged.push(mergedPoint);
+      }
+    }
+  }
+
+  return normalizeHistoryPoints(merged);
+}
+
+/**
  * 从腾讯证券获取指数历史数据（备用数据源）
  * 腾讯API不支持涨跌幅，需从连续收盘价计算
  * @param secid 东方财富格式指数代码
@@ -990,6 +1060,7 @@ async function fetchIndexHistoryFromTencent(secid: string): Promise<HistoricalPo
         value: close,
         equityReturn,
         volume: parseFloat(item[5]) || 0,  // 腾讯API字段5是成交量(手)
+        amount: 0,  // 腾讯API不返回成交额，设为0
       };
     });
 
@@ -1044,8 +1115,11 @@ export async function fetchIndexHistory(symbol: string, ignoreCache: boolean = f
      // 尝试腾讯备用数据源
      const tencentResult = await fetchIndexHistoryFromTencent(secid);
      if (tencentResult && tencentResult.length > 0) {
-       indexService.updateHistory(symbol, tencentResult);
-       return tencentResult;
+       // 获取原有历史数据并合并
+       const existingHistory = marketIndex?.history || [];
+       const mergedResult = mergeHistoryWithTencentData(existingHistory, tencentResult);
+       indexService.updateHistory(symbol, mergedResult);
+       return mergedResult;
      }
      // 所有尝试都失败，返回空数组（不输出日志）
    }

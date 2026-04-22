@@ -7,7 +7,8 @@ import {
   parseJsonpgzResponse,
   parseHistoryFromTrendData,
   buildValuationFromFallback,
-  secidToTencentSymbol
+  secidToTencentSymbol,
+  mergeHistoryWithTencentData
 } from '../../services/fundService';
 import { ValuationData, HistoricalPoint } from '../../types';
 
@@ -363,5 +364,108 @@ describe('secidToTencentSymbol', () => {
     ['2.000001', null],          // 不支持的市场代码
   ])('secidToTencentSymbol("%s") -> "%s"', (input, expected) => {
     expect(secidToTencentSymbol(input)).toBe(expected);
+  });
+});
+
+describe('mergeHistoryWithTencentData', () => {
+  // 辅助函数：创建历史数据点
+  const createPoint = (dateStr: string, value: number, equityReturn: number, volume: number, amount?: number): HistoricalPoint => {
+    const timestamp = new Date(dateStr).getTime();
+    return { date: timestamp, value, equityReturn, volume, amount };
+  };
+
+  test('原有数据为空时，返回腾讯数据', () => {
+    const existing: HistoricalPoint[] = [];
+    const tencent = [
+      createPoint('2026-04-21', 3300, 0.5, 100000, 0),
+    ];
+    const result = mergeHistoryWithTencentData(existing, tencent);
+    expect(result).toEqual(tencent);
+  });
+
+  test('腾讯数据为空时，返回原有数据', () => {
+    const existing = [
+      createPoint('2026-04-21', 3300, 0.5, 100000, 5000000),
+    ];
+    const tencent: HistoricalPoint[] = [];
+    const result = mergeHistoryWithTencentData(existing, tencent);
+    expect(result).toEqual(existing);
+  });
+
+  test('收盘价和成交量都匹配时，保留原有数据（包括成交额）', () => {
+    const existing = [
+      createPoint('2026-04-21', 3300, 0.5, 100000, 5000000),
+    ];
+    const tencent = [
+      createPoint('2026-04-21', 3300, 0.3, 100000, 0), // equityReturn不同，但收盘价和成交量匹配
+    ];
+    const result = mergeHistoryWithTencentData(existing, tencent);
+    expect(result[0].amount).toBe(5000000); // 保留原有成交额
+    expect(result[0].equityReturn).toBe(0.5); // 保留原有涨跌幅
+  });
+
+  test('收盘价不同时，使用腾讯数据，成交额设为0', () => {
+    const existing = [
+      createPoint('2026-04-21', 3300, 0.5, 100000, 5000000),
+    ];
+    const tencent = [
+      createPoint('2026-04-21', 3310, 0.8, 100000, 0), // 收盘价不同
+    ];
+    const result = mergeHistoryWithTencentData(existing, tencent);
+    expect(result[0].value).toBe(3310); // 使用腾讯收盘价
+    expect(result[0].equityReturn).toBe(0.8); // 使用腾讯涨跌幅
+    expect(result[0].amount).toBe(0); // 成交额设为0
+  });
+
+  test('成交量不同时，使用腾讯数据，成交额设为0', () => {
+    const existing = [
+      createPoint('2026-04-21', 3300, 0.5, 100000, 5000000),
+    ];
+    const tencent = [
+      createPoint('2026-04-21', 3300, 0.5, 120000, 0), // 成交量不同
+    ];
+    const result = mergeHistoryWithTencentData(existing, tencent);
+    expect(result[0].volume).toBe(120000); // 使用腾讯成交量
+    expect(result[0].amount).toBe(0); // 成交额设为0
+  });
+
+  test('腾讯数据包含原有数据缺失的日期时，添加该日期', () => {
+    const existing = [
+      createPoint('2026-04-20', 3300, 0.5, 100000, 5000000),
+    ];
+    const tencent = [
+      createPoint('2026-04-20', 3300, 0.5, 100000, 0),
+      createPoint('2026-04-21', 3310, 0.3, 110000, 0), // 新日期
+    ];
+    const result = mergeHistoryWithTencentData(existing, tencent);
+    expect(result.length).toBe(2);
+    expect(result[1].date).toBe(new Date('2026-04-21').getTime());
+    expect(result[1].amount).toBe(0); // 新日期成交额为0
+  });
+
+  test('多日数据混合合并', () => {
+    const existing = [
+      createPoint('2026-04-18', 3280, 0.2, 90000, 4500000), // 匹配
+      createPoint('2026-04-19', 3290, 0.3, 95000, 4750000), // 收盘价不匹配
+      createPoint('2026-04-20', 3300, 0.3, 100000, 5000000), // 成交量不匹配
+    ];
+    const tencent = [
+      createPoint('2026-04-18', 3280, 0.2, 90000, 0), // 匹配，保留原有
+      createPoint('2026-04-19', 3300, 0.3, 95000, 0), // 收盘价不同
+      createPoint('2026-04-20', 3300, 0.3, 110000, 0), // 成交量不同
+      createPoint('2026-04-21', 3310, 0.3, 105000, 0), // 新日期
+    ];
+    const result = mergeHistoryWithTencentData(existing, tencent);
+    expect(result.length).toBe(4);
+    // 第一天：匹配，保留原有成交额
+    expect(result[0].amount).toBe(4500000);
+    // 第二天：收盘价不同，成交额为0
+    expect(result[1].value).toBe(3300);
+    expect(result[1].amount).toBe(0);
+    // 第三天：成交量不同，成交额为0
+    expect(result[2].volume).toBe(110000);
+    expect(result[2].amount).toBe(0);
+    // 第四天：新日期，成交额为0
+    expect(result[3].amount).toBe(0);
   });
 });
