@@ -47,13 +47,40 @@ export function buildSmoothPath(
 }
 
 /**
+ * Build a linear (non-smooth) SVG path - straight lines connecting points
+ */
+export function buildLinearPath(
+  pts: ChartPoint[],
+  options: SmoothPathOptions
+): string {
+  if (pts.length < 2) return '';
+
+  const { closePath = false, chartHeight, paddingBottom } = options;
+
+  // Start at first point
+  let d = `M ${pts[0].x} ${pts[0].y}`;
+
+  // Draw straight lines to each subsequent point
+  for (let i = 1; i < pts.length; i++) {
+    d += ` L ${pts[i].x} ${pts[i].y}`;
+  }
+
+  if (closePath) {
+    d += ` L ${pts[pts.length - 1].x} ${chartHeight - paddingBottom}`;
+    d += ` L ${pts[0].x} ${chartHeight - paddingBottom} Z`;
+  }
+
+  return d;
+}
+
+/**
  * Chart dimensions and padding constants
  */
 export const CHART_DIMENSIONS = {
-  width: 760,
+  width: 960,
   height: 200,
-  padLeft: 60,
-  padRight: 24,
+  padLeft: 80,
+  padRight: 20,
   padTop: 20,
   padBottom: 32,
 } as const;

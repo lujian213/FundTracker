@@ -934,7 +934,7 @@ test.describe('testBedWithData', () => {
       const firstPointX = chartBounds.x + padLeft * scale;
       const hoverY = chartBounds.y + chartBounds.height * 0.3;
       await page.mouse.move(firstPointX, hoverY);
-      await page.waitForTimeout(300); // hover 效果需要短暂延迟
+      await page.waitForTimeout(150);
 
       // 验证 hover 效果：底部日期显示区域应该有内容
       const firstDate = await bottomDateArea.locator('div').first().textContent();
@@ -944,7 +944,7 @@ test.describe('testBedWithData', () => {
       // Hover 最后一个数据点（viewBox x=970）
       const lastPointX = chartBounds.x + (padLeft + chartAreaWidth) * scale;
       await page.mouse.move(lastPointX, hoverY);
-      await page.waitForTimeout(300); // hover 效果需要短暂延迟
+      await page.waitForTimeout(150);
 
       // 获取最后一个数据点的日期
       const lastDate = await bottomDateArea.locator('div').first().textContent();
@@ -956,7 +956,7 @@ test.describe('testBedWithData', () => {
       // Hover 图表中间
       const middleX = chartBounds.x + chartBounds.width * 0.5;
       await page.mouse.move(middleX, hoverY);
-      await page.waitForTimeout(300); // hover 效果需要短暂延迟
+      await page.waitForTimeout(150);
 
       // 获取中间数据点的日期
       const middleDate = await bottomDateArea.locator('div').first().textContent();
@@ -1844,7 +1844,7 @@ test.describe('testBedWithData', () => {
       expect(sharesText).not.toBe('-');
 
       // 等待防抖保存（DEBOUNCE_DELAY = 500ms）
-      await page.waitForTimeout(600);
+      await page.waitForTimeout(550);
 
       // 关闭再打开验证持久化
       await page.click('button[aria-label="关闭投资计划窗口"]');
@@ -2176,8 +2176,9 @@ test.describe('testBedWithData', () => {
     const intradayTab = page.locator('button:has-text("日内趋势图")');
     await expect(intradayTab).toHaveClass(/bg-white border/);
 
-    // 等待图表渲染完成
-    await page.waitForTimeout(500);
+    // 等待图表 SVG 渲染
+    const chartSvg = page.locator('#fund-details-modal svg').first();
+    await expect(chartSvg).toBeVisible({ timeout: 3000 });
 
     // 获取图表数据点数量（基金的日内图表使用不同的选择器）
     const chartData = await page.evaluate(() => {
@@ -2487,7 +2488,7 @@ test.describe('testBedWithData', () => {
 
     // 修改参考盈利
     await refProfitInput.fill('1000');
-    await page.waitForTimeout(300);
+    await page.waitForTimeout(150);
 
     // 验证建议初始价格变化
     const newSuggestedPrice = await adjustDialog.locator('[data-testid="suggested-price"]').textContent();
@@ -2504,7 +2505,7 @@ test.describe('testBedWithData', () => {
 
     // 修改参考价格
     await refPriceInput.fill('1.5');
-    await page.waitForTimeout(300);
+    await page.waitForTimeout(150);
 
     // 验证建议初始价格变化
     const finalSuggestedPrice = await adjustDialog.locator('[data-testid="suggested-price"]').textContent();
@@ -2614,7 +2615,6 @@ test.describe('testBedWithData', () => {
 
     // 输入金额 1000
     await amountInput.fill('1000');
-    await page.waitForTimeout(300);
 
     // 获取计算后的份额
     const sharesSpan = calcDialog.locator('span[aria-label="计算器份额输出"]');
@@ -2797,8 +2797,8 @@ test.describe('testBedWithData', () => {
     // ══════════════════════════════════════════════════════════════════════════════
     // 8. 验证策略tab（星星图标是可选的，依赖AI推荐）
     // ══════════════════════════════════════════════════════════════════════════════
-    // 等待策略加载完成
-    await page.waitForTimeout(1000);
+    // 等待策略tab出现
+    await virtualModal.locator('button[aria-label*="策略"]').first().waitFor({ state: 'visible' });
 
     // 获取策略tab信息
     const tabInfo = await page.evaluate(() => {
@@ -2870,7 +2870,6 @@ test.describe('testBedWithData', () => {
       const nextDayStr = `${nextDay.getFullYear()}-${String(nextDay.getMonth() + 1).padStart(2, '0')}-${String(nextDay.getDate()).padStart(2, '0')}`;
 
       await startDateInput.fill(nextDayStr);
-      await page.waitForTimeout(100); // 短暂等待 React 更新
 
       // 验证现金值可能变化（取决于计算逻辑）
       const newCashValue = await cashInput.inputValue();
@@ -2932,7 +2931,6 @@ test.describe('testBedWithData', () => {
 
     if (isStartEnabled) {
       await startBtn.click();
-      await page.waitForTimeout(500);
 
       // 检查按钮状态是否变化
       const buttonText = await startBtn.textContent();
@@ -3019,18 +3017,18 @@ test.describe('testBedWithData', () => {
 
     // 滚动到顶部
     await scrollContainer.evaluate((el) => el.scrollTop = 0);
-    await page.waitForTimeout(300);
+    await page.waitForTimeout(150);
 
     // 切换到其他tab
     const secondTab = virtualModal.locator('button[aria-label*="策略"]').nth(1);
     if (await secondTab.isVisible()) {
       await secondTab.click();
-      await page.waitForTimeout(500);
+      await page.waitForTimeout(200);
 
       // 回到第一个tab
       const firstTab = virtualModal.locator('button[aria-label*="策略"]').first();
       await firstTab.click();
-      await page.waitForTimeout(500);
+      await page.waitForTimeout(200);
 
       // 验证滚动条仍在顶部
       const scrollTop = await scrollContainer.evaluate((el) => el.scrollTop);
@@ -3332,15 +3330,12 @@ test.describe('testBedWithData', () => {
         // Ctrl+点击选中
         await row.click({ modifiers: ['Control'] });
         selectedCount++;
-        await page.waitForTimeout(100);
       }
     }
 
     console.log(`已选中 ${selectedCount} 条买入记录`);
 
     if (selectedCount > 0) {
-      await page.waitForTimeout(300);
-
       // 验证选中信息显示（选中x条记录，数量xxx，市值xxx，盈亏xxx）
       // 信息显示在窗口底部信息栏
       const selectedInfoLocator = tradeManagerModal.locator('span.text-black').filter({ hasText: '选中' });
@@ -3459,7 +3454,7 @@ test.describe('testBedWithData', () => {
     const editBtn = tradeManagerModal.locator('button:has-text("编辑")').first();
     if (await editBtn.isVisible()) {
       await editBtn.click();
-      await page.waitForTimeout(500);
+      await page.waitForTimeout(200);
 
       // 验证编辑区域显示记录信息
       const editDateValue = await dateInput.inputValue();
@@ -3551,7 +3546,6 @@ test.describe('testBedWithData', () => {
     // ══════════════════════════════════════════════════════════════════════════════
     const profitBtn = page.locator('button[aria-label="查看盈利"]');
     await profitBtn.click();
-    await page.waitForTimeout(500);
 
     // 持仓盈亏窗口
     const profitModal = page.locator('.fixed.inset-0').filter({ hasText: '持仓盈亏' }).filter({ has: page.locator('h3') });
@@ -3609,8 +3603,8 @@ test.describe('testBedWithData', () => {
     const pathCount = await chartPath.count();
     expect(pathCount).toBeGreaterThan(0);
 
-    // 获取图表数据点
-    const chartPoints = profitModal.locator('svg circle[r="3.5"]').or(profitModal.locator('svg circle[r="5"]'));
+    // 获取图表数据点（空心小圆点 r="2"）
+    const chartPoints = profitModal.locator('svg circle[r="2"]');
     const pointCount = await chartPoints.count();
     expect(pointCount).toBeGreaterThan(0);
 
@@ -3619,10 +3613,9 @@ test.describe('testBedWithData', () => {
     // ══════════════════════════════════════════════════════════════════════════════
     // 5. 验证图表hover效果
     // ══════════════════════════════════════════════════════════════════════════════
-    // 使用透明的大 circle（用于捕获鼠标事件）来 hover
-    const hoverCircle = profitModal.locator('svg circle[r="16"]').first();
-    await hoverCircle.hover({ force: true });
-    await page.waitForTimeout(300);
+    // 使用透明的 rect（用于捕获鼠标事件）来 hover
+    const hoverRect = profitModal.locator('svg rect[fill="transparent"]').first();
+    await hoverRect.hover({ force: true });
 
     // 应该出现tooltip
     const tooltip = profitModal.locator('.absolute.z-20.bg-white\\/95').filter({ hasText: '当日' });
@@ -3651,7 +3644,7 @@ test.describe('testBedWithData', () => {
     const firstRowCumulative = await firstRow.locator('td').nth(3).textContent();
 
     // tooltip日期应该和表格日期一致（hover第一个点）
-    const tooltipDate = await tooltip.locator('.text-xs.text-gray-500').textContent();
+    const tooltipDate = await tooltip.locator('.text-xs.text-gray-400').textContent();
     expect(tooltipDate?.trim()).toBe(firstRowDate?.trim());
 
     console.log(`表格数据验证: ${rowCount}行, 第一行日期=${firstRowDate}`);
@@ -3672,7 +3665,6 @@ test.describe('testBedWithData', () => {
     if (startDateStr) {
       const earlierDate = '2026-01-01'; // 明显早于建仓日期
       await fromDateInput.fill(earlierDate);
-      await page.waitForTimeout(300);
 
       // 应显示错误信息
       const errorDiv = profitModal.locator('.text-sm.text-red-600');
@@ -3689,7 +3681,6 @@ test.describe('testBedWithData', () => {
     // 设置开始日期晚于结束日期
     await fromDateInput.fill(mockDateStr);
     await toDateInput.fill(startDateStr || '2026-02-01');
-    await page.waitForTimeout(300);
 
     const errorDiv2 = profitModal.locator('.text-sm.text-red-600');
     await expect(errorDiv2).toBeVisible({ timeout: 2000 });
@@ -3703,7 +3694,7 @@ test.describe('testBedWithData', () => {
     // ══════════════════════════════════════════════════════════════════════════════
     const resetBtn = profitModal.locator('button:has-text("重置")');
     await resetBtn.click();
-    await page.waitForTimeout(500);
+    await page.waitForTimeout(200);
 
     // 验证日期回到初始状态
     const resetFromDate = await fromDateInput.inputValue();
@@ -3726,7 +3717,7 @@ test.describe('testBedWithData', () => {
     const midDate = '2026-03-01';
     await fromDateInput.fill(midDate);
     await toDateInput.fill(mockDateStr);
-    await page.waitForTimeout(500);
+    await page.waitForTimeout(200);
 
     // 验证数据变化
     const newPointCount = await chartPoints.count();
@@ -3777,9 +3768,6 @@ test.describe('testBedWithData', () => {
     // ══════════════════════════════════════════════════════════════════════════════
     const historyTab = fundModal.locator('button:has-text("历史趋势图")');
     await historyTab.click();
-
-    // 等待图表加载
-    await page.waitForTimeout(500);
 
     // 定位历史趋势图SVG
     const historyChartSvg = fundModal.locator('svg').first();
@@ -3878,7 +3866,7 @@ test.describe('testBedWithData', () => {
     // 7. 验证历史趋势图更新：交易点、持仓趋势图、交易量柱状图都有对应变化
     // ══════════════════════════════════════════════════════════════════════════════
     // 等待图表更新
-    await page.waitForTimeout(500);
+    await page.waitForTimeout(200);
 
     // 验证交易量柱状图数量增加（新增的买入交易应该显示为绿色柱子）
     const newVolumeBarCount = await volumeBars.count();
@@ -3957,7 +3945,7 @@ test.describe('testBedWithData', () => {
     await overlay.dispatchEvent('click');
     await expect(tradeManagerModal).not.toBeVisible({ timeout: 3000 });
 
-    await page.waitForTimeout(500);
+    await page.waitForTimeout(200);
 
     // 验证持仓趋势图已更新（金额变化后持仓份额也会变化）
     const afterEditPositionTrend = await positionTrendPath.count() > 0;
@@ -4322,7 +4310,7 @@ test.describe('testBedWithData', () => {
     const firstDomesticCard = domesticIndexCards.first();
     const secondDomesticCard = domesticIndexCards.nth(1);
     await firstDomesticCard.dragTo(secondDomesticCard);
-    await page.waitForTimeout(500);
+    await page.waitForTimeout(200);
 
     console.log('已拖拽调整指数顺序(第一个拖到第二个位置)');
 
@@ -4356,7 +4344,7 @@ test.describe('testBedWithData', () => {
     await expect(cancelBtn).toBeVisible({ timeout: 2000 });
 
     // 等待管理模式完全激活
-    await page.waitForTimeout(500);
+    await page.waitForTimeout(200);
 
     // 重新获取卡片引用（因为重新进入管理模式）
     const domesticIndexCards2 = leftAside.locator('div.bg-white.rounded-2xl');
@@ -4381,7 +4369,7 @@ test.describe('testBedWithData', () => {
     const firstDomesticCard2 = domesticIndexCards2.first();
     const secondDomesticCard2 = domesticIndexCards2.nth(1);
     await firstDomesticCard2.dragTo(secondDomesticCard2);
-    await page.waitForTimeout(300);
+    await page.waitForTimeout(150);
 
     console.log('再次进入管理模式，已选中2个项目并拖拽调整顺序');
 

@@ -8,7 +8,7 @@ import { toLocalDateKey } from '../utils/priceResolver';
 import { adjustProfitTimelineForDisplay } from '../utils/profitAdjustment';
 import { formatMoneyWithSeparators, fmtNav } from '../utils/format';
 import { formatDateDisplay } from '../utils/dateFormat';
-import { buildSmoothPath, CHART_DIMENSIONS } from '../utils/chartUtils';
+import { buildLinearPath, CHART_DIMENSIONS } from '../utils/chartUtils';
 import { MoneyCell } from './MoneyCell';
 import { SymbolBadge } from './SymbolBadge';
 
@@ -36,6 +36,9 @@ const ProfitModal: React.FC<ProfitModalProps> = ({ symbol, fundName, currentPric
   const [toDate, setToDate] = useState<string | null>(null);
   const [validationError, setValidationError] = useState<string | null>(null);
   const [hoverIndex, setHoverIndex] = useState<number | null>(null);
+
+  const chartWrapRef = useRef<HTMLDivElement | null>(null);
+  const chartSvgRef = useRef<SVGSVGElement | null>(null);
 
   const { trades } = useTrades(symbol);
   const fetchFn = fetchHistory ?? defaultFetchFundHistory;
@@ -186,8 +189,8 @@ const ProfitModal: React.FC<ProfitModalProps> = ({ symbol, fundName, currentPric
     const zeroY = getY(0);
     const pts = displayedTimeline.map((p, i) => ({ x: getX(i), y: getY(p.cumulativeProfit || 0), data: p }));
 
-    const path = buildSmoothPath(pts, { chartHeight: h, paddingBottom: padBottom });
-    const areaPath = buildSmoothPath(pts, { closePath: true, chartHeight: h, paddingBottom: padBottom });
+    const path = buildLinearPath(pts, { chartHeight: h, paddingBottom: padBottom });
+    const areaPath = buildLinearPath(pts, { closePath: true, chartHeight: h, paddingBottom: padBottom });
     const xTicks = [0, Math.floor((pts.length - 1) / 2), pts.length - 1].map(i => ({ x: pts[i].x, label: formatDateDisplay(pts[i].data.date) }));
 
     // Y轴刻度：从finalMin到finalMax，步长为tickInterval
@@ -200,9 +203,6 @@ const ProfitModal: React.FC<ProfitModalProps> = ({ symbol, fundName, currentPric
     return { path, areaPath, points: pts, xTicks, yTicks, padLeft, padRight, padTop, padBottom, width: w, height: h, zeroY };
   }, [displayedTimeline]);
 
-  const handlePointEnter = (i: number) => { setHoverIndex(i); };
-  const handlePointLeave = () => { setHoverIndex(null); };
-
   const tableScrollRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     if (tableScrollRef.current) {
@@ -213,7 +213,7 @@ const ProfitModal: React.FC<ProfitModalProps> = ({ symbol, fundName, currentPric
   const content = (
     <div className="fixed inset-0 flex items-center justify-center p-4" style={{ zIndex }}>
       <div className="absolute inset-0 bg-black/40" onClick={onClose} />
-      <div className="relative bg-white rounded-2xl w-full max-w-4xl shadow-2xl animate-in zoom-in-95 duration-200 flex flex-col" style={{ maxWidth: '64rem', maxHeight: '90vh' }} role="dialog" aria-modal="true">
+      <div className="relative bg-white rounded-2xl w-full max-w-4xl shadow-2xl animate-in zoom-in-95 duration-200 flex flex-col overflow-hidden" style={{ maxWidth: '64rem' }} role="dialog" aria-modal="true">
         <div className="px-6 py-4 border-b border-gray-100 flex justify-between items-center flex-shrink-0">
           <div className="flex items-center space-x-2">
             <h3 className="text-lg font-bold">{fundName || symbol}</h3>
@@ -261,49 +261,34 @@ const ProfitModal: React.FC<ProfitModalProps> = ({ symbol, fundName, currentPric
               ) : (
                 <>
                   {/* Chart */}
-                  <div className="bg-gradient-to-b from-gray-50 to-white rounded-xl p-4 relative shadow-inner">
-                    <svg className="w-full h-52" viewBox={`0 0 ${chart.width ?? 760} ${chart.height ?? 200}`} preserveAspectRatio="none" style={{ overflow: 'visible' }}>
+                  <div ref={chartWrapRef} className="bg-gradient-to-b from-gray-50 to-white rounded-xl p-4 relative shadow-inner">
+                    <svg ref={chartSvgRef} className="w-full drop-shadow-sm" viewBox={`0 0 ${chart.width ?? 960} ${chart.height ?? 200}`} style={{ height: chart.height ?? 200 }} onMouseLeave={() => setHoverIndex(null)}>
                       {/* 背景渐变定义 */}
                       <defs>
                         <linearGradient id="profitAreaGradient" x1="0%" y1="0%" x2="0%" y2="100%">
-                          <stop offset="0%" stopColor="#ef4444" stopOpacity="0.3" />
-                          <stop offset="100%" stopColor="#ef4444" stopOpacity="0.02" />
+                          <stop offset="0%" stopColor="#ef4444" stopOpacity="0.2" />
+                          <stop offset="100%" stopColor="#ef4444" stopOpacity="0" />
                         </linearGradient>
-                        <filter id="profitGlow" x="-20%" y="-20%" width="140%" height="140%">
-                          <feGaussianBlur stdDeviation="2" result="coloredBlur"/>
-                          <feMerge>
-                            <feMergeNode in="coloredBlur"/>
-                            <feMergeNode in="SourceGraphic"/>
-                          </feMerge>
-                        </filter>
                       </defs>
-
-                      {/* 背景 */}
-                      <rect x={0} y={0} width={chart.width ?? 760} height={chart.height ?? 200} fill="transparent" />
 
                       {/* Y轴网格线 */}
                       {chart.yTicks && chart.yTicks.map((t, i) => (
                         <g key={'y'+i}>
                           <line
-                            x1={chart.padLeft ? chart.padLeft - 8 : 52}
-                            x2={(chart.width ?? 760) - (chart.padRight ?? 24)}
+                            x1={chart.padLeft ?? 80}
+                            x2={(chart.width ?? 960) - (chart.padRight ?? 20)}
                             y1={t.y}
                             y2={t.y}
-                            stroke={t.isZero ? "#94a3b8" : "#e5e7eb"}
-                            strokeWidth={t.isZero ? 1.5 : 1}
-                            strokeDasharray={t.isZero ? "none" : "4,4"}
+                            stroke="#e2e8f0"
+                            strokeWidth="1"
+                            strokeDasharray="4 4"
                           />
                           <text
-                            x={(chart.padLeft ? chart.padLeft - 14 : 46)}
+                            x={(chart.padLeft ?? 80) - 12}
                             y={t.y}
                             textAnchor="end"
                             alignmentBaseline="middle"
-                            style={{
-                              fontSize: '11px',
-                              fill: t.isZero ? '#64748b' : '#9ca3af',
-                              fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, monospace',
-                              fontWeight: t.isZero ? '600' : '400'
-                            }}
+                            className="text-[10px] fill-gray-400 font-mono"
                           >
                             {t.label}
                           </text>
@@ -317,7 +302,7 @@ const ProfitModal: React.FC<ProfitModalProps> = ({ symbol, fundName, currentPric
                           x={t.x}
                           y={(chart.height ?? 200) - 8}
                           textAnchor="middle"
-                          style={{ fontSize: '11px', fill: '#9ca3af', fontFamily: 'ui-monospace, monospace' }}
+                          className="text-[10px] fill-gray-400 font-medium"
                         >
                           {t.label}
                         </text>
@@ -337,54 +322,100 @@ const ProfitModal: React.FC<ProfitModalProps> = ({ symbol, fundName, currentPric
                         d={chart.path}
                         fill="none"
                         stroke="#ef4444"
-                        strokeWidth={2.5}
+                        strokeWidth={2}
                         strokeLinecap="round"
                         strokeLinejoin="round"
-                        filter="url(#profitGlow)"
                         style={{ pointerEvents: 'none' }}
                       />
 
-                      {/* 数据点 */}
+                      {/* 折线上的空心小圆点 */}
                       {chart.points.map((pt, i) => (
-                        <g key={i} onMouseEnter={() => handlePointEnter(i)} onMouseLeave={() => handlePointLeave()} onFocus={() => handlePointEnter(i)} onBlur={() => handlePointLeave()}>
-                          <circle cx={pt.x} cy={pt.y} r={16} fill="rgba(0,0,0,0)" style={{ pointerEvents: 'all', cursor: 'pointer' }} />
-                          {hoverIndex === i && (
-                            <circle cx={pt.x} cy={pt.y} r={8} fill="#ef4444" opacity={0.3} style={{ pointerEvents: 'none' }} />
-                          )}
-                          <circle
-                            cx={pt.x}
-                            cy={pt.y}
-                            r={hoverIndex === i ? 5 : 3.5}
-                            fill={hoverIndex === i ? '#ef4444' : '#fff'}
-                            stroke="#ef4444"
-                            strokeWidth={hoverIndex === i ? 2.5 : 2}
-                            style={{ pointerEvents: 'none', transition: 'r 0.15s, fill 0.15s' }}
-                          />
-                        </g>
+                        <circle
+                          key={`pt-${i}`}
+                          cx={pt.x}
+                          cy={pt.y}
+                          r={2}
+                          fill="#fff"
+                          stroke="#ef4444"
+                          strokeWidth={1}
+                          style={{ pointerEvents: 'none' }}
+                        />
+                      ))}
+
+                      {/* 最新点脉冲动画 */}
+                      {chart.points.length > 0 && (
+                        <circle
+                          cx={chart.points[chart.points.length - 1].x}
+                          cy={chart.points[chart.points.length - 1].y}
+                          r={4}
+                          fill="#ef4444"
+                          className="animate-pulse"
+                        />
+                      )}
+
+                      {/* 悬停检测区域：矩形覆盖全高度 */}
+                      {chart.points.map((pt, i) => (
+                        <rect
+                          key={i}
+                          x={pt.x - 5}
+                          y={0}
+                          width={10}
+                          height={Math.max(1, (chart.height ?? 200) - 40)}
+                          fill="transparent"
+                          onMouseEnter={() => setHoverIndex(i)}
+                          className="cursor-crosshair"
+                        />
                       ))}
                     </svg>
-                    {hoverIndex !== null && chart.points[hoverIndex] && (
-                      <div
-                        className="absolute z-20 bg-white/95 backdrop-blur-sm px-3 py-2 rounded-lg shadow-lg border border-gray-100"
-                        style={{
-                          left: Math.max(8, Math.min((chart.width ?? 760) - 140, chart.points[hoverIndex].x - 60)),
-                          top: Math.max(8, chart.points[hoverIndex].y - 60),
-                          pointerEvents: 'none'
-                        }}
-                      >
-                        <div className="text-xs text-gray-500 font-medium mb-1">{formatDateDisplay(chart.points[hoverIndex].data.date)}</div>
-                        <div className="text-sm flex justify-between gap-4">
-                          <span className="text-gray-500">当日：</span>
-                          <span className="font-medium">{chart.points[hoverIndex].data.dailyProfit === 0 ? '-' : (chart.points[hoverIndex].data.dailyProfit > 0 ? '+' : '') + formatMoneyWithSeparators(chart.points[hoverIndex].data.dailyProfit)}</span>
+                    {hoverIndex !== null && chart.points[hoverIndex] && (() => {
+                      // tooltip定位：优先放在点的一侧，避免遮挡点和超出边界
+                      const containerRect = chartWrapRef.current?.getBoundingClientRect();
+                      const svgRect = chartSvgRef.current?.getBoundingClientRect();
+                      if (!containerRect || !svgRect) return null;
+
+                      const vbW = chart.width ?? 960;
+                      const vbH = chart.height ?? 200;
+                      // SVG坐标转换为像素坐标
+                      const scaleX = svgRect.width / vbW;
+                      const scaleY = svgRect.height / vbH;
+                      const ptX = chart.points[hoverIndex].x * scaleX;
+                      const ptY = chart.points[hoverIndex].y * scaleY;
+
+                      // tooltip尺寸（固定宽度避免换行）
+                      const tooltipWidth = 160;
+                      const tooltipHeight = 60;
+                      const gap = 20; // 点与tooltip的间距，确保不遮挡
+                      const margin = 12;
+
+                      // 悬停点在SVG中的宽度约为10px（rect宽度），加上圆点约7px
+                      // 水平定位：点在左半边时tooltip在右侧，点在右半边时tooltip在左侧
+                      const pointIsOnLeft = ptX < containerRect.width / 2;
+                      const left = pointIsOnLeft
+                        ? Math.min(containerRect.width - tooltipWidth - margin, ptX + gap + 5) // +5为悬停区域半径
+                        : Math.max(margin, ptX - tooltipWidth - gap - 5);
+
+                      // 垂直定位：尽量与点Y对齐，确保不超出容器
+                      const top = Math.max(margin, Math.min(containerRect.height - tooltipHeight - margin, ptY - tooltipHeight / 2));
+
+                      return (
+                        <div
+                          className="absolute z-20 bg-white/95 backdrop-blur-sm px-3 py-2 rounded-lg shadow-lg border border-gray-100 whitespace-nowrap"
+                          style={{ left, top, width: tooltipWidth, pointerEvents: 'none' }}
+                        >
+                          <div className="text-xs text-gray-400 font-mono">{formatDateDisplay(chart.points[hoverIndex].data.date)}</div>
+                          <div className="text-xs font-mono mt-1">
+                            <span className="text-gray-400">当日</span>
+                            <span className={`ml-2 font-medium ${chart.points[hoverIndex].data.dailyProfit > 0 ? 'text-red-600' : chart.points[hoverIndex].data.dailyProfit < 0 ? 'text-green-600' : 'text-gray-700'}`}>{chart.points[hoverIndex].data.dailyProfit === 0 ? '-' : (chart.points[hoverIndex].data.dailyProfit > 0 ? '+' : '') + formatMoneyWithSeparators(chart.points[hoverIndex].data.dailyProfit)}</span>
+                          </div>
+                          <div className="text-xs font-mono">
+                            <span className="text-gray-400">累计</span>
+                            <span className={`ml-2 font-medium ${chart.points[hoverIndex].data.cumulativeProfit > 0 ? 'text-red-600' : chart.points[hoverIndex].data.cumulativeProfit < 0 ? 'text-green-600' : 'text-gray-700'}`}>
+                              {chart.points[hoverIndex].data.cumulativeProfit === 0 ? '-' : (chart.points[hoverIndex].data.cumulativeProfit > 0 ? '+' : '') + formatMoneyWithSeparators(chart.points[hoverIndex].data.cumulativeProfit)}
+                            </span>
+                          </div>
                         </div>
-                        <div className="text-sm flex justify-between gap-4">
-                          <span className="text-gray-500">累计：</span>
-                          <span className={`font-semibold ${chart.points[hoverIndex].data.cumulativeProfit > 0 ? 'text-red-600' : chart.points[hoverIndex].data.cumulativeProfit < 0 ? 'text-green-600' : ''}`}>
-                            {chart.points[hoverIndex].data.cumulativeProfit === 0 ? '-' : (chart.points[hoverIndex].data.cumulativeProfit > 0 ? '+' : '') + formatMoneyWithSeparators(chart.points[hoverIndex].data.cumulativeProfit)}
-                          </span>
-                        </div>
-                      </div>
-                    )}
+                      );
+                    })()}
                   </div>
 
                   {/* Table */}

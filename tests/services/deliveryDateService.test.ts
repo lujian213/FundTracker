@@ -278,10 +278,9 @@ describe('deliveryDateService', () => {
       expect(a50June).toBeDefined();
 
       // 2026年6月：
-      // - 6月30日周二（营业日）→ 倒数第一个营业日是6月29日周一
-      // - 从6月29日往前找：跳过6月28日周日、6月27日周六 → 6月26日周五
-      // 倒数第二个营业日是6月26日周五
-      expect(a50June!.date).toBe('2026-06-26');
+      // - 6月30日周二（营业日）→ 倒数第1个营业日
+      // - 往前推一天 → 6月29日周一（营业日）→ 倒数第2个营业日
+      expect(a50June!.date).toBe('2026-06-29');
     });
 
     test('calculates third Friday delivery dates correctly', () => {

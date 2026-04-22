@@ -100,6 +100,54 @@ export function getPrevBusinessDayForHK(date: Date, calendarData: CalendarData):
 }
 
 /**
+ * 从指定日期往前找倒数第N个营业日（A股）
+ * @param date 起始日期
+ * @param n 倒数第几个（1=倒数第1个，2=倒数第2个）
+ * @param calendarData 日历数据
+ */
+export function getNthLastBusinessDay(date: Date, n: number, calendarData: CalendarData): Date {
+  let current = new Date(date);
+  let count = 0;
+
+  while (count < n) {
+    // 先往前找到营业日（包括当前日期）
+    while (current.getDay() === 0 || current.getDay() === 6 || isChinaHoliday(current, calendarData)) {
+      current.setDate(current.getDate() - 1);
+    }
+    count++;
+    // 如果还需要找下一个，往前移一天
+    if (count < n) {
+      current.setDate(current.getDate() - 1);
+    }
+  }
+  return current;
+}
+
+/**
+ * 从指定日期往前找倒数第N个营业日（港股）
+ * @param date 起始日期
+ * @param n 倒数第几个（1=倒数第1个，2=倒数第2个）
+ * @param calendarData 日历数据
+ */
+export function getNthLastBusinessDayForHK(date: Date, n: number, calendarData: CalendarData): Date {
+  let current = new Date(date);
+  let count = 0;
+
+  while (count < n) {
+    // 先往前找到营业日（包括当前日期）
+    while (current.getDay() === 0 || current.getDay() === 6 || isHKHoliday(current, calendarData)) {
+      current.setDate(current.getDate() - 1);
+    }
+    count++;
+    // 如果还需要找下一个，往前移一天
+    if (count < n) {
+      current.setDate(current.getDate() - 1);
+    }
+  }
+  return current;
+}
+
+/**
  * 获取某月的最后一天
  * @param year 年份
  * @param month 月份 (0-indexed)
@@ -150,10 +198,8 @@ export function calculateDeliveryDatesForYear(
 
     // A股 - 富时中国A50指数期货（SGX）：每月倒数第二个营业日
     const lastDay = getLastDayOfMonth(year, month);
-    // 先找到倒数第一个营业日
-    const lastBusinessDay = getPrevBusinessDay(lastDay, calendarData);
-    // 再往前找倒数第二个营业日
-    const secondLastBusinessDay = getPrevBusinessDay(lastBusinessDay, calendarData);
+    // 使用专门的函数找倒数第二个营业日
+    const secondLastBusinessDay = getNthLastBusinessDay(lastDay, 2, calendarData);
     results.push({
       date: formatDate(secondLastBusinessDay),
       content: 'A股-富时中国A50指数期货（SGX）交割日',
@@ -163,8 +209,7 @@ export function calculateDeliveryDatesForYear(
     // 港股 - 恒指期货及期权月度交割日：合约月份倒数第二个营业日
     // 使用港股节假日数据判断
     const hkLastDay = getLastDayOfMonth(year, month);
-    const hkLastBusinessDay = getPrevBusinessDayForHK(hkLastDay, calendarData);
-    const hkSecondLastBusinessDay = getPrevBusinessDayForHK(hkLastBusinessDay, calendarData);
+    const hkSecondLastBusinessDay = getNthLastBusinessDayForHK(hkLastDay, 2, calendarData);
     results.push({
       date: formatDate(hkSecondLastBusinessDay),
       content: '港股-恒指/国企股/科指期货及期权交割日',
