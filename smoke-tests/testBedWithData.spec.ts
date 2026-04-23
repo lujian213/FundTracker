@@ -327,7 +327,7 @@ test.describe('testBedWithData', () => {
     expect(newsCount).toBeGreaterThan(0);
 
     // ══════════════════════════════════════════════════════════════════════════════
-    // 5. 验证基金卡片内容：名称、代码、估值、前值、涨跌幅与 mock 数据一致
+    // 5. 验证基金卡片内容：名称、代码、估值、前值、涨跌幅、前一个交易日涨跌幅与 mock 数据一致
     // ══════════════════════════════════════════════════════════════════════════════
     // 验证所有基金名称和代码都存在
     for (const fund of mockData.funds) {
@@ -344,6 +344,38 @@ test.describe('testBedWithData', () => {
     const statusDots = fundCards.first().locator('div.w-1\\.5.h-1\\.5.rounded-full');
     const statusDotCount = await statusDots.count();
     expect(statusDotCount).toBeGreaterThan(0);
+
+    // ══════════════════════════════════════════════════════════════════════════════
+    // 5.1 验证前一个交易日涨跌幅显示与 mock 数据一致
+    // ══════════════════════════════════════════════════════════════════════════════
+    // 从 mock 数据获取每个基金的前一个交易日涨跌幅
+    const prevDayChangesFromMock = mockData.funds.map((f: any) => {
+      const history = f.history || [];
+      if (history.length < 2) return { symbol: f.info?.ticker?.symbol, prevDayChange: null };
+      const prevPoint = history[history.length - 2];
+      return {
+        symbol: f.info?.ticker?.symbol,
+        prevDayChange: prevPoint?.equityReturn ?? null
+      };
+    });
+
+    // 验证有前一个交易日涨跌幅数据的基金
+    const fundsWithPrevDayChange = prevDayChangesFromMock.filter((f: any) => f.prevDayChange !== null);
+    expect(fundsWithPrevDayChange.length).toBeGreaterThan(0);
+
+    // 验证基金卡片上显示的前一个交易日涨跌幅数值与 mock 数据一致
+    // TickerCard 中前一个交易日涨跌幅是直接显示文本（如 "+0.33%"），不是 tooltip
+    for (const fund of fundsWithPrevDayChange.slice(0, 5)) { // 只验证前5个，避免超时
+      const card = fundCards.filter({ has: page.locator(`text=${fund.symbol}`) }).first();
+      // 构造预期的前一个交易日涨跌幅文本
+      const prevDayChangeText = fund.prevDayChange >= 0
+        ? `+${fund.prevDayChange.toFixed(2)}%`
+        : `${fund.prevDayChange.toFixed(2)}%`;
+      // 验证卡片内直接显示的文本（不是 tooltip）
+      await expect(card.locator(`text=${prevDayChangeText}`)).toBeVisible({ timeout: 5000 });
+    }
+
+    console.log(`前一个交易日涨跌幅验证: ${fundsWithPrevDayChange.length} 个基金有数据，已验证前5个`);
 
     // ══════════════════════════════════════════════════════════════════════════════
     // 6. 验证指数卡片内容：名称、代码、指数值、前值、涨跌幅与 mock 数据一致
@@ -1728,6 +1760,73 @@ test.describe('testBedWithData', () => {
 
     // 验证有AI提示图标
     expect(initialCheck.aiIconRows.length).toBeGreaterThan(0);
+
+    // ══════════════════════════════════════════════════════════════════════════════
+    // 4.1 验证涨跌幅字段右下角的小三角图标
+    // ══════════════════════════════════════════════════════════════════════════════
+    const prevDayChangeCheck = await page.evaluate(() => {
+      const rows = document.querySelectorAll('table tbody tr');
+      const result: { index: number; symbol: string; iconClass: string; iconColor: string }[] = [];
+
+      rows.forEach((row, idx) => {
+        // 涨跌幅字段在第6列
+        const gainLossCell = row.querySelector('td:nth-child(6)');
+        if (!gainLossCell) return;
+
+        // 查找小三角图标
+        const caretUp = gainLossCell.querySelector('i.fa-caret-up');
+        const caretDown = gainLossCell.querySelector('i.fa-caret-down');
+
+        if (caretUp) {
+          result.push({
+            index: idx,
+            symbol: row.querySelector('td:nth-child(3)')?.textContent?.trim() || '',
+            iconClass: 'fa-caret-up',
+            iconColor: caretUp.classList.contains('text-red-500') ? 'red' : 'unknown'
+          });
+        } else if (caretDown) {
+          result.push({
+            index: idx,
+            symbol: row.querySelector('td:nth-child(3)')?.textContent?.trim() || '',
+            iconClass: 'fa-caret-down',
+            iconColor: caretDown.classList.contains('text-green-500') ? 'green' : 'unknown'
+          });
+        }
+      });
+
+      return result;
+    });
+
+    // 验证至少有一些行有小三角图标
+    expect(prevDayChangeCheck.length).toBeGreaterThan(0);
+
+    // 验证图标颜色正确（正数红色正三角，负数绿色倒三角）
+    for (const row of prevDayChangeCheck) {
+      if (row.iconClass === 'fa-caret-up') {
+        expect(row.iconColor).toBe('red');
+      } else if (row.iconClass === 'fa-caret-down') {
+        expect(row.iconColor).toBe('green');
+      }
+    }
+
+    // 验证 hovertip 显示上一交易日涨跌幅
+    const firstIconRow = prevDayChangeCheck[0];
+    const draftTableRows = page.locator('table tbody tr');
+    const targetCell = draftTableRows.nth(firstIconRow.index).locator('td:nth-child(6)');
+
+    // 找到小三角图标并 hover
+    const iconLocator = firstIconRow.iconClass === 'fa-caret-up'
+      ? targetCell.locator('i.fa-caret-up')
+      : targetCell.locator('i.fa-caret-down');
+
+    await iconLocator.hover();
+
+    // 验证 tooltip 显示"上一交易日：xx%"
+    const tooltip = page.locator('[role="tooltip"]');
+    await expect(tooltip).toBeVisible();
+    await expect(tooltip).toContainText('上一交易日');
+
+    console.log(`前一个交易日涨跌幅图标验证: ${prevDayChangeCheck.length} 行有图标`);
 
     // ══════════════════════════════════════════════════════════════════════════════
     // 5. 点击第一个有AI提示图标的行的重置按钮

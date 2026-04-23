@@ -765,4 +765,255 @@ describe('InvestmentDraftModal AI 建议持久化', () => {
       expect(parsedData['2026-03-17']['000001'].aiScore).toBeUndefined();
     }, { timeout: 1000 });
   });
+
+  describe('上一交易日涨跌幅 hovertip', () => {
+    test('有历史数据时显示上一交易日涨跌幅 hovertip', async () => {
+      const mockPortfolio: Ticker[] = [
+        { id: '1', symbol: '000001', name: '测试基金', market: MarketType.FUND }
+      ];
+
+      const mockMarketData: Record<string, ValuationData> = {
+        '000001': {
+          symbol: '000001',
+          name: '测试基金',
+          currentPrice: 2.5,
+          previousPrice: 2.4,
+          changePercentage: 4.17, // 今日涨跌幅
+          lastUpdated: '2026-03-17 15:00',
+          realtimeDate: '2026-03-17',
+          netWorthDate: '2026-03-16',
+          valuationDate: '2026-03-17',
+          sourceUrl: 'http://example.com'
+        }
+      };
+
+      // 历史数据：倒数第二条的 equityReturn 为上一交易日涨跌幅
+      const mockFundHistories: Record<string, any[]> = {
+        '000001': [
+          { date: 1, value: 2.0, equityReturn: 0.5 },
+          { date: 2, value: 2.2, equityReturn: 1.5 }, // 上一交易日涨跌幅 1.5%
+          { date: 3, value: 2.5, equityReturn: 4.17 }, // 今日涨跌幅
+        ]
+      };
+
+      marketFundService.addFund('000001', '测试基金');
+      marketFundService.updatePosition('000001', {
+        fullCapacity: 10000,
+        initialPosition: 0,
+        startDate: '2026-01-01',
+        initialPrice: 2.0
+      });
+
+      render(
+        <InvestmentDraftModal
+          portfolio={mockPortfolio}
+          onClose={jest.fn()}
+          marketData={mockMarketData}
+          fundHistories={mockFundHistories}
+        />
+      );
+
+      // 等待表格渲染
+      await waitFor(() => {
+        expect(screen.getByText('测试基金')).toBeInTheDocument();
+      });
+
+      // 验证今日涨跌幅显示
+      expect(screen.getByText('+4.17%')).toBeInTheDocument();
+
+      // 验证小三角图标显示（上涨为红色向上三角）
+      const triangleIcon = screen.getByTitle('测试基金').closest('tr')?.querySelector('.fa-caret-up');
+      expect(triangleIcon).toBeInTheDocument();
+      expect(triangleIcon).toHaveClass('text-red-500');
+
+      // 鼠标悬停在小三角图标上显示 tooltip
+      fireEvent.mouseEnter(triangleIcon!);
+
+      // 验证 tooltip 内容包含上一交易日涨跌幅
+      await waitFor(() => {
+        expect(screen.getByText('上一交易日：+1.50%')).toBeInTheDocument();
+      });
+    });
+
+    test('上一交易日涨跌幅为负时显示绿色倒三角', async () => {
+      const mockPortfolio: Ticker[] = [
+        { id: '1', symbol: '000001', name: '测试基金', market: MarketType.FUND }
+      ];
+
+      const mockMarketData: Record<string, ValuationData> = {
+        '000001': {
+          symbol: '000001',
+          name: '测试基金',
+          currentPrice: 2.5,
+          previousPrice: 2.4,
+          changePercentage: 4.17,
+          lastUpdated: '2026-03-17 15:00',
+          realtimeDate: '2026-03-17',
+          netWorthDate: '2026-03-16',
+          valuationDate: '2026-03-17',
+          sourceUrl: 'http://example.com'
+        }
+      };
+
+      // 历史数据：上一交易日涨跌幅为负
+      const mockFundHistories: Record<string, any[]> = {
+        '000001': [
+          { date: 1, value: 2.0, equityReturn: 0.5 },
+          { date: 2, value: 2.2, equityReturn: -2.5 }, // 上一交易日涨跌幅 -2.5%
+          { date: 3, value: 2.5, equityReturn: 4.17 },
+        ]
+      };
+
+      marketFundService.addFund('000001', '测试基金');
+      marketFundService.updatePosition('000001', {
+        fullCapacity: 10000,
+        initialPosition: 0,
+        startDate: '2026-01-01',
+        initialPrice: 2.0
+      });
+
+      render(
+        <InvestmentDraftModal
+          portfolio={mockPortfolio}
+          onClose={jest.fn()}
+          marketData={mockMarketData}
+          fundHistories={mockFundHistories}
+        />
+      );
+
+      await waitFor(() => {
+        expect(screen.getByText('测试基金')).toBeInTheDocument();
+      });
+
+      // 验证小三角图标显示（下跌为绿色向下三角）
+      const triangleIcon = screen.getByTitle('测试基金').closest('tr')?.querySelector('.fa-caret-down');
+      expect(triangleIcon).toBeInTheDocument();
+      expect(triangleIcon).toHaveClass('text-green-500');
+
+      // 鼠标悬停在小三角图标上显示 tooltip
+      fireEvent.mouseEnter(triangleIcon!);
+
+      await waitFor(() => {
+        const tooltipText = screen.getByText('上一交易日：-2.50%');
+        expect(tooltipText).toBeInTheDocument();
+        // 验证颜色为绿色（下跌）
+        expect(tooltipText).toHaveClass('text-green-500');
+      });
+    });
+
+    test('上一交易日涨跌幅为正时小三角为红色正三角', async () => {
+      const mockPortfolio: Ticker[] = [
+        { id: '1', symbol: '000001', name: '测试基金', market: MarketType.FUND }
+      ];
+
+      const mockMarketData: Record<string, ValuationData> = {
+        '000001': {
+          symbol: '000001',
+          name: '测试基金',
+          currentPrice: 2.5,
+          previousPrice: 2.4,
+          changePercentage: 4.17,
+          lastUpdated: '2026-03-17 15:00',
+          realtimeDate: '2026-03-17',
+          netWorthDate: '2026-03-16',
+          valuationDate: '2026-03-17',
+          sourceUrl: 'http://example.com'
+        }
+      };
+
+      const mockFundHistories: Record<string, any[]> = {
+        '000001': [
+          { date: 1, value: 2.0, equityReturn: 0.5 },
+          { date: 2, value: 2.2, equityReturn: 3.5 }, // 上一交易日涨跌幅 +3.5%
+          { date: 3, value: 2.5, equityReturn: 4.17 },
+        ]
+      };
+
+      marketFundService.addFund('000001', '测试基金');
+      marketFundService.updatePosition('000001', {
+        fullCapacity: 10000,
+        initialPosition: 0,
+        startDate: '2026-01-01',
+        initialPrice: 2.0
+      });
+
+      render(
+        <InvestmentDraftModal
+          portfolio={mockPortfolio}
+          onClose={jest.fn()}
+          marketData={mockMarketData}
+          fundHistories={mockFundHistories}
+        />
+      );
+
+      await waitFor(() => {
+        expect(screen.getByText('测试基金')).toBeInTheDocument();
+      });
+
+      // 验证小三角图标显示（上涨为红色向上三角）
+      const triangleIcon = screen.getByTitle('测试基金').closest('tr')?.querySelector('.fa-caret-up');
+      expect(triangleIcon).toBeInTheDocument();
+      expect(triangleIcon).toHaveClass('text-red-500');
+
+      // 鼠标悬停在小三角图标上显示 tooltip
+      fireEvent.mouseEnter(triangleIcon!);
+
+      await waitFor(() => {
+        const tooltipText = screen.getByText('上一交易日：+3.50%');
+        expect(tooltipText).toBeInTheDocument();
+        // 验证颜色为红色（上涨）
+        expect(tooltipText).toHaveClass('text-red-500');
+      });
+    });
+
+    test('无历史数据时不显示小三角图标', async () => {
+      const mockPortfolio: Ticker[] = [
+        { id: '1', symbol: '000001', name: '测试基金', market: MarketType.FUND }
+      ];
+
+      const mockMarketData: Record<string, ValuationData> = {
+        '000001': {
+          symbol: '000001',
+          name: '测试基金',
+          currentPrice: 2.5,
+          previousPrice: 2.4,
+          changePercentage: 4.17,
+          lastUpdated: '2026-03-17 15:00',
+          realtimeDate: '2026-03-17',
+          netWorthDate: '2026-03-16',
+          valuationDate: '2026-03-17',
+          sourceUrl: 'http://example.com'
+        }
+      };
+
+      // 无历史数据
+      const mockFundHistories: Record<string, any[]> = {};
+
+      marketFundService.addFund('000001', '测试基金');
+      marketFundService.updatePosition('000001', {
+        fullCapacity: 10000,
+        initialPosition: 0,
+        startDate: '2026-01-01',
+        initialPrice: 2.0
+      });
+
+      render(
+        <InvestmentDraftModal
+          portfolio={mockPortfolio}
+          onClose={jest.fn()}
+          marketData={mockMarketData}
+          fundHistories={mockFundHistories}
+        />
+      );
+
+      await waitFor(() => {
+        expect(screen.getByText('测试基金')).toBeInTheDocument();
+      });
+
+      // 验证今日涨跌幅显示，但没有小三角图标
+      expect(screen.getByText('+4.17%')).toBeInTheDocument();
+      const triangleIcon = screen.getByTitle('测试基金').closest('tr')?.querySelector('.fa-caret-up, .fa-caret-down');
+      expect(triangleIcon).not.toBeInTheDocument();
+    });
+  });
 });

@@ -72,6 +72,13 @@ export const TickerCard: React.FC<TickerCardProps> = ({
   const isUp = change > 0;
   const isDown = change < 0;
 
+  // 计算上一个交易日涨跌幅（从历史数据倒数第二条获取）
+  const previousDayChange = useMemo(() => {
+    if (!history || history.length < 2) return undefined;
+    const prevPoint = history[history.length - 2];
+    return prevPoint?.equityReturn;
+  }, [history]);
+
   const getChangeStyles = () => {
     if (!hasData) return 'bg-gray-100 text-transparent select-none';
     if (isNoValuation || change === 0 || isNaN(change)) return 'bg-gray-50 text-gray-500';
@@ -85,6 +92,27 @@ export const TickerCard: React.FC<TickerCardProps> = ({
       if (absChange < 1) return 'bg-green-50 text-green-600';
       if (absChange < 3) return 'bg-green-100 text-green-700 font-medium';
       if (absChange < 5) return 'bg-green-500 text-white font-medium shadow-sm shadow-green-200';
+      return 'bg-green-700 text-white font-normal shadow-md shadow-green-300 ring-2 ring-green-100';
+    }
+    return 'bg-gray-50 text-gray-500';
+  };
+
+  // 上一个交易日涨跌幅样式（与今日涨跌幅样式一致）
+  const getPreviousDayChangeStyles = () => {
+    if (previousDayChange === undefined || previousDayChange === 0 || isNaN(previousDayChange)) return 'bg-gray-50 text-gray-500';
+    const absPrevChange = Math.abs(previousDayChange);
+    const prevIsUp = previousDayChange > 0;
+    const prevIsDown = previousDayChange < 0;
+    if (prevIsUp) {
+      if (absPrevChange < 1) return 'bg-red-50 text-red-600';
+      if (absPrevChange < 3) return 'bg-red-100 text-red-700 font-medium';
+      if (absPrevChange < 5) return 'bg-red-500 text-white font-medium shadow-sm shadow-red-200';
+      return 'bg-red-700 text-white font-normal shadow-md shadow-red-300 ring-2 ring-red-100';
+    }
+    if (prevIsDown) {
+      if (absPrevChange < 1) return 'bg-green-50 text-green-600';
+      if (absPrevChange < 3) return 'bg-green-100 text-green-700 font-medium';
+      if (absPrevChange < 5) return 'bg-green-500 text-white font-medium shadow-sm shadow-green-200';
       return 'bg-green-700 text-white font-normal shadow-md shadow-green-300 ring-2 ring-green-100';
     }
     return 'bg-gray-50 text-gray-500';
@@ -234,11 +262,21 @@ export const TickerCard: React.FC<TickerCardProps> = ({
 
         <div className="text-right">
           <div className="flex flex-col items-end">
-            <div className={`inline-flex items-center px-3 py-1 rounded-xl text-base transition-all duration-300 ${getChangeStyles()}`}>
-              {hasData && !isNoValuation && change !== 0 && !isNaN(change) && (
-                <i className={`fas fa-caret-${isUp ? 'up' : 'down'} mr-1.5`} />
+            <div className="flex items-end gap-1.5">
+              <div className={`inline-flex items-center px-3 py-1 rounded-xl text-sm transition-all duration-300 ${getChangeStyles()}`}>
+                {hasData && !isNoValuation && change !== 0 && !isNaN(change) && (
+                  <i className={`fas fa-caret-${isUp ? 'up' : 'down'} mr-1.5`} />
+                )}
+                {displayChange}
+              </div>
+              {previousDayChange !== undefined && (
+                <div className={`inline-flex items-center px-1.5 py-0.5 rounded-lg text-[10px] transition-all duration-300 ${getPreviousDayChangeStyles()}`}>
+                  {previousDayChange !== 0 && !isNaN(previousDayChange) && (
+                    <i className={`fas fa-caret-${previousDayChange > 0 ? 'up' : 'down'} mr-0.5`} />
+                  )}
+                  {previousDayChange >= 0 ? '+' : ''}{previousDayChange.toFixed(2)}%
+                </div>
               )}
-              {displayChange}
             </div>
             {hasData && (
               <div className="text-[9px] text-gray-400 mt-1 font-medium bg-gray-50 px-2 py-0.5 rounded-full flex items-center">

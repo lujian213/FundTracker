@@ -406,5 +406,141 @@ describe('TickerCard', () => {
     });
   });
 
+  describe('上交易日涨跌幅显示逻辑', () => {
+    test('有历史数据时显示上交易日涨跌幅', async () => {
+      const data = {
+        symbol: '000001',
+        name: 'Sample Fund',
+        currentPrice: 1.2345,
+        previousPrice: 1.2000,
+        changePercentage: 2.87, // 今日涨跌幅
+        lastUpdated: '2026-03-19 15:00:00',
+        realtimeDate: '2026-03-19',
+        netWorthDate: '2026-03-18',
+        valuationDate: '2026-03-19',
+        sourceUrl: ''
+      } as any;
+
+      // 历史数据：倒数第二条的 equityReturn 为上交易日涨跌幅
+      const historyWithPrevChange = [
+        { date: 1, value: 1.0, equityReturn: 0.5 },
+        { date: 2, value: 1.1, equityReturn: 1.2 }, // 上交易日涨跌幅 1.2%
+        { date: 3, value: 1.2, equityReturn: 2.87 }, // 今日涨跌幅（最后一条）
+      ];
+      mockFetchHistory.mockResolvedValue(historyWithPrevChange);
+
+      await act(async () => {
+        render(<TickerCard ticker={sampleTicker} data={data} fetchHistory={mockFetchHistory} />);
+      });
+      await flushAct();
+
+      // 今日涨跌幅显示
+      expect(screen.getByText('+2.87%')).toBeInTheDocument();
+      // 上交易日涨跌幅显示（倒数第二条的 equityReturn）
+      expect(screen.getByText('+1.20%')).toBeInTheDocument();
+    });
+
+    test('上交易日涨跌幅为负时显示绿色样式', async () => {
+      const data = {
+        symbol: '000001',
+        name: 'Sample Fund',
+        currentPrice: 1.2345,
+        previousPrice: 1.2000,
+        changePercentage: 2.5, // 今日涨跌幅为正
+        lastUpdated: '2026-03-19 15:00:00',
+        realtimeDate: '2026-03-19',
+        netWorthDate: '2026-03-18',
+        valuationDate: '2026-03-19',
+        sourceUrl: ''
+      } as any;
+
+      // 历史数据：上交易日涨跌幅为负
+      const historyWithNegPrevChange = [
+        { date: 1, value: 1.0, equityReturn: 0.5 },
+        { date: 2, value: 1.1, equityReturn: -1.5 }, // 上交易日涨跌幅 -1.5%
+        { date: 3, value: 1.2, equityReturn: 2.5 },
+      ];
+      mockFetchHistory.mockResolvedValue(historyWithNegPrevChange);
+
+      await act(async () => {
+        render(<TickerCard ticker={sampleTicker} data={data} fetchHistory={mockFetchHistory} />);
+      });
+      await flushAct();
+
+      // 上交易日涨跌幅显示为负
+      const prevChangeBadge = screen.getByText('-1.50%');
+      expect(prevChangeBadge).toBeInTheDocument();
+      // 样式应为绿色（下跌）
+      const styledContainer = prevChangeBadge.closest('div');
+      expect(styledContainer).toHaveClass('bg-green-100');
+    });
+
+    test('无历史数据时不显示上交易日涨跌幅', async () => {
+      const data = {
+        symbol: '000001',
+        name: 'Sample Fund',
+        currentPrice: 1.2345,
+        previousPrice: 1.2000,
+        changePercentage: 2.5,
+        lastUpdated: '2026-03-19 15:00:00',
+        realtimeDate: '2026-03-19',
+        netWorthDate: '2026-03-18',
+        valuationDate: '2026-03-19',
+        sourceUrl: ''
+      } as any;
+
+      // 历史数据只有一个点（少于2个，无法获取上交易日数据）
+      mockFetchHistory.mockResolvedValue([{ date: 1, value: 1.0, equityReturn: 2.5 }]);
+
+      await act(async () => {
+        render(<TickerCard ticker={sampleTicker} data={data} fetchHistory={mockFetchHistory} />);
+      });
+      await flushAct();
+
+      // 今日涨跌幅显示
+      expect(screen.getByText('+2.50%')).toBeInTheDocument();
+      // 上交易日涨跌幅不显示（只有一个历史点，无法获取上交易日）
+      // 查找所有百分比显示，应该只有一个
+      const changeBadges = screen.getAllByText(/^[+-]\d+\.\d{2}%$/);
+      expect(changeBadges.length).toBe(1);
+    });
+
+    test('上交易日涨跌幅为零时显示灰色样式', async () => {
+      const data = {
+        symbol: '000001',
+        name: 'Sample Fund',
+        currentPrice: 1.2345,
+        previousPrice: 1.2000,
+        changePercentage: 2.5,
+        lastUpdated: '2026-03-19 15:00:00',
+        realtimeDate: '2026-03-19',
+        netWorthDate: '2026-03-18',
+        valuationDate: '2026-03-19',
+        sourceUrl: ''
+      } as any;
+
+      // 历史数据：上交易日涨跌幅为零
+      const historyWithZeroPrevChange = [
+        { date: 1, value: 1.0, equityReturn: 0.5 },
+        { date: 2, value: 1.1, equityReturn: 0 }, // 上交易日涨跌幅为 0
+        { date: 3, value: 1.2, equityReturn: 2.5 },
+      ];
+      mockFetchHistory.mockResolvedValue(historyWithZeroPrevChange);
+
+      await act(async () => {
+        render(<TickerCard ticker={sampleTicker} data={data} fetchHistory={mockFetchHistory} />);
+      });
+      await flushAct();
+
+      // 上交易日涨跌幅显示为 +0.00%
+      const prevChangeBadge = screen.getByText('+0.00%');
+      expect(prevChangeBadge).toBeInTheDocument();
+      // 样式应为灰色（无涨跌）
+      const styledContainer = prevChangeBadge.closest('div');
+      expect(styledContainer).toHaveClass('bg-gray-50');
+      expect(styledContainer).toHaveClass('text-gray-500');
+    });
+  });
+
 });
 

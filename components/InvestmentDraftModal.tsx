@@ -529,6 +529,15 @@ const InvestmentDraftModal: React.FC<InvestmentDraftModalProps> = ({
     return gainLoss >= 0 ? 'text-red-600' : 'text-green-600';
   };
 
+  // 获取上一交易日涨跌幅
+  const getPreviousDayChange = (fundSymbol: string): number | undefined => {
+    const history = fundHistories?.[fundSymbol];
+    if (!history || history.length < 2) return undefined;
+    // 历史数据按日期排序，倒数第二条是上一个交易日
+    const prevPoint = history[history.length - 2];
+    return prevPoint?.equityReturn;
+  };
+
   // 动态计算并排显示时的偏移量
   const [draftOffset, setDraftOffset] = useState<number>(0);
 
@@ -759,8 +768,28 @@ const InvestmentDraftModal: React.FC<InvestmentDraftModalProps> = ({
                           </td>
 
                           <td className={`px-2 py-1 text-left text-xs font-medium ${getGainLossColor(fund.symbol)}`}>
-                            <div className="truncate" style={{ maxWidth: '70px' }}>
+                            <div className="relative truncate" style={{ maxWidth: '70px' }}>
                               {getGainLoss(fund.symbol)}
+                              {(() => {
+                                const prevDayChange = getPreviousDayChange(fund.symbol);
+                                if (prevDayChange === undefined) return null;
+
+                                const prevChangeText = `上一交易日：${prevDayChange >= 0 ? '+' : ''}${prevDayChange.toFixed(2)}%`;
+                                const isPositive = prevDayChange >= 0;
+                                const triangleColor = isPositive ? 'text-red-500' : 'text-green-500';
+                                const triangleIcon = isPositive ? 'fa-caret-up' : 'fa-caret-down';
+
+                                return (
+                                  <SimpleTooltip
+                                    content={<span className={triangleColor}>{prevChangeText}</span>}
+                                    boundarySelector=".investment-draft-modal-content"
+                                  >
+                                    <i
+                                      className={`fas ${triangleIcon} ${triangleColor} absolute bottom-0 right-0 text-[8px] cursor-default`}
+                                    />
+                                  </SimpleTooltip>
+                                );
+                              })()}
                             </div>
                           </td>
 
