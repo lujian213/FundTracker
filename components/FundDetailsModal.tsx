@@ -96,6 +96,42 @@ export const FundDetailsModal: React.FC<FundDetailsModalProps> = ({ data, onClos
       });
     }
   }, [animateSlide, position]);
+
+  // 同步 modal 高度到 window.__detailModalHeight（用于草稿窗口高度同步）
+  useEffect(() => {
+    if (position !== 'right') return; // 只在右侧定位时同步高度
+
+    const syncHeight = () => {
+      const modal = document.querySelector('#fund-details-modal > .bg-white') as HTMLElement;
+      if (modal) {
+        const height = modal.getBoundingClientRect().height;
+        (window as any).__detailModalHeight = height;
+      }
+    };
+
+    // 初始同步
+    requestAnimationFrame(() => {
+      syncHeight();
+    });
+
+    // 使用 ResizeObserver 监听高度变化（如果浏览器支持）
+    const modal = document.querySelector('#fund-details-modal > .bg-white') as HTMLElement;
+    let resizeObserver: ResizeObserver | null = null;
+    if (modal && typeof ResizeObserver !== 'undefined') {
+      resizeObserver = new ResizeObserver(() => {
+        syncHeight();
+      });
+      resizeObserver.observe(modal);
+    }
+
+    return () => {
+      if (resizeObserver) {
+        resizeObserver.disconnect();
+      }
+      // 清除全局变量
+      delete (window as any).__detailModalHeight;
+    };
+  }, [position]);
   const [aiLoading, setAILoading] = useState(false);
   const [aiConfig, setAIConfig] = useState<AIConfiguration | null>(null);
   const [showAIConfig, setShowAIConfig] = useState(false);
