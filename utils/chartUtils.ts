@@ -7,10 +7,177 @@ export interface ChartPoint {
   y: number;
 }
 
+export interface ChartPointWithData extends ChartPoint {
+  data: {
+    date: string;
+    dailyProfit: number;
+    cumulativeProfit: number;
+  };
+}
+
 export interface SmoothPathOptions {
   closePath?: boolean;
   chartHeight: number;
   paddingBottom: number;
+}
+
+/**
+ * Chart dimensions and padding constants
+ */
+export const CHART_DIMENSIONS = {
+  width: 960,
+  height: 200,
+  padLeft: 80,
+  padRight: 20,
+  padTop: 20,
+  padBottom: 32,
+} as const;
+
+/**
+ * Maximum number of visible points on the chart
+ * Based on chart width and minimum visual spacing (10px)
+ */
+export const MAX_VISIBLE_POINTS = 80;
+
+/**
+ * Find indices of key points that should always be preserved
+ * - First point (start)
+ * - Last point (current)
+ * - Maximum cumulative profit point
+ * - Minimum cumulative profit point
+ */
+export function findKeyPointIndices(points: ChartPointWithData[]): Set<number> {
+  const indices = new Set<number>();
+
+  if (points.length === 0) return indices;
+
+  // Always keep first and last
+  indices.add(0);
+  indices.add(points.length - 1);
+
+  // Find max and min cumulative profit
+  let maxIndex = 0;
+  let minIndex = 0;
+  let maxValue = points[0].data.cumulativeProfit;
+  let minValue = points[0].data.cumulativeProfit;
+
+  for (let i = 1; i < points.length; i++) {
+    const profit = points[i].data.cumulativeProfit;
+    if (profit > maxValue) {
+      maxValue = profit;
+      maxIndex = i;
+    }
+    if (profit < minValue) {
+      minValue = profit;
+      minIndex = i;
+    }
+  }
+
+  indices.add(maxIndex);
+  indices.add(minIndex);
+
+  return indices;
+}
+
+/**
+ * Find indices of turning points where daily profit change exceeds threshold
+ * A turning point is where the direction changes significantly
+ */
+export function findTurningPointIndices(
+  points: ChartPointWithData[],
+  threshold: number = 1000 // Minimum cumulative profit change to consider as turning
+): number[] {
+  const turningIndices: number[] = [];
+
+  if (points.length < 3) return turningIndices;
+
+  // Find local extrema where cumulative profit changes significantly
+  for (let i = 1; i < points.length - 1; i++) {
+    const prevProfit = points[i - 1].data.cumulativeProfit;
+    const currProfit = points[i].data.cumulativeProfit;
+    const nextProfit = points[i + 1].data.cumulativeProfit;
+
+    // Check if this is a local maximum or minimum
+    const isLocalMax = currProfit > prevProfit && currProfit > nextProfit;
+    const isLocalMin = currProfit < prevProfit && currProfit < nextProfit;
+
+    if (isLocalMax || isLocalMin) {
+      // Only keep if the change is significant
+      const changeFromPrev = Math.abs(currProfit - prevProfit);
+      const changeToNext = Math.abs(currProfit - nextProfit);
+
+      if (changeFromPrev >= threshold || changeToNext >= threshold) {
+        turningIndices.push(i);
+      }
+    }
+  }
+
+  return turningIndices;
+}
+
+/**
+ * Merge points when total count exceeds threshold
+ * Strategy: Keep key points + turning points + fill remaining with uniform sampling
+ */
+export function mergeChartPoints(
+  points: ChartPointWithData[],
+  maxPoints: number = MAX_VISIBLE_POINTS
+): ChartPointWithData[] {
+  if (points.length <= maxPoints) {
+    return points;
+  }
+
+  // Step 1: Get key points (first, last, max, min)
+  const keyIndices = findKeyPointIndices(points);
+
+  // Step 2: Get turning points
+  const turningIndices = findTurningPointIndices(points);
+
+  // Combine key and turning points, remove duplicates
+  const keepSet = new Set<number>([...keyIndices, ...turningIndices]);
+
+  // Step 3: If still under max, fill with uniform sampling
+  if (keepSet.size < maxPoints) {
+    const remainingSlots = maxPoints - keepSet.size;
+    // Calculate interval for uniform sampling
+    const interval = Math.max(1, Math.floor((points.length - 1) / (remainingSlots + 1)));
+
+    for (let i = interval; i < points.length - 1 && keepSet.size < maxPoints; i += interval) {
+      keepSet.add(i);
+    }
+  }
+
+  // Step 4: Sort indices and return merged points
+  const sortedIndices = Array.from(keepSet).sort((a, b) => a - b);
+  return sortedIndices.map(i => points[i]);
+}
+
+/**
+ * Get the original index for a merged point
+ * Used for hover interaction to map back to original data
+ */
+export function getOriginalIndexMapping(
+  originalPoints: ChartPointWithData[],
+  mergedPoints: ChartPointWithData[]
+): Map<number, number> {
+  const mapping = new Map<number, number>();
+
+  for (let mergedIdx = 0; mergedIdx < mergedPoints.length; mergedIdx++) {
+    const mergedPoint = mergedPoints[mergedIdx];
+    // Find matching original point by date and values
+    for (let origIdx = 0; origIdx < originalPoints.length; origIdx++) {
+      const origPoint = originalPoints[origIdx];
+      if (
+        mergedPoint.data.date === origPoint.data.date &&
+        mergedPoint.data.cumulativeProfit === origPoint.data.cumulativeProfit
+      ) {
+        mapping.set(mergedIdx, origIdx);
+        break;
+      }
+    }
+  }
+
+  return mapping;
 }
 
 /**
@@ -72,15 +239,3 @@ export function buildLinearPath(
 
   return d;
 }
-
-/**
- * Chart dimensions and padding constants
- */
-export const CHART_DIMENSIONS = {
-  width: 960,
-  height: 200,
-  padLeft: 80,
-  padRight: 20,
-  padTop: 20,
-  padBottom: 32,
-} as const;

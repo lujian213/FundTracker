@@ -8,7 +8,7 @@ import { toLocalDateKey } from '../utils/priceResolver';
 import { adjustProfitTimelineForDisplay } from '../utils/profitAdjustment';
 import { formatMoneyWithSeparators, fmtNav } from '../utils/format';
 import { formatDateDisplay } from '../utils/dateFormat';
-import { buildLinearPath, CHART_DIMENSIONS } from '../utils/chartUtils';
+import { buildLinearPath, CHART_DIMENSIONS, mergeChartPoints, ChartPointWithData } from '../utils/chartUtils';
 import { MoneyCell } from './MoneyCell';
 import { SymbolBadge } from './SymbolBadge';
 
@@ -156,7 +156,7 @@ const ProfitModal: React.FC<ProfitModalProps> = ({ symbol, fundName, currentPric
   const periodTotal = useMemo(() => (displayedTimeline || []).reduce((s, p) => s + (p.dailyProfit || 0), 0), [displayedTimeline]);
 
   const chart = useMemo(() => {
-    if (!displayedTimeline || displayedTimeline.length === 0) return { path: '', areaPath: '', points: [], xTicks: [], yTicks: [], width: CHART_DIMENSIONS.width, height: CHART_DIMENSIONS.height, padLeft: CHART_DIMENSIONS.padLeft, padRight: CHART_DIMENSIONS.padRight, zeroY: 100 };
+    if (!displayedTimeline || displayedTimeline.length === 0) return { path: '', areaPath: '', points: [], originalPoints: [], xTicks: [], yTicks: [], width: CHART_DIMENSIONS.width, height: CHART_DIMENSIONS.height, padLeft: CHART_DIMENSIONS.padLeft, padRight: CHART_DIMENSIONS.padRight, zeroY: 100 };
     const { width: w, height: h, padLeft, padRight, padTop, padBottom } = CHART_DIMENSIONS;
     const vals = displayedTimeline.map(p => p.cumulativeProfit || 0);
     const dataMin = Math.min(...vals);
@@ -184,14 +184,33 @@ const ProfitModal: React.FC<ProfitModalProps> = ({ symbol, fundName, currentPric
       }
     }
 
-    const getX = (i: number) => padLeft + (i * (w - padLeft - padRight) / (displayedTimeline.length - 1));
+    // X坐标计算基于索引（时间均匀分布）
+    const getX = (i: number, total: number) => padLeft + (i * (w - padLeft - padRight) / (total - 1 || 1));
     const getY = (v: number) => h - padBottom - ((v - finalMin) / range) * (h - padTop - padBottom);
     const zeroY = getY(0);
-    const pts = displayedTimeline.map((p, i) => ({ x: getX(i), y: getY(p.cumulativeProfit || 0), data: p }));
 
-    const path = buildLinearPath(pts, { chartHeight: h, paddingBottom: padBottom });
-    const areaPath = buildLinearPath(pts, { closePath: true, chartHeight: h, paddingBottom: padBottom });
-    const xTicks = [0, Math.floor((pts.length - 1) / 2), pts.length - 1].map(i => ({ x: pts[i].x, label: formatDateDisplay(pts[i].data.date) }));
+    // 创建原始点数组（用于 hover 检测）
+    const originalPts: ChartPointWithData[] = displayedTimeline.map((p, i) => ({
+      x: getX(i, displayedTimeline.length),
+      y: getY(p.cumulativeProfit || 0),
+      data: { date: p.date, dailyProfit: p.dailyProfit || 0, cumulativeProfit: p.cumulativeProfit || 0 }
+    }));
+
+    // 合并点用于显示（保持视觉清晰）
+    const mergedPts = mergeChartPoints(originalPts);
+
+    // 重新计算合并点的 X 坐标（基于合并后的数量）
+    const displayPts = mergedPts.map((p, i) => ({
+      ...p,
+      x: getX(i, mergedPts.length)
+    }));
+
+    const path = buildLinearPath(displayPts, { chartHeight: h, paddingBottom: padBottom });
+    const areaPath = buildLinearPath(displayPts, { closePath: true, chartHeight: h, paddingBottom: padBottom });
+    const xTicks = [0, Math.floor((displayPts.length - 1) / 2), displayPts.length - 1].map(i => ({
+      x: displayPts[i].x,
+      label: formatDateDisplay(displayPts[i].data.date)
+    }));
 
     // Y轴刻度：从finalMin到finalMax，步长为tickInterval
     const yTicks: { y: number; label: string; isZero: boolean }[] = [];
@@ -200,7 +219,23 @@ const ProfitModal: React.FC<ProfitModalProps> = ({ symbol, fundName, currentPric
       yTicks.push({ y: getY(v), label: (v >= 0 ? '+' : '') + v, isZero: v === 0 });
     }
 
-    return { path, areaPath, points: pts, xTicks, yTicks, padLeft, padRight, padTop, padBottom, width: w, height: h, zeroY };
+    return {
+      path,
+      areaPath,
+      points: displayPts,        // 合并后的点，用于显示折线和圆点
+      originalPoints: originalPts, // 原始点，用于 hover 检测
+      xTicks,
+      yTicks,
+      padLeft,
+      padRight,
+      padTop,
+      padBottom,
+      width: w,
+      height: h,
+      zeroY,
+      mergedCount: mergedPts.length,
+      originalCount: originalPts.length
+    };
   }, [displayedTimeline]);
 
   const tableScrollRef = useRef<HTMLDivElement>(null);
@@ -353,8 +388,8 @@ const ProfitModal: React.FC<ProfitModalProps> = ({ symbol, fundName, currentPric
                         />
                       )}
 
-                      {/* 悬停检测区域：矩形覆盖全高度 */}
-                      {chart.points.map((pt, i) => (
+                      {/* 悬停检测区域：使用原始点覆盖全图表 */}
+                      {chart.originalPoints.map((pt, i) => (
                         <rect
                           key={i}
                           x={pt.x - 5}
@@ -367,7 +402,7 @@ const ProfitModal: React.FC<ProfitModalProps> = ({ symbol, fundName, currentPric
                         />
                       ))}
                     </svg>
-                    {hoverIndex !== null && chart.points[hoverIndex] && (() => {
+                    {hoverIndex !== null && chart.originalPoints[hoverIndex] && (() => {
                       // tooltip定位：优先放在点的一侧，避免遮挡点和超出边界
                       const containerRect = chartWrapRef.current?.getBoundingClientRect();
                       const svgRect = chartSvgRef.current?.getBoundingClientRect();
@@ -378,8 +413,8 @@ const ProfitModal: React.FC<ProfitModalProps> = ({ symbol, fundName, currentPric
                       // SVG坐标转换为像素坐标
                       const scaleX = svgRect.width / vbW;
                       const scaleY = svgRect.height / vbH;
-                      const ptX = chart.points[hoverIndex].x * scaleX;
-                      const ptY = chart.points[hoverIndex].y * scaleY;
+                      const ptX = chart.originalPoints[hoverIndex].x * scaleX;
+                      const ptY = chart.originalPoints[hoverIndex].y * scaleY;
 
                       // tooltip尺寸（固定宽度避免换行）
                       const tooltipWidth = 160;
@@ -402,15 +437,15 @@ const ProfitModal: React.FC<ProfitModalProps> = ({ symbol, fundName, currentPric
                           className="absolute z-20 bg-white/95 backdrop-blur-sm px-3 py-2 rounded-lg shadow-lg border border-gray-100 whitespace-nowrap"
                           style={{ left, top, width: tooltipWidth, pointerEvents: 'none' }}
                         >
-                          <div className="text-xs text-gray-400 font-mono">{formatDateDisplay(chart.points[hoverIndex].data.date)}</div>
+                          <div className="text-xs text-gray-400 font-mono">{formatDateDisplay(chart.originalPoints[hoverIndex].data.date)}</div>
                           <div className="text-xs font-mono mt-1">
                             <span className="text-gray-400">当日</span>
-                            <span className={`ml-2 font-medium ${chart.points[hoverIndex].data.dailyProfit > 0 ? 'text-red-600' : chart.points[hoverIndex].data.dailyProfit < 0 ? 'text-green-600' : 'text-gray-700'}`}>{chart.points[hoverIndex].data.dailyProfit === 0 ? '-' : (chart.points[hoverIndex].data.dailyProfit > 0 ? '+' : '') + formatMoneyWithSeparators(chart.points[hoverIndex].data.dailyProfit)}</span>
+                            <span className={`ml-2 font-medium ${chart.originalPoints[hoverIndex].data.dailyProfit > 0 ? 'text-red-600' : chart.originalPoints[hoverIndex].data.dailyProfit < 0 ? 'text-green-600' : 'text-gray-700'}`}>{chart.originalPoints[hoverIndex].data.dailyProfit === 0 ? '-' : (chart.originalPoints[hoverIndex].data.dailyProfit > 0 ? '+' : '') + formatMoneyWithSeparators(chart.originalPoints[hoverIndex].data.dailyProfit)}</span>
                           </div>
                           <div className="text-xs font-mono">
                             <span className="text-gray-400">累计</span>
-                            <span className={`ml-2 font-medium ${chart.points[hoverIndex].data.cumulativeProfit > 0 ? 'text-red-600' : chart.points[hoverIndex].data.cumulativeProfit < 0 ? 'text-green-600' : 'text-gray-700'}`}>
-                              {chart.points[hoverIndex].data.cumulativeProfit === 0 ? '-' : (chart.points[hoverIndex].data.cumulativeProfit > 0 ? '+' : '') + formatMoneyWithSeparators(chart.points[hoverIndex].data.cumulativeProfit)}
+                            <span className={`ml-2 font-medium ${chart.originalPoints[hoverIndex].data.cumulativeProfit > 0 ? 'text-red-600' : chart.originalPoints[hoverIndex].data.cumulativeProfit < 0 ? 'text-green-600' : 'text-gray-700'}`}>
+                              {chart.originalPoints[hoverIndex].data.cumulativeProfit === 0 ? '-' : (chart.originalPoints[hoverIndex].data.cumulativeProfit > 0 ? '+' : '') + formatMoneyWithSeparators(chart.originalPoints[hoverIndex].data.cumulativeProfit)}
                             </span>
                           </div>
                         </div>
