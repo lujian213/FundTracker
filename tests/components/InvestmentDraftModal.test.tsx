@@ -769,7 +769,7 @@ describe('InvestmentDraftModal AI 建议持久化', () => {
   describe('上一交易日涨跌幅 hovertip', () => {
     test('有历史数据时显示上一交易日涨跌幅 hovertip', async () => {
       const mockPortfolio: Ticker[] = [
-        { id: '1', symbol: '000001', name: '测试基金', market: MarketType.FUND }
+        { id: '1', symbol: '000001', name: '测试基金', marketType: MarketType.FUND }
       ];
 
       const mockMarketData: Record<string, ValuationData> = {
@@ -779,20 +779,24 @@ describe('InvestmentDraftModal AI 建议持久化', () => {
           currentPrice: 2.5,
           previousPrice: 2.4,
           changePercentage: 4.17, // 今日涨跌幅
-          lastUpdated: '2026-03-17 15:00',
-          realtimeDate: '2026-03-17',
-          netWorthDate: '2026-03-16',
-          valuationDate: '2026-03-17',
+          lastUpdated: '2026-03-18 15:00',
+          realtimeDate: '2026-03-18', // 估值日期不在 history 中（当日估值未确认）
+          netWorthDate: '2026-03-17',
+          valuationDate: '2026-03-18',
           sourceUrl: 'http://example.com'
         }
       };
 
-      // 历史数据：倒数第二条的 equityReturn 为上一交易日涨跌幅
+      // 历史数据：估值日期 '2026-03-18' 不在 history 中，取最后一条作为前一交易日
+      // 使用本地时区的 timestamp
+      const timestamp20260315 = new Date(2026, 2, 15).getTime(); // Month is 0-indexed
+      const timestamp20260316 = new Date(2026, 2, 16).getTime();
+      const timestamp20260317 = new Date(2026, 2, 17).getTime();
       const mockFundHistories: Record<string, any[]> = {
         '000001': [
-          { date: 1, value: 2.0, equityReturn: 0.5 },
-          { date: 2, value: 2.2, equityReturn: 1.5 }, // 上一交易日涨跌幅 1.5%
-          { date: 3, value: 2.5, equityReturn: 4.17 }, // 今日涨跌幅
+          { date: timestamp20260315, value: 2.0, equityReturn: 0.5 },
+          { date: timestamp20260316, value: 2.2, equityReturn: 0.8 },
+          { date: timestamp20260317, value: 2.4, equityReturn: 1.5 }, // 上一交易日涨跌幅 1.5%（最后一条）
         ]
       };
 
@@ -845,22 +849,25 @@ describe('InvestmentDraftModal AI 建议持久化', () => {
           symbol: '000001',
           name: '测试基金',
           currentPrice: 2.5,
-          previousPrice: 2.4,
-          changePercentage: 4.17,
-          lastUpdated: '2026-03-17 15:00',
-          realtimeDate: '2026-03-17',
-          netWorthDate: '2026-03-16',
-          valuationDate: '2026-03-17',
+          previousPrice: 2.6, // 下跌
+          changePercentage: -3.85,
+          lastUpdated: '2026-03-18 15:00',
+          realtimeDate: '2026-03-18', // 估值日期不在 history 中
+          netWorthDate: '2026-03-17',
+          valuationDate: '2026-03-18',
           sourceUrl: 'http://example.com'
         }
       };
 
-      // 历史数据：上一交易日涨跌幅为负
+      // 历史数据：估值日期不在 history 中，取最后一条（负数）
+      const timestamp20260315 = new Date(2026, 2, 15).getTime();
+      const timestamp20260316 = new Date(2026, 2, 16).getTime();
+      const timestamp20260317 = new Date(2026, 2, 17).getTime();
       const mockFundHistories: Record<string, any[]> = {
         '000001': [
-          { date: 1, value: 2.0, equityReturn: 0.5 },
-          { date: 2, value: 2.2, equityReturn: -2.5 }, // 上一交易日涨跌幅 -2.5%
-          { date: 3, value: 2.5, equityReturn: 4.17 },
+          { date: timestamp20260315, value: 2.0, equityReturn: 0.5 },
+          { date: timestamp20260316, value: 2.2, equityReturn: 0.8 },
+          { date: timestamp20260317, value: 2.6, equityReturn: -2.5 }, // 上一交易日涨跌幅 -2.5%（最后一条）
         ]
       };
 
@@ -884,6 +891,9 @@ describe('InvestmentDraftModal AI 建议持久化', () => {
       await waitFor(() => {
         expect(screen.getByText('测试基金')).toBeInTheDocument();
       });
+
+      // 验证今日涨跌幅显示
+      expect(screen.getByText('-3.85%')).toBeInTheDocument();
 
       // 验证小三角图标显示（下跌为绿色向下三角）
       const triangleIcon = screen.getByTitle('测试基金').closest('tr')?.querySelector('.fa-caret-down');
@@ -913,19 +923,22 @@ describe('InvestmentDraftModal AI 建议持久化', () => {
           currentPrice: 2.5,
           previousPrice: 2.4,
           changePercentage: 4.17,
-          lastUpdated: '2026-03-17 15:00',
-          realtimeDate: '2026-03-17',
-          netWorthDate: '2026-03-16',
-          valuationDate: '2026-03-17',
+          lastUpdated: '2026-03-18 15:00',
+          realtimeDate: '2026-03-18', // 估值日期不在 history 中
+          netWorthDate: '2026-03-17',
+          valuationDate: '2026-03-18',
           sourceUrl: 'http://example.com'
         }
       };
 
+      const timestamp20260315 = new Date(2026, 2, 15).getTime();
+      const timestamp20260316 = new Date(2026, 2, 16).getTime();
+      const timestamp20260317 = new Date(2026, 2, 17).getTime();
       const mockFundHistories: Record<string, any[]> = {
         '000001': [
-          { date: 1, value: 2.0, equityReturn: 0.5 },
-          { date: 2, value: 2.2, equityReturn: 3.5 }, // 上一交易日涨跌幅 +3.5%
-          { date: 3, value: 2.5, equityReturn: 4.17 },
+          { date: timestamp20260315, value: 2.0, equityReturn: 0.5 },
+          { date: timestamp20260316, value: 2.2, equityReturn: 1.0 },
+          { date: timestamp20260317, value: 2.4, equityReturn: 3.5 }, // 上一交易日涨跌幅 +3.5%（最后一条）
         ]
       };
 

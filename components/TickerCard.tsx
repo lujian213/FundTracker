@@ -2,6 +2,7 @@ import React, { useMemo, useEffect, useState } from 'react';
 import { Ticker, ValuationData, CardStatus, TickerAlert } from '../types';
 import { fetchFundHistory as defaultFetchFundHistory } from '../services/fundService';
 import { computeRatingFromHistory } from '../utils/ratingHelper';
+import { getPreviousDayChange } from '../utils/historyHelper';
 import RatingTooltip from './RatingTooltip';
 import ManageSelectButton from './ManageSelectButton';
 import { AlertTooltip } from './AlertTooltip';
@@ -72,12 +73,10 @@ export const TickerCard: React.FC<TickerCardProps> = ({
   const isUp = change > 0;
   const isDown = change < 0;
 
-  // 计算上一个交易日涨跌幅（从历史数据倒数第二条获取）
+  // 计算上一个交易日涨跌幅（使用公共函数）
   const previousDayChange = useMemo(() => {
-    if (!history || history.length < 2) return undefined;
-    const prevPoint = history[history.length - 2];
-    return prevPoint?.equityReturn;
-  }, [history]);
+    return getPreviousDayChange(history, data?.realtimeDate);
+  }, [history, data?.realtimeDate]);
 
   const getChangeStyles = () => {
     if (!hasData) return 'bg-gray-100 text-transparent select-none';

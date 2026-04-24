@@ -414,18 +414,22 @@ describe('TickerCard', () => {
         currentPrice: 1.2345,
         previousPrice: 1.2000,
         changePercentage: 2.87, // 今日涨跌幅
-        lastUpdated: '2026-03-19 15:00:00',
-        realtimeDate: '2026-03-19',
-        netWorthDate: '2026-03-18',
-        valuationDate: '2026-03-19',
+        lastUpdated: '2026-03-20 15:00:00',
+        realtimeDate: '2026-03-20', // 估值日期不在 history 中（当日估值未确认）
+        netWorthDate: '2026-03-19',
+        valuationDate: '2026-03-20',
         sourceUrl: ''
       } as any;
 
-      // 历史数据：倒数第二条的 equityReturn 为上交易日涨跌幅
+      // 历史数据：估值日期 '2026-03-20' 不在 history 中，取最后一条作为前一交易日
+      // 使用本地时区的 timestamp
+      const timestamp20260317 = new Date(2026, 2, 17).getTime();
+      const timestamp20260318 = new Date(2026, 2, 18).getTime();
+      const timestamp20260319 = new Date(2026, 2, 19).getTime();
       const historyWithPrevChange = [
-        { date: 1, value: 1.0, equityReturn: 0.5 },
-        { date: 2, value: 1.1, equityReturn: 1.2 }, // 上交易日涨跌幅 1.2%
-        { date: 3, value: 1.2, equityReturn: 2.87 }, // 今日涨跌幅（最后一条）
+        { date: timestamp20260317, value: 1.0, equityReturn: 0.5 },
+        { date: timestamp20260318, value: 1.1, equityReturn: 0.8 },
+        { date: timestamp20260319, value: 1.2, equityReturn: 1.2 }, // 前一交易日涨跌幅 1.2%（最后一条）
       ];
       mockFetchHistory.mockResolvedValue(historyWithPrevChange);
 
@@ -436,7 +440,7 @@ describe('TickerCard', () => {
 
       // 今日涨跌幅显示
       expect(screen.getByText('+2.87%')).toBeInTheDocument();
-      // 上交易日涨跌幅显示（倒数第二条的 equityReturn）
+      // 上交易日涨跌幅显示（最后一条的 equityReturn）
       expect(screen.getByText('+1.20%')).toBeInTheDocument();
     });
 
@@ -445,20 +449,23 @@ describe('TickerCard', () => {
         symbol: '000001',
         name: 'Sample Fund',
         currentPrice: 1.2345,
-        previousPrice: 1.2000,
-        changePercentage: 2.5, // 今日涨跌幅为正
-        lastUpdated: '2026-03-19 15:00:00',
-        realtimeDate: '2026-03-19',
-        netWorthDate: '2026-03-18',
-        valuationDate: '2026-03-19',
+        previousPrice: 1.3000,
+        changePercentage: -5.04, // 今日涨跌幅为负
+        lastUpdated: '2026-03-20 15:00:00',
+        realtimeDate: '2026-03-20', // 估值日期不在 history 中
+        netWorthDate: '2026-03-19',
+        valuationDate: '2026-03-20',
         sourceUrl: ''
       } as any;
 
-      // 历史数据：上交易日涨跌幅为负
+      // 历史数据：估值日期不在 history 中，取最后一条（负数）
+      const timestamp20260317 = new Date(2026, 2, 17).getTime();
+      const timestamp20260318 = new Date(2026, 2, 18).getTime();
+      const timestamp20260319 = new Date(2026, 2, 19).getTime();
       const historyWithNegPrevChange = [
-        { date: 1, value: 1.0, equityReturn: 0.5 },
-        { date: 2, value: 1.1, equityReturn: -1.5 }, // 上交易日涨跌幅 -1.5%
-        { date: 3, value: 1.2, equityReturn: 2.5 },
+        { date: timestamp20260317, value: 1.0, equityReturn: 0.5 },
+        { date: timestamp20260318, value: 1.1, equityReturn: 0.3 },
+        { date: timestamp20260319, value: 1.3, equityReturn: -1.5 }, // 前一交易日涨跌幅 -1.5%（最后一条）
       ];
       mockFetchHistory.mockResolvedValue(historyWithNegPrevChange);
 
@@ -482,15 +489,15 @@ describe('TickerCard', () => {
         currentPrice: 1.2345,
         previousPrice: 1.2000,
         changePercentage: 2.5,
-        lastUpdated: '2026-03-19 15:00:00',
-        realtimeDate: '2026-03-19',
-        netWorthDate: '2026-03-18',
-        valuationDate: '2026-03-19',
+        lastUpdated: '2026-03-20 15:00:00',
+        realtimeDate: '2026-03-20',
+        netWorthDate: '2026-03-19',
+        valuationDate: '2026-03-20',
         sourceUrl: ''
       } as any;
 
-      // 历史数据只有一个点（少于2个，无法获取上交易日数据）
-      mockFetchHistory.mockResolvedValue([{ date: 1, value: 1.0, equityReturn: 2.5 }]);
+      // 历史数据为空数组
+      mockFetchHistory.mockResolvedValue([]);
 
       await act(async () => {
         render(<TickerCard ticker={sampleTicker} data={data} fetchHistory={mockFetchHistory} />);
@@ -499,7 +506,7 @@ describe('TickerCard', () => {
 
       // 今日涨跌幅显示
       expect(screen.getByText('+2.50%')).toBeInTheDocument();
-      // 上交易日涨跌幅不显示（只有一个历史点，无法获取上交易日）
+      // 上交易日涨跌幅不显示（无历史数据）
       // 查找所有百分比显示，应该只有一个
       const changeBadges = screen.getAllByText(/^[+-]\d+\.\d{2}%$/);
       expect(changeBadges.length).toBe(1);
@@ -512,18 +519,21 @@ describe('TickerCard', () => {
         currentPrice: 1.2345,
         previousPrice: 1.2000,
         changePercentage: 2.5,
-        lastUpdated: '2026-03-19 15:00:00',
-        realtimeDate: '2026-03-19',
-        netWorthDate: '2026-03-18',
-        valuationDate: '2026-03-19',
+        lastUpdated: '2026-03-20 15:00:00',
+        realtimeDate: '2026-03-20', // 估值日期不在 history 中
+        netWorthDate: '2026-03-19',
+        valuationDate: '2026-03-20',
         sourceUrl: ''
       } as any;
 
-      // 历史数据：上交易日涨跌幅为零
+      // 历史数据：最后一条涨跌幅为零
+      const timestamp20260317 = new Date(2026, 2, 17).getTime();
+      const timestamp20260318 = new Date(2026, 2, 18).getTime();
+      const timestamp20260319 = new Date(2026, 2, 19).getTime();
       const historyWithZeroPrevChange = [
-        { date: 1, value: 1.0, equityReturn: 0.5 },
-        { date: 2, value: 1.1, equityReturn: 0 }, // 上交易日涨跌幅为 0
-        { date: 3, value: 1.2, equityReturn: 2.5 },
+        { date: timestamp20260317, value: 1.0, equityReturn: 0.5 },
+        { date: timestamp20260318, value: 1.1, equityReturn: 0.3 },
+        { date: timestamp20260319, value: 1.2, equityReturn: 0 }, // 前一交易日涨跌幅为 0（最后一条）
       ];
       mockFetchHistory.mockResolvedValue(historyWithZeroPrevChange);
 

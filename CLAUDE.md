@@ -16,12 +16,17 @@
 * 测试应聚焦业务逻辑，mock 实现细节（队列、网络、定时器等）是方向错误。
 * 优先提取纯函数进行测试，纯函数无需 mock 即可独立验证。
 
+## 测试执行
+* 单元测试：使用 `npm test` 执行 Jest 单元测试，测试文件位于 `tests/` 目录
+* Smoke 测试：使用 `npm run smoke` 执行 Playwright smoke 测试，测试文件位于 `smoke-tests/` 目录
+
 ## 公共函数使用规范
 * 需要常用字符串处理、日期格式化等功能时，优先查找 `utils/` 目录下是否已有可复用的公共函数。
 * 常用公共函数位置：
   - `utils/priceResolver.ts`：`toLocalDateKey()` - 日期转 YYYY-MM-DD 字符串
   - `utils/dateFormat.ts`：`formatDateDisplay()`、`formatDateISO()`、`formatTime()` 等日期时间格式化函数
   - `utils/format.ts`：`formatMoney()`、`formatMoneyWithSeparators()` 等金额格式化函数
+  - `utils/historyHelper.ts`：`getPreviousDayChange()` - 根据估值日期获取前一交易日涨跌幅
 * 如果找到功能相似但不完全匹配的公共函数，考虑扩展或改造该函数使其可复用，而不是新建一个功能重复的函数。
 * 新增公共函数时，应放在合适的 utils 文件中并导出，同时在此处记录。
 

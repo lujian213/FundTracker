@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom';
 import { Ticker, ValuationData, BackupPosition, HistoricalPoint, MarketIndex, MarketFund } from '../types';
 import { fetchFundData } from '../services/fundService';  // Import fetchFundData
 import { toLocalDateKey } from '../utils/priceResolver';
+import { getPreviousDayChange } from '../utils/historyHelper';
 import AIInvestmentDraftModal from './AIInvestmentDraftModal';
 import { DraftEntry, AIAdviceWithScore, AIAdviceIterationResult, generateAIAdviceWithValidation, hasDraftAction, SCORE_THRESHOLD } from '../services/aiInvestmentDraftService';
 import { getActiveAIConfig, hasUsableAIConfig } from '../services/aiConfigService';
@@ -183,6 +184,17 @@ const InvestmentDraftModal: React.FC<InvestmentDraftModalProps> = ({
     const changeB = valB?.changePercentage ?? -9999;
     return changeB - changeA;
   });
+
+  // 预计算所有基金的上一交易日涨跌幅（避免 N+1 问题）
+  const prevDayChangeMap = useMemo(() => {
+    const map = new Map<string, number | undefined>();
+    for (const fund of fundsWithPositions) {
+      const history = fundHistories?.[fund.symbol];
+      const valuation = marketFundService.getValuation(fund.symbol) || marketData[fund.symbol];
+      map.set(fund.symbol, getPreviousDayChange(history, valuation?.realtimeDate));
+    }
+    return map;
+  }, [fundsWithPositions, fundHistories, marketData]);
 
   const handleOperationChange = (fundSymbol: string, operation: '买入' | '卖出' | '不操作') => {
     setDraftData(prev => ({
@@ -529,13 +541,9 @@ const InvestmentDraftModal: React.FC<InvestmentDraftModalProps> = ({
     return gainLoss >= 0 ? 'text-red-600' : 'text-green-600';
   };
 
-  // 获取上一交易日涨跌幅
-  const getPreviousDayChange = (fundSymbol: string): number | undefined => {
-    const history = fundHistories?.[fundSymbol];
-    if (!history || history.length < 2) return undefined;
-    // 历史数据按日期排序，倒数第二条是上一个交易日
-    const prevPoint = history[history.length - 2];
-    return prevPoint?.equityReturn;
+  // 获取上一交易日涨跌幅（从预计算 Map 中获取）
+  const getPrevDayChangeForFund = (fundSymbol: string): number | undefined => {
+    return prevDayChangeMap.get(fundSymbol);
   };
 
   // 动态计算并排显示时的偏移量
@@ -768,10 +776,10 @@ const InvestmentDraftModal: React.FC<InvestmentDraftModalProps> = ({
                           </td>
 
                           <td className={`px-2 py-1 text-left text-xs font-medium ${getGainLossColor(fund.symbol)}`}>
-                            <div className="relative truncate" style={{ maxWidth: '70px' }}>
-                              {getGainLoss(fund.symbol)}
+                            <div className="flex items-center gap-1">
+                              <span className="truncate max-w-[55px]">{getGainLoss(fund.symbol)}</span>
                               {(() => {
-                                const prevDayChange = getPreviousDayChange(fund.symbol);
+                                const prevDayChange = getPrevDayChangeForFund(fund.symbol);
                                 if (prevDayChange === undefined) return null;
 
                                 const prevChangeText = `上一交易日：${prevDayChange >= 0 ? '+' : ''}${prevDayChange.toFixed(2)}%`;
@@ -785,7 +793,8 @@ const InvestmentDraftModal: React.FC<InvestmentDraftModalProps> = ({
                                     boundarySelector=".investment-draft-modal-content"
                                   >
                                     <i
-                                      className={`fas ${triangleIcon} ${triangleColor} absolute bottom-0 right-0 text-[8px] cursor-default`}
+                                      className={`fas ${triangleIcon} ${triangleColor} text-[10px] cursor-default`}
+                                      style={{ minWidth: '10px' }}
                                     />
                                   </SimpleTooltip>
                                 );
