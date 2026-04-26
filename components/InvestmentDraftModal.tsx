@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { createPortal } from 'react-dom';
+import html2canvas from 'html2canvas';
 import { Ticker, ValuationData, BackupPosition, HistoricalPoint, MarketIndex, MarketFund } from '../types';
 import { fetchFundData } from '../services/fundService';  // Import fetchFundData
 import { toLocalDateKey } from '../utils/priceResolver';
@@ -43,6 +44,8 @@ const InvestmentDraftModal: React.FC<InvestmentDraftModalProps> = ({
 }) => {
   const [draftData, setDraftData] = useState<Record<string, DraftEntry>>({});
   const [copied, setCopied] = useState(false);
+  const [screenshotCopied, setScreenshotCopied] = useState(false);
+  const [screenshotLoading, setScreenshotLoading] = useState(false);
   const [selectedFunds, setSelectedFunds] = useState<Set<string>>(new Set()); // 选中的基金
   const [aiAdvice, setAIAdvice] = useState<Record<string, AIAdviceWithScore>>({});
   const [showConfirmDialog, setShowConfirmDialog] = useState(false);
@@ -437,6 +440,119 @@ const InvestmentDraftModal: React.FC<InvestmentDraftModalProps> = ({
     });
   };
 
+  // 截屏表格到剪贴板
+  const handleScreenshotToClipboard = async () => {
+    setScreenshotLoading(true);
+
+    try {
+      // 找到表格容器（包含表头、表体、表尾）
+      const tableContainer = document.querySelector('.investment-draft-modal-content');
+      if (!tableContainer) {
+        console.error('Table container not found');
+        setScreenshotLoading(false);
+        return;
+      }
+
+      // 找到表格区域（包括表头、表体）和汇总区域（表尾）
+      const tableArea = tableContainer.querySelector('.px-6.flex-1.min-h-0.pb-1');
+      const summaryArea = tableContainer.querySelector('.px-6.py-3.border-t.border-gray-100.bg-gray-50');
+
+      if (!tableArea || !summaryArea) {
+        console.error('Table or summary area not found');
+        setScreenshotLoading(false);
+        return;
+      }
+
+      // 创建临时容器来组合表格和汇总
+      const tempContainer = document.createElement('div');
+      tempContainer.style.position = 'absolute';
+      tempContainer.style.left = '-9999px';
+      tempContainer.style.top = '0';
+      tempContainer.style.background = 'white';
+      tempContainer.style.padding = '12px';
+      tempContainer.style.borderRadius = '12px';
+      tempContainer.style.boxShadow = '0 4px 6px -1px rgba(0, 0, 0, 0.1)';
+      tempContainer.style.fontFamily = 'inherit';
+
+      // 复制表格区域（克隆并移除滚动样式，显示所有内容）
+      const tableClone = tableArea.cloneNode(true) as HTMLElement;
+      const tableInner = tableClone.querySelector('.border.border-gray-100.rounded-xl.overflow-hidden') as HTMLElement | null;
+      if (tableInner) {
+        tableInner.style.overflow = 'visible';
+        tableInner.style.height = 'auto';
+        const overflowDiv = tableInner.querySelector('.overflow-hidden') as HTMLElement | null;
+        if (overflowDiv) {
+          overflowDiv.style.overflow = 'visible';
+          overflowDiv.style.maxHeight = 'none';
+          overflowDiv.style.height = 'auto';
+        }
+      }
+
+      // 修复表格行高度：移除固定高度，改为 auto
+      const tableRows = tableClone.querySelectorAll('tr');
+      tableRows.forEach(row => {
+        const rowElement = row as HTMLElement;
+        rowElement.style.height = 'auto';
+        rowElement.style.minHeight = '32px';
+      });
+
+      // 修复单元格内容截断：移除 truncate 类的效果
+      const truncatedCells = tableClone.querySelectorAll('.truncate');
+      truncatedCells.forEach(cell => {
+        const cellElement = cell as HTMLElement;
+        cellElement.style.overflow = 'visible';
+        cellElement.style.textOverflow = 'unset';
+        cellElement.style.whiteSpace = 'nowrap';
+        cellElement.style.maxWidth = 'none';
+      });
+
+      tempContainer.appendChild(tableClone);
+
+      // 复制汇总区域
+      const summaryClone = summaryArea.cloneNode(true) as HTMLElement;
+      tempContainer.appendChild(summaryClone);
+
+      document.body.appendChild(tempContainer);
+
+      // 使用html2canvas截取
+      const canvas = await html2canvas(tempContainer, {
+        backgroundColor: '#ffffff',
+        scale: 2,
+        useCORS: true,
+        logging: false,
+        windowWidth: tempContainer.scrollWidth,
+        windowHeight: tempContainer.scrollHeight,
+      });
+
+      // 移除临时容器
+      document.body.removeChild(tempContainer);
+
+      // 将canvas转换为blob并复制到剪贴板
+      canvas.toBlob(async (blob) => {
+        if (!blob) {
+          console.error('Failed to create blob');
+          setScreenshotLoading(false);
+          return;
+        }
+
+        try {
+          await navigator.clipboard.write([
+            new ClipboardItem({ 'image/png': blob })
+          ]);
+          setScreenshotCopied(true);
+          setTimeout(() => setScreenshotCopied(false), 2000);
+        } catch (err) {
+          console.error('Failed to copy screenshot: ', err);
+        }
+
+        setScreenshotLoading(false);
+      }, 'image/png');
+    } catch (err) {
+      console.error('Screenshot error: ', err);
+      setScreenshotLoading(false);
+    }
+  };
+
   const formatDateMMDD = (dateString: string): string => {
     try {
       const date = new Date(dateString);
@@ -614,6 +730,14 @@ const InvestmentDraftModal: React.FC<InvestmentDraftModalProps> = ({
               <i className={`fas fa-${copied ? 'check text-green-500' : 'copy'}`}></i>
             </button>
             <button
+              onClick={handleScreenshotToClipboard}
+              disabled={aiAdviceLoading || screenshotLoading}
+              className={`w-8 h-8 rounded-full flex items-center justify-center ${aiAdviceLoading || screenshotLoading ? 'bg-gray-100 text-gray-300 cursor-not-allowed' : 'bg-gray-50 text-gray-400 hover:bg-gray-100'}`}
+              title={screenshotCopied ? '已截屏' : screenshotLoading ? '截屏中...' : '截屏到剪贴板'}
+            >
+              <i className={`fas fa-${screenshotLoading ? 'spinner fa-spin' : screenshotCopied ? 'check text-green-500' : 'camera'}`}></i>
+            </button>
+            <button
               aria-label="关闭投资计划窗口"
               disabled={aiAdviceLoading}
               className={`w-8 h-8 rounded-full flex items-center justify-center ${aiAdviceLoading ? 'bg-gray-100 text-gray-300 cursor-not-allowed' : 'bg-gray-50 text-gray-400 hover:bg-gray-100'}`}
@@ -632,11 +756,11 @@ const InvestmentDraftModal: React.FC<InvestmentDraftModalProps> = ({
 
         <div className="px-6 flex-1 min-h-0 pb-1">
           <div className="border border-gray-100 rounded-xl overflow-hidden h-full flex flex-col">
-            <div className="overflow-hidden flex-1" style={{ overflowY: 'auto', paddingRight: '8px' }}>
+            <div className="overflow-hidden flex-1" style={{ overflowY: 'auto', scrollbarGutter: 'stable' }}>
               <table className="w-full text-sm">
                 <thead className="sticky top-0 z-10 bg-gray-50">
                   <tr className="border-b border-gray-200" style={{ height: '35px' }}>
-                    <th className="px-2 py-1 text-center text-xs font-semibold text-gray-500 min-w-[20px] w-[20px]">
+                    <th className="px-1 py-1 text-center text-xs font-semibold text-gray-500 min-w-[16px] w-[16px]">
                       <input
                         type="checkbox"
                         checked={(() => {
@@ -651,7 +775,7 @@ const InvestmentDraftModal: React.FC<InvestmentDraftModalProps> = ({
                         title="全选/取消全选有金额的记录"
                       />
                     </th>
-                    <th className="px-1 py-1 text-center text-xs font-semibold text-gray-500 min-w-[20px] w-[20px]"></th>
+                    <th className="px-0 py-1 text-center text-xs font-semibold text-gray-500 min-w-[16px] w-[16px]"></th>
                     <th className="px-2 py-1 text-left text-xs font-semibold text-gray-500 min-w-[140px] w-[140px]">基金名称</th>
                     <th className="px-2 py-1 text-left text-xs font-semibold text-gray-500 min-w-[90px] w-[90px]">实时估值</th>
                     <th className="px-2 py-1 text-left text-xs font-semibold text-gray-500 min-w-[90px] w-[90px]">前值</th>
@@ -689,7 +813,7 @@ const InvestmentDraftModal: React.FC<InvestmentDraftModalProps> = ({
                             )}
                           </td>
                           {/* 提示列 */}
-                          <td className="px-1 py-1 text-center">
+                          <td className="px-0 py-1 text-center">
                             {aiAdvice[fund.symbol] && (
                               <SimpleTooltip
                                 content={

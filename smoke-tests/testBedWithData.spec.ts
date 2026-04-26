@@ -1881,6 +1881,7 @@ test.describe('testBedWithData', () => {
         hasAiAssistBtn: !!document.querySelector('button[title="AI辅助"]'),
         hasAiAnalysisBtn: !!document.querySelector('button[title="AI分析"]'),
         hasCopyBtn: !!document.querySelector('button[title="复制内容到剪贴板"]'),
+        hasScreenshotBtn: !!document.querySelector('button[title="截屏到剪贴板"]'),
         aiIconRows: [] as { index: number; symbol: string; note: string }[],
         emptyNoteRows: [] as number[],
       };
@@ -1930,6 +1931,7 @@ test.describe('testBedWithData', () => {
     expect(initialCheck.hasAiAssistBtn).toBe(true);
     expect(initialCheck.hasAiAnalysisBtn).toBe(true);
     expect(initialCheck.hasCopyBtn).toBe(true);
+    expect(initialCheck.hasScreenshotBtn).toBe(true);
 
     // 验证有AI提示图标
     expect(initialCheck.aiIconRows.length).toBeGreaterThan(0);
@@ -2055,6 +2057,15 @@ test.describe('testBedWithData', () => {
       expect(clipboardContent).toContain('今日操作');
       expect(clipboardContent).toContain(checkboxRows[0].operation);
     }
+
+    // ══════════════════════════════════════════════════════════════════════════════
+    // 11. 截屏到剪贴板测试
+    // ══════════════════════════════════════════════════════════════════════════════
+    // 验证截屏按钮存在且可点击
+    const screenshotBtn = page.locator('button[title="截屏到剪贴板"]');
+    await expect(screenshotBtn).toBeVisible();
+    await expect(screenshotBtn).toBeEnabled();
+    console.log('截屏按钮验证完成');
 
     // ══════════════════════════════════════════════════════════════════════════════
     // 12-17. 详情窗口测试
