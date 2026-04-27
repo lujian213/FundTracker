@@ -424,9 +424,10 @@ const InvestmentDraftModal: React.FC<InvestmentDraftModalProps> = ({
       .map(entry => {
         const fund = portfolio.find(f => f.symbol === entry.fundSymbol);
         const fundName = fund?.name || entry.fundSymbol;
+        const fundCode = entry.fundSymbol;
         const amount = Number(entry.amount).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
         const shares = calculateShares(entry.fundSymbol);
-        return `${fundName}: ${entry.operation} ${amount}，预计份额 ${shares}`;
+        return `${fundName}（${fundCode}）: ${entry.operation} ${amount}，预计份额 ${shares}`;
       })
       .join('\n');
 
@@ -504,6 +505,53 @@ const InvestmentDraftModal: React.FC<InvestmentDraftModalProps> = ({
         cellElement.style.textOverflow = 'unset';
         cellElement.style.whiteSpace = 'nowrap';
         cellElement.style.maxWidth = 'none';
+      });
+
+      // 替换表单元素为文本显示（cloneNode不会复制表单值）
+      // 从原始表格获取表单值
+      const originalSelects = tableArea.querySelectorAll('select');
+      const originalInputs = tableArea.querySelectorAll('input[type="text"]');
+      const originalCheckboxes = tableArea.querySelectorAll('input[type="checkbox"]');
+
+      // 处理克隆的select元素 - 替换为显示选中值的文本
+      const clonedSelects = tableClone.querySelectorAll('select');
+      clonedSelects.forEach((select, idx) => {
+        if (idx < originalSelects.length) {
+          const originalValue = (originalSelects[idx] as HTMLSelectElement).value;
+          const displayValue = originalValue || '-';
+          const textSpan = document.createElement('span');
+          textSpan.textContent = displayValue;
+          textSpan.style.fontSize = '12px';
+          textSpan.style.color = '#374151';
+          select.parentNode?.replaceChild(textSpan, select);
+        }
+      });
+
+      // 处理克隆的input元素 - 替换为显示值的文本
+      const clonedInputs = tableClone.querySelectorAll('input[type="text"]');
+      clonedInputs.forEach((input, idx) => {
+        if (idx < originalInputs.length) {
+          const inputEl = originalInputs[idx] as HTMLInputElement;
+          const displayValue = inputEl.value || inputEl.placeholder || '';
+          const textSpan = document.createElement('span');
+          textSpan.textContent = displayValue;
+          textSpan.style.fontSize = '12px';
+          textSpan.style.color = displayValue ? '#374151' : '#9ca3af';
+          input.parentNode?.replaceChild(textSpan, input);
+        }
+      });
+
+      // 处理克隆的checkbox - 替换为勾选标记或空格
+      const clonedCheckboxes = tableClone.querySelectorAll('input[type="checkbox"]');
+      clonedCheckboxes.forEach((checkbox, idx) => {
+        if (idx < originalCheckboxes.length) {
+          const checkboxEl = originalCheckboxes[idx] as HTMLInputElement;
+          const textSpan = document.createElement('span');
+          textSpan.textContent = checkboxEl.checked ? '✓' : '-';
+          textSpan.style.fontSize = '10px';
+          textSpan.style.color = checkboxEl.checked ? '#22c55e' : '#d1d5db';
+          checkbox.parentNode?.replaceChild(textSpan, checkbox);
+        }
       });
 
       tempContainer.appendChild(tableClone);

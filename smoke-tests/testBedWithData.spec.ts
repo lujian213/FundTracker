@@ -2036,12 +2036,17 @@ test.describe('testBedWithData', () => {
     // ══════════════════════════════════════════════════════════════════════════════
     // 重新查找有checkbox的行（因为之前操作可能改变了状态）
     const checkboxRows = await tableRows.evaluateAll(rows => {
-      const result: { index: number; operation: string }[] = [];
+      const result: { index: number; operation: string; symbol: string; fundName: string }[] = [];
       for (let i = 0; i < rows.length; i++) {
         const checkbox = rows[i].querySelector('td:nth-child(1) input[type="checkbox"]');
         const operationSelect = rows[i].querySelector('td:nth-child(7) select') as HTMLSelectElement;
+        const symbolCell = rows[i].querySelector('td:nth-child(3)');
+        const fundName = symbolCell?.textContent?.trim() || '';
+        // 提取基金代码（假设格式为 "基金名称" 或包含代码）
+        const symbolMatch = fundName.match(/\d{6}/);
+        const symbol = symbolMatch ? symbolMatch[0] : '';
         if (checkbox && operationSelect?.value !== '不操作') {
-          result.push({ index: i, operation: operationSelect.value });
+          result.push({ index: i, operation: operationSelect.value, symbol, fundName });
         }
       }
       return result;
@@ -2056,6 +2061,10 @@ test.describe('testBedWithData', () => {
       const clipboardContent = await page.evaluate(() => navigator.clipboard.readText());
       expect(clipboardContent).toContain('今日操作');
       expect(clipboardContent).toContain(checkboxRows[0].operation);
+
+      // 验证格式包含基金代码，例如：基金名称（代码）
+      expect(clipboardContent).toMatch(/\（\d{6}\）/);
+      console.log('复制到剪贴板验证完成：格式包含基金代码');
     }
 
     // ══════════════════════════════════════════════════════════════════════════════
