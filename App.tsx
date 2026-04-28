@@ -344,6 +344,8 @@ const AppContent: React.FC = () => {
   const [isInvestmentDraftModalOpen, setIsInvestmentDraftModalOpen] = useState<boolean>(false);
   const [selectedItems, setSelectedItems] = useState<Set<ManageSelectionKey>>(new Set());
   const [backgroundTasks, setBackgroundTasks] = useState<number>(0);
+  // 历史数据更新计数器，用于触发 fundHistories useMemo 重新计算
+  const [historyUpdateCount, setHistoryUpdateCount] = useState<number>(0);
 
   // Per-symbol card status for funds (keyed by symbol) and indices (keyed by normalized symbol)
   const [fundStatuses, setFundStatuses] = useState<Record<string, CardStatus>>({});
@@ -581,8 +583,13 @@ const AppContent: React.FC = () => {
           setBackgroundTasks(prev => prev + 1);
           maybeTriggerHistoryRefresh(symbol, enhancedData.netWorthDate).finally(() => {
             setBackgroundTasks(prev => Math.max(0, prev - 1));
+            // 历史数据可能已更新，触发 fundHistories 重新计算
+            setHistoryUpdateCount(prev => prev + 1);
           });
-        } catch (e) { setBackgroundTasks(prev => Math.max(0, prev - 1)); }
+        } catch (e) {
+          setBackgroundTasks(prev => Math.max(0, prev - 1));
+          setHistoryUpdateCount(prev => prev + 1);
+        }
 
         // 调用进度回调（如果提供）
         if (onProgress) onProgress();
@@ -641,7 +648,10 @@ const AppContent: React.FC = () => {
     if (targets.length === 0) return { success: true, data: undefined };
 
     const symbols = targets.map(t => t.symbol);
-    return await forceFetchFundHistories(symbols, onProgress);
+    const result = await forceFetchFundHistories(symbols, onProgress);
+    // 历史数据已更新，触发 fundHistories 重新计算
+    setHistoryUpdateCount(prev => prev + 1);
+    return result;
   }, []);
 
   const refreshMarketIndicesAsync = useCallback(async (ignoreCache: boolean = false, onProgress?: () => void): Promise<JobResult<MarketIndex[]>> => {
@@ -1006,7 +1016,7 @@ const AppContent: React.FC = () => {
       }
     });
     return result;
-  }, [portfolio]);
+  }, [portfolio, historyUpdateCount]);
 
   // 从 indexService 获取指数历史数据
   const indexHistories = useMemo(() => {
@@ -1234,6 +1244,7 @@ const AppContent: React.FC = () => {
                   isSelectionMode={isSelectionMode}
                   isSelected={selectedItems.has(selectionKey)}
                   onSelect={() => toggleSelection(selectionKey)}
+                  historyUpdateTrigger={historyUpdateCount}
                 />
               );
             })}

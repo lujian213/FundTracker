@@ -20,6 +20,8 @@ interface TickerCardProps {
   isSelectionMode?: boolean;
   isSelected?: boolean;
   onSelect?: () => void;
+  // 历史数据更新触发器，变化时重新获取历史数据
+  historyUpdateTrigger?: number;
   // optional injection for easier testing
   fetchHistory?: (symbol: string) => Promise<{ date: number; value: number; equityReturn: number }[]>;
 }
@@ -32,6 +34,7 @@ export const TickerCard: React.FC<TickerCardProps> = ({
   isSelectionMode = false,
   isSelected = false,
   onSelect,
+  historyUpdateTrigger,
   fetchHistory
 }) => {
   const [history, setHistory] = useState<{ date: number; value: number; equityReturn: number }[]>([]);
@@ -51,7 +54,7 @@ export const TickerCard: React.FC<TickerCardProps> = ({
     };
     load();
     return () => { mounted = false; };
-  }, [ticker.symbol, fetchFn]);
+  }, [ticker.symbol, fetchFn, historyUpdateTrigger]);
 
   const intradayPoints = useMemo(() => getIntraday(ticker.symbol), [ticker.symbol, data?.lastUpdated]);
   const sparkline = useMemo(() => buildSparklinePath(intradayPoints), [intradayPoints]);
