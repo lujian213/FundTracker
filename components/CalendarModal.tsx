@@ -288,7 +288,7 @@ export const CalendarModal: React.FC<CalendarModalProps> = ({
                   {/* 事件列表 - pointer-events-none确保日期格子的tooltip能正常显示 */}
                   {events.length > 0 && day > 0 && (
                     <div className="w-full flex flex-col mt-0.5 overflow-hidden pointer-events-none">
-                      {events.slice(0, 4).map((event, eIdx) => (
+                      {events.slice(0, 5).map((event, eIdx) => (
                         <div
                           key={eIdx}
                           className="flex items-center gap-px text-[10px] leading-none whitespace-nowrap overflow-hidden"
@@ -298,8 +298,17 @@ export const CalendarModal: React.FC<CalendarModalProps> = ({
                           <span className="truncate">{event.content}</span>
                         </div>
                       ))}
-                      {events.length > 4 && (
-                        <span className="text-[9px] text-gray-400">+{events.length - 4}</span>
+                      {events.length > 6 && (
+                        <span className="text-[9px] text-gray-400">+{events.length - 5}</span>
+                      )}
+                      {events.length === 6 && (
+                        <div
+                          className="flex items-center gap-px text-[10px] leading-none whitespace-nowrap overflow-hidden"
+                        >
+                          <span className={isHolidayType(events[5].type) ? 'text-red-500 flex-shrink-0' : 'text-amber-500 flex-shrink-0'}>●</span>
+                          {events[5].market && <span className="text-gray-400 text-[9px] flex-shrink-0">{events[5].market}</span>}
+                          <span className="truncate">{events[5].content}</span>
+                        </div>
                       )}
                     </div>
                   )}
