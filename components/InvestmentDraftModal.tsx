@@ -587,6 +587,15 @@ const InvestmentDraftModal: React.FC<InvestmentDraftModalProps> = ({
         rowElement.style.minHeight = '32px';
       });
 
+      // 修复表头 sticky 定位：移除 sticky，让表头回到正常位置
+      const clonedHeader = tableClone.querySelector('thead');
+      if (clonedHeader) {
+        const headerElement = clonedHeader as HTMLElement;
+        headerElement.style.position = 'relative';
+        headerElement.style.top = 'auto';
+        headerElement.style.zIndex = 'auto';
+      }
+
       // 修复单元格内容截断：移除 truncate 类的效果
       const truncatedCells = tableClone.querySelectorAll('.truncate');
       truncatedCells.forEach(cell => {

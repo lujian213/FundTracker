@@ -22,13 +22,7 @@
 
 ## 公共函数使用规范
 * 需要常用字符串处理、日期格式化等功能时，优先查找 `utils/` 目录下是否已有可复用的公共函数。
-* 常用公共函数位置：
-  - `utils/priceResolver.ts`：`toLocalDateKey()` - 日期转 YYYY-MM-DD 字符串
-  - `utils/dateFormat.ts`：`formatDateDisplay()`、`formatDateISO()`、`formatTime()` 等日期时间格式化函数
-  - `utils/format.ts`：`formatMoney()`、`formatMoneyWithSeparators()` 等金额格式化函数
-  - `utils/historyHelper.ts`：`getPreviousDayChange()` - 根据估值日期获取前一交易日涨跌幅
 * 如果找到功能相似但不完全匹配的公共函数，考虑扩展或改造该函数使其可复用，而不是新建一个功能重复的函数。
-* 新增公共函数时，应放在合适的 utils 文件中并导出，同时在此处记录。
 
 ## 调试要求
 * 项目调试过程中，有可能为了方便调试而添加一些临时代码，在这些临时代码的前后做上明显的标记（如注释），方便后续的删除。
