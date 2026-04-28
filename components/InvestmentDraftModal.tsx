@@ -489,6 +489,96 @@ const InvestmentDraftModal: React.FC<InvestmentDraftModalProps> = ({
         }
       }
 
+      // 获取原始表格中被选中的行索引
+      const originalTbody = tableArea.querySelector('tbody');
+      const originalRows = originalTbody?.querySelectorAll('tr') || [];
+      const selectedRowIndices: number[] = [];
+      originalRows.forEach((row, idx) => {
+        const checkbox = row.querySelector('td:nth-child(1) input[type="checkbox"]') as HTMLInputElement;
+        if (checkbox && checkbox.checked) {
+          selectedRowIndices.push(idx);
+        }
+      });
+
+      // 如果有选中的行，只保留选中的行
+      const clonedTbody = tableClone.querySelector('tbody');
+      const clonedRows = clonedTbody?.querySelectorAll('tr') || [];
+
+      if (selectedRowIndices.length > 0) {
+        // 移除未被选中的行
+        clonedRows.forEach((row, idx) => {
+          if (!selectedRowIndices.includes(idx)) {
+            row.remove();
+          }
+        });
+
+        // 移除表头中的复选框列（第一列）
+        const clonedHeader = tableClone.querySelector('thead tr');
+        const headerFirstTh = clonedHeader?.querySelector('th:nth-child(1)');
+        if (headerFirstTh) {
+          headerFirstTh.remove();
+        }
+
+        // 移除每行中的复选框列（第一列td）
+        const remainingRows = clonedTbody?.querySelectorAll('tr') || [];
+        remainingRows.forEach(row => {
+          const firstTd = row.querySelector('td:nth-child(1)');
+          if (firstTd) {
+            firstTd.remove();
+          }
+        });
+
+        // 移除提示列（第二列，原来的第2列现在是第1列）
+        const headerSecondTh = clonedHeader?.querySelector('th:nth-child(1)');
+        if (headerSecondTh) {
+          headerSecondTh.remove();
+        }
+        remainingRows.forEach(row => {
+          const secondTd = row.querySelector('td:nth-child(1)');
+          if (secondTd) {
+            secondTd.remove();
+          }
+        });
+
+        // 移除最后2列（注释列和操作按钮列）
+        // 表头移除最后2列
+        const headerThs = clonedHeader?.querySelectorAll('th');
+        if (headerThs && headerThs.length >= 2) {
+          headerThs[headerThs.length - 1]?.remove(); // 操作按钮列
+          headerThs[headerThs.length - 2]?.remove(); // 注释列
+        }
+        // 每行移除最后2列
+        remainingRows.forEach(row => {
+          const tds = row.querySelectorAll('td');
+          if (tds.length >= 2) {
+            tds[tds.length - 1]?.remove(); // 操作按钮列
+            tds[tds.length - 2]?.remove(); // 注释列
+          }
+        });
+
+        // 在基金名称列后插入"代码"列
+        // 表头：在基金名称（第1列）后插入
+        const headerFundNameTh = clonedHeader?.querySelector('th:nth-child(1)');
+        if (headerFundNameTh) {
+          const codeTh = document.createElement('th');
+          codeTh.className = 'px-2 py-1 text-left text-xs font-semibold text-gray-500 min-w-[70px] w-[70px]';
+          codeTh.textContent = '代码';
+          headerFundNameTh.after(codeTh);
+        }
+
+        // 每行：在基金名称（第1列td）后插入代码
+        remainingRows.forEach((row, rowIdx) => {
+          const fundNameTd = row.querySelector('td:nth-child(1)');
+          if (fundNameTd && selectedRowIndices[rowIdx] !== undefined) {
+            const fund = fundsWithPositions[selectedRowIndices[rowIdx]];
+            const codeTd = document.createElement('td');
+            codeTd.className = 'px-2 py-1 text-left text-xs text-gray-500 font-mono';
+            codeTd.textContent = fund?.symbol || '';
+            fundNameTd.after(codeTd);
+          }
+        });
+      }
+
       // 修复表格行高度：移除固定高度，改为 auto
       const tableRows = tableClone.querySelectorAll('tr');
       tableRows.forEach(row => {
@@ -508,56 +598,78 @@ const InvestmentDraftModal: React.FC<InvestmentDraftModalProps> = ({
       });
 
       // 替换表单元素为文本显示（cloneNode不会复制表单值）
-      // 从原始表格获取表单值
-      const originalSelects = tableArea.querySelectorAll('select');
-      const originalInputs = tableArea.querySelectorAll('input[type="text"]');
-      const originalCheckboxes = tableArea.querySelectorAll('input[type="checkbox"]');
+      // 根据选中行索引从原始表格获取对应行的表单值
+      // （originalTbody 和 originalRows 已在上面定义）
 
-      // 处理克隆的select元素 - 替换为显示选中值的文本
-      const clonedSelects = tableClone.querySelectorAll('select');
-      clonedSelects.forEach((select, idx) => {
-        if (idx < originalSelects.length) {
-          const originalValue = (originalSelects[idx] as HTMLSelectElement).value;
-          const displayValue = originalValue || '-';
+      // 获取克隆表格中的行
+      const clonedRowsForForm = clonedTbody?.querySelectorAll('tr') || [];
+
+      // 遍历克隆表格的每一行，从对应的原始行获取表单值
+      clonedRowsForForm.forEach((clonedRow, clonedIdx) => {
+        const originalRowIndex = selectedRowIndices[clonedIdx];
+        if (originalRowIndex === undefined) return;
+
+        const originalRow = originalRows[originalRowIndex];
+        if (!originalRow) return;
+
+        // 从原始行获取select值（操作列）
+        const originalSelect = originalRow.querySelector('select') as HTMLSelectElement;
+        const clonedSelect = clonedRow.querySelector('select');
+        if (originalSelect && clonedSelect) {
+          const displayValue = originalSelect.value || '-';
           const textSpan = document.createElement('span');
           textSpan.textContent = displayValue;
           textSpan.style.fontSize = '12px';
           textSpan.style.color = '#374151';
-          select.parentNode?.replaceChild(textSpan, select);
+          clonedSelect.parentNode?.replaceChild(textSpan, clonedSelect);
         }
-      });
 
-      // 处理克隆的input元素 - 替换为显示值的文本
-      const clonedInputs = tableClone.querySelectorAll('input[type="text"]');
-      clonedInputs.forEach((input, idx) => {
-        if (idx < originalInputs.length) {
-          const inputEl = originalInputs[idx] as HTMLInputElement;
-          const displayValue = inputEl.value || inputEl.placeholder || '';
-          const textSpan = document.createElement('span');
-          textSpan.textContent = displayValue;
-          textSpan.style.fontSize = '12px';
-          textSpan.style.color = displayValue ? '#374151' : '#9ca3af';
-          input.parentNode?.replaceChild(textSpan, input);
-        }
-      });
-
-      // 处理克隆的checkbox - 替换为勾选标记或空格
-      const clonedCheckboxes = tableClone.querySelectorAll('input[type="checkbox"]');
-      clonedCheckboxes.forEach((checkbox, idx) => {
-        if (idx < originalCheckboxes.length) {
-          const checkboxEl = originalCheckboxes[idx] as HTMLInputElement;
-          const textSpan = document.createElement('span');
-          textSpan.textContent = checkboxEl.checked ? '✓' : '-';
-          textSpan.style.fontSize = '10px';
-          textSpan.style.color = checkboxEl.checked ? '#22c55e' : '#d1d5db';
-          checkbox.parentNode?.replaceChild(textSpan, checkbox);
-        }
+        // 从原始行获取input值（金额列）
+        const originalInputsInRow = originalRow.querySelectorAll('input[type="text"]');
+        const clonedInputsInRow = clonedRow.querySelectorAll('input[type="text"]');
+        clonedInputsInRow.forEach((clonedInput, inputIdx) => {
+          if (inputIdx < originalInputsInRow.length) {
+            const originalInput = originalInputsInRow[inputIdx] as HTMLInputElement;
+            const displayValue = originalInput.value || '';
+            const textSpan = document.createElement('span');
+            textSpan.textContent = displayValue;
+            textSpan.style.fontSize = '12px';
+            textSpan.style.color = displayValue ? '#374151' : '#9ca3af';
+            clonedInput.parentNode?.replaceChild(textSpan, clonedInput);
+          }
+        });
       });
 
       tempContainer.appendChild(tableClone);
 
-      // 复制汇总区域
+      // 复制汇总区域并根据选中行更新统计数据
       const summaryClone = summaryArea.cloneNode(true) as HTMLElement;
+      if (selectedRowIndices.length > 0) {
+        // 计算选中行的买入/卖出统计
+        let buyCount = 0, sellCount = 0, buyTotal = 0, sellTotal = 0;
+        selectedRowIndices.forEach(idx => {
+          const entry = draftData[fundsWithPositions[idx]?.symbol];
+          if (entry) {
+            if (entry.operation === '买入' && entry.amount) {
+              buyCount++;
+              buyTotal += parseFloat(entry.amount) || 0;
+            } else if (entry.operation === '卖出' && entry.amount) {
+              sellCount++;
+              sellTotal += parseFloat(entry.amount) || 0;
+            }
+          }
+        });
+
+        // 更新汇总区域的内容
+        const summarySpans = summaryClone.querySelectorAll('span');
+        summarySpans.forEach(span => {
+          if (span.textContent?.includes('买入')) {
+            span.textContent = `买入：${buyCount}只 / ${formatMoneyWithSeparators(buyTotal, 2)}`;
+          } else if (span.textContent?.includes('卖出')) {
+            span.textContent = `卖出：${sellCount}只 / ${formatMoneyWithSeparators(sellTotal, 2)}`;
+          }
+        });
+      }
       tempContainer.appendChild(summaryClone);
 
       document.body.appendChild(tempContainer);
