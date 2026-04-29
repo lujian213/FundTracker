@@ -19,6 +19,8 @@ import {
   saveSyncConfig,
   getSyncFilterConfig,
   saveSyncFilterConfig,
+  getSystemParams,
+  saveSystemParams,
 } from '../services/systemConfigService';
 import type { BackupConfigSection, SyncFilterConfigSection } from '../types/systemConfigTypes';
 import { INDEX_NAME_MAP, saveAllIndexInfos } from '../services/indexService';
@@ -112,14 +114,16 @@ export async function buildBackupData(
     }));
   });
 
-  // 5. config - including sync filter config (not sync credentials)
+  // 5. config - including sync filter config and systemParams
   const backupConfig = getBackupConfig();
   const syncFilterConfig = getSyncFilterConfig();
+  const systemParams = getSystemParams();
 
   // 合并配置
   const config: BackupConfig = {
     ...backupConfig,
-    syncFilterConfig: syncFilterConfig || undefined
+    syncFilterConfig: syncFilterConfig || undefined,
+    systemParams,
   };
 
   // 4. comboTrades - 从 appDataService 读取（使用新 key）
@@ -324,7 +328,7 @@ export async function applyBackupData(imported: BackupData): Promise<AppliedData
     setTradesForSymbol(sym, normalizedTrades);
   });
 
-  // ── 9. Write config including sync filter config ────────────────────────────────────
+  // ── 9. Write config including sync filter config and systemParams ────────────────────────────────────
   if (imported.config) {
     // 保存备份配置到新的统一配置服务
     try {
@@ -338,6 +342,13 @@ export async function applyBackupData(imported: BackupData): Promise<AppliedData
     if (imported.config.syncFilterConfig) {
       try {
         saveSyncFilterConfig(imported.config.syncFilterConfig);
+      } catch { /* ignore */ }
+    }
+
+    // 恢复系统参数
+    if (imported.config.systemParams) {
+      try {
+        saveSystemParams(imported.config.systemParams);
       } catch { /* ignore */ }
     }
   }

@@ -7,8 +7,12 @@ __tests__/
 .claude/
 debug/
 docs/
-scripts/
+# scripts/ 目录保留，prepare-tesseract.cjs 需要提交
 .superpowers/
 # Playwright test outputs
 playwright-report/
 test-results/
+# Tesseract.js 本地资源（通过 prepare-tesseract.cjs 脚本准备）
+public/tessdata/
+public/tesseract/
+public/tesseract-core/

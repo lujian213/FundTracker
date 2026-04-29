@@ -10,9 +10,10 @@
     "test": "jest",
     "test:watch": "jest --watch",
     "test:coverage": "jest --coverage",
-    "smoke": "playwright test",
+    "smoke": "npm run prepare:tesseract && playwright test",
     "smoke:ui": "playwright test --ui",
-    "check:version": "node scripts/validate-version.cjs"
+    "check:version": "node scripts/validate-version.cjs",
+    "prepare:tesseract": "node scripts/prepare-tesseract.cjs"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",
@@ -26,7 +27,8 @@
     "react-dom": "^18.2.0",
     "react-markdown": "^10.1.0",
     "rehype-raw": "^7.0.0",
-    "remark-gfm": "^4.0.1"
+    "remark-gfm": "^4.0.1",
+    "tesseract.js": "^7.0.0"
   },
   "devDependencies": {
     "@playwright/test": "^1.59.1",

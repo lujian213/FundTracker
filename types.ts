@@ -246,11 +246,16 @@ export interface SyncFilterConfig {
   selectedTypes: string[];
 }
 
+export interface SystemParamsSection {
+  ocrConcurrency: number;  // OCR 并发数量，默认 3，范围 1-8
+}
+
 export interface BackupConfig {
   autoExportTime: string;    // "HH:mm" local time, default "16:00"
   autoBackupEnabled?: boolean; // Whether auto backup is enabled, default false
   syncConfig?: SyncConfig;   // Synchronization configuration
   syncFilterConfig?: SyncFilterConfig; // Sync confirmation modal filter settings
+  systemParams?: SystemParamsSection; // 系统参数（可选以兼容旧备份）
 }
 
 export interface BackupData {

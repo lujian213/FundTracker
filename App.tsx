@@ -33,6 +33,10 @@ import CalendarModal from './components/CalendarModal';
 import CalendarEventTooltip from './components/CalendarEventTooltip';
 import JobLogModal from './components/JobLogModal';
 import SystemConfigModal from './components/SystemConfigModal';
+import { SmartAddButton } from './components/SmartAddButton';
+import { SmartAddProgressModal } from './components/SmartAddProgressModal';
+import { SmartAddResultModal } from './components/SmartAddResultModal';
+import { useSmartAddFunds } from './hooks/useSmartAddFunds';
 import { getAvailableStrategyKeys } from './services/strategyRegistry';
 import {
   buildBackupData, downloadBackupFile, applyBackupData,
@@ -380,6 +384,10 @@ const AppContent: React.FC = () => {
   const [showCalendarTooltip, setShowCalendarTooltip] = useState<boolean>(false);
   const [showJobLog, setShowJobLog] = useState<boolean>(false);
   const [showSyncConfirmation, setShowSyncConfirmation] = useState<boolean>(false);
+  // 智能添加流程状态
+  const { state: smartAddState, actions: smartAddActions } = useSmartAddFunds();
+  const [showSmartAddProgress, setShowSmartAddProgress] = useState<boolean>(false);
+  const [showSmartAddResult, setShowSmartAddResult] = useState<boolean>(false);
   const [syncErrorMessage, setSyncErrorMessage] = useState<string | null>(null);
   const [autoExportTime, setAutoExportTime] = useState<string>(() => readBackupConfig().autoExportTime);
   const [autoBackupEnabled, setAutoBackupEnabled] = useState<boolean>(() => readBackupConfig().autoBackupEnabled ?? false);
@@ -1301,7 +1309,24 @@ const AppContent: React.FC = () => {
       </div>
 
       {!isSelectionMode && (
-        <button onClick={() => setIsModalOpen(true)} className="fixed bottom-8 right-8 bg-red-600 text-white w-14 h-14 rounded-full shadow-2xl flex items-center justify-center hover:scale-110 active:scale-90 transition-all z-30"><i className="fas fa-plus text-xl"></i></button>
+        <>
+          {/* 智能添加按钮 - 在添加按钮左边 */}
+          <SmartAddButton onClick={async (files) => {
+            setShowSmartAddProgress(true);
+            await smartAddActions.processFiles(files);
+          }} />
+          {/* 添加基金/指数按钮 */}
+          <button
+            onClick={() => setIsModalOpen(true)}
+            className="fixed bottom-8 right-8 bg-red-600 text-white w-14 h-14 rounded-full shadow-2xl flex items-center justify-center hover:scale-110 active:scale-90 transition-all z-30 group"
+          >
+            <i className="fas fa-plus text-xl"></i>
+            {/* 上方提示 */}
+            <span className="absolute bottom-full mb-2 px-2 py-1 bg-gray-800 text-white text-xs rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none">
+              添加基金/指数
+            </span>
+          </button>
+        </>
       )}
 
       {isModalOpen && <AddTickerModal onClose={() => setIsModalOpen(false)} onAdd={async (symbols, type) => {
@@ -1512,6 +1537,45 @@ const AppContent: React.FC = () => {
           </div>
         </div>
       )}
+
+      {/* 智能添加进度窗口 */}
+      <SmartAddProgressModal
+        visible={showSmartAddProgress}
+        state={smartAddState}
+        onComplete={() => {
+          setShowSmartAddProgress(false);
+          if (smartAddState.funds.length > 0 || smartAddState.errors.length > 0) {
+            setShowSmartAddResult(true);
+          }
+        }}
+      />
+
+      {/* 智能添加结果窗口 */}
+      <SmartAddResultModal
+        visible={showSmartAddResult}
+        funds={smartAddState.funds}
+        errors={smartAddState.errors}
+        onClose={() => {
+          setShowSmartAddResult(false);
+          smartAddActions.reset();
+        }}
+        onConfirm={(selectedFunds) => {
+          smartAddActions.confirm(selectedFunds);
+          // 将新基金添加到 portfolio 并触发数据更新
+          const newFunds = selectedFunds
+            .filter(f => f.positionResult.operationType === 'add')
+            .map(f => ({
+              id: Math.random().toString(36).substr(2, 9),
+              symbol: f.ocrData.fundCode,
+              name: f.ocrData.fundName || f.ocrData.fundCode,
+              market: MarketType.FUND,
+            }));
+          if (newFunds.length > 0) {
+            setPortfolio(p => [...p, ...newFunds]);
+            runBatchUpdate(newFunds);
+          }
+        }}
+      />
     </div>
   );
 };

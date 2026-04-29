@@ -26,7 +26,7 @@ export default defineConfig({
   webServer: {
     command: 'npm run dev',
     url: 'http://localhost:3000',
-    reuseExistingServer: true,
+    reuseExistingServer: true,  // 复用已有的 dev server
     timeout: 120000,
   },
 });

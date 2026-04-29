@@ -43,6 +43,10 @@ export default defineConfig({
           if (id.includes('cron-parser')) {
             return 'cron-parser';
           }
+          // OCR 库（懒加载）
+          if (id.includes('tesseract.js') || id.includes('tesseract.js-core')) {
+            return 'tesseract';
+          }
           // AI 侧边栏组件（包含大量 markdown 渲染）
           if (id.includes('AISidePanelBase') || id.includes('AIPortfolioAnalysisModal')) {
             return 'ai-panels';
@@ -57,5 +61,9 @@ export default defineConfig({
   },
   server: {
     port: 3000,
+    fs: {
+      // Allow serving files from node_modules for tesseract.js
+      allow: ['..'],
+    },
   }
 });

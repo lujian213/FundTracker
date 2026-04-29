@@ -90,6 +90,8 @@ async function importMockData(page: Page, data: Record<string, string>): Promise
 
 test.describe('testBedWithData', () => {
   test.beforeAll(async ({ browser }) => {
+    // 设置更长的超时时间，因为 beforeAll 要做很多初始化工作
+    test.setTimeout(120000);
     // 一次性加载 mock 数据
     const mockData = loadLatestMockData();
     if (!mockData) {
@@ -153,16 +155,22 @@ test.describe('testBedWithData', () => {
     sharedPage = await sharedContext.newPage();
 
     // 拦截外部网络请求，阻止后台任务获取真实数据（但允许CSS/字体等静态资源）
-    await sharedPage.route('**/*', (route) => {
+    // 使用 context.route() 而不是 page.route()，这样可以拦截 web worker 的网络请求
+    await sharedContext.route('**/*', (route) => {
       const url = route.request().url();
-      // 允许本地资源、CSS CDN、字体和静态资源请求
+      // 允许本地资源、CSS CDN、字体、静态资源和 tesseract.js 文件请求
       if (url.startsWith('http://localhost') ||
           url.startsWith('ws://localhost') ||
           url.includes('/assets/') ||
+          url.includes('/tessdata/') ||         // 本地 tesseract 语言包
+          url.includes('/tesseract/') ||        // tesseract.js worker 文件
+          url.includes('/tesseract-core/') ||   // tesseract.js-core WASM 文件
           url.includes('cdn.tailwindcss.com') ||
           url.includes('cdnjs.cloudflare.com') ||
           url.includes('fonts.googleapis.com') ||
-          url.includes('fonts.gstatic.com')) {
+          url.includes('fonts.gstatic.com') ||
+          url.includes('cdn.jsdelivr.net') ||   // tesseract.js CDN 备用
+          url.includes('unpkg.com')) {          // tesseract.js CDN 备用
         route.continue();
       } else {
         // 阻止其他外部网络请求（如API数据请求）
@@ -704,15 +712,15 @@ test.describe('testBedWithData', () => {
     await expect(configModal).toBeVisible({ timeout: 5000 });
 
     // ══════════════════════════════════════════════════════════════════════════════
-    // 2. 验证左边显示5个选项
+    // 2. 验证左边显示6个选项
     // ══════════════════════════════════════════════════════════════════════════════
     const navItems = page.locator('nav button');
     const navCount = await navItems.count();
-    expect(navCount).toBe(5);
+    expect(navCount).toBe(6);
 
     // 验证导航项名称
-    const navLabels = ['备份管理', '同步管理', 'AI配置', '系统开关', '数据快照'];
-    for (let i = 0; i < 5; i++) {
+    const navLabels = ['备份管理', '同步管理', 'AI配置', '系统开关', '系统参数', '数据快照'];
+    for (let i = 0; i < 6; i++) {
       const navText = await navItems.nth(i).textContent();
       expect(navText).toContain(navLabels[i]);
     }
@@ -792,9 +800,9 @@ test.describe('testBedWithData', () => {
     const switchCount = await switchItems.count();
     expect(switchCount).toBe(2);
 
-    // 验证第一个开关（初始价格调整）是打开的
+    // 验证第一个开关（初始价格调整）是关闭的
     const firstSwitch = switchItems.first().locator('button[role="switch"]');
-    await expect(firstSwitch).toHaveAttribute('aria-checked', 'true');
+    await expect(firstSwitch).toHaveAttribute('aria-checked', 'false');
 
     // 验证第二个开关（后台任务日志）是打开的
     const secondSwitch = switchItems.nth(1).locator('button[role="switch"]');
@@ -804,21 +812,88 @@ test.describe('testBedWithData', () => {
     await secondSwitch.click();
     await expect(secondSwitch).toHaveAttribute('aria-checked', 'false', { timeout: 2000 });
 
-    // 关闭"初始价格调整"开关
+    // 打开"初始价格调整"开关
     await firstSwitch.click();
-    await expect(firstSwitch).toHaveAttribute('aria-checked', 'false', { timeout: 2000 });
+    await expect(firstSwitch).toHaveAttribute('aria-checked', 'true', { timeout: 2000 });
 
     console.log('系统开关验证完成');
 
     // ══════════════════════════════════════════════════════════════════════════════
-    // 6. 关闭系统配置窗口
+    // 6. 点击"系统参数"，验证ocrConcurrency参数
+    // ══════════════════════════════════════════════════════════════════════════════
+    await navItems.nth(4).click(); // 系统参数
+
+    // 验证系统参数标题显示
+    await expect(page.locator('h3:has-text("系统参数")')).toBeVisible({ timeout: 2000 });
+
+    // 验证有"OCR 并发数量"参数（定位到具体的行，排除外层容器）
+    const ocrConcurrencyRow = page.locator('div.flex.items-center.gap-2').filter({ has: page.locator('span:has-text("OCR 并发数量")') });
+    await expect(ocrConcurrencyRow).toBeVisible();
+
+    // 验证有小问号图标（蓝色）
+    const questionIcon = ocrConcurrencyRow.locator('i.fa-question-circle');
+    await expect(questionIcon).toBeVisible();
+
+    // hover小问号图标验证tooltip内容
+    await questionIcon.hover();
+    // 定位到包含OCR相关内容的tooltip
+    const tooltip = page.locator('span.bg-gray-800.text-white').filter({ hasText: '处理图片' });
+    await expect(tooltip).toBeVisible({ timeout: 2000 });
+    const tooltipText = await tooltip.textContent();
+    expect(tooltipText).toContain('数值越大处理越快');
+    expect(tooltipText).toContain('建议');
+
+    // 验证滑块控件存在且默认值为3
+    const slider = page.locator('input[type="range"]');
+    const sliderValue = await slider.inputValue();
+    expect(sliderValue).toBe('3');
+
+    // 验证范围提示显示1-8
+    const rangeHint = page.locator('text=范围: 1 - 8');
+    await expect(rangeHint).toBeVisible();
+
+    // 验证当前值显示为3
+    const currentValue = page.locator('text=当前: 3');
+    await expect(currentValue).toBeVisible();
+
+    console.log('系统参数验证完成');
+
+    // ══════════════════════════════════════════════════════════════════════════════
+    // 7. 点击"备份管理"，导出备份并验证ocrConcurrency值
+    // ══════════════════════════════════════════════════════════════════════════════
+    await navItems.nth(0).click(); // 备份管理
+
+    // 等待备份管理面板显示
+    await expect(page.locator('h3:has-text("自动备份")')).toBeVisible({ timeout: 2000 });
+
+    // 点击"导出备份"按钮
+    const exportButton = page.locator('button:has-text("导出备份")');
+    await expect(exportButton).toBeVisible();
+
+    // 监听下载事件
+    const downloadPromise = page.waitForEvent('download');
+    await exportButton.click();
+    const download = await downloadPromise;
+
+    // 读取下载的JSON文件内容（在 Node.js 环境中读取，不是浏览器环境）
+    const downloadPath = await download.path();
+    const content = fs.readFileSync(downloadPath, 'utf-8');
+    const backupContent = JSON.parse(content);
+
+    // 验证ocrConcurrency值为3
+    expect(backupContent.config.systemParams.ocrConcurrency).toBe(3);
+
+    console.log('导出备份验证完成');
+
+    // ══════════════════════════════════════════════════════════════════════════════
+    // 8. 关闭系统配置窗口
     // ══════════════════════════════════════════════════════════════════════════════
     const closeButton = page.locator('button[aria-label="关闭"]');
     await closeButton.click();
     await expect(configModal).not.toBeVisible();
 
     // ══════════════════════════════════════════════════════════════════════════════
-    // 7. 验证主界面上看不到后台任务日志的入口
+    // 9. 验证主界面上看不到后台任务日志的入口
     // ══════════════════════════════════════════════════════════════════════════════
     const jobLogButton = page.locator('button[title="后台任务日志"]');
     await expect(jobLogButton).not.toBeVisible();
@@ -1823,12 +1898,6 @@ test.describe('testBedWithData', () => {
       await expect(noAdviceMessage).toBeVisible();
       console.log('投顾窗口显示: 没有符合条件的投资建议');
     }
-
-    // ══════════════════════════════════════════════════════════════════════════════
-    // 5. 对页面进行快照供 review
-    // ══════════════════════════════════════════════════════════════════════════════
-    await page.screenshot({ path: 'test-results/investment-modal-screenshot.png', fullPage: true });
-    console.log('投顾窗口快照已保存: test-results/investment-modal-screenshot.png');
 
     // 验证没有报错（检查页面控制台是否有 JavaScript 错误）
     const hasPageError = await page.evaluate(() => {
@@ -5130,5 +5199,178 @@ test.describe('testBedWithData', () => {
     // ══════════════════════════════════════════════════════════════════════════════
     console.log(`最终状态: 基金=${fundCountAfterAdd}个, 大盘指数=${domesticCountAfterAdd}个, 全球指数=${globalCountAfterAdd}个`);
     console.log('主界面添加基金和指数测试完成');
+  });
+
+  // ══════════════════════════════════════════════════════════════════════════════
+  // 测试用例 100.6：主界面智能添加基金测试
+  // ══════════════════════════════════════════════════════════════════════════════
+  test('主界面智能添加基金测试', async () => {
+    const page = sharedPage!;
+    // 设置更长的超时时间（OCR 处理可能需要较长时间）
+    test.setTimeout(120000);
+
+    // ══════════════════════════════════════════════════════════════════════════════
+    // 1. 获取初始基金数量
+    // ══════════════════════════════════════════════════════════════════════════════
+    // 基金卡片使用 TickerCard 组件，渲染为 bg-white rounded-2xl 的 div
+    // 定位 main 区域内的 grid 容器中的基金卡片（排除指数卡片）
+    // 基金卡片特征：bg-white rounded-2xl，且有 symbol 文本（基金代码）
+    const mainGrid = page.locator('main > div.grid');
+    const initialFundCards = mainGrid.locator('> div').filter({
+      has: page.locator('p.text-gray-400.font-mono')  // 基金代码显示区域
+    });
+    const initialFundCount = await initialFundCards.count();
+    console.log(`初始基金数量: ${initialFundCount}`);
+
+    // 监听浏览器控制台日志（帮助诊断）
+    page.on('console', msg => {
+      if (msg.type() === 'error') {
+        console.log(`浏览器错误: ${msg.text()}`);
+      }
+    });
+
+    // 监听页面错误
+    page.on('pageerror', err => {
+      console.log(`页面错误: ${err.message}`);
+    });
+
+    // ══════════════════════════════════════════════════════════════════════════════
+    // 2. 点击智能添加基金按钮，选择文件
+    // ══════════════════════════════════════════════════════════════════════════════
+    // 智能添加按钮（固定在右下角）
+    const smartAddButton = page.locator('button:has(span:has-text("智能添加基金"))');
+    await expect(smartAddButton).toBeVisible({ timeout: 5000 });
+
+    // 获取隐藏的文件输入元素
+    const fileInput = page.locator('input[type="file"][accept="image/png,image/jpeg,image/jpg"][multiple]');
+    await expect(fileInput).toBeAttached();
+
+    // 设置选择的文件（__mocks__ 目录下的 fund3.jpg 和 error.jpg）
+    // 注意：Playwright 需要绝对路径或相对于项目根目录的路径
+    const fund3Path = path.join(process.cwd(), '__mocks__', 'fund3.jpg');
+    const errorPath = path.join(process.cwd(), '__mocks__', 'error.jpg');
+
+    await fileInput.setInputFiles([fund3Path, errorPath]);
+    console.log('已选择文件: fund3.jpg, error.jpg');
+
+    // ══════════════════════════════════════════════════════════════════════════════
+    // 3. 等待进度窗口出现并消失，结果窗口出现
+    // ══════════════════════════════════════════════════════════════════════════════
+    // 进度窗口标题："智能添加处理进度"
+    const progressModal = page.locator('h3:has-text("智能添加处理进度")');
+    // 等待进度窗口出现（最多 5 秒）
+    await expect(progressModal).toBeVisible({ timeout: 5000 });
+    console.log('进度窗口已出现');
+
+    // 检查进度窗口状态（帮助诊断）
+    const progressText = await page.locator('.relative.h-4 span').textContent();
+    console.log(`当前进度: ${progressText}`);
+
+    const processedCount = await page.locator('text=已处理：').locator('..').locator('span.font-medium').textContent();
+    console.log(`已处理数量: ${processedCount}`);
+
+    const successCount = await page.locator('text=成功：').locator('..').locator('span.font-medium').textContent();
+    console.log(`成功数量: ${successCount}`);
+
+    const failCount = await page.locator('text=失败：').locator('..').locator('span.font-medium').textContent();
+    console.log(`失败数量: ${failCount}`);
+
+    // 检查是否有当前处理文件
+    const currentFile = await page.locator('text=正在处理：').locator('..').locator('span.font-medium').textContent().catch(() => '无');
+    console.log(`正在处理文件: ${currentFile}`);
+
+    // 等待进度窗口关闭（OCR 处理需要时间，CDN下载语言文件可能较慢，最多 90 秒）
+    await expect(progressModal).not.toBeVisible({ timeout: 90000 });
+    console.log('进度窗口已关闭');
+
+    // 等待结果窗口出现
+    const resultModal = page.locator('h3:has-text("识别结果")');
+    await expect(resultModal).toBeVisible({ timeout: 5000 });
+    console.log('结果窗口已出现');
+
+    // ══════════════════════════════════════════════════════════════════════════════
+    // 4. 验证表格有一条成功记录（只匹配主表格，不包括总计行）
+    // ══════════════════════════════════════════════════════════════════════════════
+    // SmartAddResultModal 结构：
+    // - 结果窗口容器 .fixed.inset-0.z-[200]
+    // - .border-gray-100.rounded-xl 容器包含：滚动区域（主表格）+ 总计行（独立表格）
+    // - 滚动区域在 .border-gray-100.rounded-xl 内部，有 class "overflow-hidden flex-1"
+    // 使用更精确的定位：先定位结果窗口，再定位其内部的表格容器
+    const resultWindow = page.locator('.fixed.inset-0.z-\\[200\\]').filter({ has: resultModal });
+    const tableContainer = resultWindow.locator('.border-gray-100.rounded-xl');
+    const scrollArea = tableContainer.locator('.overflow-hidden.flex-1');
+    const tableRows = scrollArea.locator('table tbody tr');
+    const rowCount = await tableRows.count();
+    expect(rowCount).toBe(1);
+    console.log(`表格记录数量验证完成: ${rowCount}条`);
+
+    // ══════════════════════════════════════════════════════════════════════════════
+    // 5. 验证总计行显示"成功1个，失败1个"
+    // ══════════════════════════════════════════════════════════════════════════════
+    const totalRow = page.locator('td:has-text("解析成功")');
+    await expect(totalRow).toBeVisible();
+    const totalText = await totalRow.textContent();
+    expect(totalText).toContain('解析成功');
+    expect(totalText).toContain('1 个');
+    expect(totalText).toContain('失败');
+    expect(totalText).toContain('1 个');
+    console.log(`总计行验证完成: ${totalText}`);
+
+    // ══════════════════════════════════════════════════════════════════════════════
+    // 6. 验证错误信息区域显示一条错误信息
+    // ══════════════════════════════════════════════════════════════════════════════
+    const errorArea = page.locator('.bg-yellow-50');
+    await expect(errorArea).toBeVisible();
+    const errorText = await errorArea.textContent();
+    expect(errorText).toContain('识别失败');
+    expect(errorText).toContain('error.jpg');
+    console.log(`错误信息区域验证完成: ${errorText}`);
+
+    // ══════════════════════════════════════════════════════════════════════════════
+    // 7. 勾选表格中的记录
+    // ══════════════════════════════════════════════════════════════════════════════
+    const checkbox = tableRows.first().locator('input[type="checkbox"]');
+    await checkbox.check();
+    await expect(checkbox).toBeChecked();
+    console.log('已勾选表格记录');
+
+    // ══════════════════════════════════════════════════════════════════════════════
+    // 8. 点击确认按钮
+    // ══════════════════════════════════════════════════════════════════════════════
+    const confirmButton = page.locator('button:has-text("确认添加")');
+    await expect(confirmButton).toBeEnabled();
+    await confirmButton.click();
+    console.log('已点击确认按钮');
+
+    // 等待结果窗口关闭
+    await expect(resultModal).not.toBeVisible({ timeout: 5000 });
+    console.log('结果窗口已关闭');
+
+    // ══════════════════════════════════════════════════════════════════════════════
+    // 9. 验证主界面基金数量增加1个
+    // ══════════════════════════════════════════════════════════════════════════════
+    // 等待新基金卡片出现（React state 更新是异步的）
+    // 使用 waitForFunction 检查 localStorage 中是否有基金数据
+    // 基金数据存储在 'fund_all_funds_data' key 中
+    // fund3.jpg 图片中的基金代码是 161716（招商双债增强债券LOF）
+    await page.waitForFunction(() => {
+      const rawData = localStorage.getItem('fund_all_funds_data');
+      if (!rawData) return false;
+      try {
+        const funds = JSON.parse(rawData);
+        return Array.isArray(funds) && funds.some(f => f.info?.ticker?.symbol === '161716');
+      } catch {
+        return false;
+      }
+    }, { timeout: 10000 });
+    console.log('localStorage 已有基金数据');
+
+    // 等待基金卡片在 UI 中渲染出来
+    // 由于 React state 更新和重新渲染需要时间，使用 waitFor 等待基金卡片出现
+    await expect(initialFundCards).toHaveCount(initialFundCount + 1, { timeout: 5000 });
+    const finalFundCount = await initialFundCards.count();
+    console.log(`最终基金数量: ${finalFundCount}（增加1个）`);
+
+    console.log('主界面智能添加基金测试完成');
   });
 });

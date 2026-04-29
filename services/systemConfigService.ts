@@ -13,6 +13,7 @@ import {
   AIConfigManagerSection,
   AIConfigProfileSection,
   FeatureConfigSection,
+  SystemParamsSection,
   DEFAULT_SYSTEM_CONFIG,
 } from '../types/systemConfigTypes';
 import { STORAGE_KEYS, OLD_STORAGE_KEYS } from './storageKeys';
@@ -25,6 +26,7 @@ export type {
   AIConfigManagerSection,
   AIConfigProfileSection,
   FeatureConfigSection,
+  SystemParamsSection,
 };
 
 const STORAGE_KEY = STORAGE_KEYS.SYSTEM_CONFIG;
@@ -178,6 +180,31 @@ export function setFeatureEnabled(featureKey: keyof FeatureConfigSection, enable
   const features = getFeatureConfig();
   features[featureKey] = enabled;
   saveFeatureConfig(features);
+}
+
+export function getSystemParams(): SystemParamsSection {
+  const config = getCache();
+  return {
+    ocrConcurrency: config.systemParams?.ocrConcurrency ?? DEFAULT_SYSTEM_CONFIG.systemParams.ocrConcurrency,
+  };
+}
+
+export function saveSystemParams(params: SystemParamsSection): void {
+  const config = getCache();
+  // 校验范围
+  const validConcurrency = Math.max(1, Math.min(8, params.ocrConcurrency));
+  config.systemParams = {
+    ocrConcurrency: validConcurrency,
+  };
+  saveSystemConfig(config);
+}
+
+export function getOcrConcurrency(): number {
+  return getSystemParams().ocrConcurrency;
+}
+
+export function setOcrConcurrency(value: number): void {
+  saveSystemParams({ ocrConcurrency: value });
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════

@@ -9,6 +9,7 @@ export interface SystemConfig {
   sync: SyncConfigSection;
   ai: AIConfigSection;
   features: FeatureConfigSection;
+  systemParams: SystemParamsSection;
 }
 
 export interface BackupConfigSection {
@@ -53,6 +54,10 @@ export interface FeatureConfigSection {
   jobLogEnabled: boolean;
 }
 
+export interface SystemParamsSection {
+  ocrConcurrency: number; // OCR 并发数量，默认 3，范围 1-8
+}
+
 export const DEFAULT_SYSTEM_CONFIG: SystemConfig = {
   backup: {
     autoExportTime: '16:00',
@@ -72,5 +77,8 @@ export const DEFAULT_SYSTEM_CONFIG: SystemConfig = {
   features: {
     initialPriceAdjustmentEnabled: false,
     jobLogEnabled: false,
+  },
+  systemParams: {
+    ocrConcurrency: 3,
   },
 };
