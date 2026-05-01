@@ -39,6 +39,62 @@ async function checkLocalResourcesAvailable(): Promise<boolean> {
   }
 }
 
+/**
+ * 纯 OCR 识别，不进行解析
+ * 用于需要自定义解析逻辑的场景（如交易截图）
+ */
+export async function recognizeImageRaw(
+  imageFile: File,
+  onProgress?: (progress: number) => void
+): Promise<{ success: boolean; text: string; confidence: number; error?: string }> {
+  try {
+    const imageUrl = URL.createObjectURL(imageFile);
+
+    const logger = (m: any) => {
+      if (m.status === 'recognizing text' && onProgress) {
+        onProgress(Math.round(m.progress * 100));
+      }
+    };
+
+    const Tesseract = await getTesseract();
+    const useLocalResources = await checkLocalResourcesAvailable();
+
+    const tesseractConfig = useLocalResources
+      ? {
+          logger,
+          workerPath: '/tesseract/worker.min.js',
+          langPath: '/tessdata',
+          corePath: '/tesseract-core',
+          workerBlobURL: false,
+        }
+      : { logger };
+
+    const result = await Tesseract.recognize(
+      imageUrl,
+      'chi_sim+eng',
+      tesseractConfig
+    );
+
+    URL.revokeObjectURL(imageUrl);
+
+    const text = result.data.text;
+    const confidence = result.data.confidence;
+
+    return {
+      success: true,
+      text,
+      confidence,
+    };
+  } catch (err) {
+    return {
+      success: false,
+      text: '',
+      confidence: 0,
+      error: err instanceof Error ? err.message : 'OCR识别失败',
+    };
+  }
+}
+
 export async function recognizeImage(
   imageFile: File,
   onProgress?: (progress: number) => void

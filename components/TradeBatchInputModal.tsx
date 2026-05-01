@@ -520,7 +520,7 @@ const TradeBatchInputModal: React.FC<Props> = ({ onClose, onSaved, portfolio = [
               onClick={() => setPickerOpen(o => !o)}
               className="flex items-center space-x-2 px-4 py-2 rounded-xl border border-gray-200 bg-white text-sm font-medium text-gray-700 hover:border-blue-400 shadow-sm transition-colors"
             >
-              <i className="far fa-calendar-alt text-gray-400" />
+              <i className="far fa-calendar-alt text-blue-500" />
               <span>{selectedDateStr}</span>
               <i className={`fas fa-chevron-down text-xs text-gray-400 transition-transform ${pickerOpen ? 'rotate-180' : ''}`} />
             </button>

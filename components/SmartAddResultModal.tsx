@@ -2,11 +2,13 @@ import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { SmartAddFund, SmartAddError } from '../hooks/useSmartAddFunds';
 import { fmtNumber, fmtNav } from '../utils/format';
+import { isFeatureEnabled } from '../services/systemConfigService';
 
 interface SmartAddResultModalProps {
   visible: boolean;
   funds: SmartAddFund[];
   errors: SmartAddError[];
+  ocrRawTexts: Record<string, string>;  // DEBUG: 文件名 -> OCR原始文本
   onClose: () => void;
   onConfirm: (selectedFunds: SmartAddFund[]) => void;
 }
@@ -21,6 +23,7 @@ export function SmartAddResultModal({
   visible,
   funds,
   errors,
+  ocrRawTexts,
   onClose,
   onConfirm,
 }: SmartAddResultModalProps) {
@@ -118,9 +121,9 @@ export function SmartAddResultModal({
           </button>
         </div>
 
-        <div className="px-5 py-4 flex-1 min-h-0">
-          <div className="border border-gray-100 rounded-xl overflow-hidden h-full flex flex-col">
-            <div className="overflow-hidden flex-1" style={{ overflowY: 'auto', scrollbarGutter: 'stable' }}>
+        <div className="px-5 py-4 flex-1 min-h-0 overflow-y-auto">
+          <div className="border border-gray-100 rounded-xl overflow-hidden" style={{ height: '300px' }}>
+            <div className="h-full overflow-y-auto" style={{ scrollbarGutter: 'stable' }}>
               <table className="w-full text-sm">
                 <thead className="sticky top-0 z-10 bg-gray-50">
                   <tr className="border-b border-gray-200" style={{ height: '35px' }}>
@@ -245,6 +248,35 @@ export function SmartAddResultModal({
               )}
             </div>
           </div>
+
+          {/* DEBUG: OCR原始文本输出 - 受系统开关控制 */}
+          {isFeatureEnabled('ocrDebugPanelEnabled') && Object.keys(ocrRawTexts).length > 0 && (
+            <div className="mt-4 bg-gray-100 border border-gray-300 rounded-lg p-3">
+              <div className="flex justify-between items-center mb-2">
+                <span className="text-sm font-medium text-gray-700">OCR原始文本（调试）</span>
+                <button
+                  onClick={() => {
+                    const text = Object.entries(ocrRawTexts)
+                      .map(([file, text]) => `=== ${file} ===\n${text}`)
+                      .join('\n\n');
+                    navigator.clipboard.writeText(text);
+                  }}
+                  className="text-xs text-blue-500 hover:text-blue-700"
+                >
+                  复制全部
+                </button>
+              </div>
+              <div className="overflow-y-auto max-h-[150px] text-xs text-gray-600 whitespace-pre-wrap font-mono">
+                {Object.entries(ocrRawTexts)
+                  .map(([file, text]) => (
+                    <div key={file} className="mb-2">
+                      <div className="font-bold text-gray-800">{file}：</div>
+                      <div>{text}</div>
+                    </div>
+                  ))}
+              </div>
+            </div>
+          )}
         </div>
 
         <div className="px-5 py-4 border-t border-gray-100 flex justify-end flex-shrink-0">

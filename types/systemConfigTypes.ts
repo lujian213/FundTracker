@@ -52,6 +52,7 @@ export interface AIConfigProfileSection {
 export interface FeatureConfigSection {
   initialPriceAdjustmentEnabled: boolean;
   jobLogEnabled: boolean;
+  ocrDebugPanelEnabled: boolean;  // OCR调试面板开关，默认关闭
 }
 
 export interface SystemParamsSection {
@@ -77,6 +78,7 @@ export const DEFAULT_SYSTEM_CONFIG: SystemConfig = {
   features: {
     initialPriceAdjustmentEnabled: false,
     jobLogEnabled: false,
+    ocrDebugPanelEnabled: false,
   },
   systemParams: {
     ocrConcurrency: 3,

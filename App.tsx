@@ -1555,6 +1555,7 @@ const AppContent: React.FC = () => {
         visible={showSmartAddResult}
         funds={smartAddState.funds}
         errors={smartAddState.errors}
+        ocrRawTexts={smartAddState.ocrRawTexts}
         onClose={() => {
           setShowSmartAddResult(false);
           smartAddActions.reset();

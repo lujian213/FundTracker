@@ -7,7 +7,7 @@
  */
 
 import {
-  BackupData, BackupFund, BackupIndex, BackupPosition, BackupTrade, BackupConfig,
+  BackupData, BackupFund, BackupIndex, FundPosition, TradeRecord, BackupConfig,
   ComboTrade, ComboTradeRecord
 } from '../types';
 import { readAll as readAllTrades, setTradesForSymbol } from '../hooks/useTrades';
@@ -21,6 +21,8 @@ import {
   saveSyncFilterConfig,
   getSystemParams,
   saveSystemParams,
+  getFeatureConfig,
+  saveFeatureConfig,
 } from '../services/systemConfigService';
 import type { BackupConfigSection, SyncFilterConfigSection } from '../types/systemConfigTypes';
 import { INDEX_NAME_MAP, saveAllIndexInfos } from '../services/indexService';
@@ -84,25 +86,21 @@ export async function buildBackupData(
   const backupIndices: BackupIndex[] = indicesConfig.map(s => toBackupIndex(s));
 
   // 3. positions — 从 marketFundService 获取（已统一到 MarketFund）
-  const positions: Record<string, BackupPosition> = {};
+  const positions: Record<string, FundPosition> = {};
   const allFundSymbols = marketFundService.getAllFundSymbols();
   allFundSymbols.forEach(sym => {
     const pos = marketFundService.getPosition(sym);
     if (pos) {
       positions[sym] = {
-        fullCapacity: pos.fullCapacity || 0,
-        initialPosition: pos.initialPosition || 0,
-        startDate: pos.startDate ?? null,
-        initialPrice: pos.initialPrice === null || pos.initialPrice === undefined
-          ? null
-          : Number(pos.initialPrice),
+        ...pos,
+        initialPrice: pos.initialPrice ?? null,
       };
     }
   });
 
   // 4. trades — from fund_trades
   const rawTrades = readAllTrades();
-  const trades: Record<string, BackupTrade[]> = {};
+  const trades: Record<string, TradeRecord[]> = {};
   Object.entries(rawTrades).forEach(([sym, arr]) => {
     trades[sym] = arr.map((t: any) => ({
       id: t.id,
@@ -114,16 +112,18 @@ export async function buildBackupData(
     }));
   });
 
-  // 5. config - including sync filter config and systemParams
+  // 5. config - including sync filter config, systemParams and features
   const backupConfig = getBackupConfig();
   const syncFilterConfig = getSyncFilterConfig();
   const systemParams = getSystemParams();
+  const features = getFeatureConfig();
 
   // 合并配置
   const config: BackupConfig = {
     ...backupConfig,
     syncFilterConfig: syncFilterConfig || undefined,
     systemParams,
+    features,
   };
 
   // 4. comboTrades - 从 appDataService 读取（使用新 key）
@@ -306,10 +306,8 @@ export async function applyBackupData(imported: BackupData): Promise<AppliedData
   Object.entries(positions).forEach(([sym, pos]) => {
     try {
       marketFundService.updatePosition(sym, {
-        fullCapacity: Number(pos.fullCapacity) || 0,
-        initialPosition: Number(pos.initialPosition) || 0,
-        startDate: pos.startDate ?? null,
-        initialPrice: pos.initialPrice === undefined ? null : pos.initialPrice,
+        ...pos,
+        initialPrice: pos.initialPrice ?? null,
       });
     } catch { /* ignore */ }
   });
@@ -318,11 +316,9 @@ export async function applyBackupData(imported: BackupData): Promise<AppliedData
   const trades: Record<string, any[]> = imported.trades || {};
   Object.entries(trades).forEach(([sym, arr]) => {
     const normalizedTrades = (Array.isArray(arr) ? arr : []).map((t: any) => ({
-      id: t.id,
-      date: t.date,
-      type: t.type,
+      ...t,
       shares: Number(t.shares) || 0,
-      price: t.price === undefined ? 0 : Number(t.price),
+      price: t.price ?? 0,
       fee: Number(t.fee) || 0,
     }));
     setTradesForSymbol(sym, normalizedTrades);
@@ -349,6 +345,13 @@ export async function applyBackupData(imported: BackupData): Promise<AppliedData
     if (imported.config.systemParams) {
       try {
         saveSystemParams(imported.config.systemParams);
+      } catch { /* ignore */ }
+    }
+
+    // 恢复系统开关
+    if (imported.config.features) {
+      try {
+        saveFeatureConfig(imported.config.features);
       } catch { /* ignore */ }
     }
   }

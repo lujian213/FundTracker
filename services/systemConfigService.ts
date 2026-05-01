@@ -162,6 +162,7 @@ export function getFeatureConfig(): FeatureConfigSection {
   return {
     initialPriceAdjustmentEnabled: config.features?.initialPriceAdjustmentEnabled ?? DEFAULT_SYSTEM_CONFIG.features.initialPriceAdjustmentEnabled,
     jobLogEnabled: config.features?.jobLogEnabled ?? DEFAULT_SYSTEM_CONFIG.features.jobLogEnabled,
+    ocrDebugPanelEnabled: config.features?.ocrDebugPanelEnabled ?? DEFAULT_SYSTEM_CONFIG.features.ocrDebugPanelEnabled,
   };
 }
 
@@ -293,6 +294,7 @@ export function ensureSystemConfigMigration(): void {
       newConfig.features = {
         initialPriceAdjustmentEnabled: parsed.initialPriceAdjustmentEnabled === true,
         jobLogEnabled: parsed.jobLogEnabled === true,
+        ocrDebugPanelEnabled: parsed.ocrDebugPanelEnabled === true,
       };
     }
   } catch { /* ignore */ }

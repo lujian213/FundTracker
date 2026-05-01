@@ -59,7 +59,8 @@ describe('systemConfigService', () => {
         const features = getFeatureConfig();
         expect(features).toEqual({
           initialPriceAdjustmentEnabled: false,
-          jobLogEnabled: false
+          jobLogEnabled: false,
+          ocrDebugPanelEnabled: false,
         });
       });
     });
@@ -67,10 +68,11 @@ describe('systemConfigService', () => {
     describe('saveFeatureConfig', () => {
       test('should save feature config', () => {
         const { saveFeatureConfig, getFeatureConfig } = require('../../services/systemConfigService');
-        saveFeatureConfig({ initialPriceAdjustmentEnabled: true, jobLogEnabled: true });
+        saveFeatureConfig({ initialPriceAdjustmentEnabled: true, jobLogEnabled: true, ocrDebugPanelEnabled: false });
         const features = getFeatureConfig();
         expect(features.initialPriceAdjustmentEnabled).toBe(true);
         expect(features.jobLogEnabled).toBe(true);
+        expect(features.ocrDebugPanelEnabled).toBe(false);
       });
     });
 

@@ -33,6 +33,7 @@ export interface SmartAddState {
   currentFile: string;
   funds: SmartAddFund[];
   errors: SmartAddError[];
+  ocrRawTexts: Record<string, string>;  // DEBUG: 所有文件的OCR原始文本
 }
 
 export interface SmartAddActions {
@@ -55,6 +56,7 @@ export function useSmartAddFunds(): {
     currentFile: '',
     funds: [],
     errors: [],
+    ocrRawTexts: {},
   });
 
   const processFiles = useCallback(async (files: File[]) => {
@@ -68,11 +70,13 @@ export function useSmartAddFunds(): {
       funds: [],
       errors: [],
       progress: 0,
+      ocrRawTexts: {},
     }));
 
     const concurrency = getOcrConcurrency();
     const results: SmartAddFund[] = [];
     const errors: SmartAddError[] = [];
+    const ocrRawTextsAccum: Record<string, string> = {};
     let processed = 0;
 
     const batches = chunk(files, concurrency);
@@ -80,6 +84,9 @@ export function useSmartAddFunds(): {
     for (const batch of batches) {
       const batchPromises = batch.map(async (file) => {
         const ocrResult = await recognizeImage(file);
+
+        // 累积 OCR 原始文本到独立变量，避免并发状态竞态
+        ocrRawTextsAccum[file.name] = ocrResult.text;
 
         if (!ocrResult.success || !ocrResult.data) {
           const missingFields = ocrResult.missingFields?.join('、') || ocrResult.error || '未知错误';
@@ -124,7 +131,7 @@ export function useSmartAddFunds(): {
         }
       }
 
-      // 批量更新状态，避免每次迭代都更新
+      // 批量更新状态，创建数组副本确保 React 检测到变化
       setState(prev => ({
         ...prev,
         processed,
@@ -133,6 +140,7 @@ export function useSmartAddFunds(): {
         failCount: errors.length,
         funds: [...results],
         errors: [...errors],
+        ocrRawTexts: { ...prev.ocrRawTexts, ...ocrRawTextsAccum },
       }));
     }
 
@@ -173,6 +181,7 @@ export function useSmartAddFunds(): {
       currentFile: '',
       funds: [],
       errors: [],
+      ocrRawTexts: {},
     });
   }, []);
 

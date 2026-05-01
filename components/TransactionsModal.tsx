@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { DayPicker } from 'react-day-picker';
 import { zhCN } from 'date-fns/locale';
@@ -6,6 +6,9 @@ import { Ticker, ValuationData } from '../types';
 import { readAll, getAllTradeDates } from '../hooks/useTrades';
 import TradeBatchInputModal from './TradeBatchInputModal';
 import ComboTradeModal from './ComboTradeModal';
+import { TradeSmartInputProgressModal } from './TradeSmartInputProgressModal';
+import { TradeSmartInputResultModal } from './TradeSmartInputResultModal';
+import { useTradeSmartInput } from '../hooks/useTradeSmartInput';
 
 interface Props {
   portfolio: Ticker[];
@@ -47,6 +50,12 @@ const TransactionsModal: React.FC<Props> = ({ portfolio, marketData, onClose, on
   const [showBatchInput, setShowBatchInput] = useState(false);
   const [showComboTrade, setShowComboTrade] = useState(false);
   const [selectedRows, setSelectedRows] = useState<Set<number>>(new Set()); // 多选状态
+
+  // 智能录入相关状态
+  const [showSmartInputProgress, setShowSmartInputProgress] = useState(false);
+  const [showSmartInputResult, setShowSmartInputResult] = useState(false);
+  const { state: smartInputState, actions: smartInputActions } = useTradeSmartInput();
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Load trade dates on mount (fresh read each time modal opens)
   useEffect(() => {
@@ -184,6 +193,50 @@ const TransactionsModal: React.FC<Props> = ({ portfolio, marketData, onClose, on
     return !tradeDateSet.has(toLocalDateStr(day));
   };
 
+  // 智能录入：处理文件选择
+  const handleSmartInputFiles = async (files: FileList | null) => {
+    if (!files || files.length === 0) return;
+
+    smartInputActions.reset();
+    setShowSmartInputProgress(true);
+
+    try {
+      await smartInputActions.processFiles(Array.from(files));
+      setShowSmartInputProgress(false);
+      setShowSmartInputResult(true);
+    } catch (err) {
+      setShowSmartInputProgress(false);
+      console.error('智能录入处理失败:', err);
+    }
+
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
+  };
+
+  // 智能录入：进度窗口完成后显示结果
+  const handleSmartInputProgressComplete = () => {
+    setShowSmartInputProgress(false);
+    setShowSmartInputResult(true);
+  };
+
+  // 智能录入：确认添加
+  const handleSmartInputConfirm = (selectedRecords: any[]) => {
+    smartInputActions.confirm(selectedRecords);
+
+    // 刷新交易记录
+    setTradeDateStrs(getAllTradeDates());
+
+    // 重置智能录入状态
+    smartInputActions.reset();
+  };
+
+  // 智能录入：关闭结果窗口
+  const handleSmartInputResultClose = () => {
+    setShowSmartInputResult(false);
+    smartInputActions.reset();
+  };
+
   const content = (
     <div className="fixed inset-0 z-[130] flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/40" onClick={onClose} />
@@ -217,7 +270,7 @@ const TransactionsModal: React.FC<Props> = ({ portfolio, marketData, onClose, on
                   : 'bg-white border-gray-200 hover:border-blue-400 text-gray-700 shadow-sm'
               }`}
             >
-              <i className="far fa-calendar-alt text-gray-400" />
+              <i className={`far fa-calendar-alt ${hasNoTrades ? 'text-gray-300' : 'text-blue-500'}`} />
               <span>{selectedDateStr ?? '暂无交易日期'}</span>
               {!hasNoTrades && (
                 <i className={`fas fa-chevron-down text-xs text-gray-400 transition-transform ${pickerOpen ? 'rotate-180' : ''}`} />
@@ -228,15 +281,32 @@ const TransactionsModal: React.FC<Props> = ({ portfolio, marketData, onClose, on
               onClick={() => setShowBatchInput(true)}
               className="flex items-center space-x-2 px-4 py-2 rounded-xl border border-gray-200 bg-white text-sm font-medium text-gray-700 hover:border-blue-400 hover:text-blue-600 shadow-sm transition-colors"
             >
-              <i className="fas fa-plus-circle text-gray-400" />
+              <i className="fas fa-plus-circle text-blue-500" />
               <span>批量输入</span>
+            </button>
+
+            {/* 智能录入按钮 */}
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/*"
+              multiple
+              onChange={(e) => handleSmartInputFiles(e.target.files)}
+              className="hidden"
+            />
+            <button
+              onClick={() => fileInputRef.current?.click()}
+              className="flex items-center space-x-2 px-4 py-2 rounded-xl border border-gray-200 bg-white text-sm font-medium text-gray-700 hover:border-blue-400 hover:text-blue-600 shadow-sm transition-colors"
+            >
+              <i className="fas fa-camera text-blue-500" />
+              <span>智能录入</span>
             </button>
 
             <button
               onClick={() => setShowComboTrade(true)}
               className="flex items-center space-x-2 px-4 py-2 rounded-xl border border-gray-200 bg-white text-sm font-medium text-gray-700 hover:border-blue-400 hover:text-blue-600 shadow-sm transition-colors"
             >
-              <i className="fas fa-layer-group text-gray-400" />
+              <i className="fas fa-layer-group text-blue-500" />
               <span>组合交易</span>
             </button>
 
@@ -393,6 +463,23 @@ const TransactionsModal: React.FC<Props> = ({ portfolio, marketData, onClose, on
           onClose={() => setShowComboTrade(false)}
         />
       )}
+
+      {/* 智能录入进度窗口 */}
+      <TradeSmartInputProgressModal
+        visible={showSmartInputProgress}
+        state={smartInputState}
+        onComplete={handleSmartInputProgressComplete}
+      />
+
+      {/* 智能录入结果窗口 */}
+      <TradeSmartInputResultModal
+        visible={showSmartInputResult}
+        records={smartInputState.records}
+        errors={smartInputState.errors}
+        ocrRawTexts={smartInputState.ocrRawTexts}
+        onClose={handleSmartInputResultClose}
+        onConfirm={handleSmartInputConfirm}
+      />
     </div>
   );
 

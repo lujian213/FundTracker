@@ -65,6 +65,7 @@ const BASE_BACKUP: BackupData = {
       { id: 't1', date: '2025-01-01', type: 'buy', shares: 1000, price: 1.48, fee: 1 },
     ],
   },
+  comboTrades: {},
   config: { autoExportTime: '16:00', autoBackupEnabled: false },
 };
 
@@ -536,6 +537,7 @@ describe('applyBackupData', () => {
       indices: [],
       positions: {},
       trades: {},
+      comboTrades: {},
       config: { autoExportTime: '16:00' },
     };
     const result = await bs.applyBackupData(oldFormat);
@@ -602,6 +604,7 @@ describe('applyBackupData', () => {
       indices: [],
       positions: {},
       trades: {},
+      comboTrades: {},
       config: { autoExportTime: '16:00' },
     };
 
@@ -643,6 +646,7 @@ describe('applyBackupData', () => {
       indices: [],
       positions: {},
       trades: {},
+      comboTrades: {},
       config: { autoExportTime: '16:00' },
     };
 
@@ -731,6 +735,7 @@ describe('真实备份文件导入测试', () => {
         { id: 'trade_1775193600393_op03gbn8v', date: '2026-04-01', type: 'buy', shares: 1.46, price: 6.8274, fee: 0.01 },
       ],
     },
+    comboTrades: {},
     config: { autoExportTime: '16:00', autoBackupEnabled: false },
   };
 
@@ -922,6 +927,7 @@ describe('导入后导出一致性测试', () => {
         { id: 'trade_1775193600393_op03gbn8v', date: '2026-04-01', type: 'buy', shares: 1.46, price: 6.8274, fee: 0.01 },
       ],
     },
+    comboTrades: {},
     config: { autoExportTime: '16:00', autoBackupEnabled: false },
   };
 
@@ -1237,6 +1243,7 @@ describe('导入-导出-再导入循环一致性测试', () => {
         { id: 'trade_1775193600393_op03gbn8v', date: '2026-04-01', type: 'buy', shares: 1.46, price: 6.8274, fee: 0.01 },
       ],
     },
+    comboTrades: {},
     config: { autoExportTime: '16:00', autoBackupEnabled: false },
   };
 
@@ -1652,7 +1659,233 @@ describe('导入-导出-再导入循环一致性测试', () => {
     // 7.3 配置数据
     expect(snapshot2.fund_system_config?.backup?.autoExportTime)
       .toBe(snapshot1.fund_system_config?.backup?.autoExportTime);
-    expect(snapshot2.fund_system_config?.backup?.autoBackupEnabled)
-      .toBe(snapshot1.fund_system_config?.backup?.autoBackupEnabled);
+    });
+  });
+
+// ─── aliasName 导入导出测试 ───────────────────────────────────────────────────
+
+describe('aliasName 导入导出测试', () => {
+  beforeEach(() => { localStorage.clear(); resetFundCache(); });
+  afterEach(() => { localStorage.clear(); jest.resetModules(); resetFundCache(); });
+
+  test('导出时 aliasName 被包含在备份文件', async () => {
+    const { mfs, bs } = loadBoth();
+    mfs.resetCache();
+
+    // 设置一个带有 aliasName 的持仓
+    mfs.addFund('000001', '华夏成长混合');
+    mfs.updatePosition('000001', {
+      fullCapacity: 10000,
+      initialPosition: 2000,
+      startDate: '2025-01-01',
+      initialPrice: 1.48,
+      aliasName: '我的科技基金',
+    });
+
+    // 构建导出数据
+    const portfolio = [{ id: 'a1', symbol: '000001', name: '华夏成长混合', market: MarketType.FUND }];
+    const result = await bs.buildBackupData(portfolio, [], []);
+
+    // 验证 aliasName 被包含
+    expect(result.positions['000001']).toBeDefined();
+    expect(result.positions['000001'].aliasName).toBe('我的科技基金');
+  });
+
+  test('导入新格式（含 aliasName）时正确读取', async () => {
+    const { mfs, bs } = loadBoth();
+    mfs.resetCache();
+
+    // 导入包含 aliasName 的备份
+    const backup: BackupData = {
+      portfolio: [{ symbol: '000001', name: '华夏成长混合' }],
+      indices: [],
+      positions: {
+        '000001': {
+          fullCapacity: 10000,
+          initialPosition: 2000,
+          startDate: '2025-01-01',
+          initialPrice: 1.48,
+          aliasName: '我的科技基金',
+        },
+      },
+      trades: {},
+      comboTrades: {},
+      config: { autoExportTime: '16:00' },
+    };
+
+    await bs.applyBackupData(backup);
+
+    // 验证 aliasName 正确读取
+    const pos = mfs.getPosition('000001');
+    expect(pos).not.toBeNull();
+    expect(pos!.aliasName).toBe('我的科技基金');
+  });
+
+  test('导入旧格式（无 aliasName）时兼容处理', async () => {
+    const { mfs, bs } = loadBoth();
+    mfs.resetCache();
+
+    // 导入不含 aliasName 的旧格式备份
+    const backup: BackupData = {
+      portfolio: [{ symbol: '000001', name: '华夏成长混合' }],
+      indices: [],
+      positions: {
+        '000001': {
+          fullCapacity: 10000,
+          initialPosition: 2000,
+          startDate: '2025-01-01',
+          initialPrice: 1.48,
+        },
+      },
+      trades: {},
+      comboTrades: {},
+      config: { autoExportTime: '16:00' },
+    };
+
+    await bs.applyBackupData(backup);
+
+    // 验证 aliasName 为 undefined（兼容处理）
+    const pos = mfs.getPosition('000001');
+    expect(pos).not.toBeNull();
+    expect(pos!.aliasName).toBeUndefined();
+  });
+
+  test('导入后导出 aliasName 保持一致', async () => {
+    const { mfs, bs } = loadBoth();
+    mfs.resetCache();
+
+    // 导入包含 aliasName 的备份
+    const backup: BackupData = {
+      portfolio: [{ symbol: '000001', name: '华夏成长混合' }],
+      indices: [],
+      positions: {
+        '000001': {
+          fullCapacity: 10000,
+          initialPosition: 2000,
+          startDate: '2025-01-01',
+          initialPrice: 1.48,
+          aliasName: '我的科技基金',
+        },
+      },
+      trades: {},
+      comboTrades: {},
+      config: { autoExportTime: '16:00' },
+    };
+
+    await bs.applyBackupData(backup);
+
+    // 构建导出数据
+    const portfolio = [{ id: 'a1', symbol: '000001', name: '华夏成长混合', market: MarketType.FUND }];
+    const exported = await bs.buildBackupData(portfolio, [], []);
+
+    // 验证 aliasName 保持一致
+    expect(exported.positions['000001'].aliasName).toBe('我的科技基金');
+  });
+});
+
+// ─── features 导入导出测试 ───────────────────────────────────────────────────
+
+describe('features 导入导出测试', () => {
+  beforeEach(() => { localStorage.clear(); resetFundCache(); });
+  afterEach(() => { localStorage.clear(); jest.resetModules(); resetFundCache(); });
+
+  test('导出时 features 被包含在备份文件', async () => {
+    const { bs } = loadBoth();
+    const mfs = require('../../services/marketFundService');
+    const scs = require('../../services/systemConfigService');
+    mfs.resetCache();
+    scs.resetCache();
+
+    // 设置系统开关状态
+    scs.saveFeatureConfig({
+      initialPriceAdjustmentEnabled: true,
+      jobLogEnabled: false,
+      ocrDebugPanelEnabled: true,
+    });
+
+    // 构建导出数据
+    const result = await bs.buildBackupData([], [], []);
+
+    // 验证 features 被包含
+    expect(result.config.features).toBeDefined();
+    expect(result.config.features?.ocrDebugPanelEnabled).toBe(true);
+    expect(result.config.features?.initialPriceAdjustmentEnabled).toBe(true);
+  });
+
+  test('导入新格式（含 features）时正确读取', async () => {
+    const { bs } = loadBoth();
+    const mfs = require('../../services/marketFundService');
+    const scs = require('../../services/systemConfigService');
+    mfs.resetCache();
+    scs.resetCache();
+
+    // 导入包含 features 的备份
+    const backup: BackupData = {
+      ...BASE_BACKUP,
+      config: {
+        ...BASE_BACKUP.config,
+        features: {
+          initialPriceAdjustmentEnabled: false,
+          jobLogEnabled: true,
+          ocrDebugPanelEnabled: true,
+        },
+      },
+    };
+
+    await bs.applyBackupData(backup);
+
+    // 验证 features 被正确恢复
+    const features = scs.getFeatureConfig();
+    expect(features.jobLogEnabled).toBe(true);
+    expect(features.ocrDebugPanelEnabled).toBe(true);
+    expect(features.initialPriceAdjustmentEnabled).toBe(false);
+  });
+
+  test('导入旧格式（无 features）时兼容处理', async () => {
+    const { bs } = loadBoth();
+    const mfs = require('../../services/marketFundService');
+    const scs = require('../../services/systemConfigService');
+    mfs.resetCache();
+    scs.resetCache();
+
+    // 导入不含 features 的旧备份
+    const backup: BackupData = { ...BASE_BACKUP };
+    await bs.applyBackupData(backup);
+
+    // 验证默认值保持不变
+    const features = scs.getFeatureConfig();
+    expect(features.initialPriceAdjustmentEnabled).toBe(false);
+    expect(features.jobLogEnabled).toBe(false);
+    expect(features.ocrDebugPanelEnabled).toBe(false);
+  });
+
+  test('ocrDebugPanelEnabled 导出导入一致性', async () => {
+    const { bs } = loadBoth();
+    const mfs = require('../../services/marketFundService');
+    const scs = require('../../services/systemConfigService');
+    mfs.resetCache();
+    scs.resetCache();
+
+    // 设置开关状态
+    scs.saveFeatureConfig({
+      initialPriceAdjustmentEnabled: false,
+      jobLogEnabled: false,
+      ocrDebugPanelEnabled: true,
+    });
+
+    // 导出
+    const exported = await bs.buildBackupData([], [], []);
+
+    // 清空
+    localStorage.clear();
+    mfs.resetCache();
+    scs.resetCache();
+
+    // 导入
+    await bs.applyBackupData(exported);
+
+    // 验证状态保持
+    const features = scs.getFeatureConfig();
+    expect(features.ocrDebugPanelEnabled).toBe(true);
   });
 });

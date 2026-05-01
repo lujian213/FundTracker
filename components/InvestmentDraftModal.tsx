@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import html2canvas from 'html2canvas';
-import { Ticker, ValuationData, BackupPosition, HistoricalPoint, MarketIndex, MarketFund } from '../types';
+import { Ticker, ValuationData, FundPosition, HistoricalPoint, MarketIndex, MarketFund } from '../types';
 import { fetchFundData } from '../services/fundService';  // Import fetchFundData
 import { toLocalDateKey } from '../utils/priceResolver';
 import { getPreviousDayChange } from '../utils/historyHelper';

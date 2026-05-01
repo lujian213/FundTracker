@@ -42,7 +42,7 @@ describe('position config persistence and UI', () => {
     expect(screen.queryByText(/满仓/)).toBeNull();
 
     // open config modal
-    const gear = screen.getByLabelText(/配置仓位/);
+    const gear = screen.getByLabelText(/基金设置/);
     fireEvent.click(gear);
 
     const fullInput = await screen.findByLabelText('modal-full') as HTMLInputElement;
@@ -70,7 +70,7 @@ describe('position config persistence and UI', () => {
     render(<FundDetailsModal data={data as any} onClose={() => {}} />);
     await waitFor(() => expect(fetchFundHistory).toHaveBeenCalled());
 
-    const gear = screen.getByLabelText(/配置仓位/);
+    const gear = screen.getByLabelText(/基金设置/);
     fireEvent.click(gear);
 
     const fullInput = await screen.findByLabelText('modal-full') as HTMLInputElement;
@@ -107,7 +107,7 @@ describe('position config persistence and UI', () => {
     expect(await screen.findByText(/50.00份/)).toBeTruthy();
 
     // open modal and click clear
-    const gear = screen.getByLabelText(/配置仓位/);
+    const gear = screen.getByLabelText(/基金设置/);
     fireEvent.click(gear);
 
     const clearBtn = screen.getByText('清除');
@@ -124,7 +124,7 @@ describe('position config persistence and UI', () => {
     await waitFor(() => expect(fetchFundHistory).toHaveBeenCalled());
 
     // open modal
-    const gear = screen.getByLabelText(/配置仓位/);
+    const gear = screen.getByLabelText(/基金设置/);
     fireEvent.click(gear);
 
     const startInput = await screen.findByLabelText('modal-start-date') as HTMLInputElement;
@@ -152,7 +152,7 @@ describe('position config persistence and UI', () => {
     await waitFor(() => expect(fetchFundHistory).toHaveBeenCalled());
 
     // open modal
-    const gear = screen.getByLabelText(/配置仓位/);
+    const gear = screen.getByLabelText(/基金设置/);
     fireEvent.click(gear);
 
     const fullInput = await screen.findByLabelText('modal-full') as HTMLInputElement;
@@ -185,7 +185,7 @@ describe('position config persistence and UI', () => {
     await waitFor(() => expect(fetchFundHistory).toHaveBeenCalled());
 
     // open modal
-    const gear = screen.getByLabelText(/配置仓位/);
+    const gear = screen.getByLabelText(/基金设置/);
     fireEvent.click(gear);
 
     const fullInput = await screen.findByLabelText('modal-full') as HTMLInputElement;
@@ -229,7 +229,7 @@ describe('position config persistence and UI', () => {
     expect(tradeBtn).toBeDisabled();
 
     // configure fullCapacity via modal
-    const gear = screen.getByLabelText(/配置仓位/);
+    const gear = screen.getByLabelText(/基金设置/);
     fireEvent.click(gear);
 
     const fullInput = await screen.findByLabelText('modal-full') as HTMLInputElement;
@@ -249,5 +249,53 @@ describe('position config persistence and UI', () => {
 
     // market/value row should now be visible
     expect(screen.getByText(/市值/)).toBeTruthy();
+  });
+
+  test('aliasName can be set and persisted', async () => {
+    render(<FundDetailsModal data={data as any} onClose={() => {}} />);
+    await waitFor(() => expect(fetchFundHistory).toHaveBeenCalled());
+
+    const gear = screen.getByLabelText(/基金设置/);
+    fireEvent.click(gear);
+
+    const aliasNameInput = await screen.findByLabelText('modal-alias-name') as HTMLInputElement;
+    const fullInput = await screen.findByLabelText('modal-full') as HTMLInputElement;
+    const initialInput = await screen.findByLabelText('modal-initial') as HTMLInputElement;
+
+    fireEvent.change(aliasNameInput, { target: { value: '我的科技基金' } });
+    fireEvent.change(fullInput, { target: { value: '100' } });
+    fireEvent.change(initialInput, { target: { value: '50' } });
+
+    fireEvent.click(screen.getByText('保存'));
+
+    await waitFor(() => expect(screen.getByText(/满仓份额/)).toBeTruthy());
+    const pos = getPosition(data.symbol);
+    expect(pos).toBeTruthy();
+    expect(pos!.aliasName).toBe('我的科技基金');
+  });
+
+  test('aliasName is cleared with clear button', async () => {
+    updatePosition(data.symbol, {
+      fullCapacity: 100,
+      initialPosition: 50,
+      startDate: null,
+      initialPrice: null,
+      aliasName: '原有名称'
+    });
+
+    render(<FundDetailsModal data={data as any} onClose={() => {}} />);
+    await waitFor(() => expect(fetchFundHistory).toHaveBeenCalled());
+
+    const gear = screen.getByLabelText(/基金设置/);
+    fireEvent.click(gear);
+
+    const aliasNameInput = await screen.findByLabelText('modal-alias-name') as HTMLInputElement;
+    expect(aliasNameInput.value).toBe('原有名称');
+
+    fireEvent.click(screen.getByText('清除'));
+
+    await waitFor(() => expect(screen.queryByText(/满仓/)).toBeNull());
+    const pos = getPosition(data.symbol);
+    expect(pos?.aliasName).toBeUndefined();
   });
 });

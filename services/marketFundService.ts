@@ -142,10 +142,8 @@ function migrateFromOldKeys(): void {
           if (raw) {
             const pos = JSON.parse(raw);
             positionMap.set(symbol, {
-              fullCapacity: Number(pos.fullCapacity) || 0,
-              initialPosition: Number(pos.initialPosition) || 0,
-              startDate: pos.startDate ?? null,
-              initialPrice: pos.initialPrice === undefined ? null : Number(pos.initialPrice),
+              ...pos,
+              initialPrice: pos.initialPrice ?? null,
             });
             // 如果 ticker 中没有这个 symbol，创建一个基础 Ticker
             if (!tickerMap.has(symbol)) {
@@ -956,10 +954,8 @@ export function verifyFundMigration(deleteOldKeys: boolean = false): {
         if (raw) {
           const pos = JSON.parse(raw);
           oldPositions.set(symbol, {
-            fullCapacity: Number(pos.fullCapacity) || 0,
-            initialPosition: Number(pos.initialPosition) || 0,
-            startDate: pos.startDate ?? null,
-            initialPrice: pos.initialPrice === undefined ? null : Number(pos.initialPrice),
+            ...pos,
+            initialPrice: pos.initialPrice ?? null,
           });
         }
       } catch { /* ignore */ }

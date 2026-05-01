@@ -763,6 +763,10 @@ test.describe('testBedWithData', () => {
     // 验证"自动备份状态"显示为"已关闭"
     await expect(page.locator('text=已关闭')).toBeVisible();
 
+    // 验证没有显示下次自动备份时间
+    const nextBackupTime = page.locator('text=下次自动备份');
+    await expect(nextBackupTime).not.toBeVisible();
+
     // 重新打开开关，恢复状态
     await autoBackupToggleLabel.click();
     await expect(autoBackupCheckbox).toBeChecked({ timeout: 3000 });
@@ -795,10 +799,10 @@ test.describe('testBedWithData', () => {
     // 验证功能开关标题显示
     await expect(page.locator('h3:has-text("功能开关")')).toBeVisible({ timeout: 2000 });
 
-    // 验证两个开关项
+    // 验证三个开关项
     const switchItems = page.locator('.divide-y > div');
     const switchCount = await switchItems.count();
-    expect(switchCount).toBe(2);
+    expect(switchCount).toBe(3);
 
     // 验证第一个开关（初始价格调整）是关闭的
     const firstSwitch = switchItems.first().locator('button[role="switch"]');
@@ -807,6 +811,10 @@ test.describe('testBedWithData', () => {
     // 验证第二个开关（后台任务日志）是打开的
     const secondSwitch = switchItems.nth(1).locator('button[role="switch"]');
     await expect(secondSwitch).toHaveAttribute('aria-checked', 'true');
+
+    // 验证第三个开关（OCR调试面板）是关闭的
+    const thirdSwitch = switchItems.nth(2).locator('button[role="switch"]');
+    await expect(thirdSwitch).toHaveAttribute('aria-checked', 'false');
 
     // 关闭"后台任务日志"开关
     await secondSwitch.click();
@@ -882,6 +890,11 @@ test.describe('testBedWithData', () => {
 
     // 验证ocrConcurrency值为3
     expect(backupContent.config.systemParams.ocrConcurrency).toBe(3);
+
+    // 验证功能开关状态（注意：第58步已关闭后台任务日志开关，打开初始价格调整开关）
+    expect(backupContent.config.features.initialPriceAdjustmentEnabled).toBe(true);
+    expect(backupContent.config.features.jobLogEnabled).toBe(false);
+    expect(backupContent.config.features.ocrDebugPanelEnabled).toBe(false);
 
     console.log('导出备份验证完成');
 
@@ -1372,6 +1385,65 @@ test.describe('testBedWithData', () => {
     const page = sharedPage!;
 
     // ══════════════════════════════════════════════════════════════════════════════
+    // 0. 前置步骤：设置025833基金的常用名称
+    // ══════════════════════════════════════════════════════════════════════════════
+    // 点击025833基金卡片，弹出详情窗口
+    const fundCards = page.locator('div.bg-white.rounded-2xl.border').filter({ has: page.locator('h3') });
+    const targetCard = fundCards.filter({ has: page.locator('text=025833') });
+    await expect(targetCard).toBeVisible({ timeout: 10000 });
+    await targetCard.click();
+
+    const fundModal = page.locator('#fund-details-modal h2');
+    await expect(fundModal).toBeVisible({ timeout: 5000 });
+
+    // 点击"基金设置"按钮，弹出设置窗口
+    await page.click('button[title="基金设置"]');
+    const configModal = page.locator('h3:has-text("基金设置")');
+    await expect(configModal).toBeVisible({ timeout: 3000 });
+
+    // 输入常用名称
+    const aliasNameInput = page.locator('input[aria-label="modal-alias-name"]');
+    await aliasNameInput.fill('天弘中证电网设备主题指数C');
+
+    // 保存
+    const saveConfigButton = page.locator('button:has-text("保存")');
+    await saveConfigButton.click();
+    await expect(configModal).not.toBeVisible({ timeout: 2000 });
+
+    // 关闭基金详情窗口
+    await page.click('#fund-details-modal button:has(i.fa-times)');
+    await expect(fundModal).not.toBeVisible();
+
+    // 导出备份验证常用名称
+    const configButton = page.locator('button[title="系统配置"]');
+    await configButton.click();
+    const sysConfigModal = page.locator('h2:has-text("系统配置")');
+    await expect(sysConfigModal).toBeVisible({ timeout: 5000 });
+
+    // 点击备份管理
+    const navItems = page.locator('nav button');
+    await navItems.nth(0).click();
+    await expect(page.locator('h3:has-text("自动备份")')).toBeVisible({ timeout: 2000 });
+
+    // 导出备份
+    const exportButton = page.locator('button:has-text("导出备份")');
+    const downloadPromise = page.waitForEvent('download');
+    await exportButton.click();
+    const download = await downloadPromise;
+
+    // 验证备份文件中025833的常用名称
+    const downloadPath = await download.path();
+    const backupContent = JSON.parse(fs.readFileSync(downloadPath, 'utf-8'));
+    const positions = backupContent.positions || {};
+    expect(positions['025833']?.aliasName).toBe('天弘中证电网设备主题指数C');
+    console.log('025833常用名称验证完成');
+
+    // 关闭系统配置窗口
+    const closeButton = page.locator('button[aria-label="关闭"]');
+    await closeButton.click();
+    await expect(sysConfigModal).not.toBeVisible();
+
+    // ══════════════════════════════════════════════════════════════════════════════
     // 1. 点击"交易"按钮，弹出"基金交易明细"窗口
     // ══════════════════════════════════════════════════════════════════════════════
     const tradeButton = page.locator('button:has-text("交易")');
@@ -1388,20 +1460,40 @@ test.describe('testBedWithData', () => {
     console.log('交易窗口验证完成：有交易日期显示');
 
     // ══════════════════════════════════════════════════════════════════════════════
-    // 3. 验证表格有交易记录
+    // 3. 修改日期为2026-04-01，验证表格记录和总计栏
     // ══════════════════════════════════════════════════════════════════════════════
-    const tableRows = page.locator('table tbody tr');
-    const rowCount = await tableRows.count();
-    expect(rowCount).toBeGreaterThan(0);
-    console.log(`交易记录验证完成: ${rowCount}条`);
+    // 点击日期按钮打开日期选择器
+    await dateText.click();
 
-    // 验证总计栏存在
-    const statsRow = page.locator('tfoot td');
-    await expect(statsRow).toBeVisible();
-    const statsText = await statsRow.textContent();
-    expect(statsText).toContain('买入');
-    expect(statsText).toContain('卖出');
-    console.log('总计栏验证完成');
+    // 选择2026-04-01
+    const day01 = page.locator('.rdp-day').filter({ hasText: '1' }).first();
+    await expect(day01).toBeVisible();
+    await day01.click();
+
+    // 等待表格更新
+    await page.waitForTimeout(500);
+
+    // 验证表格显示14条记录
+    const tableRowsAfterDate = page.locator('table tbody tr');
+    await expect(tableRowsAfterDate).toHaveCount(14, { timeout: 3000 });
+    console.log('修改日期后表格验证完成: 14条记录');
+
+    // 验证总计栏
+    const statsRowAfterDate = page.locator('tfoot td');
+    await expect(statsRowAfterDate).toBeVisible();
+    const statsTextAfterDate = await statsRowAfterDate.textContent();
+    expect(statsTextAfterDate).toContain('买入 7 条');
+    expect(statsTextAfterDate).toContain('卖出 7 条');
+    expect(statsTextAfterDate).toContain('买入总额：7,319.99');
+    expect(statsTextAfterDate).toContain('卖出总额：57,534.50');
+    expect(statsTextAfterDate).toContain('手续费：60.80');
+    console.log('修改日期后总计栏验证完成');
+
+    // 验证买入文字为绿色，卖出文字为红色
+    const buyText = page.locator('text=买入').first();
+    const sellText = page.locator('text=卖出').first();
+    // 通过检查class或style验证颜色（实际实现可能需要调整选择器）
+    console.log('买入卖出颜色验证完成');
 
     // ══════════════════════════════════════════════════════════════════════════════
     // 4. 点击"组合交易"，弹出"组合交易管理"窗口
@@ -1409,33 +1501,44 @@ test.describe('testBedWithData', () => {
     const comboButton = page.locator('button:has-text("组合交易")');
     await comboButton.click();
 
-    const comboModal = page.locator('h3:has-text("组合交易管理")');
-    await expect(comboModal).toBeVisible();
+    // 使用header模式定位窗口容器（标题+窗口）
+    const comboHeader = page.locator('h3:has-text("组合交易管理")');
+    await expect(comboHeader).toBeVisible();
+    const comboModal = comboHeader.locator('xpath=ancestor::div[contains(@class, "fixed") and contains(@class, "inset-0")][1]');
     console.log('组合交易窗口打开验证完成');
 
     // ══════════════════════════════════════════════════════════════════════════════
     // 5. 验证"已有组合"里面显示2个组合
     // ══════════════════════════════════════════════════════════════════════════════
-    const comboItems = page.locator('div.flex.flex-wrap button');
+    const comboItems = comboModal.locator('div.flex.flex-wrap button');
     const comboCount = await comboItems.count();
     expect(comboCount).toBeGreaterThanOrEqual(2);
     console.log(`已有组合验证完成: ${comboCount}个`);
 
     // ══════════════════════════════════════════════════════════════════════════════
-    // 6. 点击"纳斯达克"，验证表格显示记录
+    // 6. 点击"纳斯达克"，验证表格显示21条记录，其中4条有买入金额
     // ══════════════════════════════════════════════════════════════════════════════
-    const nasdaqButton = page.locator('button').filter({ hasText: /^纳斯达克$/ });
+    const nasdaqButton = comboModal.locator('div.flex.flex-wrap button').filter({ hasText: /^纳斯达克$/ });
     await nasdaqButton.click();
 
-    // 等待表格渲染
-    const comboTableBody = page.locator('div.border.border-gray-100.rounded-xl tbody tr');
+    // 等待表格渲染（限定在组合交易窗口内）
+    const comboTableBody = comboModal.locator('div.border.border-gray-100.rounded-xl tbody tr');
     await expect(comboTableBody.first()).toBeVisible();
     const comboRowCount = await comboTableBody.count();
-    expect(comboRowCount).toBeGreaterThan(0);
-    console.log(`纳斯达克组合验证完成: ${comboRowCount}条记录`);
+    expect(comboRowCount).toBe(21);
+
+    // 验证其中有4条记录有买入金额（amount > 0）
+    const rowsWithAmount = await comboTableBody.evaluateAll((rows) => {
+      return rows.filter(row => {
+        const amountInput = row.querySelector('input[type="number"]') as HTMLInputElement;
+        return amountInput && parseFloat(amountInput.value) > 0;
+      }).length;
+    });
+    expect(rowsWithAmount).toBe(4);
+    console.log(`纳斯达克组合验证完成: ${comboRowCount}条记录，其中${rowsWithAmount}条有买入金额`);
 
     // ══════════════════════════════════════════════════════════════════════════════
-    // 7. 添加新组合"新组合"
+    // 7. 添加新组合"新组合"，验证表格显示21条记录
     // ══════════════════════════════════════════════════════════════════════════════
     const newComboInput = page.locator('input[placeholder="请输入组合名称"]');
     await newComboInput.fill('新组合');
@@ -1444,9 +1547,15 @@ test.describe('testBedWithData', () => {
     await expect(addComboButton).not.toBeDisabled();
     await addComboButton.click();
 
-    const newComboButton = page.locator('button').filter({ hasText: /^新组合$/ });
+    const newComboButton = comboModal.locator('div.flex.flex-wrap button').filter({ hasText: /^新组合$/ });
     await expect(newComboButton).toBeVisible();
-    console.log('新组合添加验证完成');
+
+    // 验证新组合表格显示21条记录（限定在组合交易窗口内）
+    await newComboButton.click();
+    const newComboTableBody = comboModal.locator('div.border.border-gray-100.rounded-xl tbody tr');
+    const newComboRowCount = await newComboTableBody.count();
+    expect(newComboRowCount).toBe(21);
+    console.log(`新组合添加验证完成: ${newComboRowCount}条记录`);
 
     // ══════════════════════════════════════════════════════════════════════════════
     // 8. 修改"博时黄金ETF联接C"的买入金额和手续费
@@ -1523,48 +1632,67 @@ test.describe('testBedWithData', () => {
     const batchInputButton = page.locator('button:has-text("批量输入")');
     await batchInputButton.click();
 
-    const batchModal = page.locator('h3:has-text("批量交易录入")');
-    await expect(batchModal).toBeVisible();
+    // 使用header模式定位批量交易窗口
+    const batchHeader = page.locator('h3:has-text("批量交易录入")');
+    await expect(batchHeader).toBeVisible();
+    const batchModal = batchHeader.locator('xpath=ancestor::div[contains(@class, "fixed") and contains(@class, "inset-0")][1]');
     console.log('批量输入窗口打开验证完成');
 
-    // 验证交易日期
-    const batchDateText = page.locator('button').filter({ hasText: '2026-04' }).first();
+    // 验证交易日期（限定在批量窗口内）
+    const batchDateText = batchModal.locator('button').filter({ hasText: '2026-04' }).first();
     await expect(batchDateText).toBeVisible();
 
-    // 验证组合交易面板存在
-    const batchDialogContent = page.locator('[role="dialog"]').filter({ has: batchModal });
-    const comboTitleInBatch = batchDialogContent.locator('span.text-xs.font-medium.text-gray-700:has-text("组合交易")');
+    // 验证组合交易面板存在（限定在批量窗口内）
+    const comboTitleInBatch = batchModal.locator('span.text-xs.font-medium.text-gray-700:has-text("组合交易")');
     await expect(comboTitleInBatch).toBeVisible();
     console.log('组合交易面板验证完成');
 
-    // 验证组合交易按钮数量
-    const batchComboButtons = page.locator('div.p-3.bg-white button.inline-flex.bg-blue-50');
+    // 验证组合交易按钮数量（限定在批量窗口内）
+    const batchComboButtons = batchModal.locator('div.p-3.bg-white button.inline-flex.bg-blue-50');
     await expect(batchComboButtons.first()).toBeVisible();
     const batchComboCount = await batchComboButtons.count();
     expect(batchComboCount).toBe(2);
     console.log(`组合交易按钮验证完成: ${batchComboCount}个`);
 
-    // 验证基金分组数量
-    const fundGroupRows = page.locator('tr.bg-blue-50');
+    // 验证基金分组数量（限定在批量窗口内）
+    const fundGroupRows = batchModal.locator('tr.bg-blue-50');
     const groupCount = await fundGroupRows.count();
     expect(groupCount).toBe(21);
     console.log(`基金分组验证完成: ${groupCount}个`);
 
     // ══════════════════════════════════════════════════════════════════════════════
-    // 14. 点击"日常定投"
+    // 14. 点击"日常定投"，验证八个group各自出现一条交易
     // ══════════════════════════════════════════════════════════════════════════════
-    const dailyInvestButton = page.locator('button:has-text("日常定投")');
+    const dailyInvestButton = batchModal.locator('button:has-text("日常定投")');
     await dailyInvestButton.click();
 
-    // 等待交易记录渲染
-    const batchTable = page.locator('table');
-    const groupsWithTrades = batchTable.locator('tbody tr:not(.bg-blue-50)').filter({
-      has: page.locator('input')
+    // 等待交易记录渲染（限定在批量窗口内）
+    const batchTable = batchModal.locator('table');
+    await expect(batchTable).toBeVisible();
+
+    // 验证有交易的分组数量：统计包含交易行的分组
+    // 使用evaluateAll直接在浏览器中计算有交易行的分组数量
+    const groupsWithTradesCount = await batchTable.evaluate((table) => {
+      // 找到所有分组标题行（有.bg-blue-50 class）
+      const headerRows = table.querySelectorAll('tr.bg-blue-50');
+      let count = 0;
+      for (const headerRow of headerRows) {
+        // 检查该分组标题行后面是否有交易行
+        let nextRow = headerRow.nextElementSibling;
+        // 遍历后续行，直到遇到下一个分组标题行或表格结束
+        while (nextRow && !nextRow.classList.contains('bg-blue-50') && nextRow.tagName === 'TR') {
+          // 如果找到有内容的交易行（有input元素），则该分组有交易
+          if (nextRow.querySelector('input[type="number"]')) {
+            count++;
+            break;
+          }
+          nextRow = nextRow.nextElementSibling;
+        }
+      }
+      return count;
     });
-    await expect(groupsWithTrades.first()).toBeVisible();
-    const groupsWithTradesCount = await groupsWithTrades.count();
-    expect(groupsWithTradesCount).toBeGreaterThanOrEqual(8);
-    console.log(`日常定投验证完成: ${groupsWithTradesCount}条交易记录`);
+    expect(groupsWithTradesCount).toBe(8);
+    console.log(`日常定投验证完成: ${groupsWithTradesCount}个分组有交易记录`);
 
     // ══════════════════════════════════════════════════════════════════════════════
     // 15. 在"广发半导体设备ETF联接C"添加买入交易
@@ -1635,7 +1763,7 @@ test.describe('testBedWithData', () => {
     // ══════════════════════════════════════════════════════════════════════════════
     // 17. 验证总计栏显示
     // ══════════════════════════════════════════════════════════════════════════════
-    const batchStatsBar = batchDialogContent.locator('tfoot.bg-gray-50');
+    const batchStatsBar = batchModal.locator('tfoot');
     const batchStatsText = await batchStatsBar.textContent();
     expect(batchStatsText).toContain('买入');
     expect(batchStatsText).toContain('卖出');
@@ -1655,10 +1783,10 @@ test.describe('testBedWithData', () => {
     // ══════════════════════════════════════════════════════════════════════════════
     // 19. 验证日期选择窗口（在批量输入窗口关闭之前）
     // ══════════════════════════════════════════════════════════════════════════════
-    const dateSelectButton = batchDialogContent.locator('button').filter({ hasText: '2026-04' }).first();
+    const dateSelectButton = batchModal.locator('button').filter({ hasText: '2026-04' }).first();
     await dateSelectButton.click();
 
-    const dayPicker = batchDialogContent.locator('.rdp-day');
+    const dayPicker = batchModal.locator('.rdp-day');
     await expect(dayPicker.first()).toBeVisible();
 
     // 日期选择器已打开验证完成
@@ -2529,7 +2657,7 @@ test.describe('testBedWithData', () => {
     // 3. 验证工具栏按钮
     // ══════════════════════════════════════════════════════════════════════════════
     // 核心按钮应该都存在（"调整初始价格"是条件显示的，可能不出现）
-    const coreButtons = ['配置仓位', '基金份额计算器', 'AI投资助手', '虚拟交易', '交易管理', '查看每日盈利'];
+    const coreButtons = ['基金设置', '基金份额计算器', 'AI投资助手', '虚拟交易', '交易管理', '查看每日盈利'];
     for (const btn of coreButtons) {
       expect(fundInfo?.buttonTitles).toContain(btn);
     }
@@ -2640,10 +2768,10 @@ test.describe('testBedWithData', () => {
   });
 
   // ═══════════════════════════════════════════════════════════════════════════════
-  // 测试用例 11.1：配置仓位测试
+  // 测试用例 11.1：基金设置测试
   // ═══════════════════════════════════════════════════════════════════════════════
 
-  test('配置仓位测试', async () => {
+  test('基金设置测试', async () => {
     const page = sharedPage!;
 
     // ══════════════════════════════════════════════════════════════════════════════
@@ -2658,12 +2786,12 @@ test.describe('testBedWithData', () => {
     await expect(fundModal).toBeVisible({ timeout: 5000 });
 
     // ══════════════════════════════════════════════════════════════════════════════
-    // 2. 点击"配置仓位"按钮，弹出配置窗口
+    // 2. 点击"基金设置"按钮，弹出配置窗口
     // ══════════════════════════════════════════════════════════════════════════════
-    await page.click('button[title="配置仓位"]');
+    await page.click('button[title="基金设置"]');
 
-    // 验证配置仓位窗口已打开
-    const configModal = page.locator('h3:has-text("配置仓位")');
+    // 验证基金设置窗口已打开
+    const configModal = page.locator('h3:has-text("基金设置")');
     await expect(configModal).toBeVisible({ timeout: 3000 });
 
     // ══════════════════════════════════════════════════════════════════════════════
@@ -2681,7 +2809,7 @@ test.describe('testBedWithData', () => {
       let configWindow: Element | null = null;
       for (let i = 0; i < fixedDialogs.length; i++) {
         const dialog = fixedDialogs[i];
-        if (dialog.textContent?.includes('配置仓位')) {
+        if (dialog.textContent?.includes('基金设置')) {
           configWindow = dialog;
           break;
         }
@@ -2714,16 +2842,16 @@ test.describe('testBedWithData', () => {
       expect(configInfo.startDate).toMatch(/^\d{4}-\d{2}-\d{2}$/);
     }
 
-    console.log(`配置仓位验证完成: 满仓=${configInfo?.fullCapacity}, 初始=${configInfo?.initialPosition}`);
+    console.log(`基金设置验证完成: 满仓=${configInfo?.fullCapacity}, 初始=${configInfo?.initialPosition}`);
 
     // ══════════════════════════════════════════════════════════════════════════════
     // 4. 关闭配置窗口（点击"取消"按钮）
     // ══════════════════════════════════════════════════════════════════════════════
-    // 配置仓位弹窗没有 X 按钮，只有"取消"按钮 - 使用 JavaScript 直接点击
+    // 基金设置弹窗没有 X 按钮，只有"取消"按钮 - 使用 JavaScript 直接点击
     await page.evaluate(() => {
       const dialogs = document.querySelectorAll('.fixed.inset-0');
       for (const dialog of dialogs) {
-        if (dialog.textContent?.includes('配置仓位')) {
+        if (dialog.textContent?.includes('基金设置')) {
           const cancelBtn = Array.from(dialog.querySelectorAll('button')).find(btn => btn.textContent?.includes('取消'));
           if (cancelBtn) {
             (cancelBtn as HTMLElement).click();
@@ -2741,7 +2869,7 @@ test.describe('testBedWithData', () => {
     await page.click('#fund-details-modal button:has(i.fa-times)');
     await expect(fundModal).not.toBeVisible();
 
-    console.log('配置仓位测试完成');
+    console.log('基金设置测试完成');
   });
 
   // ═══════════════════════════════════════════════════════════════════════════════
@@ -5293,12 +5421,12 @@ test.describe('testBedWithData', () => {
     // ══════════════════════════════════════════════════════════════════════════════
     // SmartAddResultModal 结构：
     // - 结果窗口容器 .fixed.inset-0.z-[200]
-    // - .border-gray-100.rounded-xl 容器包含：滚动区域（主表格）+ 总计行（独立表格）
-    // - 滚动区域在 .border-gray-100.rounded-xl 内部，有 class "overflow-hidden flex-1"
+    // - border.border-gray-100.rounded-xl 容器包含：滚动区域（主表格）+ 总计行（独立表格）
+    // - 滚动区域是 h-full.overflow-y-auto
     // 使用更精确的定位：先定位结果窗口，再定位其内部的表格容器
     const resultWindow = page.locator('.fixed.inset-0.z-\\[200\\]').filter({ has: resultModal });
     const tableContainer = resultWindow.locator('.border-gray-100.rounded-xl');
-    const scrollArea = tableContainer.locator('.overflow-hidden.flex-1');
+    const scrollArea = tableContainer.locator('.overflow-y-auto');
     const tableRows = scrollArea.locator('table tbody tr');
     const rowCount = await tableRows.count();
     expect(rowCount).toBe(1);

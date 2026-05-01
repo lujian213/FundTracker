@@ -24,6 +24,11 @@ const SWITCH_CONFIGS: SwitchConfig[] = [
     label: '后台任务日志',
     description: '启用后可在主界面显示日志按钮',
   },
+  {
+    key: 'ocrDebugPanelEnabled',
+    label: 'OCR调试面板',
+    description: '启用后可在OCR相关功能的结果窗口显示调试面板按钮',
+  },
 ];
 
 const SystemPanel: React.FC = () => {

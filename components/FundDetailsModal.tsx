@@ -61,6 +61,7 @@ export const FundDetailsModal: React.FC<FundDetailsModalProps> = ({ data, onClos
   const [tmpInitial, setTmpInitial] = useState<string>('0');
   const [tmpStartDate, setTmpStartDate] = useState<string>('');
   const [tmpInitialPrice, setTmpInitialPrice] = useState<string>('');
+  const [tmpAliasName, setTmpAliasName] = useState<string>('');
   const [showTrade, setShowTrade] = useState(false);
   const [showProfit, setShowProfit] = useState(false);
   const [showVirtual, setShowVirtual] = useState(false);
@@ -545,8 +546,10 @@ export const FundDetailsModal: React.FC<FundDetailsModalProps> = ({ data, onClos
     setTmpFull(fullCapacity.toString());
     setTmpInitial(initialPosition.toString());
     setTmpStartDate(startDate ?? (valuationData.realtimeDate && valuationData.realtimeDate !== '---' ? valuationData.realtimeDate : ''));
-    // 初始化初始价格输入框：使用已保存的值，或者留空让用户手动输入
     setTmpInitialPrice(initialPrice !== null ? initialPrice.toFixed(4) : '');
+    // 初始化常用名称
+    const position = marketFundService.getPosition(data.symbol);
+    setTmpAliasName(position?.aliasName || '');
     // clear previous errors when opening
     setTmpFullError(null);
     setTmpInitialError(null);
@@ -640,6 +643,7 @@ export const FundDetailsModal: React.FC<FundDetailsModalProps> = ({ data, onClos
         initialPosition: c,
         startDate: s || null,
         initialPrice: finalInitialPrice,
+        aliasName: tmpAliasName.trim() || undefined,
       });
     } else {
       setStartDate(null);
@@ -650,6 +654,7 @@ export const FundDetailsModal: React.FC<FundDetailsModalProps> = ({ data, onClos
         initialPosition: c,
         startDate: null,
         initialPrice: null,
+        aliasName: tmpAliasName.trim() || undefined,
       });
     }
     setShowConfig(false);
@@ -665,6 +670,7 @@ export const FundDetailsModal: React.FC<FundDetailsModalProps> = ({ data, onClos
       initialPosition: 0,
       startDate: null,
       initialPrice: null,
+      aliasName: undefined,
     });
     setShowConfig(false);
   };
@@ -1034,7 +1040,7 @@ export const FundDetailsModal: React.FC<FundDetailsModalProps> = ({ data, onClos
           </div>
           <div className="flex-shrink-0 flex items-center space-x-2"> {/* lock actions to avoid being pushed out */}
              {/* 配置与交易按钮 */}
-             <button aria-label="配置仓位" title="配置仓位" onClick={openConfig} className="w-10 h-10 rounded-full bg-gray-50 flex items-center justify-center text-gray-500 hover:bg-gray-100 transition-colors">
+             <button aria-label="基金设置" title="基金设置" onClick={openConfig} className="w-10 h-10 rounded-full bg-gray-50 flex items-center justify-center text-gray-500 hover:bg-gray-100 transition-colors">
                <i className="fas fa-cog"></i>
              </button>
              {/* 调整初始价格按钮：仅当初始份额 > 0 且功能启用时显示 */}
@@ -1371,8 +1377,19 @@ export const FundDetailsModal: React.FC<FundDetailsModalProps> = ({ data, onClos
                  <div className="fixed inset-0 flex items-center justify-center" style={{ zIndex: SUBMODAL_Z_INDEX }}>
                    <div className="absolute inset-0 bg-black/40" onClick={() => setShowConfig(false)} />
                    <div className="relative bg-white rounded-lg shadow-lg w-full max-w-md p-6 z-30">
-                     <h3 className="text-lg font-bold mb-3">配置仓位（单位：份）</h3>
+                     <h3 className="text-lg font-bold mb-3">基金设置</h3>
                      <div className="space-y-3">
+                       <div className="flex items-center justify-between">
+                         <label className="text-sm text-gray-600">常用名称</label>
+                         <input
+                           aria-label="modal-alias-name"
+                           type="text"
+                           className="w-46 px-2 py-1 border rounded text-right"
+                           value={tmpAliasName}
+                           onChange={e => { setTmpAliasName(e.target.value); }}
+                           placeholder="可选"
+                         />
+                       </div>
                        <div className="flex items-center justify-between">
                          <label className="text-sm text-gray-600">满仓额度</label>
                          <input
@@ -1381,10 +1398,10 @@ export const FundDetailsModal: React.FC<FundDetailsModalProps> = ({ data, onClos
                            aria-invalid={!!(tmpFullError || tmpInitialError || tmpStartDateError)}
                            aria-describedby={tmpFullError || tmpInitialError || tmpStartDateError ? 'modal-errors' : undefined}
                            type="number"
-                           className="w-36 px-2 py-1 border rounded text-right"
+                           className="w-46 px-2 py-1 border rounded text-right"
                            value={tmpFull}
-                           onChange={e => { setTmpFull(e.target.value); /* run validation lightly */ }}
-                           onBlur={() => { /* validation handled on save */ }}
+                           onChange={e => { setTmpFull(e.target.value); }}
+                           onBlur={() => {}}
                          />
                        </div>
                        <div className="flex items-center justify-between">
@@ -1395,7 +1412,7 @@ export const FundDetailsModal: React.FC<FundDetailsModalProps> = ({ data, onClos
                            aria-invalid={!!(tmpFullError || tmpInitialError || tmpStartDateError)}
                            aria-describedby={tmpFullError || tmpInitialError || tmpStartDateError ? 'modal-errors' : undefined}
                            type="number"
-                           className="w-36 px-2 py-1 border rounded text-right"
+                           className="w-46 px-2 py-1 border rounded text-right"
                            value={tmpInitial}
                            onChange={e => { setTmpInitial(e.target.value); }}
                            onBlur={() => {}}
@@ -1408,7 +1425,7 @@ export const FundDetailsModal: React.FC<FundDetailsModalProps> = ({ data, onClos
                            aria-invalid={!!tmpStartDateError}
                            aria-describedby={tmpStartDateError ? 'modal-errors' : undefined}
                            type="date"
-                           className="w-36 px-2 py-1 border rounded text-right"
+                           className="w-46 px-2 py-1 border rounded text-right"
                            value={tmpStartDate}
                            onChange={e => { setTmpStartDate(e.target.value); }}
                          />
@@ -1421,7 +1438,7 @@ export const FundDetailsModal: React.FC<FundDetailsModalProps> = ({ data, onClos
                              type="text"
                              inputMode="decimal"
                              placeholder={computedInitialPriceFromStartDate !== null ? computedInitialPriceFromStartDate.toFixed(4) : '可选'}
-                             className="w-36 px-2 py-1 border rounded text-right"
+                             className="w-46 px-2 py-1 border rounded text-right"
                              value={tmpInitialPrice}
                              onChange={e => { setTmpInitialPrice(e.target.value); }}
                            />

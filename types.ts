@@ -110,6 +110,7 @@ export interface FundPosition {
   initialPosition: number;    // 初始仓位
   startDate: string | null;   // 开始日期 YYYY-MM-DD
   initialPrice: number | null; // 初始价格
+  aliasName?: string;         // 别名（用于OCR匹配，可选）
 }
 
 // 基金信息（统一存储）：包含 Ticker、持仓、估值
@@ -218,22 +219,6 @@ export interface BackupIndex {
   lastUpdated?: string;
 }
 
-export interface BackupPosition {
-  fullCapacity: number;
-  initialPosition: number;
-  startDate: string | null;
-  initialPrice: number | null;
-}
-
-export interface BackupTrade {
-  id: string;
-  date: string;              // YYYY-MM-DD
-  type: 'buy' | 'sell';
-  shares: number;
-  price?: number;            // optional fallback; prefer historical NAV from cache
-  fee: number;
-}
-
 // 同步配置
 export interface SyncConfig {
   eggfundUsername?: string;
@@ -250,20 +235,27 @@ export interface SystemParamsSection {
   ocrConcurrency: number;  // OCR 并发数量，默认 3，范围 1-8
 }
 
+export interface FeatureConfigSection {
+  initialPriceAdjustmentEnabled: boolean;
+  jobLogEnabled: boolean;
+  ocrDebugPanelEnabled: boolean;  // OCR调试面板开关，默认关闭
+}
+
 export interface BackupConfig {
   autoExportTime: string;    // "HH:mm" local time, default "16:00"
   autoBackupEnabled?: boolean; // Whether auto backup is enabled, default false
   syncConfig?: SyncConfig;   // Synchronization configuration
   syncFilterConfig?: SyncFilterConfig; // Sync confirmation modal filter settings
   systemParams?: SystemParamsSection; // 系统参数（可选以兼容旧备份）
+  features?: FeatureConfigSection; // 系统开关（可选以兼容旧备份）
 }
 
 export interface BackupData {
   portfolio: BackupFund[];
   indices: BackupIndex[];        // 所有指数（统一存储）
   globalIndices?: BackupIndex[]; // 已废弃，仅为向后兼容保留
-  positions: Record<string, BackupPosition>;
-  trades: Record<string, BackupTrade[]>;
+  positions: Record<string, FundPosition>;
+  trades: Record<string, TradeRecord[]>;
   comboTrades: Record<string, ComboTrade>;
   config: BackupConfig;
 }
