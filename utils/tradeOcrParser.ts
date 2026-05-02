@@ -107,8 +107,9 @@ export function parseTradeScreenshotText(
 
   // 2. 基金名称：从"买入产品"或"卖出产品"字段提取
   // OCR可能输出"买 入 产 品"或"买 入 产 咤"（品可能被识别错）
-  // 使用宽松匹配：产\s*[任意汉字]
-  const productMatch = text.match(/(?:买\s*入|卖\s*出)\s*产\s*[一-龥]\s*(.+?)\s*>/);
+  // 末尾可能是">"或"~"（OCR识别差异）
+  // 使用宽松匹配：产\s*[任意汉字]后面提取名称，直到遇到空格+符号或行尾
+  const productMatch = text.match(/(?:买\s*入|卖\s*出)\s*产\s*[一-龥]\s*(.+?)(?:\s*[>~]|$)/);
   const fundName = productMatch
     ? productMatch[1].replace(/\s+/g, '').trim()
     : '';
@@ -151,8 +152,10 @@ export function parseTradeScreenshotText(
   if (nav === null || nav === 0) missingFields.push('确认净值');
 
   // 6. 手续费
-  // OCR可能输出"手 续 费 0.00 元" 或 "手 续 费 G) 14.98 元"
-  const feeMatch = text.match(/手\s*续\s*费\s*[^\d]*([\d,.]+)/);
+  // OCR可能输出"手 续 费 0.00 元" 或 "手 续 费 G) 14.98 元" 或 "手 续 费 (9) 0.00 元"
+  // 需要跳过括号内的噪声数字，提取"元"前面的实际手续费
+  // 匹配：手 续 费 后面任意字符，然后提取最后一个数字（后面跟着元）
+  const feeMatch = text.match(/手\s*续\s*费\s*.*?([\d,.]+)\s*元/);
   let fee: number | null = null;
   if (feeMatch) {
     const feeStr = fixOcrNumberFormat(feeMatch[1].replace(/,/g, ''));
