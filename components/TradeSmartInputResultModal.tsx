@@ -566,12 +566,18 @@ export function TradeSmartInputResultModal({
                 <div className="flex-1 bg-yellow-50 border border-yellow-300 rounded-lg p-3">
                   <div className="flex justify-between items-center mb-2">
                     <span className="text-sm font-medium text-gray-700">
-                      解析调试信息 (v{parseDebugInfos[0]?.parserVersion || '?'})
+                      解析调试信息 ({parseDebugInfos[0]?.parserVersion || '?'})
                     </span>
                     <button
                       onClick={() => {
                         // 构建完整复制文本
                         const lines: string[] = [];
+
+                        // 0. 版本号
+                        if (parseDebugInfos.length > 0 && parseDebugInfos[0].parserVersion) {
+                          lines.push(`解析器版本: ${parseDebugInfos[0].parserVersion}`);
+                          lines.push('');
+                        }
 
                         // 1. OCR关键行
                         if (ocrRawTexts && Object.keys(ocrRawTexts).length > 0) {

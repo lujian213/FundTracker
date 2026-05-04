@@ -1,11 +1,11 @@
 // utils/tradeOcrParser.ts
 // 交易截图OCR文本解析（支持多种格式）
-// 版本: v20250504g - 添加英文引号匹配+卖出整数金额推断份额
+// 版本: v20250504h - 修复中文双引号匹配+复制全部添加版本号
 
 import Tesseract from 'tesseract.js';
 
 // 解析器版本号（用于调试确认）
-export const PARSER_VERSION = 'v20250504g';
+export const PARSER_VERSION = 'v20250504h';
 
 /**
  * 交易操作类型
@@ -213,11 +213,11 @@ function detectTradeFormat(text: string): TradeImageFormat {
   // - "定投 黄金 |"
   // - "全 部 交 易 汇 总"（有空格版本）
   const hasSummaryPattern = text.match(/全\s*部\s*交\s*易\s*汇\s*总/) !== null ||
-    text.match(/买\s*入\s*_?\s*["""""]?\s*基\s*金\s*[|｜]/) !== null ||
-    text.match(/卖\s*出\s*_?\s*["""""]?\s*基\s*金\s*[|｜]/) !== null ||
-    text.match(/定\s*投\s*_?\s*["""""]?\s*基\s*金\s*[|｜]/) !== null ||
-    text.match(/买\s*入\s*_?\s*["""""]?\s*黄\s*金\s*[|｜]/) !== null ||
-    text.match(/定\s*投\s*_?\s*["""""]?\s*黄\s*金\s*[|｜]/) !== null ||
+    text.match(/买\s*入\s*_?\s*["“”]?\s*基\s*金\s*[|｜]/) !== null ||
+    text.match(/卖\s*出\s*_?\s*["“”]?\s*基\s*金\s*[|｜]/) !== null ||
+    text.match(/定\s*投\s*_?\s*["“”]?\s*基\s*金\s*[|｜]/) !== null ||
+    text.match(/买\s*入\s*_?\s*["“”]?\s*黄\s*金\s*[|｜]/) !== null ||
+    text.match(/定\s*投\s*_?\s*["“”]?\s*黄\s*金\s*[|｜]/) !== null ||
     text.match(/IA\s*基\s*金\s*[|｜]/) !== null ||
     text.match(/TA\s*黄\s*金\s*[|｜]/) !== null ||
     text.match(/定\s*投\s*Be\s*[|｜]/) !== null ||
