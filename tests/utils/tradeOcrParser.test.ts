@@ -67,6 +67,39 @@ describe('parseTradeOcrText', () => {
       });
     });
 
+    // OCR空格分隔+净值漏小数点
+    const buyTextOcrNoise = `
+买 入 成 功
+买 入 信息
+买 入 产品 博时 黄金 ETF 联 接 C 》
+买 入 金额 200.00 元
+付款 方式 余额 宝
+买 入 时 间 2026-04-29 09:28:42
+确认 信息
+确认 金额 200.00 元
+确认 份额 62.96%)
+确认 净值 3418 元
+手续 费 0.00 元
+确认 时 间 2026-04-30
+`;
+
+    test('解析买入交易-OCR空格分隔+净值漏小数点', () => {
+      const result = parseTradeOcrText(buyTextOcrNoise);
+      expect(result.success).toBe(true);
+      expect(result.data?.length).toBe(1);
+      expect(result.data![0]).toEqual({
+        fundName: '博时黄金ETF联接C',
+        operation: 'buy',
+        amount: 200,
+        shares: 62.96,
+        nav: 3.418,  // OCR漏小数点，3418修正为3.418
+        fee: 0,
+        tradeTime: '2026-04-29 09:28:42',
+        tradeDate: '2026-04-29',
+        status: 'completed',
+      });
+    });
+
     const sellText1 = `
 卖 出 成 功
 卖 出 产 品 南 方 有 色 金 属 ETF 联 接 C >
@@ -146,6 +179,60 @@ describe('parseTradeOcrText', () => {
       const result = parseTradeOcrText(summaryText);
       expect(result.data![0].status).toBe('completed');
       expect(result.data![2].status).toBe('pending');
+    });
+
+    // OCR噪音前缀变体：EN、IN、IN BE、卖 出 "基金、卖 出 BE
+    test('解析8条交易记录-OCR噪音前缀变体', () => {
+      const ocrText = `
+定投 黄金 | 博时 黄金 ETF 联 接 C 200.00 元
+2026-04-30 09:29:05
+
+EN 黄金 | 博时 黄金 ETF 联 接 C 500.00 元
+2026-04-29 14:49:46
+
+IN 基金 | 广发 半导体 材料 设备 主 500.00 元
+题ETF 联 接 C
+2026-04-29 14:49:20
+
+IN BE | 华夏 国 证 半导体 心 片 E 500.00 元
+TF 联 接 C
+2026-04-29 14:48:58
+
+卖 出 "基金 | 天 弘 中 证 电网 设备 主题 993.97 元
+指数 C
+2026-04-29 14:48:06
+
+卖 出 "基金 | 华泰 柏 瑞 中 证 油气 产业 386.70 元
+ETF 联 接 A
+2026-04-29 14:47:41
+
+卖 出 "基金 | 天 弘 中 证 新 能 源 指数 增 2,956.45 元
+强 A
+2026-04-29 14:47:16
+
+卖 出 BE | 南方 有 色 金 属 ETF 联 接 3,041.85 元
+C
+2026-04-29 14:46:29
+`;
+      const result = parseTradeOcrText(ocrText);
+      expect(result.success).toBe(true);
+      expect(result.format).toBe('summary');
+      expect(result.data?.length).toBe(8);
+
+      // 验证操作类型
+      expect(result.data![0].operation).toBe('dingtou');  // 定投黄金
+      expect(result.data![1].operation).toBe('buy');      // EN黄金 = 买入黄金
+      expect(result.data![2].operation).toBe('buy');      // IN基金 = 买入基金
+      expect(result.data![3].operation).toBe('buy');      // IN BE = 买入基金
+      expect(result.data![4].operation).toBe('sell');     // 卖出"基金
+      expect(result.data![5].operation).toBe('sell');     // 卖出"基金
+      expect(result.data![6].operation).toBe('sell');     // 卖出"基金
+      expect(result.data![7].operation).toBe('sell');     // 卖出BE = 卖出基金
+
+      // 验证金额
+      expect(result.data![0].amount).toBe(200);
+      expect(result.data![4].amount).toBe(993.97);
+      expect(result.data![6].amount).toBe(2956.45);
     });
   });
 

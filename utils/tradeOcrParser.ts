@@ -1,11 +1,11 @@
 // utils/tradeOcrParser.ts
 // 交易截图OCR文本解析（支持多种格式）
-// 版本: v20250504c - 支持更多OCR格式变体
+// 版本: v20250504e - summary格式使用宽松正则+金额特征判断
 
 import Tesseract from 'tesseract.js';
 
 // 解析器版本号（用于调试确认）
-export const PARSER_VERSION = 'v20250504c';
+export const PARSER_VERSION = 'v20250504e';
 
 /**
  * 交易操作类型
@@ -262,7 +262,9 @@ function parseSingleScreenshot(text: string): TradeParseResult {
   if (!operation) missingFields.push('操作类型');
 
   // 基金名称
-  const productMatch = text.match(/(?:买\s*入|卖\s*出)\s*产\s*[一-龥]\s*(.+?)(?:\s*[>~]|$)/);
+  // 匹配"买入产品"或"卖出产品"，OCR可能有空格分隔
+  // 格式："买 入 产品 博时 黄金 ETF 联 接 C 》"
+  const productMatch = text.match(/(?:买\s*入|卖\s*出)\s*产\s*品?\s*(.+?)(?:\s*[>》~]|\s*$)/m);
   const fundName = productMatch
     ? productMatch[1].replace(/\s+/g, '').trim()
     : '';
@@ -290,8 +292,26 @@ function parseSingleScreenshot(text: string): TradeParseResult {
   if (shares === undefined) missingFields.push('确认份额');
 
   // 确认净值
+  // OCR可能漏掉小数点：如"3418"实际是"3.418"
   const navMatch = text.match(/确\s*认\s*净\s*值\s*[:：]?\s*([\d.]+)/);
-  const nav = navMatch ? parseFloat(navMatch[1]) : undefined;
+  let nav: number | undefined = undefined;
+  if (navMatch) {
+    const navStr = navMatch[1];
+    const navNum = parseFloat(navStr);
+    // 如果净值数值异常大（>100），可能是OCR漏了小数点
+    // 常见基金净值范围：0.x ~ 10.x，极少超过100
+    if (navNum > 100 && navStr.length >= 4) {
+      // 尝试在第一个数字后插入小数点：3418 -> 3.418
+      const corrected = parseFloat(`${navStr[0]}.${navStr.slice(1)}`);
+      if (corrected > 0 && corrected < 20) {
+        nav = corrected;
+      } else {
+        nav = navNum;
+      }
+    } else {
+      nav = navNum;
+    }
+  }
   if (nav === undefined) missingFields.push('确认净值');
 
   // 手续费
@@ -347,16 +367,52 @@ function parseTradeSummaryList(text: string): OcrTradeData[] {
   const trades: OcrTradeData[] = [];
   const lines = text.split('\n');
 
-  // 正则匹配交易行
-  // 金额特征：前面有空格，在行尾（或后面只有少量OCR噪音字符）
-  // 这样避免匹配基金名称中的数字（如"纳斯达克100指数"中的100前面没有空格，后面还有"指数"）
-  // OCR格式变体：
-  // - 定投 "基金 | / 定投 基金 | / 定投 Be |
-  // - IA 基金 | / TA 黄金 | / 定投 黄金 |
-  // 注意：OCR可能输出中文全角引号 "" (U+201C/U+201D) 或英文半角引号 ""
-  const tradePattern = /((?:买\s*入\s*_?\s*[""“”]?\s*(?:基\s*金|黄\s*金)|卖\s*出\s*_?\s*[""“”]?\s*(?:基\s*金)|定\s*投\s*_?\s*[""“”]?\s*(?:基\s*金|黄\s*金|Be|黄金)|IAN\s*(?:HE|基\s*金)|IA\s*基\s*金|IA\s*BE|TA\s*黄\s*金)\s*(?:基\s*金|黄\s*金|HE|BE|BS)?\s*[""“”]?\s*)\s*[|｜]\s*(.+?)\s+([\d,.]+(?:\.\d{2})?)\s*(元|份|%|[A-Za-z]{1,2})?(?:\s*$)/;
+  // 灵活正则：匹配 "前缀 | 基金名称 金额 元" 格式
+  // 不限定前缀关键词，用detectOperation判断操作类型
+  // 格式变体：
+  // - 定投 黄金 | 博时 黄金 ETF 联 接 C 200.00 元
+  // - EN 黄金 | 博时 黄金 ETF 联 接 C 500.00 元  (OCR噪音)
+  // - 卖 出 "基金 | 天 弘 中 证 电网 设备 主题 993.97 元
+  const tradePattern = /^(.+?)\s*[|｜]\s*(.+?)\s+([\d,.]+)\s*(?:元|份)?[A-Za-z\s、>%)]*$/;
 
   const timePattern = /(\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2})/;
+
+  // 已知操作关键词
+  const knownOperations = {
+    dingtou: ['定投', '定\s*投'],
+    buy: ['买入', '买\s*入'],
+    sell: ['卖出', '卖\s*出']
+  };
+
+  // 检测操作类型（优先关键词，其次金额特征）
+  function detectOperation(prefixText: string, rawAmountStr: string): TradeOperation {
+    const cleanPrefix = prefixText.replace(/\s+/g, '');
+
+    // 优先检查已知关键词
+    for (const keyword of knownOperations.dingtou) {
+      if (cleanPrefix.match(new RegExp(keyword, 'i'))) return 'dingtou';
+    }
+    for (const keyword of knownOperations.buy) {
+      if (cleanPrefix.match(new RegExp(keyword, 'i'))) return 'buy';
+    }
+    for (const keyword of knownOperations.sell) {
+      if (cleanPrefix.match(new RegExp(keyword, 'i'))) return 'sell';
+    }
+
+    // 没有已知关键词，根据金额特征推断
+    const normalizedStr = rawAmountStr.replace(/[A-Za-z%、>\s]+$/, '').replace(/,/g, '');
+    const fixedStr = normalizedStr.replace(/(\d),\.(\d+)/g, '$1$2');
+    const parts = fixedStr.split('.');
+
+    // 小数部分长度 <= 2 且非 00 → 卖出
+    if (parts.length === 2) {
+      const decPart = parts[1];
+      if (decPart.length <= 2 && decPart !== '00' && decPart !== '0') {
+        return 'sell';
+      }
+    }
+    return 'buy';
+  }
 
   let currentTrade: Partial<OcrTradeData> | null = null;
   let prevLineHadTrade = false;
@@ -368,29 +424,28 @@ function parseTradeSummaryList(text: string): OcrTradeData[] {
 
     const tradeMatch = cleanLine.match(tradePattern);
     if (tradeMatch) {
+      // 如果当前交易未结束，跳过这行（噪音）
+      if (currentTrade && !currentTrade.tradeTime) continue;
+
+      const prefixText = tradeMatch[1];
+      const fundNameRaw = tradeMatch[2];
+      const amountStr = tradeMatch[3];
+
+      // 排除时间行被误匹配
+      if (prefixText.match(/\d{4}-\d{2}-\d{2}/)) continue;
+
       if (currentTrade && currentTrade.tradeTime) {
         trades.push(currentTrade as OcrTradeData);
       }
 
-      const operationRaw = tradeMatch[1].replace(/\s+/g, '').replace(/_/g, '');
-      let operation: TradeOperation;
-
-      if (operationRaw.includes('买') || operationRaw.includes('IAN') || operationRaw.includes('IA') || operationRaw.includes('TA')) {
-        operation = 'buy';
-      } else if (operationRaw.includes('卖')) {
-        operation = 'sell';
-      } else if (operationRaw.includes('定投')) {
-        operation = 'dingtou';
-      } else {
-        operation = 'buy';
-      }
+      // 判断操作类型
+      const operation = detectOperation(prefixText, amountStr);
 
       // 基金名称：去掉空格和OCR噪声标点
-      let fundName = tradeMatch[2].replace(/\s+/g, '').trim();
+      let fundName = fundNameRaw.replace(/\s+/g, '').trim();
       fundName = fundName.replace(/[。，、；：]/g, '');
 
       // 金额处理
-      let amountStr = tradeMatch[3].replace(/,/g, '');
       const amount = fixAmountFormat(amountStr, operation);
 
       // 检查是否是份额记录（单位是"份"）
