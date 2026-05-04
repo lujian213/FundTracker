@@ -279,27 +279,76 @@ describe('validateTradeRecord', () => {
       hasPosition: true,
     };
 
-    test('保留4位小数后一致的价格应该通过', () => {
-      // OCR识别: 1.50001，系统: 1.50002，保留4位后都是1.5000
+    test('保留两位小数后一致的价格应该通过', () => {
+      // OCR识别: 1.5001，系统: 1.5002，保留两位后都是1.50
       const ocrData: OcrTradeData = {
         fundName: '测试基金A',
         operation: 'buy',
         amount: 15000,
         shares: 10000,
-        nav: 1.50001,
+        nav: 1.5001,
         fee: 0,
         tradeTime: '2026-04-24 10:00:00',
         tradeDate: '2026-04-24',
       };
 
       mockGetHistory.mockReturnValue([
-        { date: new Date('2026-04-24').getTime(), value: 1.50002 },
+        { date: new Date('2026-04-24').getTime(), value: 1.5002 },
       ]);
 
       const result = validateTradeRecord(ocrData, matchResult);
 
-      // 价格校验应该通过（因为保留4位后一致）
+      // 价格校验应该通过（因为保留两位后一致）
       expect(result.systemPrice).toBeDefined();
+    });
+
+    test('保留两位小数后不一致的价格应返回无效', () => {
+      // OCR识别: 1.51，系统: 1.50，保留两位后不一致
+      const ocrData: OcrTradeData = {
+        fundName: '测试基金A',
+        operation: 'buy',
+        amount: 15100,
+        shares: 10000,
+        nav: 1.51,
+        fee: 0,
+        tradeTime: '2026-04-24 10:00:00',
+        tradeDate: '2026-04-24',
+      };
+
+      mockGetHistory.mockReturnValue([
+        { date: new Date('2026-04-24').getTime(), value: 1.50 },
+      ]);
+
+      const result = validateTradeRecord(ocrData, matchResult);
+
+      expect(result.validation.isValid).toBe(false);
+      expect(result.validation.errors[0]).toContain('交易价格识别为');
+      expect(result.validation.errors[0]).toContain('不一致');
+    });
+
+    test('后续计算应使用系统价格而非OCR价格', () => {
+      // OCR识别: 1.5001，系统: 1.5002，保留两位后一致
+      // 份额计算应该用系统价格: (10000 - 0) / 1.5002 = 6665.78
+      const ocrData: OcrTradeData = {
+        fundName: '测试基金A',
+        operation: 'buy',
+        amount: 10000,
+        shares: 6665.78,  // 用系统价格计算的正确份额
+        nav: 1.5001,
+        fee: 0,
+        tradeTime: '2026-04-24 10:00:00',
+        tradeDate: '2026-04-24',
+      };
+
+      mockGetHistory.mockReturnValue([
+        { date: new Date('2026-04-24').getTime(), value: 1.5002 },
+      ]);
+
+      const result = validateTradeRecord(ocrData, matchResult);
+
+      // 校验通过，且计算份额用的是系统价格
+      expect(result.validation.isValid).toBe(true);
+      expect(result.calculatedShares).toBeCloseTo(6665.78, 2);
     });
   });
 });

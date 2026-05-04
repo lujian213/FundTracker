@@ -17,15 +17,17 @@ jest.mock('../../services/marketFundService', () => ({
 }));
 
 jest.mock('../../utils/tradeOcrParser', () => ({
-  parseTradeScreenshotText: jest.fn(),
+  parseTradeOcrText: jest.fn(),
 }));
 
 jest.mock('../../utils/fundNameMatcher', () => ({
   matchFundByName: jest.fn(),
+  matchFundByCode: jest.fn(),
 }));
 
 jest.mock('../../utils/tradeRecordValidator', () => ({
   validateTradeRecord: jest.fn(),
+  mapOperationToBuySell: jest.fn((op: string) => op === 'sell' ? 'sell' : 'buy'),
 }));
 
 jest.mock('../../utils/arrayUtils', () => ({
@@ -39,14 +41,15 @@ jest.mock('../../utils/arrayUtils', () => ({
 }));
 
 import { recognizeImageRaw } from '../../services/ocrService';
-import { parseTradeScreenshotText } from '../../utils/tradeOcrParser';
-import { matchFundByName } from '../../utils/fundNameMatcher';
+import { parseTradeOcrText } from '../../utils/tradeOcrParser';
+import { matchFundByName, matchFundByCode } from '../../utils/fundNameMatcher';
 import { validateTradeRecord } from '../../utils/tradeRecordValidator';
 import { addTrade } from '../../services/marketFundService';
 
 const mockRecognizeImageRaw = recognizeImageRaw as jest.MockedFunction<typeof recognizeImageRaw>;
-const mockParseTradeScreenshotText = parseTradeScreenshotText as jest.MockedFunction<typeof parseTradeScreenshotText>;
+const mockParseTradeOcrText = parseTradeOcrText as jest.MockedFunction<typeof parseTradeOcrText>;
 const mockMatchFundByName = matchFundByName as jest.MockedFunction<typeof matchFundByName>;
+const mockMatchFundByCode = matchFundByCode as jest.MockedFunction<typeof matchFundByCode>;
 const mockValidateTradeRecord = validateTradeRecord as jest.MockedFunction<typeof validateTradeRecord>;
 const mockAddTrade = addTrade as jest.MockedFunction<typeof addTrade>;
 
@@ -84,9 +87,9 @@ describe('useTradeSmartInput', () => {
       });
 
       // Mock解析成功
-      mockParseTradeScreenshotText.mockReturnValue({
+      mockParseTradeOcrText.mockReturnValue({
         success: true,
-        data: {
+        data: [{
           fundName: '测试基金A',
           operation: 'buy',
           amount: 10000,
@@ -95,7 +98,8 @@ describe('useTradeSmartInput', () => {
           fee: 0,
           tradeTime: '2026-04-24 10:00:00',
           tradeDate: '2026-04-24',
-        },
+        }],
+        format: 'single',
       });
 
       // Mock匹配成功
@@ -173,7 +177,7 @@ describe('useTradeSmartInput', () => {
         confidence: 90,
       });
 
-      mockParseTradeScreenshotText.mockReturnValue({
+      mockParseTradeOcrText.mockReturnValue({
         success: false,
         missingFields: ['交易时间'],
       });
@@ -197,9 +201,9 @@ describe('useTradeSmartInput', () => {
         confidence: 90,
       });
 
-      mockParseTradeScreenshotText.mockReturnValue({
+      mockParseTradeOcrText.mockReturnValue({
         success: true,
-        data: {
+        data: [{
           fundName: '未知基金',
           operation: 'buy',
           amount: 10000,
@@ -208,7 +212,8 @@ describe('useTradeSmartInput', () => {
           fee: 0,
           tradeTime: '2026-04-24 10:00:00',
           tradeDate: '2026-04-24',
-        },
+        }],
+        format: 'single',
       });
 
       mockMatchFundByName.mockReturnValue({

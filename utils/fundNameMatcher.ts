@@ -144,7 +144,32 @@ export function matchFundByName(
 }
 
 /**
- * 根据基金名称精确匹配（用于测试和调试）
+ * 根据基金代码精确匹配
+ *
+ * @param fundCode 基金代码（6位数字）
+ * @returns FundMatchResult 匹配结果
+ */
+export function matchFundByCode(fundCode: string): FundMatchResult {
+  if (!fundCode || !/^\d{6}$/.test(fundCode)) {
+    return { matched: false, similarity: 0 };
+  }
+
+  const fundInfo = getFundInfo(fundCode);
+  if (fundInfo) {
+    return {
+      matched: true,
+      symbol: fundCode,
+      matchedName: fundInfo.ticker.name,
+      similarity: 1,
+      hasPosition: (fundInfo.position?.fullCapacity ?? 0) > 0,
+    };
+  }
+
+  return { matched: false, similarity: 0 };
+}
+
+/**
+ * 根据基金代码精确匹配（用于测试和调试）
  *
  * @param ocrFundName OCR识别的基金名称
  * @returns FundMatchResult 匹配结果

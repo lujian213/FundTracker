@@ -477,6 +477,7 @@ const TransactionsModal: React.FC<Props> = ({ portfolio, marketData, onClose, on
         records={smartInputState.records}
         errors={smartInputState.errors}
         ocrRawTexts={smartInputState.ocrRawTexts}
+        parseDebugInfos={smartInputState.parseDebugInfos}
         onClose={handleSmartInputResultClose}
         onConfirm={handleSmartInputConfirm}
       />

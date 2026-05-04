@@ -62,6 +62,7 @@ describe('TradeSmartInputResultModal', () => {
           records={[]}
           errors={[]}
           ocrRawTexts={{}}
+          parseDebugInfos={[]}
           onClose={() => {}}
           onConfirm={() => {}}
         />
@@ -76,6 +77,7 @@ describe('TradeSmartInputResultModal', () => {
           records={[]}
           errors={[]}
           ocrRawTexts={{}}
+          parseDebugInfos={[]}
           onClose={() => {}}
           onConfirm={() => {}}
         />
@@ -98,6 +100,7 @@ describe('TradeSmartInputResultModal', () => {
           records={records}
           errors={[]}
           ocrRawTexts={{}}
+          parseDebugInfos={[]}
           onClose={() => {}}
           onConfirm={() => {}}
         />
@@ -119,6 +122,7 @@ describe('TradeSmartInputResultModal', () => {
           records={records}
           errors={[]}
           ocrRawTexts={{}}
+          parseDebugInfos={[]}
           onClose={() => {}}
           onConfirm={() => {}}
         />
@@ -139,6 +143,7 @@ describe('TradeSmartInputResultModal', () => {
           records={records}
           errors={[]}
           ocrRawTexts={{}}
+          parseDebugInfos={[]}
           onClose={() => {}}
           onConfirm={() => {}}
         />
@@ -170,6 +175,7 @@ describe('TradeSmartInputResultModal', () => {
           records={[buyRecord, sellRecord]}
           errors={[]}
           ocrRawTexts={{}}
+          parseDebugInfos={[]}
           onClose={() => {}}
           onConfirm={() => {}}
         />
@@ -193,6 +199,7 @@ describe('TradeSmartInputResultModal', () => {
           records={records}
           errors={[]}
           ocrRawTexts={{}}
+          parseDebugInfos={[]}
           onClose={() => {}}
           onConfirm={() => {}}
         />
@@ -214,6 +221,7 @@ describe('TradeSmartInputResultModal', () => {
           records={records}
           errors={[]}
           ocrRawTexts={{}}
+          parseDebugInfos={[]}
           onClose={() => {}}
           onConfirm={() => {}}
         />
@@ -240,6 +248,7 @@ describe('TradeSmartInputResultModal', () => {
           records={records}
           errors={[]}
           ocrRawTexts={{}}
+          parseDebugInfos={[]}
           onClose={() => {}}
           onConfirm={() => {}}
         />
@@ -273,6 +282,7 @@ describe('TradeSmartInputResultModal', () => {
           records={records}
           errors={[]}
           ocrRawTexts={{}}
+          parseDebugInfos={[]}
           onClose={() => {}}
           onConfirm={() => {}}
         />
@@ -308,6 +318,7 @@ describe('TradeSmartInputResultModal', () => {
           records={records}
           errors={[]}
           ocrRawTexts={{}}
+          parseDebugInfos={[]}
           onClose={() => {}}
           onConfirm={() => {}}
         />
@@ -331,6 +342,7 @@ describe('TradeSmartInputResultModal', () => {
           records={records}
           errors={[]}
           ocrRawTexts={{}}
+          parseDebugInfos={[]}
           onClose={() => {}}
           onConfirm={() => {}}
         />
@@ -339,7 +351,30 @@ describe('TradeSmartInputResultModal', () => {
       expect(screen.getByText('解析正确，没有错误！')).toBeInTheDocument();
     });
 
-    test('有失败记录时显示红色错误提示', () => {
+    test('有OCR失败记录时显示红色错误提示', () => {
+      const records: ValidatedTradeRecord[] = [
+        createMockRecord('基金A', '2026-04-24', true),
+      ];
+      const errors = [{ fileName: 'failed.jpg', message: 'OCR识别失败' }];
+
+      render(
+        <TradeSmartInputResultModal
+          visible={true}
+          records={records}
+          errors={errors}
+          ocrRawTexts={{}}
+          parseDebugInfos={[]}
+          onClose={() => {}}
+          onConfirm={() => {}}
+        />
+      );
+
+      // 错误区域只显示OCR失败信息，不显示校验失败信息
+      expect(screen.getByText(/failed\.jpg/)).toBeInTheDocument();
+      expect(screen.getByText('OCR识别失败')).toBeInTheDocument();
+    });
+
+    test('校验失败信息不显示在错误区域', () => {
       const records: ValidatedTradeRecord[] = [
         createMockRecord('无效基金', '2026-04-24', false, {
           validation: { isValid: false, errors: ['无法匹配基金'], warnings: [] },
@@ -350,14 +385,17 @@ describe('TradeSmartInputResultModal', () => {
         <TradeSmartInputResultModal
           visible={true}
           records={records}
-          errors={[]}
+          errors={[]}  // 无OCR失败
           ocrRawTexts={{}}
+          parseDebugInfos={[]}
           onClose={() => {}}
           onConfirm={() => {}}
         />
       );
 
-      expect(screen.getByText(/无法匹配基金/)).toBeInTheDocument();
+      // 错误区域不显示校验失败信息（如"无法匹配基金")
+      // 校验失败信息通过表格中的有效性列tooltip显示
+      expect(screen.queryByText(/无法匹配基金/)).not.toBeInTheDocument();
     });
 
     test('显示OCR失败错误信息', () => {
@@ -372,6 +410,7 @@ describe('TradeSmartInputResultModal', () => {
           records={records}
           errors={errors}
           ocrRawTexts={{}}
+          parseDebugInfos={[]}
           onClose={() => {}}
           onConfirm={() => {}}
         />
@@ -424,6 +463,7 @@ describe('TradeSmartInputResultModal', () => {
           records={records}
           errors={[]}
           ocrRawTexts={{}}
+          parseDebugInfos={[]}
           onClose={() => {}}
           onConfirm={() => {}}
         />
@@ -548,6 +588,7 @@ describe('TradeSmartInputResultModal', () => {
           records={records}
           errors={[]}
           ocrRawTexts={{}}
+          parseDebugInfos={[]}
           onClose={() => {}}
           onConfirm={() => {}}
         />
@@ -576,6 +617,7 @@ describe('TradeSmartInputResultModal', () => {
           records={records}
           errors={[]}
           ocrRawTexts={{}}
+          parseDebugInfos={[]}
           onClose={() => {}}
           onConfirm={() => {}}
         />
@@ -583,6 +625,124 @@ describe('TradeSmartInputResultModal', () => {
 
       // 无仓位时显示红色的基金代码（不是"<无仓位>"）
       expect(screen.getByText('000002')).toBeInTheDocument();
+    });
+  });
+
+  describe('价格显示逻辑', () => {
+    test('OCR有价格时显示为可编辑输入框', () => {
+      const records: ValidatedTradeRecord[] = [
+        createMockRecord('测试基金A', '2026-04-24', true, {
+          ocrData: {
+            fundName: '测试基金A',
+            operation: 'buy',
+            amount: 10000,
+            shares: 6666.67,
+            nav: 1.5001,  // OCR识别价格（有值）
+            fee: 0,
+            tradeTime: '2026-04-24 10:00:00',
+            tradeDate: '2026-04-24',
+          },
+          systemPrice: 1.5002,
+          validation: { isValid: true, errors: [], warnings: [] },
+        }),
+      ];
+
+      render(
+        <TradeSmartInputResultModal
+          visible={true}
+          records={records}
+          errors={[]}
+          ocrRawTexts={{}}
+          parseDebugInfos={[]}
+          onClose={() => {}}
+          onConfirm={() => {}}
+        />
+      );
+
+      // OCR有价格时显示为可编辑输入框（有多个输入框，找到价格列的输入框）
+      const spinbuttons = screen.getAllByRole('spinbutton');
+      // 价格输入框的 step 属性是 0.0001
+      const priceInput = spinbuttons.find(input => input.getAttribute('step') === '0.0001');
+      expect(priceInput).toBeDefined();
+      expect(priceInput).toHaveValue(1.5001);
+    });
+
+    test('OCR无价格时显示系统价格（不可编辑）', () => {
+      const records: ValidatedTradeRecord[] = [
+        createMockRecord('测试基金A', '2026-04-24', true, {
+          ocrData: {
+            fundName: '测试基金A',
+            operation: 'buy',
+            amount: 10000,
+            shares: undefined,  // 无份额
+            nav: undefined,  // 无OCR价格
+            fee: 0,
+            tradeTime: '2026-04-24 10:00:00',
+            tradeDate: '2026-04-24',
+          },
+          systemPrice: 1.5002,  // 系统价格
+          calculatedShares: 6666.67,
+          validation: { isValid: true, errors: [], warnings: [] },
+        }),
+      ];
+
+      render(
+        <TradeSmartInputResultModal
+          visible={true}
+          records={records}
+          errors={[]}
+          ocrRawTexts={{}}
+          parseDebugInfos={[]}
+          onClose={() => {}}
+          onConfirm={() => {}}
+        />
+      );
+
+      // OCR无价格时显示系统价格，不是输入框（没有 step="0.0001" 的输入框）
+      expect(screen.getByText('1.5002')).toBeInTheDocument();
+      const spinbuttons = screen.queryAllByRole('spinbutton');
+      const priceInput = spinbuttons.find(input => input.getAttribute('step') === '0.0001');
+      expect(priceInput).toBeUndefined();
+    });
+
+    test('价格保留两位小数后不一致时标红', () => {
+      // OCR识别价格1.51，系统价格1.50，保留两位后不一致，应标红
+      const records: ValidatedTradeRecord[] = [
+        createMockRecord('测试基金A', '2026-04-24', false, {
+          ocrData: {
+            fundName: '测试基金A',
+            operation: 'buy',
+            amount: 10000,
+            shares: 6666.67,
+            nav: 1.51,  // OCR识别1.51（有价格，所以是可编辑）
+            fee: 0,
+            tradeTime: '2026-04-24 10:00:00',
+            tradeDate: '2026-04-24',
+          },
+          systemPrice: 1.50,  // 系统1.50
+          validation: { isValid: false, errors: ['交易价格不一致'], warnings: [] },
+          priceMismatch: true,  // 校验器会设置此字段
+        }),
+      ];
+
+      render(
+        <TradeSmartInputResultModal
+          visible={true}
+          records={records}
+          errors={[]}
+          ocrRawTexts={{}}
+          parseDebugInfos={[]}
+          onClose={() => {}}
+          onConfirm={() => {}}
+        />
+      );
+
+      // 价格输入框应该在红色单元格中
+      const spinbuttons = screen.getAllByRole('spinbutton');
+      const priceInput = spinbuttons.find(input => input.getAttribute('step') === '0.0001');
+      expect(priceInput).toBeDefined();
+      const priceCell = priceInput!.closest('td');
+      expect(priceCell).toHaveClass('text-red-500');
     });
   });
 });
