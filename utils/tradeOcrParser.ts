@@ -1,11 +1,11 @@
 // utils/tradeOcrParser.ts
 // 交易截图OCR文本解析（支持多种格式）
-// 版本: v20250504e - summary格式使用宽松正则+金额特征判断
+// 版本: v20250504g - 添加英文引号匹配+卖出整数金额推断份额
 
 import Tesseract from 'tesseract.js';
 
 // 解析器版本号（用于调试确认）
-export const PARSER_VERSION = 'v20250504e';
+export const PARSER_VERSION = 'v20250504g';
 
 /**
  * 交易操作类型
@@ -213,15 +213,15 @@ function detectTradeFormat(text: string): TradeImageFormat {
   // - "定投 黄金 |"
   // - "全 部 交 易 汇 总"（有空格版本）
   const hasSummaryPattern = text.match(/全\s*部\s*交\s*易\s*汇\s*总/) !== null ||
-    text.match(/买\s*入\s*_?\s*[""]?\s*基\s*金\s*[|｜]/) !== null ||
-    text.match(/卖\s*出\s*_?\s*[""]?\s*基\s*金\s*[|｜]/) !== null ||
-    text.match(/定\s*投\s*_?\s*[""]?\s*基\s*金\s*[|｜]/) !== null ||
-    text.match(/买\s*入\s*_?\s*[""]?\s*黄\s*金\s*[|｜]/) !== null ||
-    text.match(/定\s*投\s*_?\s*[""]?\s*黄\s*金\s*[|｜]/) !== null ||
+    text.match(/买\s*入\s*_?\s*["""""]?\s*基\s*金\s*[|｜]/) !== null ||
+    text.match(/卖\s*出\s*_?\s*["""""]?\s*基\s*金\s*[|｜]/) !== null ||
+    text.match(/定\s*投\s*_?\s*["""""]?\s*基\s*金\s*[|｜]/) !== null ||
+    text.match(/买\s*入\s*_?\s*["""""]?\s*黄\s*金\s*[|｜]/) !== null ||
+    text.match(/定\s*投\s*_?\s*["""""]?\s*黄\s*金\s*[|｜]/) !== null ||
     text.match(/IA\s*基\s*金\s*[|｜]/) !== null ||
-    text.match(/TA\s*黄\s*金\s*[|｜]/) !== null ||  // OCR错误：买入黄金变成TA黄金
-    text.match(/定\s*投\s*Be\s*[|｜]/) !== null ||  // OCR错误：定投基金变成定投Be
-    text.match(/定\s*投\s*[|｜]/) !== null;  // 通用定投匹配
+    text.match(/TA\s*黄\s*金\s*[|｜]/) !== null ||
+    text.match(/定\s*投\s*Be\s*[|｜]/) !== null ||
+    text.match(/定\s*投\s*[|｜]/) !== null;
 
   if (hasSummaryPattern) {
     return 'summary';
@@ -448,8 +448,22 @@ function parseTradeSummaryList(text: string): OcrTradeData[] {
       // 金额处理
       const amount = fixAmountFormat(amountStr, operation);
 
-      // 检查是否是份额记录（单位是"份"）
-      const isShareRecord = cleanLine.includes('份') && !cleanLine.includes('元');
+      // 检查是否是份额记录
+      // 1. 明确标识"份"
+      const hasShareMark = cleanLine.includes('份') && !cleanLine.includes('元');
+      // 2. 卖出交易 + 金额.00结尾 + 无明确"元"单位 → 推断为份额
+      //    原因：卖出金额通常有小数（如993.97），整数金额罕见
+      //    特殊处理：OCR噪音如"450.0017)"，需要去掉末尾噪音数字
+      let normalizedAmount = amountStr.replace(/[A-Za-z%、>\s)]+$/, '').replace(/,/g, '');
+      // 处理OCR噪音：小数点后超过2位，截取前2位
+      if (normalizedAmount.match(/^\d+\.\d{3,}$/)) {
+        normalizedAmount = normalizedAmount.slice(0, normalizedAmount.indexOf('.') + 3);
+      }
+      const isSellWithIntegerAmount = operation === 'sell' &&
+        normalizedAmount.match(/^\d+\.00$/) &&
+        !cleanLine.includes('元');
+
+      const isShareRecord = hasShareMark || isSellWithIntegerAmount;
 
       currentTrade = {
         fundName,

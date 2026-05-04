@@ -234,6 +234,120 @@ C
       expect(result.data![4].amount).toBe(993.97);
       expect(result.data![6].amount).toBe(2956.45);
     });
+
+    // 新增测试：7条记录（包含卖出份额、金额带括号等变体）
+    test('解析7条交易记录-卖出份额+金额带括号', () => {
+      const ocrText = `
+IN 基金 | 南方 有 色 金 属 ETF 联 接 1000.00 元
+C 交易 进行 中
+2026-04-30 14:48:57
+
+IN 基金 | 天 弘 中 证 电网 设备 主题 1000.00 元
+指数 C 交易 进行 中
+2026-04-30 14:48:28
+
+买 入 基金 | 天 弘 恒生 科技 ETF 联 接 ( 500.00 元
+QDIDC 交易 进行 中
+2026-04-30 14:48:01
+
+IN 基金 | 天 弘 中 证 新 能 源 指数 增 500.00 元
+强 A 交易 进行 中
+2026-04-30 14:47:37
+
+卖 出 基金 | 博时 军工 主题 股票 C 450.0017)
+2026-04-30 14:46:34 预计 05-06 24 点 前 到
+
+卖 出 "基金 | 易方达 人 工 智能 ETF 联 1200.00 份
+接 C 预计 05-06 24 点 前 到
+2026-04-30 14:46:03
+
+卖 出 "基金 | 永 赢 国 证 商用 卫星 通信 1750.00 份
+产业 ETF 联 接 A 预计 05-06 24 点 前 到
+2026-04-30 14:45:34
+`;
+      const result = parseTradeOcrText(ocrText);
+      expect(result.success).toBe(true);
+      expect(result.format).toBe('summary');
+      expect(result.data?.length).toBe(7);  // 全部7条记录
+
+      // 验证操作类型
+      expect(result.data![0].operation).toBe('buy');      // IN基金
+      expect(result.data![1].operation).toBe('buy');      // IN基金
+      expect(result.data![2].operation).toBe('buy');      // 买入基金
+      expect(result.data![3].operation).toBe('buy');      // IN基金
+      expect(result.data![4].operation).toBe('sell');     // 卖出基金 450.00
+      expect(result.data![5].operation).toBe('sell');     // 卖出份额
+      expect(result.data![6].operation).toBe('sell');     // 卖出份额
+
+      // 验证金额（450.0017应解析为450.00，且判断为份额）
+      expect(result.data![4].amount).toBe(450);
+      expect(result.data![4].status).toBe('closed');  // 卖出.00结尾 = 份额记录
+      expect(result.data![5].amount).toBe(1200);
+      expect(result.data![5].status).toBe('closed');   // 份额记录
+      expect(result.data![6].amount).toBe(1750);
+      expect(result.data![6].status).toBe('closed');   // 份额记录
+    });
+
+    // 新增测试：8条记录（定投+卖出份额+金额格式异常）
+    test('解析8条交易记录-定投卖出份额混合', () => {
+      const ocrText = `
+卖 出 "基金 | 广发 半导体 材料 设备 主 1.500.00 份
+题ETF 联 接 C 预计 05-06 24 点 前 到
+2026-04-30 14:45:03 账
+
+卖 出 "基金 | 华夏 国 证 半导体 心 片 E 2,240.00 份
+TF 联 接 C 预计 05-06 24 点 前 到
+2026-04-30 14:44:10 账
+
+定投 "基金 | 华泰 柏 瑞 中 证 油气 产业 100.00 元
+ETF 联 接 A 交易 进行 中
+2026-04-30 10:48:11
+
+定投 "基金 | 广发 纳 斯 达 克 100ETF 10.00 元
+联接 (QDIDA 交易 进行 中
+2026-04-30 09:49:02
+
+定投 "基金 | 广发 纳 斯 达 克 100ETF 10.00 元
+联接 (QDIDA 交易 进行 中
+2026-04-29 09:42:39
+
+卖 出 BE | 永 赢 科技 智 选 混合 A 200.00 份
+2026-04-30 14:47:03 已 撤销
+
+定投 "基金 | 南方 有 色 金 属 ETF 联 接 100.00 元
+C 已 撤销
+2026-04-30 10:35:45
+
+定投 "基金 | 天 弘 中 证 新 能 源 指数 增 100.00 元
+强 A 已 撤销
+2026-04-30 10:16:35
+`;
+      const result = parseTradeOcrText(ocrText);
+      expect(result.success).toBe(true);
+      expect(result.format).toBe('summary');
+      expect(result.data?.length).toBe(8);
+
+      // 验证操作类型
+      expect(result.data![0].operation).toBe('sell');     // 卖出份额
+      expect(result.data![1].operation).toBe('sell');     // 卖出份额
+      expect(result.data![2].operation).toBe('dingtou');  // 定投
+      expect(result.data![3].operation).toBe('dingtou');  // 定投
+      expect(result.data![4].operation).toBe('dingtou');  // 定投
+      expect(result.data![5].operation).toBe('sell');     // 卖出份额(已撤销)
+      expect(result.data![6].operation).toBe('dingtou');  // 定投(已撤销)
+      expect(result.data![7].operation).toBe('dingtou');  // 定投(已撤销)
+
+      // 验证金额（1.500.00异常格式修正为1500）
+      expect(result.data![0].amount).toBe(1500);
+      expect(result.data![1].amount).toBe(2240);
+
+      // 验证状态
+      expect(result.data![0].status).toBe('closed');      // 卖出份额
+      expect(result.data![1].status).toBe('closed');      // 卖出份额
+      expect(result.data![2].status).toBe('pending');     // 交易进行中
+      expect(result.data![5].status).toBe('closed');      // 已撤销
+      expect(result.data![6].status).toBe('closed');      // 已撤销
+    });
   });
 
   describe('单基金明细列表解析', () => {

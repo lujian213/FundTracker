@@ -570,10 +570,27 @@ export function TradeSmartInputResultModal({
                     </span>
                     <button
                       onClick={() => {
-                        const text = parseDebugInfos
-                          .map(info => `${info.fileName}: 原始${info.rawRecordCount} 过滤${info.afterFilterCount} 匹配${info.matchedCount} 未匹配[${info.unmatchedFunds.join(', ')}] 错误[${info.parseErrors.join('; ')}]`)
-                          .join('\n');
-                        navigator.clipboard.writeText(text);
+                        // 构建完整复制文本
+                        const lines: string[] = [];
+
+                        // 1. OCR关键行
+                        if (ocrRawTexts && Object.keys(ocrRawTexts).length > 0) {
+                          lines.push('OCR关键行（含|）:');
+                          Object.entries(ocrRawTexts).forEach(([file, text]) => {
+                            const keyLines = text.split('\n')
+                              .filter(line => line.includes('|') && (line.includes('定投') || line.includes('买') || line.includes('卖') || line.includes('IA') || line.includes('TA') || line.includes('Be') || line.includes('黄金')))
+                              .slice(0, 10);
+                            keyLines.forEach(line => lines.push(line.trim()));
+                          });
+                          lines.push('');
+                        }
+
+                        // 2. 解析调试信息表格
+                        parseDebugInfos.forEach(info => {
+                          lines.push(`${info.fileName}: 原始${info.rawRecordCount} 过滤${info.afterFilterCount} 匹配${info.matchedCount} 未匹配[${info.unmatchedFunds.join(', ')}] 错误[${info.parseErrors.join('; ')}]`);
+                        });
+
+                        navigator.clipboard.writeText(lines.join('\n'));
                       }}
                       className="text-xs text-blue-500 hover:text-blue-700"
                     >
