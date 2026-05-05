@@ -6,7 +6,9 @@ import Tesseract from 'tesseract.js';
 import * as fs from 'fs';
 import * as path from 'path';
 import { fileURLToPath } from 'url';
-import { parseTradeOcrText, OcrTradeData } from '../utils/tradeOcrParser';
+import { parseTradeOcrText, OcrTradeData, PARSER_VERSION } from '../utils/tradeOcrParser';
+
+console.log('解析器版本:', PARSER_VERSION);
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);

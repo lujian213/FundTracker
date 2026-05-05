@@ -14,6 +14,32 @@ jest.mock('react-dom', () => {
   };
 });
 
+// Mock getAllFundInfos to return test fund data
+jest.mock('../../services/marketFundService', () => ({
+  getAllFundInfos: () => [
+    {
+      ticker: { symbol: '000001', name: '测试基金A' },
+      position: { fullCapacity: 100000 },
+    },
+    {
+      ticker: { symbol: '000002', name: '测试基金B' },
+      position: { fullCapacity: 100000 },
+    },
+    {
+      ticker: { symbol: '000003', name: '无效基金' },
+      position: { fullCapacity: 100000 },
+    },
+    {
+      ticker: { symbol: '000004', name: '买入基金' },
+      position: { fullCapacity: 100000 },
+    },
+    {
+      ticker: { symbol: '000005', name: '卖出基金' },
+      position: { fullCapacity: 100000 },
+    },
+  ],
+}));
+
 describe('TradeSmartInputResultModal', () => {
   // 构造测试数据的辅助函数
   const createMockRecord = (
@@ -128,8 +154,10 @@ describe('TradeSmartInputResultModal', () => {
         />
       );
 
+      // 基金代码显示
       expect(screen.getByText('000001')).toBeInTheDocument();
-      expect(screen.getByText('测试基金A')).toBeInTheDocument();
+      // 基金名称在下拉列表中，使用 displayValue 检查
+      expect(screen.getByDisplayValue('测试基金A')).toBeInTheDocument();
     });
 
     test('无效记录显示红色背景', () => {
@@ -149,16 +177,15 @@ describe('TradeSmartInputResultModal', () => {
         />
       );
 
-      // 无效记录应该显示红色背景的行
-      const rows = screen.getAllByRole('row');
-      // 找到包含无效记录的行（排除日期分组行）
-      const invalidRow = rows.find(row =>
-        within(row).queryByText('无效基金') !== null
+      // 无效记录应该显示红色背景的行（包含bg-red-50类）
+      // 检查是否有红色背景的行存在
+      const redRows = screen.getAllByRole('row').filter(row =>
+        row.className.includes('bg-red-50')
       );
-      expect(invalidRow).toBeDefined();
+      expect(redRows.length).toBeGreaterThan(0);
     });
 
-    test('显示买入/卖出类型', () => {
+    test('显示买入/卖出类型下拉框', () => {
       const buyRecord = createMockRecord('买入基金', '2026-04-24', true);
       const sellRecord: ValidatedTradeRecord = {
         ...createMockRecord('卖出基金', '2026-04-24', true),
@@ -181,8 +208,15 @@ describe('TradeSmartInputResultModal', () => {
         />
       );
 
-      expect(screen.getByText('买入')).toBeInTheDocument();
-      expect(screen.getByText('卖出')).toBeInTheDocument();
+      // 验证下拉框存在且默认值正确
+      const selects = screen.getAllByRole('combobox');
+      // 第一个select是基金名称下拉，后面是交易类型下拉
+      const operationSelects = selects.filter(s => s.textContent?.includes('买入') || s.textContent?.includes('卖出'));
+      expect(operationSelects.length).toBeGreaterThanOrEqual(2);
+
+      // 验证默认显示值（使用displayValue）
+      expect(screen.getByDisplayValue('买入')).toBeInTheDocument();
+      expect(screen.getByDisplayValue('卖出')).toBeInTheDocument();
     });
   });
 

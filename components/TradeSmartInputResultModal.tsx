@@ -1,14 +1,16 @@
 // components/TradeSmartInputResultModal.tsx
 
-import React, { useState, useEffect, useMemo, Fragment, useCallback } from 'react';
+import React, { useState, useEffect, useMemo, Fragment, useCallback, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { ValidatedTradeRecord, ValidationResult, validateTradeRecord } from '../utils/tradeRecordValidator';
 import { fmtNumber } from '../utils/format';
 import { ConfirmDialog } from './ConfirmDialog';
 import { SimpleTooltip } from './SimpleTooltip';
 import { TradeSmartInputError, ParseDebugInfo } from '../hooks/useTradeSmartInput';
-import { OcrTradeData } from '../utils/tradeOcrParser';
+import { OcrTradeData, TradeOperation } from '../utils/tradeOcrParser';
 import { isFeatureEnabled } from '../services/systemConfigService';
+import { getAllFundInfos } from '../services/marketFundService';
+import { matchFundByCode, matchFundByName } from '../utils/fundNameMatcher';
 
 /**
  * 记录编辑值状态
@@ -18,13 +20,6 @@ interface EditedValues {
   shares?: number;      // 编辑的份额
   fee: number;          // 编辑的手续费
   amount: number;       // 编辑的交易总额
-}
-
-/**
- * 生成唯一ID用于选择
- */
-function generateRecordId(record: ValidatedTradeRecord): string {
-  return `${record.ocrData.tradeDate}_${record.ocrData.fundName}_${record.ocrData.tradeTime}`;
 }
 
 interface TradeSmartInputResultModalProps {
@@ -51,17 +46,31 @@ export function TradeSmartInputResultModal({
   onClose,
   onConfirm,
 }: TradeSmartInputResultModalProps) {
-  // 选中的记录ID集合
-  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  // 选中的记录索引集合
+  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
   // 是否显示关闭确认弹窗
   const [showConfirmClose, setShowConfirmClose] = useState(false);
-  // 编辑后的记录数据（记录ID -> 编辑值）
-  const [editedRecords, setEditedRecords] = useState<Map<string, ValidatedTradeRecord>>(new Map());
-  // 输入框的原始字符串值（记录ID+字段名 -> 字符串值），用于允许用户自由编辑
+  // 编辑后的记录数据（索引 -> 编辑值）
+  const [editedRecords, setEditedRecords] = useState<Map<number, ValidatedTradeRecord>>(new Map());
+  // 输入框的原始字符串值（索引+字段名 -> 字符串值），用于允许用户自由编辑
   const [inputStrings, setInputStrings] = useState<Map<string, string>>(new Map());
+  // 基金名称下拉列表的打开状态（索引 -> 是否打开）
+  const [fundDropdownOpen, setFundDropdownOpen] = useState<Set<number>>(new Set());
 
   // 调试面板是否启用（用于调整窗口高度）
   const debugPanelEnabled = isFeatureEnabled('ocrDebugPanelEnabled') && (Object.keys(ocrRawTexts).length > 0 || parseDebugInfos.length > 0);
+
+  // 获取有仓位配置的基金列表（用于下拉选择）
+  const fundsWithPosition = useMemo(() => {
+    const allFunds = getAllFundInfos();
+    return allFunds
+      .filter(f => (f.position?.fullCapacity ?? 0) > 0)
+      .map(f => ({
+        symbol: f.ticker.symbol,
+        name: f.ticker.name,
+      }))
+      .sort((a, b) => a.name.localeCompare(b.name)); // 按名称排序
+  }, []);
 
   // 窗口打开时重置选择状态和编辑状态（默认不选中）
   useEffect(() => {
@@ -69,89 +78,147 @@ export function TradeSmartInputResultModal({
       setSelectedIds(new Set());
       setEditedRecords(new Map());
       setInputStrings(new Map());
+      setFundDropdownOpen(new Set());
     }
   }, [visible]);
 
-  // 获取记录的实际显示数据（优先使用编辑后的数据）
-  const getDisplayRecord = useCallback((record: ValidatedTradeRecord): ValidatedTradeRecord => {
-    const id = generateRecordId(record);
-    const edited = editedRecords.get(id);
-    return edited || record;
-  }, [editedRecords]);
+  // 点击外部关闭下拉列表
+  useEffect(() => {
+    if (!visible || fundDropdownOpen.size === 0) return;
+
+    const handleClickOutside = (e: MouseEvent) => {
+      const target = e.target as HTMLElement;
+      // 检查点击是否在基金名称下拉组件内
+      if (!target.closest('.fund-name-dropdown-container')) {
+        setFundDropdownOpen(new Set());
+      }
+    };
+
+    // 使用 mousedown 事件，比 click 更早触发
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [visible, fundDropdownOpen]);
 
   // 处理输入框值变化（只更新字符串，不校验）
-  const handleInputChange = useCallback((recordId: string, field: string, value: string) => {
+  const handleInputChange = useCallback((idx: number, field: string, value: string) => {
     setInputStrings(prev => {
       const newMap = new Map(prev);
-      newMap.set(`${recordId}_${field}`, value);
+      newMap.set(`${idx}_${field}`, value);
       return newMap;
     });
   }, []);
 
   // 处理字段编辑，触发重新计算和校验
-  const handleFieldChange = useCallback((record: ValidatedTradeRecord, field: 'price' | 'shares' | 'fee' | 'amount', value: number) => {
-    const id = generateRecordId(record);
-    const currentEdited = editedRecords.get(id);
+  const handleFieldChange = useCallback((idx: number, field: 'price' | 'shares' | 'fee' | 'amount' | 'fundName' | 'operation', value: number | string) => {
+    const currentEdited = editedRecords.get(idx);
 
     // 构建新的OCR数据（基于编辑值）
-    const baseOcrData = currentEdited?.ocrData || record.ocrData;
+    const baseOcrData = currentEdited?.ocrData || records[idx].ocrData;
     const newOcrData: OcrTradeData = {
       ...baseOcrData,
-      fee: field === 'fee' ? value : (currentEdited?.ocrData.fee ?? baseOcrData.fee),
-      amount: field === 'amount' ? value : (currentEdited?.ocrData.amount ?? baseOcrData.amount),
     };
+
+    // 处理基金名称编辑
+    if (field === 'fundName') {
+      // 先尝试精确匹配下拉列表中的基金
+      const selectedFund = fundsWithPosition.find(f => f.name === value);
+      if (selectedFund) {
+        newOcrData.fundName = selectedFund.name;
+        newOcrData.fundCode = selectedFund.symbol;
+        // 使用新基金代码重新校验
+        const newMatchResult = matchFundByCode(selectedFund.symbol);
+        const newValidatedRecord = validateTradeRecord(newOcrData, newMatchResult);
+        setEditedRecords(prev => {
+          const newMap = new Map(prev);
+          newMap.set(idx, newValidatedRecord);
+          return newMap;
+        });
+        return;
+      }
+
+      // 没有精确匹配，使用模糊匹配
+      newOcrData.fundName = value as string;
+      newOcrData.fundCode = undefined;  // 清除代码，让校验器根据名称匹配
+      const newMatchResult = matchFundByName(value as string);
+      const newValidatedRecord = validateTradeRecord(newOcrData, newMatchResult);
+      setEditedRecords(prev => {
+        const newMap = new Map(prev);
+        newMap.set(idx, newValidatedRecord);
+        return newMap;
+      });
+      return;
+    }
+
+    // 处理操作类型编辑
+    if (field === 'operation') {
+      const operationMap: Record<string, TradeOperation> = {
+        '买入': 'buy',
+        '卖出': 'sell',
+        '定投': 'dingtou',
+      };
+      newOcrData.operation = operationMap[value as string] || 'buy';
+      // 重新校验
+      const newValidatedRecord = validateTradeRecord(newOcrData, records[idx].matchResult);
+      setEditedRecords(prev => {
+        const newMap = new Map(prev);
+        newMap.set(idx, newValidatedRecord);
+        return newMap;
+      });
+      return;
+    }
+
+    // 处理数值字段编辑
+    const numValue = value as number;
+    newOcrData.fee = field === 'fee' ? numValue : (currentEdited?.ocrData.fee ?? baseOcrData.fee);
+    newOcrData.amount = field === 'amount' ? numValue : (currentEdited?.ocrData.amount ?? baseOcrData.amount);
 
     // 处理交易价格编辑
     if (field === 'price') {
-      newOcrData.nav = value;
+      newOcrData.nav = numValue;
     }
 
     // 处理份额编辑
     if (field === 'shares') {
-      newOcrData.shares = value;
+      newOcrData.shares = numValue;
     }
 
     // 重新校验记录
-    const newValidatedRecord = validateTradeRecord(newOcrData, record.matchResult);
+    const newValidatedRecord = validateTradeRecord(newOcrData, records[idx].matchResult);
 
     // 更新编辑状态
     setEditedRecords(prev => {
       const newMap = new Map(prev);
-      newMap.set(id, newValidatedRecord);
+      newMap.set(idx, newValidatedRecord);
       return newMap;
     });
-  }, [editedRecords]);
+  }, [editedRecords, fundsWithPosition, records]);
 
   // 处理输入框失去焦点（进行校验）
-  const handleInputBlur = useCallback((record: ValidatedTradeRecord, field: 'price' | 'shares' | 'fee' | 'amount', stringValue: string) => {
+  const handleInputBlur = useCallback((idx: number, field: 'price' | 'shares' | 'fee' | 'amount', stringValue: string) => {
     const value = parseFloat(stringValue) || 0;
-    handleFieldChange(record, field, value);
+    handleFieldChange(idx, field, value);
   }, [handleFieldChange]);
 
   // 显示记录（编辑后的数据）- 统一计算一次，避免重复
   const displayRecords = useMemo(() => {
-    return records.map(r => getDisplayRecord(r));
-  }, [records, getDisplayRecord]);
+    return records.map((r, idx) => {
+      const edited = editedRecords.get(idx);
+      return edited || r;
+    });
+  }, [records, editedRecords]);
 
-  // 原始记录Map（用于O(1)查找）
-  const originalRecordMap = useMemo(() => {
-    const map = new Map<string, ValidatedTradeRecord>();
-    for (const record of records) {
-      map.set(generateRecordId(record), record);
-    }
-    return map;
-  }, [records]);
-
-  // 按日期分组（使用编辑后的数据）
+  // 按日期分组（使用编辑后的数据，同时保留原始索引）
   const groupedRecords = useMemo(() => {
-    const groups: Record<string, ValidatedTradeRecord[]> = {};
-    for (const record of displayRecords) {
+    const groups: Record<string, Array<{ record: ValidatedTradeRecord; originalIdx: number }>> = {};
+    displayRecords.forEach((record, idx) => {
       const date = record.ocrData.tradeDate;
       if (!groups[date]) {
         groups[date] = [];
       }
-      groups[date].push(record);
-    }
+      groups[date].push({ record, originalIdx: idx });
+    });
     // 按日期降序排序
     const sortedDates = Object.keys(groups).sort((a, b) => b.localeCompare(a));
     return sortedDates.map(date => ({
@@ -178,7 +245,7 @@ export function TradeSmartInputResultModal({
   const selectedStats = useMemo(() => {
     if (selectedIds.size === 0) return null;
 
-    const selectedRecords = displayRecords.filter(r => selectedIds.has(generateRecordId(r)));
+    const selectedRecords = displayRecords.filter((_, idx) => selectedIds.has(idx));
 
     const buyRecords = selectedRecords.filter(r => r.ocrData.operation === 'buy');
     const dingtouRecords = selectedRecords.filter(r => r.ocrData.operation === 'dingtou');
@@ -204,28 +271,30 @@ export function TradeSmartInputResultModal({
     if (selectedIds.size === validRecords.length) {
       setSelectedIds(new Set());
     } else {
-      setSelectedIds(new Set(validRecords.map(generateRecordId)));
+      // 找出所有有效记录的索引
+      const validIndices = displayRecords
+        .map((r, idx) => ({ r, idx }))
+        .filter(({ r }) => r.validation.isValid)
+        .map(({ idx }) => idx);
+      setSelectedIds(new Set(validIndices));
     }
   };
 
   // 单条选择（无效记录不可选）
-  const handleSelect = (record: ValidatedTradeRecord, checked: boolean) => {
-    if (!record.validation.isValid) return;
-    const id = generateRecordId(record);
+  const handleSelect = (idx: number, checked: boolean) => {
+    if (!displayRecords[idx].validation.isValid) return;
     const newSet = new Set(selectedIds);
     if (checked) {
-      newSet.add(id);
+      newSet.add(idx);
     } else {
-      newSet.delete(id);
+      newSet.delete(idx);
     }
     setSelectedIds(newSet);
   };
 
   // 确认添加（使用编辑后的记录数据）
   const handleConfirm = () => {
-    const selectedRecords = records
-      .filter(r => selectedIds.has(generateRecordId(r)))
-      .map(r => getDisplayRecord(r));
+    const selectedRecords = displayRecords.filter((_, idx) => selectedIds.has(idx));
     onConfirm(selectedRecords);
     onClose();
   };
@@ -263,7 +332,7 @@ export function TradeSmartInputResultModal({
       <div className="fixed inset-0 z-[200] flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={handleClose} />
 
-      <div className="relative bg-white rounded-2xl overflow-hidden shadow-2xl flex flex-col" style={{ width: '940px', maxWidth: '95vw', maxHeight: debugPanelEnabled ? '90vh' : '70vh' }}>
+      <div className="relative bg-white rounded-2xl overflow-hidden shadow-2xl flex flex-col" style={{ width: '955px', maxWidth: '95vw', maxHeight: debugPanelEnabled ? '90vh' : '70vh' }}>
         <div className="px-5 py-4 border-b border-gray-100 flex justify-between items-center flex-shrink-0">
           <h3 className="text-base font-bold text-gray-800">识别结果</h3>
           <button onClick={handleClose} className="text-gray-400 hover:text-gray-600 text-xl">
@@ -291,7 +360,7 @@ export function TradeSmartInputResultModal({
                     <th style={{ width: '90px' }} className="px-2 py-1 text-center text-xs font-semibold text-gray-500 whitespace-nowrap">交易日期</th>
                     <th style={{ width: '95px' }} className="px-2 py-1 text-center text-xs font-semibold text-gray-500 whitespace-nowrap">基金代码</th>
                     <th style={{ width: '135px' }} className="px-2 py-1 text-left text-xs font-semibold text-gray-500 whitespace-nowrap">基金名称</th>
-                    <th style={{ width: '50px' }} className="px-2 py-1 text-center text-xs font-semibold text-gray-500 whitespace-nowrap">类型</th>
+                    <th style={{ width: '65px' }} className="px-2 py-1 text-center text-xs font-semibold text-gray-500 whitespace-nowrap">类型</th>
                     <th style={{ width: '80px' }} className="px-2 py-1 text-right text-xs font-semibold text-gray-500 whitespace-nowrap">价格</th>
                     <th style={{ width: '90px' }} className="px-2 py-1 text-right text-xs font-semibold text-gray-500 whitespace-nowrap">份额</th>
                     <th style={{ width: '70px' }} className="px-2 py-1 text-right text-xs font-semibold text-gray-500 whitespace-nowrap">手续费</th>
@@ -308,9 +377,7 @@ export function TradeSmartInputResultModal({
                           📅 {group.date} ({group.records.length}条记录)
                         </td>
                       </tr>
-                      {group.records.map((record, idx) => {
-                        const id = generateRecordId(record);
-                        const originalRecord = originalRecordMap.get(id) || record;
+                      {group.records.map(({ record, originalIdx }) => {
                         const isValid = record.validation.isValid;
                         const hasMatch = record.matchResult.matched;
                         const hasPosition = record.matchResult.hasPosition;
@@ -333,9 +400,9 @@ export function TradeSmartInputResultModal({
 
                         // 判断字段是否可编辑（根据文档规则）
                         // 交易价格：OCR有nav → 可输入；否则显示系统价格
-                        const priceEditable = originalRecord.ocrData.nav !== undefined && originalRecord.ocrData.nav !== 0;
+                        const priceEditable = records[originalIdx].ocrData.nav !== undefined && records[originalIdx].ocrData.nav !== 0;
                         // 基金份额：OCR有shares → 可输入；否则显示计算值
-                        const sharesEditable = originalRecord.ocrData.shares !== undefined && originalRecord.ocrData.shares !== 0;
+                        const sharesEditable = records[originalIdx].ocrData.shares !== undefined && records[originalIdx].ocrData.shares !== 0;
                         // 手续费：始终可输入
                         // 交易总额：始终可输入
 
@@ -345,30 +412,27 @@ export function TradeSmartInputResultModal({
                         const displayFee = record.ocrData.fee ?? 0;
                         const displayAmount = record.ocrData.amount;
 
-                        // 获取原始记录用于编辑回调
-                        const recordForEdit = originalRecord;
-
                         // 获取输入框的字符串值（用于自由编辑）
                         const getPriceInputValue = () => {
-                          const key = `${id}_price`;
+                          const key = `${originalIdx}_price`;
                           const stored = inputStrings.get(key);
                           if (stored !== undefined) return stored;
                           return displayPrice !== undefined ? displayPrice.toFixed(4) : '';
                         };
                         const getSharesInputValue = () => {
-                          const key = `${id}_shares`;
+                          const key = `${originalIdx}_shares`;
                           const stored = inputStrings.get(key);
                           if (stored !== undefined) return stored;
                           return displayShares.toFixed(2);
                         };
                         const getFeeInputValue = () => {
-                          const key = `${id}_fee`;
+                          const key = `${originalIdx}_fee`;
                           const stored = inputStrings.get(key);
                           if (stored !== undefined) return stored;
                           return displayFee.toFixed(2);
                         };
                         const getAmountInputValue = () => {
-                          const key = `${id}_amount`;
+                          const key = `${originalIdx}_amount`;
                           const stored = inputStrings.get(key);
                           if (stored !== undefined) return stored;
                           return displayAmount.toFixed(2);
@@ -376,15 +440,15 @@ export function TradeSmartInputResultModal({
 
                         return (
                           <tr
-                            key={id}
-                            className={`border-b border-gray-50 hover:bg-gray-50 transition-colors ${idx % 2 === 0 ? 'bg-white' : 'bg-gray-25'} ${!isValid ? 'bg-red-50' : ''}`}
+                            key={originalIdx}
+                            className={`border-b border-gray-50 hover:bg-gray-50 transition-colors bg-white ${!isValid ? 'bg-red-50' : ''}`}
                             style={{ height: '40px' }}
                           >
                             <td style={{ width: '30px' }} className="px-1 py-1 text-center">
                               <input
                                 type="checkbox"
-                                checked={selectedIds.has(id)}
-                                onChange={(e) => handleSelect(record, e.target.checked)}
+                                checked={selectedIds.has(originalIdx)}
+                                onChange={(e) => handleSelect(originalIdx, e.target.checked)}
                                 disabled={!isValid}
                                 className={`w-3 h-3 cursor-pointer ${!isValid ? 'opacity-30 cursor-not-allowed' : ''}`}
                               />
@@ -393,13 +457,86 @@ export function TradeSmartInputResultModal({
                             <td style={{ width: '80px' }} className={`px-2 py-1 text-center text-xs font-medium ${codeIsError ? 'text-red-500' : 'text-gray-700'}`}>
                               {displayCode}
                             </td>
-                            <td style={{ width: '150px' }} className="px-2 py-1 text-left text-xs truncate" title={displayName}>
-                              {displayName}
+                            <td style={{ width: '150px' }} className="px-2 py-1 text-left text-xs relative fund-name-dropdown-container">
+                              <div className="flex items-center gap-1">
+                                <input
+                                  type="text"
+                                  value={displayName}
+                                  onChange={(e) => {
+                                    handleInputChange(originalIdx, 'fundName', e.target.value);
+                                  }}
+                                  onBlur={(e) => {
+                                    // 失焦时进行匹配和校验
+                                    handleFieldChange(originalIdx, 'fundName', e.target.value);
+                                  }}
+                                  onFocus={() => {
+                                    setFundDropdownOpen(prev => {
+                                      const newSet = new Set(prev);
+                                      newSet.add(originalIdx);
+                                      return newSet;
+                                    });
+                                  }}
+                                  className={`flex-1 min-w-0 text-xs bg-white border border-gray-200 rounded px-1 py-0.5 focus:border-blue-400 focus:outline-none ${!hasMatch ? 'text-red-500' : 'text-gray-700'}`}
+                                  title={displayName}
+                                />
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setFundDropdownOpen(prev => {
+                                      const newSet = new Set(prev);
+                                      if (newSet.has(originalIdx)) {
+                                        newSet.delete(originalIdx);
+                                      } else {
+                                        newSet.add(originalIdx);
+                                      }
+                                      return newSet;
+                                    });
+                                  }}
+                                  className="text-gray-400 hover:text-gray-600 px-0.5 flex-shrink-0"
+                                  tabIndex={-1}
+                                >
+                                  ▼
+                                </button>
+                              </div>
+                              {fundDropdownOpen.has(originalIdx) && (
+                                <div
+                                  className="absolute z-20 top-full left-0 mt-1 bg-white border border-gray-200 rounded shadow-lg max-h-[200px] overflow-y-auto"
+                                  style={{ minWidth: '200px', width: 'calc(100% + 20px)' }}
+                                  onMouseDown={(e) => {
+                                    // 阻止鼠标按下事件传播，防止点击列表项时触发输入框的 onBlur
+                                    e.preventDefault();
+                                  }}
+                                >
+                                  {fundsWithPosition.map(fund => (
+                                    <div
+                                      key={fund.symbol}
+                                      className="px-2 py-1 hover:bg-blue-50 cursor-pointer flex items-center gap-2 text-xs"
+                                      onClick={() => {
+                                        handleFieldChange(originalIdx, 'fundName', fund.name);
+                                        setFundDropdownOpen(prev => {
+                                          const newSet = new Set(prev);
+                                          newSet.delete(originalIdx);
+                                          return newSet;
+                                        });
+                                      }}
+                                    >
+                                      <span className="text-gray-500 w-[60px]">{fund.symbol}</span>
+                                      <span className="text-gray-700 truncate">{fund.name}</span>
+                                    </div>
+                                  ))}
+                                </div>
+                              )}
                             </td>
-                            <td style={{ width: '50px' }} className="px-2 py-1 text-center">
-                              <span className={`text-xs font-medium ${record.ocrData.operation === 'sell' ? 'text-red-500' : 'text-green-600'}`}>
-                                {record.ocrData.operation === 'dingtou' ? '定投' : (record.ocrData.operation === 'sell' ? '卖出' : '买入')}
-                              </span>
+                            <td style={{ width: '65px' }} className="px-2 py-1 text-center">
+                              <select
+                                value={record.ocrData.operation === 'dingtou' ? '定投' : (record.ocrData.operation === 'sell' ? '卖出' : '买入')}
+                                onChange={(e) => handleFieldChange(originalIdx, 'operation', e.target.value)}
+                                className={`w-full text-xs bg-white border border-gray-200 rounded px-1 py-0.5 focus:border-blue-400 focus:outline-none ${record.ocrData.operation === 'sell' ? 'text-red-500' : 'text-green-600'}`}
+                              >
+                                <option value="买入">买入</option>
+                                <option value="卖出">卖出</option>
+                                <option value="定投">定投</option>
+                              </select>
                             </td>
                             <td style={{ width: '80px' }} className={`px-2 py-1 text-right text-xs whitespace-nowrap ${priceIsError ? 'text-red-500 font-bold' : 'text-gray-700'}`}>
                               {priceEditable ? (
@@ -407,8 +544,8 @@ export function TradeSmartInputResultModal({
                                   type="number"
                                   step="0.0001"
                                   value={getPriceInputValue()}
-                                  onChange={(e) => handleInputChange(id, 'price', e.target.value)}
-                                  onBlur={(e) => handleInputBlur(recordForEdit, 'price', e.target.value)}
+                                  onChange={(e) => handleInputChange(originalIdx, 'price', e.target.value)}
+                                  onBlur={(e) => handleInputBlur(originalIdx, 'price', e.target.value)}
                                   className="w-full text-right text-xs bg-white border border-gray-200 rounded px-1 py-0.5 focus:border-blue-400 focus:outline-none"
                                 />
                               ) : (
@@ -421,8 +558,8 @@ export function TradeSmartInputResultModal({
                                   type="number"
                                   step="0.01"
                                   value={getSharesInputValue()}
-                                  onChange={(e) => handleInputChange(id, 'shares', e.target.value)}
-                                  onBlur={(e) => handleInputBlur(recordForEdit, 'shares', e.target.value)}
+                                  onChange={(e) => handleInputChange(originalIdx, 'shares', e.target.value)}
+                                  onBlur={(e) => handleInputBlur(originalIdx, 'shares', e.target.value)}
                                   className="w-full text-right text-xs bg-white border border-gray-200 rounded px-1 py-0.5 focus:border-blue-400 focus:outline-none"
                                 />
                               ) : (
@@ -434,8 +571,8 @@ export function TradeSmartInputResultModal({
                                 type="number"
                                 step="0.01"
                                 value={getFeeInputValue()}
-                                onChange={(e) => handleInputChange(id, 'fee', e.target.value)}
-                                onBlur={(e) => handleInputBlur(recordForEdit, 'fee', e.target.value)}
+                                onChange={(e) => handleInputChange(originalIdx, 'fee', e.target.value)}
+                                onBlur={(e) => handleInputBlur(originalIdx, 'fee', e.target.value)}
                                 className="w-full text-right text-xs bg-white border border-gray-200 rounded px-1 py-0.5 focus:border-blue-400 focus:outline-none"
                               />
                             </td>
@@ -444,8 +581,8 @@ export function TradeSmartInputResultModal({
                                 type="number"
                                 step="0.01"
                                 value={getAmountInputValue()}
-                                onChange={(e) => handleInputChange(id, 'amount', e.target.value)}
-                                onBlur={(e) => handleInputBlur(recordForEdit, 'amount', e.target.value)}
+                                onChange={(e) => handleInputChange(originalIdx, 'amount', e.target.value)}
+                                onBlur={(e) => handleInputBlur(originalIdx, 'amount', e.target.value)}
                                 className="w-full text-right text-xs bg-white border border-gray-200 rounded px-1 py-0.5 focus:border-blue-400 focus:outline-none"
                               />
                             </td>
