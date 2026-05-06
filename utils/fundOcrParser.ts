@@ -55,18 +55,25 @@ export function parseFundInfo(text: string): ParseResult {
   const accumulatedProfitMatch = text.match(/累\s*计\s*收\s*益\s*[:：]?\s*([+-]?\s*[\d,]+\.?\d*)/);
   let accumulatedProfit: number | null = null;
   if (accumulatedProfitMatch) {
-    // 移除空格和逗号，保留负号
-    const rawValue = accumulatedProfitMatch[1].replace(/\s/g, '').replace(/,/g, '');
-    accumulatedProfit = parseFloat(rawValue);
+    accumulatedProfit = parseAccumulatedProfitValue(accumulatedProfitMatch[1]);
+  }
+  // 兜底策略：如果关键词匹配失败，在文本末尾查找带正负号的数字
+  if (accumulatedProfit === null || isNaN(accumulatedProfit)) {
+    accumulatedProfit = extractAccumulatedProfitByPosition(text);
   }
   if (accumulatedProfit === null || isNaN(accumulatedProfit)) missingFields.push('累计收益');
 
   // 净值日期：从 "(MM-DD)" 提取，拼接当前年份
-  const navDateMatch = text.match(/\((\d{2})-(\d{2})\)/);
+  // OCR可能将日期误识别为多位数字（如05-006），取最后两位修正
+  const navDateMatch = text.match(/\((\d{2})-(\d{1,3})\)/);
   let navDate: string | null = null;
   if (navDateMatch) {
     const currentYear = new Date().getFullYear();
-    navDate = `${currentYear}-${navDateMatch[1]}-${navDateMatch[2]}`;
+    let day = navDateMatch[2];
+    if (day.length > 2) {
+      day = day.slice(-2);
+    }
+    navDate = `${currentYear}-${navDateMatch[1]}-${day}`;
   }
   if (!navDate) missingFields.push('净值日期');
 
@@ -118,4 +125,51 @@ function parseFundName(text: string, fundCode: string): string | undefined {
   }
 
   return undefined;
+}
+
+/**
+ * 解析累计收益数字值
+ * OCR可能丢失小数点（如+10,36713），按货币格式假设末尾2位为小数部分
+ */
+function parseAccumulatedProfitValue(rawValue: string): number | null {
+  const cleaned = rawValue.replace(/\s/g, '').replace(/,/g, '');
+
+  if (cleaned.includes('.')) {
+    const value = parseFloat(cleaned);
+    return isNaN(value) ? null : value;
+  }
+
+  // 无小数点时，假设末尾2位为小数部分（标准货币格式）
+  const sign = cleaned[0] === '+' || cleaned[0] === '-' ? cleaned[0] : '';
+  const digits = sign ? cleaned.slice(1) : cleaned;
+
+  if (digits.length <= 2) {
+    const value = parseFloat(cleaned);
+    return isNaN(value) ? null : value;
+  }
+
+  const value = parseFloat(sign + digits.slice(0, -2) + '.' + digits.slice(-2));
+  return isNaN(value) ? null : value;
+}
+
+/**
+ * 从文本末尾提取累计收益（兜底策略）
+ * 当"累计收益"关键词被OCR误识别（如ZTE/RATE/Zit）时，通过位置+格式特征匹配
+ */
+function extractAccumulatedProfitByPosition(text: string): number | null {
+  const lines = text.split('\n');
+  const startIdx = Math.max(0, lines.length - 5);
+  for (let i = lines.length - 1; i >= startIdx; i--) {
+    const line = lines[i];
+    // 匹配带正负号的数字：[+-] 后面可能有空格，然后是数字（带千分位，可能有小数点）
+    // 格式如：+8,926.16 或 -1234.56 或 +10,36713（小数点丢失）
+    const match = line.match(/[+-]\s*[\d,]+(?:\.\d{2})?/);
+    if (match) {
+      const value = parseAccumulatedProfitValue(match[0]);
+      if (value !== null) {
+        return value;
+      }
+    }
+  }
+  return null;
 }
