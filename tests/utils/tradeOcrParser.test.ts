@@ -947,3 +947,90 @@ describe('parseSingleScreenshot', () => {
     });
   });
 });
+
+// ============================================
+// 新增测试：修复 daily_trade4.jpg OCR解析问题
+// ============================================
+describe('daily_trade4.jpg OCR解析问题修复', () => {
+  // 问题1：金额千分位逗号被OCR识别为小数点
+  // OCR: 39,019.19 → 39.019.19
+  // 期望：修正为39019.19，识别为卖出（小数非00）
+  describe('金额多小数点除噪', () => {
+    test('金额39.019.19应修正为39019.19并识别为卖出', () => {
+      const text = `
+ZH BS | 华夏 国 证 半导体 芯片 E 39.019.19 元
+TF 联 接 C 交易 进行 中
+2026-04-30 14:40:14
+`;
+      const result = parseTradeOcrText(text);
+      expect(result.success).toBe(true);
+      expect(result.data!.length).toBe(1);
+      // 金额应修正为39019.19
+      expect(result.data![0].amount).toBe(39019.19);
+      // 操作类型应为卖出（小数非00）
+      expect(result.data![0].operation).toBe('sell');
+      // 基金名称应包含关键部分
+      expect(result.data![0].fundName).toContain('华夏国证半导体芯片');
+    });
+
+    test('金额10.000.00应修正为10000.00并识别为买入', () => {
+      const text = `
+IA 基金 | 天 弘 中 证 电网 设备 主题 10.000.00 元
+指数 C
+2026-04-30 14:46:04
+`;
+      const result = parseTradeOcrText(text);
+      expect(result.success).toBe(true);
+      expect(result.data![0].amount).toBe(10000);
+      // 小数为00，识别为买入
+      expect(result.data![0].operation).toBe('buy');
+    });
+
+    test('金额29.010.50应修正为29010.50并识别为卖出', () => {
+      const text = `
+卖 出 "基金 | 永 赢 国 证 商用 卫星 通信 29.010.50 元
+产业 ETF 联 接 A 交易 进行 中
+2026-04-30 14:41:19
+`;
+      const result = parseTradeOcrText(text);
+      expect(result.success).toBe(true);
+      expect(result.data![0].amount).toBe(29010.50);
+      expect(result.data![0].operation).toBe('sell');
+    });
+  });
+
+  // 问题2：分隔符|被OCR识别为数字1
+  // OCR: "买入 基金 | 南方有色金属" → "IAN 基金 1 南方有色金属"
+  // 期望：扩展正则，支持"基金 1"作为分隔符变体
+  describe('分隔符变体识别（|被识别为1）', () => {
+    test('IAN 基金 1 南方有色金属应能正确解析', () => {
+      const text = `
+IAN 基金 1 南方 有 色 金 属 ETF 联 接 10,000.00 元
+C
+2026-04-30 14:45:37
+`;
+      const result = parseTradeOcrText(text);
+      expect(result.success).toBe(true);
+      expect(result.data!.length).toBe(1);
+      // 基金名称应正确提取
+      expect(result.data![0].fundName).toContain('南方有色金属');
+      expect(result.data![0].fundName).toContain('ETF联接C');
+      // 金额正确
+      expect(result.data![0].amount).toBe(10000);
+      // IAN为买入的OCR噪音，识别为买入
+      expect(result.data![0].operation).toBe('buy');
+    });
+
+    test('IA 基金 1 天弘中证电网应能正确解析', () => {
+      const text = `
+IA 基金 1 天 弘 中 证 电网 设备 主题 10,000.00 元
+指数 C
+2026-04-30 14:46:04
+`;
+      const result = parseTradeOcrText(text);
+      expect(result.success).toBe(true);
+      expect(result.data![0].fundName).toContain('天弘中证电网设备');
+      expect(result.data![0].amount).toBe(10000);
+    });
+  });
+});

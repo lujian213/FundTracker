@@ -118,20 +118,30 @@ function fixAmountFormat(amountStr: string, operation: TradeOperation = 'buy'): 
     return isNaN(result) ? 0 : result;
   }
 
-  // 多个小数点（如 1.000.00）
+  // 多个小数点（如 39.019.19 → 千分位逗号被识别为小数点）
+  // 逻辑：第一个小数点可能是千分位误识别，最后一个才是真正小数点
   if (dotParts.length >= 3) {
-    const firstPart = dotParts[0];
-    const middlePart = dotParts[1];
+    // 合除第一个小数点前的部分和中间部分作为整数部分
+    const intPart = dotParts.slice(0, -1).join('');
+    // 最后一个小数部分
+    const lastDecPart = dotParts[dotParts.length - 1];
 
-    // 如果中间部分是3位（如 000），则合并
-    if (middlePart.length === 3 && /^\d+$/.test(middlePart)) {
-      const result = parseFloat(`${firstPart}${middlePart}.00`);
+    // 卖出操作：保留小数部分
+    if (operation === 'sell') {
+      const fixedDecPart = lastDecPart.length > 2 ? lastDecPart.slice(0, 2) : lastDecPart;
+      const result = parseFloat(`${intPart}.${fixedDecPart}`);
       return isNaN(result) ? 0 : result;
     }
 
-    // 否则取最后两位作为小数
-    const allDigits = dotParts.join('');
-    return fixAmountFormat(allDigits, operation);
+    // 买入/定投：小数部分非00视为噪声，取整
+    if (lastDecPart === '00' || lastDecPart.length > 2) {
+      const result = parseFloat(`${intPart}.00`);
+      return isNaN(result) ? 0 : result;
+    }
+
+    // 其他情况保留整数部分
+    const result = parseFloat(`${intPart}.00`);
+    return isNaN(result) ? 0 : result;
   }
 
   // 无小数点
@@ -199,35 +209,30 @@ function fixOcrNumberFormat(numStr: string): string {
  * 检测图片格式类型
  */
 function detectTradeFormat(text: string): TradeImageFormat {
-  // 单张交易成功截图：包含"买入成功"或"卖出成功"
+  // 单张交易成功截图：包含”买入成功”或”卖出成功”
   if (text.match(/买\s*入\s*成\s*功/) || text.match(/卖\s*出\s*成\s*功/)) {
     return 'single';
   }
 
-  // 交易汇总列表：包含"全部交易汇总"或"买入基金|"等
-  // 注意：OCR可能输出多种格式变体：
-  // - "定投 "基金 |"（带引号）
-  // - "IA 基金 |"
-  // - "TA 黄金 |"（买入黄金的OCR错误）
-  // - "定投 Be |"（定投基金的OCR错误）
-  // - "定投 黄金 |"
-  // - "全 部 交 易 汇 总"（有空格版本）
+  // 交易汇总列表核心特征：
+  // 1. 包含”全部交易汇总”
+  // 2. 有分隔符(|或｜)，且后面有金额格式
+  // 3. 有”基金/黄金”关键词配合分隔符
+  // 使用灵活模式检测，不硬编码OCR噪音前缀
   const hasSummaryPattern = text.match(/全\s*部\s*交\s*易\s*汇\s*总/) !== null ||
-    text.match(/买\s*入\s*_?\s*["“”]?\s*基\s*金\s*[|｜]/) !== null ||
-    text.match(/卖\s*出\s*_?\s*["“”]?\s*基\s*金\s*[|｜]/) !== null ||
-    text.match(/定\s*投\s*_?\s*["“”]?\s*基\s*金\s*[|｜]/) !== null ||
-    text.match(/买\s*入\s*_?\s*["“”]?\s*黄\s*金\s*[|｜]/) !== null ||
-    text.match(/定\s*投\s*_?\s*["“”]?\s*黄\s*金\s*[|｜]/) !== null ||
-    text.match(/IA\s*基\s*金\s*[|｜]/) !== null ||
-    text.match(/TA\s*黄\s*金\s*[|｜]/) !== null ||
-    text.match(/定\s*投\s*Be\s*[|｜]/) !== null ||
-    text.match(/定\s*投\s*[|｜]/) !== null;
+    // 灵活检测：任意前缀 + 分隔符 + 内容 + 金额
+    // 金额格式：数字+逗号/小数点，后面可能有”元”、”份”或字母噪音
+    text.match(/^.+?\s*[|｜]\s*.+?\s+[\d,.]+(?:\s*[元份])?\s*[A-Za-z]*\s*$/m) !== null ||
+    // 灵活检测：”基金” + 可能的分隔符(|或1) + 金额
+    text.match(/基\s*金\s*(?:1|[|｜])\s*.+?\s+[\d,.]+(?:\s*[元份])?\s*[A-Za-z]*\s*$/m) !== null ||
+    // 灵活检测：”黄金” + 可能的分隔符(|或1) + 金额
+    text.match(/黄\s*金\s*(?:1|[|｜])\s*.+?\s+[\d,.]+(?:\s*[元份])?\s*[A-Za-z]*\s*$/m) !== null;
 
   if (hasSummaryPattern) {
     return 'summary';
   }
 
-  // 多基金交易明细列表：包含"(28)"或"C"开头的行
+  // 多基金交易明细列表：包含”(28)”或”C”开头的行
   const hasMultiFundHistoryPattern = text.match(/\(28\)/) !== null ||
     text.match(/^C\s+.+?\s+\d+\.\d+\s*元/m) !== null ||
     text.match(/^=\)\s+.+?\s+\d+\.\d+\s*元/m) !== null;
@@ -411,6 +416,14 @@ function parseTradeSummaryList(text: string): OcrTradeData[] {
         return 'sell';
       }
     }
+
+    // 多个小数点（如 39.019.19），合并前面的部分，最后部分为小数
+    if (parts.length >= 3) {
+      const lastDecPart = parts[parts.length - 1];
+      if (lastDecPart.length <= 2 && lastDecPart !== '00' && lastDecPart !== '0') {
+        return 'sell';
+      }
+    }
     return 'buy';
   }
 
@@ -419,7 +432,9 @@ function parseTradeSummaryList(text: string): OcrTradeData[] {
 
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
-    const cleanLine = line.trim();
+    // 预处理：OCR可能将分隔符 | 识别为数字 1
+    // 模式：基金/黄金 后面跟单独的 1，如 "IAN 基金 1 南方有色金属"
+    let cleanLine = line.trim().replace(/\s*(基金|黄金)\s*1\s+/g, '基金 | ');
     if (cleanLine.length === 0) continue;
 
     const tradeMatch = cleanLine.match(tradePattern);
