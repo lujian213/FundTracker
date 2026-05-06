@@ -377,3 +377,83 @@ describe('getValidationTooltip', () => {
     expect(getValidationTooltip(validation)).toBe('基金无法匹配');
   });
 });
+
+// ============================================
+// 新增测试：卖出时份额计算（用于UI显示）
+// ============================================
+describe('卖出时份额计算（calculatedShares用于UI显示）', () => {
+  const matchResult: FundMatchResult = {
+    matched: true,
+    symbol: '000001',
+    matchedName: '测试基金A',
+    similarity: 0.9,
+    hasPosition: true,
+  };
+
+  beforeEach(() => {
+    mockGetHistory.mockReturnValue([
+      { date: new Date('2026-04-24').getTime(), value: 2.0000 },
+    ]);
+  });
+
+  test('卖出无份额信息时应计算份额用于显示', () => {
+    // 文档要求：卖出时 share = (amount + fee) / trade_price
+    // (10000 + 0) / 2 = 5000
+    const ocrData: OcrTradeData = {
+      fundName: '测试基金A',
+      operation: 'sell',
+      amount: 10000,
+      shares: undefined,  // 无份额信息
+      nav: undefined,
+      fee: 0,
+      tradeTime: '2026-04-24 10:00:00',
+      tradeDate: '2026-04-24',
+    };
+
+    const result = validateTradeRecord(ocrData, matchResult);
+
+    expect(result.validation.isValid).toBe(true);
+    // 应计算份额用于显示
+    expect(result.calculatedShares).toBe(5000);
+  });
+
+  test('卖出带手续费时份额计算', () => {
+    // (10000 + 100) / 2 = 5050
+    const ocrData: OcrTradeData = {
+      fundName: '测试基金A',
+      operation: 'sell',
+      amount: 10000,
+      shares: undefined,
+      nav: undefined,
+      fee: 100,
+      tradeTime: '2026-04-24 10:00:00',
+      tradeDate: '2026-04-24',
+    };
+
+    const result = validateTradeRecord(ocrData, matchResult);
+
+    expect(result.validation.isValid).toBe(true);
+    expect(result.calculatedShares).toBe(5050);
+  });
+
+  test('卖出有份额信息时仍应计算份额用于显示', () => {
+    // 即使OCR有份额信息，也需要计算份额用于显示（当用户不编辑份额时）
+    // (10000 + 0) / 2 = 5000
+    const ocrData: OcrTradeData = {
+      fundName: '测试基金A',
+      operation: 'sell',
+      amount: 10000,
+      shares: 5000,  // OCR有份额信息
+      nav: 2.0000,
+      fee: 0,
+      tradeTime: '2026-04-24 10:00:00',
+      tradeDate: '2026-04-24',
+    };
+
+    const result = validateTradeRecord(ocrData, matchResult);
+
+    expect(result.validation.isValid).toBe(true);
+    // 有份额信息时，校验通过后也应计算份额（用于UI显示计算值）
+    expect(result.calculatedShares).toBe(5000);
+  });
+});

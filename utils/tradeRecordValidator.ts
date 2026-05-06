@@ -215,14 +215,18 @@ export function validateTradeRecord(
   let calculatedShares: number | undefined;
   let calculatedTotal: number | undefined;
 
-  // 买入时计算份额（用于UI显示）
+  // 买入时计算份额：share = (amount - fee) / price
   if (effectiveOperation === 'buy') {
     calculatedShares = (ocrData.amount - ocrData.fee) / systemPrice;
   }
 
-  // 卖出时计算总额（用于UI显示）
-  if (effectiveOperation === 'sell' && ocrData.shares !== undefined) {
-    calculatedTotal = ocrData.shares * systemPrice - ocrData.fee;
+  // 卖出时计算份额：share = (amount + fee) / price（用于UI显示）
+  if (effectiveOperation === 'sell') {
+    calculatedShares = (ocrData.amount + ocrData.fee) / systemPrice;
+    // 如果有份额信息，也计算总额（用于校验对比）
+    if (ocrData.shares !== undefined && ocrData.shares !== 0) {
+      calculatedTotal = ocrData.shares * systemPrice - ocrData.fee;
+    }
   }
 
   return {
