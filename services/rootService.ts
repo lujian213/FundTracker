@@ -5,6 +5,8 @@
  */
 
 import * as marketNewsService from './marketNewsService';
+import * as marketFundService from './marketFundService';
+import * as indexService from './indexService';
 import * as dataSnapshotService from '../utils/dataSnapshotService';
 import { getTimerJobScheduler } from './timerJobScheduler';
 
@@ -13,6 +15,8 @@ import { getTimerJobScheduler } from './timerJobScheduler';
  */
 export const Root = {
   marketNewsService,
+  marketFundService,
+  indexService,
   dataSnapshotService,
   timerJobScheduler: getTimerJobScheduler(),
 };

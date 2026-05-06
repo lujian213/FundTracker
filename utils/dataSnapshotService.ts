@@ -3,6 +3,7 @@
  *
  * 测试数据快照生成服务
  * - 收集 localStorage 数据和新闻缓存
+ * - 基金/指数数据从内存获取（未压缩，可读）
  * - Mask 敏感信息（用户名、密码、API Key）
  * - 生成 JSON 文件并触发下载
  *
@@ -11,6 +12,8 @@
 
 import { STORAGE_KEYS } from '../services/storageKeys';
 import { getNews, NewsItem } from '../services/marketNewsService';
+import * as marketFundService from '../services/marketFundService';
+import * as indexService from '../services/indexService';
 
 // 需导出的 localStorage key（7个整合后的key，与 testDataPrepare.spec.ts 一致）
 const KEYS_TO_DUMP = [
@@ -19,8 +22,8 @@ const KEYS_TO_DUMP = [
   STORAGE_KEYS.CALENDAR,             // fund_calendar
   STORAGE_KEYS.INVESTMENT_DRAFT,     // fund_investment_draft
   STORAGE_KEYS.COMBO_TRADE,          // fund_combo_trade
-  STORAGE_KEYS.FUND_DATA,            // fund_all_funds_data
-  STORAGE_KEYS.INDEX_DATA,           // fund_all_indices_data
+  STORAGE_KEYS.FUND_DATA,            // fund_all_funds_data（从内存获取）
+  STORAGE_KEYS.INDEX_DATA,           // fund_all_indices_data（从内存获取）
 ];
 
 export interface MockDataSnapshot {
@@ -120,6 +123,7 @@ function filterDraftsForToday(rawDrafts: string, today: string): string {
  * 构建测试数据快照
  *
  * 收集 localStorage 数据、新闻缓存和时间戳
+ * 基金/指数数据从内存获取（未压缩，可读）
  * 自动 Mask 敏感信息
  * 投资草稿仅导出当天的数据
  */
@@ -130,16 +134,26 @@ export function buildSnapshotData(): MockDataSnapshot {
 
   // 收集 7 个 localStorage key
   for (const key of KEYS_TO_DUMP) {
-    const rawValue = localStorage.getItem(key);
-    if (rawValue) {
-      // 只有 fund_system_config 需要 mask
-      if (key === STORAGE_KEYS.SYSTEM_CONFIG) {
-        data[key] = maskSystemConfig(rawValue);
-      } else if (key === STORAGE_KEYS.INVESTMENT_DRAFT) {
-        // 投资草稿只导出当天的
-        data[key] = filterDraftsForToday(rawValue, today);
-      } else {
-        data[key] = rawValue;
+    if (key === STORAGE_KEYS.FUND_DATA) {
+      // 基金数据从内存获取（未压缩）
+      const funds = marketFundService.getAllMarketFunds();
+      data[key] = JSON.stringify(funds);
+    } else if (key === STORAGE_KEYS.INDEX_DATA) {
+      // 指数数据从内存获取（未压缩）
+      const indices = indexService.getAllMarketIndices();
+      data[key] = JSON.stringify(indices);
+    } else {
+      const rawValue = localStorage.getItem(key);
+      if (rawValue) {
+        // 只有 fund_system_config 需要 mask
+        if (key === STORAGE_KEYS.SYSTEM_CONFIG) {
+          data[key] = maskSystemConfig(rawValue);
+        } else if (key === STORAGE_KEYS.INVESTMENT_DRAFT) {
+          // 投资草稿只导出当天的
+          data[key] = filterDraftsForToday(rawValue, today);
+        } else {
+          data[key] = rawValue;
+        }
       }
     }
   }

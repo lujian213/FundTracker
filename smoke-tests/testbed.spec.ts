@@ -20,7 +20,7 @@ let sharedPage: Page | null = null;
 const HISTORY_DUMP_FILE = path.join(process.cwd(), '__mocks__', 'fund_history_dump.json');
 
 /**
- * Load 历史数据到 localStorage
+ * Load 历史数据到内存并通过服务保存
  * 在导入备份文件后调用，将历史数据注入到每个基金中
  */
 async function loadHistoryData(page: Page): Promise<boolean> {
@@ -32,21 +32,25 @@ async function loadHistoryData(page: Page): Promise<boolean> {
   const historyMap = JSON.parse(fs.readFileSync(HISTORY_DUMP_FILE, 'utf-8'));
 
   await page.evaluate((data) => {
-    const fundsRaw = localStorage.getItem('fund_all_funds_data');
-    if (!fundsRaw) return;
+    const root = (window as any).__ROOT__;
+    if (!root?.marketFundService) {
+      console.log('[Load] marketFundService 未暴露，跳过加载');
+      return;
+    }
 
-    const funds = JSON.parse(fundsRaw);
+    const funds = root.marketFundService.getAllMarketFunds();
     let updated = 0;
 
     for (const fund of funds) {
       const symbol = fund.info.ticker.symbol;
       if (data[symbol]) {
-        fund.history = data[symbol];
+        root.marketFundService.updateHistory(symbol, data[symbol]);
         updated++;
       }
     }
 
-    localStorage.setItem('fund_all_funds_data', JSON.stringify(funds));
+    // 批量保存到 localStorage（压缩格式）
+    root.marketFundService.saveAllToStorage();
     console.log(`[Load] 已加载 ${updated} 只基金的历史数据`);
   }, historyMap);
 
@@ -79,12 +83,22 @@ async function importBackupFile(page: Page) {
   await expect(confirmDialog).toBeVisible({ timeout: 5000 });
   await confirmDialog.locator('button:has-text("确认导入")').click();
 
-  // 等待导入完成（检测 localStorage 变化）
+  // 等待导入完成（检测数据加载完成，处理可能的压缩）
   await page.waitForFunction(() => {
     const fundsRaw = localStorage.getItem('fund_all_funds_data');
     if (!fundsRaw) return false;
-    const funds = JSON.parse(fundsRaw);
-    return funds.length === 21;
+    // 尝试通过服务获取（处理压缩）
+    const root = (window as any).__ROOT__;
+    if (root?.marketFundService) {
+      return root.marketFundService.getAllMarketFunds().length === 21;
+    }
+    // fallback: 直接解析（处理未压缩数据）
+    try {
+      const funds = JSON.parse(fundsRaw);
+      return funds.length === 21;
+    } catch {
+      return false;
+    }
   }, { timeout: 5000 });
 
   // 加载历史数据（如果存在）

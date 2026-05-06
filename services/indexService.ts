@@ -12,6 +12,7 @@ import { STORAGE_KEYS, OLD_STORAGE_KEYS } from './storageKeys';
 import { floorToMinute, isSameLocalDay, filterTodayIntraday, dedupeByMinute } from '../utils/dateTimeUtils';
 import { compressConsecutiveSameValues } from '../utils/intradayCompression';
 import { toLocalDateKey } from '../utils/priceResolver';
+import { compressToStorage, decompressFromStorage, truncateHistory, MAX_HISTORY_POINTS } from '../utils/storageCompression';
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // 内存缓存
@@ -72,9 +73,8 @@ function init(): void {
 
   // 从新 key 加载完整 MarketIndex 数据
   try {
-    const raw = localStorage.getItem(STORAGE_KEYS.INDEX_DATA);
-    if (raw) {
-      const marketIndices: MarketIndex[] = JSON.parse(raw);
+    const marketIndices = decompressFromStorage<MarketIndex[]>(STORAGE_KEYS.INDEX_DATA);
+    if (marketIndices) {
       marketIndices.forEach(m => {
         // 确保每个 MarketIndex 都有 intraday 和 history 字段
         indices.set(m.info.symbol, {
@@ -359,14 +359,12 @@ export function resetToDefaults(): void {
 
 /**
  * 保存到 localStorage（保存完整 MarketIndex[]）
+ * - 截断历史数据：每个指数最多保留 MAX_HISTORY_POINTS 条
+ * - 压缩存储：使用 LZString 压缩以减少占用空间
  */
 function saveToStorage(): void {
-  const marketIndices = Array.from(indices.values());
-  try {
-    localStorage.setItem(STORAGE_KEYS.INDEX_DATA, JSON.stringify(marketIndices));
-  } catch (e) {
-    console.error('Error saving index data:', e);
-  }
+  const marketIndices = Array.from(indices.values()).map(truncateHistory);
+  compressToStorage(STORAGE_KEYS.INDEX_DATA, marketIndices);
 }
 
 /**
@@ -473,7 +471,7 @@ export function updateHistory(symbol: string, history: HistoricalPoint[]): void 
     };
     indices.set(symbol, { info: newInfo, intraday: [], history });
   }
-  saveToStorage();
+  // 不立即存储，由批量操作完成后统一调用 saveAllToStorage()
 }
 
 /**

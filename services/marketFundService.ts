@@ -15,6 +15,7 @@ import { STORAGE_KEYS, OLD_STORAGE_KEYS } from './storageKeys';
 import { floorToMinute, isSameLocalDay, filterTodayIntraday, dedupeByMinute } from '../utils/dateTimeUtils';
 import { toLocalDateKey } from '../utils/priceResolver';
 import { compressConsecutiveSameValues } from '../utils/intradayCompression';
+import { compressToStorage, decompressFromStorage, truncateHistory, MAX_HISTORY_POINTS } from '../utils/storageCompression';
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // 内存缓存
@@ -34,20 +35,17 @@ function init(): void {
   // 检查新 key 数据格式是否正确
   let needsMigration = true;
   try {
-    const raw = localStorage.getItem(STORAGE_KEYS.FUND_DATA);
-    if (raw) {
-      const items = JSON.parse(raw);
-      if (Array.isArray(items) && items.length > 0) {
-        // 检查第一个元素是否有嵌套的 ticker 结构
-        const first = items[0];
-        if (first.info?.ticker?.symbol) {
-          // 新格式，不需要迁移
-          needsMigration = false;
-        } else {
-          // 旧格式（info 直接包含 symbol/name 等），需要迁移
-          // 删除旧格式的新 key，让迁移重新执行
-          localStorage.removeItem(STORAGE_KEYS.FUND_DATA);
-        }
+    const items = decompressFromStorage<any[]>(STORAGE_KEYS.FUND_DATA);
+    if (items && Array.isArray(items) && items.length > 0) {
+      // 检查第一个元素是否有嵌套的 ticker 结构
+      const first = items[0];
+      if (first.info?.ticker?.symbol) {
+        // 新格式，不需要迁移
+        needsMigration = false;
+      } else {
+        // 旧格式（info 直接包含 symbol/name 等），需要迁移
+        // 删除旧格式的新 key，让迁移重新执行
+        localStorage.removeItem(STORAGE_KEYS.FUND_DATA);
       }
     }
   } catch (e) {
@@ -63,9 +61,8 @@ function init(): void {
 
   // 从新 key 加载完整 MarketFund 数据
   try {
-    const raw = localStorage.getItem(STORAGE_KEYS.FUND_DATA);
-    if (raw) {
-      const marketFunds: MarketFund[] = JSON.parse(raw);
+    const marketFunds = decompressFromStorage<MarketFund[]>(STORAGE_KEYS.FUND_DATA);
+    if (marketFunds) {
       marketFunds.forEach(m => {
         // 确保每个 MarketFund 都有完整字段
         funds.set(m.info.ticker.symbol, {
@@ -692,12 +689,12 @@ export function updateHistory(symbol: string, history: HistoricalPoint[]): void 
       const oldLast = oldHistory[oldHistory.length - 1];
       const newLast = history[history.length - 1];
       if (oldLast && newLast && oldLast.date === newLast.date && oldLast.value === newLast.value) {
-        // 数据相同，跳过写入
+        // 数据相同，跳过更新
         return;
       }
     }
     existing.history = history;
-    saveToStorage();
+    // 不立即存储，由批量操作完成后统一调用 saveAllToStorage()
   } else {
     // 创建新基金记录
     const info: FundInfo = {
@@ -709,7 +706,7 @@ export function updateHistory(symbol: string, history: HistoricalPoint[]): void 
       },
     };
     funds.set(symbol, { info, trades: [], intraday: [], history });
-    saveToStorage();
+    // 不立即存储，由批量操作完成后统一调用 saveAllToStorage()
   }
 }
 
@@ -825,14 +822,12 @@ export function appendIntradayPoint(
 
 /**
  * 保存到 localStorage（保存完整 MarketFund[]）
+ * - 截断历史数据：每个基金最多保留 MAX_HISTORY_POINTS 条
+ * - 压缩存储：使用 LZString 压缩以减少占用空间
  */
 function saveToStorage(): void {
-  const marketFunds = Array.from(funds.values());
-  try {
-    localStorage.setItem(STORAGE_KEYS.FUND_DATA, JSON.stringify(marketFunds));
-  } catch (e) {
-    console.error('Error saving fund data:', e);
-  }
+  const marketFunds = Array.from(funds.values()).map(truncateHistory);
+  compressToStorage(STORAGE_KEYS.FUND_DATA, marketFunds);
 }
 
 /**

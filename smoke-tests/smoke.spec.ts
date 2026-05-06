@@ -60,10 +60,12 @@ test.describe('Smoke Tests', () => {
   test('指数数据结构迁移完成', async ({ page }) => {
     await page.goto('/', { waitUntil: 'load' });
 
-    // 等待数据加载
+    // 等待数据加载（通过服务获取）
     await page.waitForFunction(() => {
-      const indicesRaw = localStorage.getItem('fund_all_indices_data');
-      return indicesRaw && JSON.parse(indicesRaw).length > 0;
+      const root = (window as any).__ROOT__;
+      if (!root?.indexService) return false;
+      const indices = root.indexService.getAllMarketIndices();
+      return indices.length > 0;
     }, { timeout: 5000 });
 
     const storageData = await page.evaluate(() => {
@@ -73,8 +75,8 @@ test.describe('Smoke Tests', () => {
         return false;
       };
 
-      const indicesRaw = localStorage.getItem('fund_all_indices_data');
-      const items = indicesRaw ? JSON.parse(indicesRaw) : [];
+      const root = (window as any).__ROOT__;
+      const items = root?.indexService?.getAllMarketIndices?.() || [];
       const allSymbols = items.map((m: any) => m.info.symbol);
 
       return {

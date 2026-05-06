@@ -231,12 +231,11 @@ test.describe('testBedWithData', () => {
     const fundCardsWithH3 = page.locator('div.bg-white.rounded-2xl.border').filter({ has: page.locator('h3') });
     await expect(fundCardsWithH3.first()).toBeVisible({ timeout: 15000 });
 
-    // 加载 mock 数据用于验证
+    // 加载 mock 数据用于验证（通过服务，处理可能的压缩）
     const mockData = await page.evaluate(() => {
-      const fundsRaw = localStorage.getItem('fund_all_funds_data');
-      const indicesRaw = localStorage.getItem('fund_all_indices_data');
-      const funds = fundsRaw ? JSON.parse(fundsRaw) : [];
-      const indices = indicesRaw ? JSON.parse(indicesRaw) : [];
+      const root = (window as any).__ROOT__;
+      const funds = root?.marketFundService?.getAllMarketFunds?.() || [];
+      const indices = root?.indexService?.getAllMarketIndices?.() || [];
 
       return {
         funds,
@@ -358,8 +357,8 @@ test.describe('testBedWithData', () => {
     // ══════════════════════════════════════════════════════════════════════════════
     // 在浏览器中计算每个基金的前一个交易日涨跌幅，保证时区一致
     const prevDayChangesFromMock = await page.evaluate(() => {
-      const fundsRaw = localStorage.getItem('fund_all_funds_data');
-      const funds = fundsRaw ? JSON.parse(fundsRaw) : [];
+      const root = (window as any).__ROOT__;
+      const funds = root?.marketFundService?.getAllMarketFunds?.() || [];
 
       // 使用与 utils/historyHelper.ts 相同的逻辑
       const toLocalDateStr = (ts: number): string => {
@@ -1702,10 +1701,10 @@ test.describe('testBedWithData', () => {
     });
     await expect(guangfaHeaderRow).toBeVisible();
 
-    // 从 localStorage 获取该基金的前值（批量交易使用已确认净值，而非估值）
+    // 从服务获取该基金的前值（批量交易使用已确认净值，而非估值）
     const guangfaFundPrevPrice = await page.evaluate(() => {
-      const fundsRaw = localStorage.getItem('fund_all_funds_data');
-      const funds = fundsRaw ? JSON.parse(fundsRaw) : [];
+      const root = (window as any).__ROOT__;
+      const funds = root?.marketFundService?.getAllMarketFunds?.() || [];
       const targetFund = funds.find((f: any) => f.info.ticker.symbol === '020640');
       // 批量交易录入使用前值（已确认净值），而非当前估值
       return targetFund?.info?.valuation?.previousPrice || 0;
@@ -2386,9 +2385,9 @@ test.describe('testBedWithData', () => {
       const modal = document.querySelector('#index-details-modal');
       if (!modal) return null;
 
-      // 获取 localStorage 数据
-      const indicesRaw = localStorage.getItem('fund_all_indices_data');
-      const indices = indicesRaw ? JSON.parse(indicesRaw) : [];
+      // 通过服务获取指数数据
+      const root = (window as any).__ROOT__;
+      const indices = root?.indexService?.getAllMarketIndices?.() || [];
       const comex = indices.find((i: any) => i.info.symbol === '101.GC00Y');
 
       return {
@@ -2601,9 +2600,9 @@ test.describe('testBedWithData', () => {
       const modal = document.querySelector('#fund-details-modal');
       if (!modal) return null;
 
-      // 从 localStorage 获取基金数据
-      const fundsRaw = localStorage.getItem('fund_all_funds_data');
-      const funds = fundsRaw ? JSON.parse(fundsRaw) : [];
+      // 通过服务获取基金数据
+      const root = (window as any).__ROOT__;
+      const funds = root?.marketFundService?.getAllMarketFunds?.() || [];
       const targetFund = funds.find((f: any) => f.info.ticker.symbol === '022364');
 
       // 获取窗口显示的信息
@@ -3192,14 +3191,14 @@ test.describe('testBedWithData', () => {
     const fundModal = page.locator('#fund-details-modal h2');
     await expect(fundModal).toBeVisible({ timeout: 5000 });
 
-    // 获取基金详情窗口中的持仓信息（从 localStorage 读取配置）
+    // 获取基金详情窗口中的持仓信息（通过服务读取配置）
     const fundInfo = await page.evaluate(() => {
       const modal = document.querySelector('#fund-details-modal');
       if (!modal) return null;
 
-      // 从 localStorage 读取基金数据
-      const fundsRaw = localStorage.getItem('fund_all_funds_data');
-      const funds = fundsRaw ? JSON.parse(fundsRaw) : [];
+      // 通过服务获取基金数据
+      const root = (window as any).__ROOT__;
+      const funds = root?.marketFundService?.getAllMarketFunds?.() || [];
       const targetFund = funds.find((f: any) => f.info?.ticker?.symbol === '022364');
 
       // position 在 info 下
@@ -4170,11 +4169,11 @@ test.describe('testBedWithData', () => {
 
     const fundModal = page.locator('#fund-details-modal');
 
-    // 获取基金详情信息（从 localStorage 和窗口显示）
+    // 获取基金详情信息（通过服务和窗口显示）
     const fundInfo = await page.evaluate(() => {
       const modal = document.querySelector('#fund-details-modal');
-      const fundsRaw = localStorage.getItem('fund_all_funds_data');
-      const funds = fundsRaw ? JSON.parse(fundsRaw) : [];
+      const root = (window as any).__ROOT__;
+      const funds = root?.marketFundService?.getAllMarketFunds?.() || [];
       const targetFund = funds.find((f: any) => f.info.ticker.symbol === '022364');
 
       // 获取窗口显示的所有文本
@@ -5478,20 +5477,15 @@ test.describe('testBedWithData', () => {
     // 9. 验证主界面基金数量增加1个
     // ══════════════════════════════════════════════════════════════════════════════
     // 等待新基金卡片出现（React state 更新是异步的）
-    // 使用 waitForFunction 检查 localStorage 中是否有基金数据
-    // 基金数据存储在 'fund_all_funds_data' key 中
+    // 使用 waitForFunction 通过服务检查是否有基金数据
     // fund3.jpg 图片中的基金代码是 161716（招商双债增强债券LOF）
     await page.waitForFunction(() => {
-      const rawData = localStorage.getItem('fund_all_funds_data');
-      if (!rawData) return false;
-      try {
-        const funds = JSON.parse(rawData);
-        return Array.isArray(funds) && funds.some(f => f.info?.ticker?.symbol === '161716');
-      } catch {
-        return false;
-      }
+      const root = (window as any).__ROOT__;
+      if (!root?.marketFundService) return false;
+      const funds = root.marketFundService.getAllMarketFunds();
+      return Array.isArray(funds) && funds.some(f => f.info?.ticker?.symbol === '161716');
     }, { timeout: 10000 });
-    console.log('localStorage 已有基金数据');
+    console.log('服务已有基金数据');
 
     // 等待基金卡片在 UI 中渲染出来
     // 由于 React state 更新和重新渲染需要时间，使用 waitFor 等待基金卡片出现

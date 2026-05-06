@@ -1024,6 +1024,9 @@ export async function forceFetchFundHistories(symbols: string[], onProgress?: ()
     if (onProgress) onProgress();
   }
 
+  // 批量更新完成后，一次性存储到 localStorage
+  marketFundService.saveAllToStorage();
+
   const failCount = errors.length;
 
   // 全部失败
@@ -1278,6 +1281,9 @@ export async function fetchIndexHistories(symbols: string[], ignoreCache: boolea
     // 每个指数历史完成后调用进度回调
     if (onProgress) onProgress();
   }
+
+  // 批量更新完成后，一次性存储到 localStorage
+  indexService.saveAllToStorage();
 
   const failCount = errors.length;
 
@@ -1575,7 +1581,12 @@ export async function maybeTriggerHistoryRefresh(symbol: string, netWorthDate?: 
     }
     if (shouldTrigger) {
       // Fire-and-forget via dependency seam so tests can mock the network call
-      try { _deps.forceFetchFundHistory(symbol).catch(() => {}); } catch (e) { /* swallow */ }
+      // 更新完成后保存到 localStorage
+      try {
+        _deps.forceFetchFundHistory(symbol)
+          .then(() => marketFundService.saveAllToStorage())
+          .catch(() => {});
+      } catch (e) { /* swallow */ }
     }
   } catch (e) {
     // swallow errors to avoid breaking callers

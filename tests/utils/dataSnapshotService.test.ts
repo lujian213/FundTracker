@@ -7,6 +7,9 @@
 import { buildSnapshotData, downloadSnapshotFile, MockDataSnapshot } from '../../utils/dataSnapshotService';
 import { STORAGE_KEYS } from '../../services/storageKeys';
 import * as marketNewsService from '../../services/marketNewsService';
+import * as marketFundService from '../../services/marketFundService';
+import * as indexService from '../../services/indexService';
+import { HistoricalPoint, MarketType } from '../../types';
 
 // Mock marketNewsService
 jest.mock('../../services/marketNewsService', () => ({
@@ -24,11 +27,13 @@ describe('dataSnapshotService', () => {
   });
 
   describe('buildSnapshotData', () => {
-    test('should return empty data when localStorage is empty', () => {
+    test('should always include fund and index data from memory', () => {
+      // 基金和指数数据总是从内存获取
       const result = buildSnapshotData();
 
       expect(result.timestamp).toBeTruthy();
-      expect(result.data).toEqual({});
+      expect(result.data[STORAGE_KEYS.FUND_DATA]).toBeDefined();
+      expect(result.data[STORAGE_KEYS.INDEX_DATA]).toBeDefined();
       expect(result.newsCache).toEqual([]);
     });
 
@@ -39,8 +44,7 @@ describe('dataSnapshotService', () => {
       localStorage.setItem(STORAGE_KEYS.CALENDAR, JSON.stringify({ '2026-04-10': [] }));
       localStorage.setItem(STORAGE_KEYS.INVESTMENT_DRAFT, JSON.stringify([]));
       localStorage.setItem(STORAGE_KEYS.COMBO_TRADE, JSON.stringify({}));
-      localStorage.setItem(STORAGE_KEYS.FUND_DATA, JSON.stringify([]));
-      localStorage.setItem(STORAGE_KEYS.INDEX_DATA, JSON.stringify([]));
+      // 基金和指数数据从内存获取，不需要设置 localStorage
 
       const result = buildSnapshotData();
 
@@ -54,15 +58,16 @@ describe('dataSnapshotService', () => {
       expect(result.data[STORAGE_KEYS.INDEX_DATA]).toBeDefined();
     });
 
-    test('should only include existing keys', () => {
+    test('should include fund/index data plus existing localStorage keys', () => {
       localStorage.setItem(STORAGE_KEYS.USER_PREFERENCE, JSON.stringify({ sortOrder: 'asc' }));
-      localStorage.setItem(STORAGE_KEYS.FUND_DATA, JSON.stringify([{ symbol: '000001' }]));
 
       const result = buildSnapshotData();
 
-      expect(Object.keys(result.data)).toHaveLength(2);
+      // 基金和指数数据总是存在，加上 USER_PREFERENCE
+      expect(Object.keys(result.data)).toHaveLength(3);
       expect(result.data[STORAGE_KEYS.USER_PREFERENCE]).toBeDefined();
       expect(result.data[STORAGE_KEYS.FUND_DATA]).toBeDefined();
+      expect(result.data[STORAGE_KEYS.INDEX_DATA]).toBeDefined();
     });
 
     test('should include newsCache from marketNewsService', () => {
@@ -255,6 +260,127 @@ describe('dataSnapshotService', () => {
       mockCreateElement.mockRestore();
       URL.createObjectURL = originalCreateObjectURL;
       URL.revokeObjectURL = originalRevokeObjectURL;
+    });
+  });
+
+  // ═══════════════════════════════════════════════════════════════════════════════
+  // 数据一致性验证：从内存获取的数据与 localStorage 中的数据格式一致
+  // ═══════════════════════════════════════════════════════════════════════════════
+  describe('数据一致性验证', () => {
+    beforeEach(() => {
+      localStorage.clear();
+      marketFundService.resetCache();
+      indexService.resetCache();
+    });
+
+    afterEach(() => {
+      localStorage.clear();
+      marketFundService.resetCache();
+      indexService.resetCache();
+    });
+
+    test('基金数据：从内存获取与 localStorage 存储格式一致', () => {
+      // 1. 通过 marketFundService 添加基金和历史数据
+      marketFundService.addFund('000001', '华夏成长混合');
+      marketFundService.addFund('161226', '国投瑞银白银期货LOF');
+
+      const history1: HistoricalPoint[] = [
+        { date: 1740000000000, value: 1.48, equityReturn: 0.01 },
+        { date: 1740086400000, value: 1.50, equityReturn: 0.014 },
+        { date: 1740172800000, value: 1.52, equityReturn: 0.013 },
+      ];
+      marketFundService.updateHistory('000001', history1);
+      marketFundService.updateHistory('161226', history1);
+
+      // 2. 调用 saveAllToStorage() 写入 localStorage
+      marketFundService.saveAllToStorage();
+
+      // 3. 获取三份数据进行比较
+      const localStorageData = localStorage.getItem(STORAGE_KEYS.FUND_DATA);
+      const memoryData = JSON.stringify(marketFundService.getAllMarketFunds());
+      const snapshotData = buildSnapshotData().data[STORAGE_KEYS.FUND_DATA];
+
+      // 4. 验证三者完全一致
+      expect(localStorageData).toBe(memoryData);
+      expect(snapshotData).toBe(memoryData);
+
+      // 5. 验证数据结构正确
+      const parsed = JSON.parse(snapshotData);
+      expect(parsed).toHaveLength(2);
+      expect(parsed[0].info.ticker.symbol).toBe('000001');
+      expect(parsed[0].history).toHaveLength(3);
+    });
+
+    test('指数数据：从内存获取与 localStorage 存储格式一致', () => {
+      // 1. 通过 indexService 更新指数数据（indexService 有默认指数）
+      indexService.updateRealtimeData('1.000001', {
+        name: '上证指数',
+        current: 3200,
+        change: 10,
+        changePercent: 0.31,
+        lastUpdated: '15:00',
+        previousClose: 3190,
+      });
+
+      const history: HistoricalPoint[] = [
+        { date: 1740000000000, value: 3190, equityReturn: 0, volume: 100000, amount: 5000000 },
+        { date: 1740086400000, value: 3200, equityReturn: 0.0031, volume: 120000, amount: 6000000 },
+      ];
+      indexService.updateHistory('1.000001', history);
+
+      // 2. 调用 saveAllToStorage() 写入 localStorage
+      indexService.saveAllToStorage();
+
+      // 3. 获取三份数据进行比较
+      const localStorageData = localStorage.getItem(STORAGE_KEYS.INDEX_DATA);
+      const memoryData = JSON.stringify(indexService.getAllMarketIndices());
+      const snapshotData = buildSnapshotData().data[STORAGE_KEYS.INDEX_DATA];
+
+      // 4. 验证三者完全一致
+      expect(localStorageData).toBe(memoryData);
+      expect(snapshotData).toBe(memoryData);
+
+      // 5. 验证数据结构正确：找到我们更新的指数
+      const parsed = JSON.parse(snapshotData);
+      const shanghaiIndex = parsed.find(i => i.info.symbol === '1.000001');
+      expect(shanghaiIndex).toBeDefined();
+      expect(shanghaiIndex!.info.current).toBe(3200);
+      expect(shanghaiIndex!.history).toHaveLength(2);
+    });
+
+    test('基金和指数数据同时存在时格式一致', () => {
+      // 添加基金数据
+      marketFundService.addFund('270023', '广发纳斯达克100ETF');
+      const fundHistory: HistoricalPoint[] = [
+        { date: 1740000000000, value: 5.5, equityReturn: 0.02 },
+      ];
+      marketFundService.updateHistory('270023', fundHistory);
+      marketFundService.saveAllToStorage();
+
+      // 添加指数数据
+      indexService.updateRealtimeData('100.NDX', {
+        name: '纳斯达克100',
+        current: 18000,
+        change: -50,
+        changePercent: -0.28,
+        lastUpdated: '04:00',
+        previousClose: 18050,
+      });
+      indexService.saveAllToStorage();
+
+      // 验证基金数据一致
+      const fundLocal = localStorage.getItem(STORAGE_KEYS.FUND_DATA);
+      const fundMemory = JSON.stringify(marketFundService.getAllMarketFunds());
+      const fundSnapshot = buildSnapshotData().data[STORAGE_KEYS.FUND_DATA];
+      expect(fundLocal).toBe(fundMemory);
+      expect(fundSnapshot).toBe(fundMemory);
+
+      // 验证指数数据一致
+      const indexLocal = localStorage.getItem(STORAGE_KEYS.INDEX_DATA);
+      const indexMemory = JSON.stringify(indexService.getAllMarketIndices());
+      const indexSnapshot = buildSnapshotData().data[STORAGE_KEYS.INDEX_DATA];
+      expect(indexLocal).toBe(indexMemory);
+      expect(indexSnapshot).toBe(indexMemory);
     });
   });
 });
