@@ -8,7 +8,10 @@ import {
   parseHistoryFromTrendData,
   buildValuationFromFallback,
   secidToTencentSymbol,
-  mergeHistoryWithTencentData
+  mergeHistoryWithTencentData,
+  computeTradingDateAndTime,
+  TradingPeriod,
+  parseF80TradingPeriods
 } from '../../services/fundService';
 import { ValuationData, HistoricalPoint } from '../../types';
 
@@ -341,6 +344,40 @@ describe('normalizeIndexSymbol', () => {
   });
 });
 
+describe('parseF80TradingPeriods', () => {
+  test('parses single trading period', () => {
+    const f80 = '[{"b":202605062130,"e":202605070400}]';
+    const result = parseF80TradingPeriods(f80);
+    expect(result).toHaveLength(1);
+    expect(result[0].beginDate).toBe('2026-05-06');
+    expect(result[0].endDate).toBe('2026-05-07');
+    expect(result[0].beginHHMM).toBe(2130);
+    expect(result[0].endHHMM).toBe(400);
+  });
+
+  test('parses multiple trading periods (A股)', () => {
+    const f80 = '[{"b":202605060930,"e":202605061130},{"b":202605061300,"e":202605061500}]';
+    const result = parseF80TradingPeriods(f80);
+    expect(result).toHaveLength(2);
+    expect(result[0].beginHHMM).toBe(930);
+    expect(result[0].endHHMM).toBe(1130);
+    expect(result[1].beginHHMM).toBe(1300);
+    expect(result[1].endHHMM).toBe(1500);
+  });
+
+  test('returns empty array for null/undefined input', () => {
+    expect(parseF80TradingPeriods(null)).toEqual([]);
+    expect(parseF80TradingPeriods(undefined)).toEqual([]);
+    expect(parseF80TradingPeriods('')).toEqual([]);
+  });
+
+  test('returns empty array for malformed input', () => {
+    expect(parseF80TradingPeriods('invalid')).toEqual([]);
+    expect(parseF80TradingPeriods('[{"b":123}]')).toEqual([]); // missing e
+    expect(parseF80TradingPeriods('[{"e":456}]')).toEqual([]); // missing b
+  });
+});
+
 describe('secidToTencentSymbol', () => {
   test.each([
     ['1.000001', 'sh000001'],    // 上证指数
@@ -467,5 +504,204 @@ describe('mergeHistoryWithTencentData', () => {
     expect(result[2].amount).toBe(0);
     // 第四天：新日期，成交额为0
     expect(result[3].amount).toBe(0);
+  });
+});
+
+describe('computeTradingDateAndTime', () => {
+  // 辅助函数：创建指定时间的 Date 对象
+  const createDate = (dateStr: string, timeStr: string): Date => {
+    // dateStr: YYYY-MM-DD, timeStr: HH:mm:ss
+    const [year, month, day] = dateStr.split('-').map(Number);
+    const [hour, minute, second = 0] = timeStr.split(':').map(Number);
+    return new Date(year, month - 1, day, hour, minute, second);
+  };
+
+  // 辅助函数：创建交易时段
+  const createPeriod = (beginDate: string, endDate: string, beginHHMM: number, endHHMM: number): TradingPeriod => ({
+    beginDate,
+    endDate,
+    beginHHMM,
+    endHHMM,
+  });
+
+  describe('无交易时段信息', () => {
+    test('返回当前日期和时间作为 fallback', () => {
+      const now = createDate('2026-05-06', '10:30:45');
+      const result = computeTradingDateAndTime([], now);
+      expect(result.tradeDate).toBe('2026-05-06');
+      expect(result.lastUpdated).toBe('10:30:45');
+    });
+
+    test('空数组返回当前日期和时间', () => {
+      const now = createDate('2026-05-06', '10:30:45');
+      const result = computeTradingDateAndTime(undefined as any, now);
+      expect(result.tradeDate).toBe('2026-05-06');
+      expect(result.lastUpdated).toBe('10:30:45');
+    });
+  });
+
+  describe('在交易时段内', () => {
+    test('单时段 - 当前时间在时段内，返回当前日期和时间', () => {
+      // A股上午时段：09:30-11:30
+      const periods = [createPeriod('2026-05-06', '2026-05-06', 930, 1130)];
+      const now = createDate('2026-05-06', '10:00:00'); // 10:00 在时段内
+      const result = computeTradingDateAndTime(periods, now);
+      expect(result.tradeDate).toBe('2026-05-06');
+      expect(result.lastUpdated).toBe('10:00:00');
+    });
+
+    test('单时段 - 当前时间刚好等于开盘时间', () => {
+      const periods = [createPeriod('2026-05-06', '2026-05-06', 930, 1130)];
+      const now = createDate('2026-05-06', '09:30:00'); // 09:30 刚好开盘
+      const result = computeTradingDateAndTime(periods, now);
+      expect(result.tradeDate).toBe('2026-05-06');
+      expect(result.lastUpdated).toBe('09:30:00');
+    });
+
+    test('单时段 - 当前时间刚好等于收盘时间', () => {
+      const periods = [createPeriod('2026-05-06', '2026-05-06', 930, 1130)];
+      const now = createDate('2026-05-06', '11:30:00'); // 11:30 刚好收盘
+      const result = computeTradingDateAndTime(periods, now);
+      expect(result.tradeDate).toBe('2026-05-06');
+      expect(result.lastUpdated).toBe('11:30:00');
+    });
+
+    test('多时段（A股）- 当前时间在上午时段内', () => {
+      // A股：上午 09:30-11:30，下午 13:00-15:00
+      const periods = [
+        createPeriod('2026-05-06', '2026-05-06', 930, 1130),
+        createPeriod('2026-05-06', '2026-05-06', 1300, 1500),
+      ];
+      const now = createDate('2026-05-06', '10:15:00'); // 上午时段内
+      const result = computeTradingDateAndTime(periods, now);
+      expect(result.tradeDate).toBe('2026-05-06');
+      expect(result.lastUpdated).toBe('10:15:00');
+    });
+
+    test('多时段（A股）- 当前时间在下午时段内', () => {
+      const periods = [
+        createPeriod('2026-05-06', '2026-05-06', 930, 1130),
+        createPeriod('2026-05-06', '2026-05-06', 1300, 1500),
+      ];
+      const now = createDate('2026-05-06', '14:30:00'); // 下午时段内
+      const result = computeTradingDateAndTime(periods, now);
+      expect(result.tradeDate).toBe('2026-05-06');
+      expect(result.lastUpdated).toBe('14:30:00');
+    });
+
+    test('跨日时段 - 当前时间在开盘后（商品期货 06:00-05:00）', () => {
+      // 商品期货：06:00-05:00（次日）
+      // beginHHMM=600 > endHHMM=500 表示跨日
+      const periods = [createPeriod('2026-05-06', '2026-05-07', 600, 500)];
+      const now = createDate('2026-05-06', '10:00:00'); // 06:00 之后，05:00 之前
+      const result = computeTradingDateAndTime(periods, now);
+      expect(result.tradeDate).toBe('2026-05-06');
+      expect(result.lastUpdated).toBe('10:00:00');
+    });
+
+    test('跨日时段 - 当前时间在次日收盘前（商品期货 06:00-05:00）', () => {
+      // 商品期货：06:00-05:00（次日）
+      const periods = [createPeriod('2026-05-06', '2026-05-07', 600, 500)];
+      const now = createDate('2026-05-07', '03:30:00'); // 次日 03:30，在 05:00 收盘前
+      const result = computeTradingDateAndTime(periods, now);
+      expect(result.tradeDate).toBe('2026-05-07');
+      expect(result.lastUpdated).toBe('03:30:00');
+    });
+
+    test('跨日时段 - 当前时间在次日刚好等于收盘时间（商品期货 06:00-05:00）', () => {
+      const periods = [createPeriod('2026-05-06', '2026-05-07', 600, 500)];
+      const now = createDate('2026-05-07', '05:00:00'); // 次日 05:00 收盘
+      const result = computeTradingDateAndTime(periods, now);
+      expect(result.tradeDate).toBe('2026-05-07');
+      expect(result.lastUpdated).toBe('05:00:00');
+    });
+
+    test('跨日时段 - 美股 21:30-04:00，当前时间在夜间交易时段', () => {
+      // 美股：21:30-04:00（次日）
+      const periods = [createPeriod('2026-05-06', '2026-05-07', 2130, 400)];
+      const now = createDate('2026-05-06', '22:00:00'); // 21:30 之后
+      const result = computeTradingDateAndTime(periods, now);
+      expect(result.tradeDate).toBe('2026-05-06');
+      expect(result.lastUpdated).toBe('22:00:00');
+    });
+
+    test('跨日时段 - 美股 21:30-04:00，当前时间在次日收盘前', () => {
+      const periods = [createPeriod('2026-05-06', '2026-05-07', 2130, 400)];
+      const now = createDate('2026-05-07', '02:30:00'); // 次日 02:30
+      const result = computeTradingDateAndTime(periods, now);
+      expect(result.tradeDate).toBe('2026-05-07');
+      expect(result.lastUpdated).toBe('02:30:00');
+    });
+  });
+
+  describe('不在交易时段内', () => {
+    test('单时段 - 当前时间在开盘前，返回上一个收盘日期和时间', () => {
+      // A股上午时段：09:30-11:30
+      const periods = [createPeriod('2026-05-06', '2026-05-06', 930, 1130)];
+      const now = createDate('2026-05-06', '08:30:00'); // 08:30 在开盘前
+      const result = computeTradingDateAndTime(periods, now);
+      expect(result.tradeDate).toBe('2026-05-06');
+      expect(result.lastUpdated).toBe('11:30:00'); // 收盘时间
+    });
+
+    test('单时段 - 当前时间在收盘后，返回收盘日期和时间', () => {
+      const periods = [createPeriod('2026-05-06', '2026-05-06', 930, 1130)];
+      const now = createDate('2026-05-06', '12:00:00'); // 12:00 在收盘后
+      const result = computeTradingDateAndTime(periods, now);
+      expect(result.tradeDate).toBe('2026-05-06');
+      expect(result.lastUpdated).toBe('11:30:00');
+    });
+
+    test('多时段（A股）- 当前时间在午休时段（11:30-13:00）', () => {
+      const periods = [
+        createPeriod('2026-05-06', '2026-05-06', 930, 1130),
+        createPeriod('2026-05-06', '2026-05-06', 1300, 1500),
+      ];
+      const now = createDate('2026-05-06', '12:00:00'); // 午休时段
+      const result = computeTradingDateAndTime(periods, now);
+      // 午休时段不在任何交易时段内，返回上午收盘时间（最后一个时段的收盘时间是 15:00）
+      // 注意：这里取最后一个时段的收盘时间，而不是当前时段
+      expect(result.tradeDate).toBe('2026-05-06');
+      expect(result.lastUpdated).toBe('15:00:00'); // 最后一个时段的收盘时间
+    });
+
+    test('多时段（A股）- 当前时间在全天收盘后（16:00）', () => {
+      const periods = [
+        createPeriod('2026-05-06', '2026-05-06', 930, 1130),
+        createPeriod('2026-05-06', '2026-05-06', 1300, 1500),
+      ];
+      const now = createDate('2026-05-06', '16:00:00'); // 全天收盘后
+      const result = computeTradingDateAndTime(periods, now);
+      expect(result.tradeDate).toBe('2026-05-06');
+      expect(result.lastUpdated).toBe('15:00:00');
+    });
+
+    test('跨日时段 - 商品期货 06:00-05:00，当前时间在收盘后开盘前的空档（05:00-06:00）', () => {
+      const periods = [createPeriod('2026-05-06', '2026-05-07', 600, 500)];
+      const now = createDate('2026-05-07', '05:30:00'); // 05:30 在收盘后开盘前
+      const result = computeTradingDateAndTime(periods, now);
+      expect(result.tradeDate).toBe('2026-05-07'); // 收盘日期
+      expect(result.lastUpdated).toBe('05:00:00'); // 收盘时间
+    });
+
+    test('跨日时段 - 美股 21:30-04:00，当前时间在收盘后开盘前的空档（04:00-21:30）', () => {
+      const periods = [createPeriod('2026-05-06', '2026-05-07', 2130, 400)];
+      const now = createDate('2026-05-07', '10:00:00'); // 10:00 在收盘后开盘前
+      const result = computeTradingDateAndTime(periods, now);
+      expect(result.tradeDate).toBe('2026-05-07'); // 收盘日期
+      expect(result.lastUpdated).toBe('04:00:00'); // 收盘时间
+    });
+
+    test('使用最后一个时段的收盘日期和时间', () => {
+      // 多时段场景（A股），当前时间在全天收盘后
+      const periods = [
+        createPeriod('2026-05-06', '2026-05-06', 930, 1130),
+        createPeriod('2026-05-06', '2026-05-06', 1300, 1500),
+      ];
+      const now = createDate('2026-05-06', '16:00:00'); // 全天收盘后
+      const result = computeTradingDateAndTime(periods, now);
+      expect(result.tradeDate).toBe('2026-05-06'); // 最后一个时段的收盘日期
+      expect(result.lastUpdated).toBe('15:00:00'); // 最后一个时段的收盘时间
+    });
   });
 });

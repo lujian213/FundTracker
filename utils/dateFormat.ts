@@ -49,6 +49,17 @@ export function formatTime(date: Date): string {
 }
 
 /**
+ * 格式化时间为 HH:mm:ss
+ * @param date Date 对象
+ */
+export function formatTimeISO(date: Date): string {
+  const h = String(date.getHours()).padStart(2, '0');
+  const min = String(date.getMinutes()).padStart(2, '0');
+  const sec = String(date.getSeconds()).padStart(2, '0');
+  return `${h}:${min}:${sec}`;
+}
+
+/**
  * 格式化日期时间为 yyyy/MM/dd HH:mm
  * @param date Date 对象
  */

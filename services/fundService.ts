@@ -705,6 +705,115 @@ export function normalizeIndexSymbol(raw: string): string {
   return normalized;
 }
 
+/**
+ * 交易时段信息
+ */
+export interface TradingPeriod {
+  beginDate: string;  // YYYY-MM-DD 开盘日期
+  endDate: string;    // YYYY-MM-DD 收盘日期
+  beginHHMM: number;  // HHMM 格式开盘时间，如 930 表示 09:30
+  endHHMM: number;    // HHMM 格式收盘时间，如 1130 表示 11:30
+}
+
+/**
+ * 计算结果
+ */
+export interface TradingHoursResult {
+  tradeDate: string;      // YYYY-MM-DD
+  lastUpdated: string;    // HH:mm:ss
+}
+
+/**
+ * 解析 f80 字段为交易时段列表
+ * f80 格式: [{"b":202605052130,"e":202605060400}]
+ * @param f80 f80 字段字符串
+ * @returns TradingPeriod 数组
+ */
+export function parseF80TradingPeriods(f80: string | null | undefined): TradingPeriod[] {
+  if (!f80 || typeof f80 !== 'string') return [];
+
+  try {
+    const beginMatches = [...f80.matchAll(/"b":(\d{12})/g)] as RegExpMatchArray[];
+    const endMatches = [...f80.matchAll(/"e":(\d{12})/g)] as RegExpMatchArray[];
+
+    const periods: TradingPeriod[] = [];
+    for (let i = 0; i < beginMatches.length && i < endMatches.length; i++) {
+      const beginNum = beginMatches[i][1];
+      const endNum = endMatches[i][1];
+      periods.push({
+        beginDate: `${beginNum.substring(0, 4)}-${beginNum.substring(4, 6)}-${beginNum.substring(6, 8)}`,
+        endDate: `${endNum.substring(0, 4)}-${endNum.substring(4, 6)}-${endNum.substring(6, 8)}`,
+        beginHHMM: parseInt(beginNum.substring(8, 12)),
+        endHHMM: parseInt(endNum.substring(8, 12)),
+      });
+    }
+    return periods;
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * 根据交易时段和当前时间计算 tradeDate 和 lastUpdated
+ *
+ * 逻辑：
+ * - 如果当前时间在交易时段内：tradeDate = 当前日期，lastUpdated = 当前时间
+ * - 如果当前时间不在交易时段内：tradeDate = 最后一个时段的收盘日期，lastUpdated = 收盘时间
+ *
+ * 跨日交易时段处理：
+ * - 如果 beginHHMM > endHHMM（如 2130 > 0400），表示跨日交易（如美股 21:30-04:00）
+ * - 跨日时段判断条件：当前时间 >= 开盘时间 或 当前时间 <= 收盘时间
+ *
+ * 多时段处理：
+ * - A股有上午（09:30-11:30）和下午（13:00-15:00）两个时段
+ * - 只要当前时间在任何一个时段内，就视为在交易时段
+ *
+ * @param periods 交易时段列表（按时间顺序）
+ * @param now 当前时间（可选，用于测试时注入；默认使用 new Date()）
+ * @returns tradeDate 和 lastUpdated
+ */
+export function computeTradingDateAndTime(
+  periods: TradingPeriod[],
+  now?: Date
+): TradingHoursResult {
+  const pad = (n: number) => n.toString().padStart(2, '0');
+
+  if (!periods || periods.length === 0) {
+    const fallbackNow = now || new Date();
+    return {
+      tradeDate: `${fallbackNow.getFullYear()}-${pad(fallbackNow.getMonth() + 1)}-${pad(fallbackNow.getDate())}`,
+      lastUpdated: `${pad(fallbackNow.getHours())}:${pad(fallbackNow.getMinutes())}:${pad(fallbackNow.getSeconds())}`,
+    };
+  }
+
+  const currentTime = now || new Date();
+  const nowTimeNum = currentTime.getHours() * 100 + currentTime.getMinutes();
+
+  let inTradingHours = false;
+
+  for (const period of periods) {
+    const b = period.beginHHMM;
+    const e = period.endHHMM;
+    // 跨日时段（b > e）：当前时间 >= 开盘 或 <= 收盘
+    // 同日时段：当前时间 >= 开盘 且 <= 收盘
+    inTradingHours = b > e ? (nowTimeNum >= b || nowTimeNum <= e) : (nowTimeNum >= b && nowTimeNum <= e);
+    if (inTradingHours) break;
+  }
+
+  if (inTradingHours) {
+    return {
+      tradeDate: `${currentTime.getFullYear()}-${pad(currentTime.getMonth() + 1)}-${pad(currentTime.getDate())}`,
+      lastUpdated: `${pad(currentTime.getHours())}:${pad(currentTime.getMinutes())}:${pad(currentTime.getSeconds())}`,
+    };
+  }
+
+  const lastPeriod = periods[periods.length - 1];
+  return {
+    tradeDate: lastPeriod.endDate,
+    lastUpdated: `${pad(Math.floor(lastPeriod.endHHMM / 100))}:${pad(lastPeriod.endHHMM % 100)}:00`,
+  };
+}
+
 export async function fetchSingleIndex(symbol: string, ignoreCache: boolean = false): Promise<MarketIndex | null> {
 
   // 0. 检查缓存
@@ -735,37 +844,35 @@ export async function fetchSingleIndex(symbol: string, ignoreCache: boolean = fa
 
     if (item) {
 
-      // 解析 f80 字段获取交易日期和交易结束时间
-      let tradeDate: string | undefined;
-      let tradeEndTime: string | undefined; // 交易结束时间 HH:mm:ss
-      if (item.f80 && typeof item.f80 === 'string') {
-        try {
-          // f80 格式: [{"b":202605052130,"e":202605060400}]
-          // b = 开盘时间，e = 收盘时间（北京时间）
-          const match = item.f80.match(/"e":(\d{12})/);
-          if (match) {
-            const endNum = match[1]; // 如 202605060400
-            tradeDate = `${endNum.substring(0, 4)}-${endNum.substring(4, 6)}-${endNum.substring(6, 8)}`;
-            tradeEndTime = `${endNum.substring(8, 10)}:${endNum.substring(10, 12)}:00`;
-          }
-        } catch (e) {}
-      }
+      // 解析 f80 字段获取交易时段信息
+      // f80 格式: [{"b":202605052130,"e":202605060400}]
+      // 可能包含多个时段（如 A股有上午和下午两个时段）
+      const tradingPeriods = parseF80TradingPeriods(item.f80);
 
       // 时间戳处理：
-      // 1. 如果 f124 有效（非0），使用 f124
-      // 2. 如果 f124 无效但有 tradeEndTime，使用 tradeEndTime
-      // 3. 否则使用当前时间（fallback）
+      // 1. 如果 f124 有效（非0），使用 f124（API 提供的实时更新时间）
+      // 2. 如果 f124 无效：
+      //    - 当前时间在交易时间段内：tradeDate=当前日期，lastUpdated=当前时间
+      //    - 当前时间不在交易时间段内：tradeDate=上一个交易日日期，lastUpdated=上一个收盘时间
       const pad = (n: number) => n.toString().padStart(2, '0');
       let lastUpdated: string;
+      let tradeDate: string | undefined;
 
       if (item.f124 && item.f124 > 0) {
         const timestamp = new Date(item.f124 * 1000);
         lastUpdated = `${pad(timestamp.getHours())}:${pad(timestamp.getMinutes())}:${pad(timestamp.getSeconds())}`;
-      } else if (tradeEndTime) {
-        lastUpdated = tradeEndTime;
+        tradeDate = `${timestamp.getFullYear()}-${pad(timestamp.getMonth() + 1)}-${pad(timestamp.getDate())}`;
+
+      } else if (tradingPeriods.length > 0) {
+        const result = computeTradingDateAndTime(tradingPeriods);
+        tradeDate = result.tradeDate;
+        lastUpdated = result.lastUpdated;
+
       } else {
-        const now = new Date();
-        lastUpdated = `${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`;
+        // 没有 f80 数据，使用 computeTradingDateAndTime 作为 fallback（空数组）
+        const result = computeTradingDateAndTime([]);
+        tradeDate = result.tradeDate;
+        lastUpdated = result.lastUpdated;
       }
 
       currentInfo = {
