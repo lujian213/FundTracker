@@ -546,8 +546,6 @@ async function fetchFundDataFromEastMoney(code: string): Promise<ValuationData |
     const addedKeys = afterKeys.filter(k => !beforeKeys.has(k));
 
     const g: any = window as any;
-    // console.log('DEBUG: window.Data_netWorthTrend exists?', !!(g as any).Data_netWorthTrend);
-    // try { console.log('DEBUG: Data_netWorthTrend sample:', JSON.stringify((g as any).Data_netWorthTrend && (g as any).Data_netWorthTrend.slice(-3))); } catch(e) {}
 
     // helper to try extract trend and name from an object
     const extractFromObj = (obj: any) => {
@@ -734,21 +732,40 @@ export async function fetchSingleIndex(symbol: string, ignoreCache: boolean = fa
     // 使用 fetchJson 直接获取（push2delay 返回普通 JSON）
     const response: any = await fetchJson(realtimeUrl);
     const item = response?.data;
+
     if (item) {
 
-      const timestamp = item.f124 ? new Date(item.f124 * 1000) : new Date();
-      const pad = (n: number) => n.toString().padStart(2, '0');
-
-      // 解析 f80 字段获取交易日期
+      // 解析 f80 字段获取交易日期和交易结束时间
       let tradeDate: string | undefined;
+      let tradeEndTime: string | undefined; // 交易结束时间 HH:mm:ss
       if (item.f80 && typeof item.f80 === 'string') {
         try {
-          const match = item.f80.match(/"b":(\d{12})/);
+          // f80 格式: [{"b":202605052130,"e":202605060400}]
+          // b = 开盘时间，e = 收盘时间（北京时间）
+          const match = item.f80.match(/"e":(\d{12})/);
           if (match) {
-            const dateNum = match[1];
-            tradeDate = `${dateNum.substring(0, 4)}-${dateNum.substring(4, 6)}-${dateNum.substring(6, 8)}`;
+            const endNum = match[1]; // 如 202605060400
+            tradeDate = `${endNum.substring(0, 4)}-${endNum.substring(4, 6)}-${endNum.substring(6, 8)}`;
+            tradeEndTime = `${endNum.substring(8, 10)}:${endNum.substring(10, 12)}:00`;
           }
         } catch (e) {}
+      }
+
+      // 时间戳处理：
+      // 1. 如果 f124 有效（非0），使用 f124
+      // 2. 如果 f124 无效但有 tradeEndTime，使用 tradeEndTime
+      // 3. 否则使用当前时间（fallback）
+      const pad = (n: number) => n.toString().padStart(2, '0');
+      let lastUpdated: string;
+
+      if (item.f124 && item.f124 > 0) {
+        const timestamp = new Date(item.f124 * 1000);
+        lastUpdated = `${pad(timestamp.getHours())}:${pad(timestamp.getMinutes())}:${pad(timestamp.getSeconds())}`;
+      } else if (tradeEndTime) {
+        lastUpdated = tradeEndTime;
+      } else {
+        const now = new Date();
+        lastUpdated = `${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`;
       }
 
       currentInfo = {
@@ -757,7 +774,7 @@ export async function fetchSingleIndex(symbol: string, ignoreCache: boolean = fa
         current: parseFloat(item.f43) || 0,
         change: parseFloat(item.f169) || 0,
         changePercent: parseFloat(item.f170) || 0,
-        lastUpdated: `${pad(timestamp.getHours())}:${pad(timestamp.getMinutes())}:${pad(timestamp.getSeconds())}`,
+        lastUpdated,
         tradeDate,
         previousClose: parseFloat(item.f60) || undefined,
         volume: 0,

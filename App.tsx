@@ -176,6 +176,21 @@ function parseCalendarAIResponse(response: string): CalendarEventInput[] {
       }
     }
 
+    // 尝试修复常见的 JSON 格式错误：
+    // 1. 字符串值缺少引号（如 "description":香港 应改为 "description":"香港"）
+    // 匹配模式：属性名后有冒号，后面是未加引号的中英文内容
+    cleanedResponse = cleanedResponse.replace(
+      /"(?:market|content|description|date)":([^,\[\]{}\n\r]+)([,}\]\n\r])/g,
+      (match, value, suffix) => {
+        // 如果值已经被引号包裹，不处理
+        if (value.trim().startsWith('"') || value.trim().startsWith("'")) {
+          return match;
+        }
+        // 将未加引号的值加上引号
+        return match.replace(value, `"${value.trim()}"`);
+      }
+    );
+
     const parsed = JSON.parse(cleanedResponse);
     if (!Array.isArray(parsed)) {
       console.warn('[Calendar] AI response is not an array');
@@ -192,6 +207,8 @@ function parseCalendarAIResponse(response: string): CalendarEventInput[] {
     }));
   } catch (e) {
     console.error('[Calendar] Failed to parse AI response:', e);
+    // 输出原始响应便于调试
+    console.error('[Calendar] Raw response snippet:', response.substring(0, 500));
     return [];
   }
 }
