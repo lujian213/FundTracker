@@ -12,9 +12,10 @@ import AIPanel from './config/AIPanel';
 import SystemPanel from './config/SystemPanel';
 import SystemParamsPanel from './config/SystemParamsPanel';
 import DataSnapshotPanel from './config/DataSnapshotPanel';
+import SystemResourcePanel from './config/SystemResourcePanel';
 import { Ticker, MarketIndex } from '../types';
 
-export type ConfigSection = 'backup' | 'sync' | 'ai' | 'system' | 'params' | 'snapshot';
+export type ConfigSection = 'backup' | 'sync' | 'ai' | 'system' | 'params' | 'resource' | 'snapshot';
 
 interface SystemConfigModalProps {
   isOpen: boolean;
@@ -38,6 +39,7 @@ const NAV_ITEMS: NavItem[] = [
   { id: 'ai', label: 'AI配置', icon: 'fa-robot' },
   { id: 'system', label: '系统开关', icon: 'fa-toggle-on' },
   { id: 'params', label: '系统参数', icon: 'fa-cogs' },
+  { id: 'resource', label: '系统资源', icon: 'fa-database' },
   { id: 'snapshot', label: '数据快照', icon: 'fa-camera' },
 ];
 
@@ -134,6 +136,7 @@ const SystemConfigModal: React.FC<SystemConfigModalProps> = ({
             {activeSection === 'ai' && <AIPanel />}
             {activeSection === 'system' && <SystemPanel />}
             {activeSection === 'params' && <SystemParamsPanel />}
+            {activeSection === 'resource' && <SystemResourcePanel />}
             {activeSection === 'snapshot' && <DataSnapshotPanel />}
           </div>
         </div>

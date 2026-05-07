@@ -711,15 +711,15 @@ test.describe('testBedWithData', () => {
     await expect(configModal).toBeVisible({ timeout: 5000 });
 
     // ══════════════════════════════════════════════════════════════════════════════
-    // 2. 验证左边显示6个选项
+    // 2. 验证左边显示7个选项
     // ══════════════════════════════════════════════════════════════════════════════
     const navItems = page.locator('nav button');
     const navCount = await navItems.count();
-    expect(navCount).toBe(6);
+    expect(navCount).toBe(7);
 
     // 验证导航项名称
-    const navLabels = ['备份管理', '同步管理', 'AI配置', '系统开关', '系统参数', '数据快照'];
-    for (let i = 0; i < 6; i++) {
+    const navLabels = ['备份管理', '同步管理', 'AI配置', '系统开关', '系统参数', '系统资源', '数据快照'];
+    for (let i = 0; i < 7; i++) {
       const navText = await navItems.nth(i).textContent();
       expect(navText).toContain(navLabels[i]);
     }
@@ -864,6 +864,31 @@ test.describe('testBedWithData', () => {
     await expect(currentValue).toBeVisible();
 
     console.log('系统参数验证完成');
+
+    // ══════════════════════════════════════════════════════════════════════════════
+    // 6.5. 点击"系统资源"，验证 localStorage 使用情况显示
+    // ══════════════════════════════════════════════════════════════════════════════
+    await navItems.nth(5).click(); // 系统资源
+
+    // 验证 localStorage 使用情况标题显示
+    await expect(page.locator('h3:has-text("localStorage 使用情况")')).toBeVisible({ timeout: 2000 });
+
+    // 验证进度条存在
+    const progressBar = page.locator('div.w-full.h-4.bg-gray-200.rounded-full');
+    await expect(progressBar).toBeVisible();
+
+    // 验证进度条内部填充条存在
+    const progressFill = progressBar.locator('div.h-full.rounded-full');
+    await expect(progressFill).toBeVisible();
+
+    // 验证已使用和剩余空间数值显示
+    await expect(page.locator('text=已使用:')).toBeVisible();
+    await expect(page.locator('text=剩余:')).toBeVisible();
+
+    // 验证说明区域显示
+    await expect(page.locator('h3:has-text("说明")')).toBeVisible();
+
+    console.log('系统资源验证完成');
 
     // ══════════════════════════════════════════════════════════════════════════════
     // 7. 点击"备份管理"，导出备份并验证ocrConcurrency值

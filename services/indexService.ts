@@ -12,7 +12,7 @@ import { STORAGE_KEYS, OLD_STORAGE_KEYS } from './storageKeys';
 import { floorToMinute, isSameLocalDay, filterTodayIntraday, dedupeByMinute } from '../utils/dateTimeUtils';
 import { compressConsecutiveSameValues } from '../utils/intradayCompression';
 import { toLocalDateKey } from '../utils/priceResolver';
-import { compressToStorage, decompressFromStorage, truncateHistory, MAX_HISTORY_POINTS } from '../utils/storageCompression';
+import { compressToStorage, decompressFromStorage, truncateHistory, truncateArray, MAX_HISTORY_POINTS } from '../utils/storageCompression';
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // 内存缓存
@@ -456,9 +456,20 @@ export function batchUpdateRealtimeData(indexInfos: IndexInfo[]): void {
  * 更新指数历史数据（统一保存到 fund_all_indices_data）
  */
 export function updateHistory(symbol: string, history: HistoricalPoint[]): void {
+  const truncatedHistory = truncateArray(history);
+
   const existing = indices.get(symbol);
   if (existing) {
-    existing.history = history;
+    // 检查数据是否真的有变化，避免不必要的写入
+    const oldHistory = existing.history;
+    if (oldHistory && oldHistory.length === truncatedHistory.length) {
+      const oldLast = oldHistory[oldHistory.length - 1];
+      const newLast = truncatedHistory[truncatedHistory.length - 1];
+      if (oldLast && newLast && oldLast.date === newLast.date && oldLast.value === newLast.value) {
+        return;
+      }
+    }
+    existing.history = truncatedHistory;
   } else {
     // 创建新记录（使用默认 info）
     const newInfo: IndexInfo = {
@@ -469,9 +480,8 @@ export function updateHistory(symbol: string, history: HistoricalPoint[]): void 
       changePercent: 0,
       lastUpdated: '',
     };
-    indices.set(symbol, { info: newInfo, intraday: [], history });
+    indices.set(symbol, { info: newInfo, intraday: [], history: truncatedHistory });
   }
-  // 不立即存储，由批量操作完成后统一调用 saveAllToStorage()
 }
 
 /**

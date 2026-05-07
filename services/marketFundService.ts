@@ -15,7 +15,7 @@ import { STORAGE_KEYS, OLD_STORAGE_KEYS } from './storageKeys';
 import { floorToMinute, isSameLocalDay, filterTodayIntraday, dedupeByMinute } from '../utils/dateTimeUtils';
 import { toLocalDateKey } from '../utils/priceResolver';
 import { compressConsecutiveSameValues } from '../utils/intradayCompression';
-import { compressToStorage, decompressFromStorage, truncateHistory, MAX_HISTORY_POINTS } from '../utils/storageCompression';
+import { compressToStorage, decompressFromStorage, truncateHistory, truncateArray, MAX_HISTORY_POINTS } from '../utils/storageCompression';
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // 内存缓存
@@ -680,21 +680,22 @@ export function getHistory(symbol: string): HistoricalPoint[] {
  * 更新基金历史数据
  */
 export function updateHistory(symbol: string, history: HistoricalPoint[]): void {
+  const truncatedHistory = truncateArray(history);
+
   const existing = funds.get(symbol);
   if (existing) {
     // 检查数据是否真的有变化，避免不必要的写入
     const oldHistory = existing.history;
-    if (oldHistory && oldHistory.length === history.length) {
+    if (oldHistory && oldHistory.length === truncatedHistory.length) {
       // 快速比较：只比较最后一个点的日期和值（最新数据）
       const oldLast = oldHistory[oldHistory.length - 1];
-      const newLast = history[history.length - 1];
+      const newLast = truncatedHistory[truncatedHistory.length - 1];
       if (oldLast && newLast && oldLast.date === newLast.date && oldLast.value === newLast.value) {
         // 数据相同，跳过更新
         return;
       }
     }
-    existing.history = history;
-    // 不立即存储，由批量操作完成后统一调用 saveAllToStorage()
+    existing.history = truncatedHistory;
   } else {
     // 创建新基金记录
     const info: FundInfo = {
@@ -705,8 +706,7 @@ export function updateHistory(symbol: string, history: HistoricalPoint[]): void 
         market: MarketType.FUND,
       },
     };
-    funds.set(symbol, { info, trades: [], intraday: [], history });
-    // 不立即存储，由批量操作完成后统一调用 saveAllToStorage()
+    funds.set(symbol, { info, trades: [], intraday: [], history: truncatedHistory });
   }
 }
 

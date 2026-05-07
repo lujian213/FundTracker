@@ -12,6 +12,16 @@ import LZString from 'lz-string';
 export const MAX_HISTORY_POINTS = 500;
 
 /**
+ * 截断数组至最大长度
+ * @param arr 待截断的数组
+ * @param maxLen 最大长度，默认 MAX_HISTORY_POINTS
+ * @returns 截断后的数组（保留末尾元素）
+ */
+export function truncateArray<T>(arr: T[], maxLen: number = MAX_HISTORY_POINTS): T[] {
+  return arr.length > maxLen ? arr.slice(-maxLen) : arr;
+}
+
+/**
  * 压缩数据并存储到 localStorage
  */
 export function compressToStorage(key: string, data: unknown): void {

@@ -536,9 +536,9 @@ const AppContent: React.FC = () => {
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // 应用初始化时验证 localStorage 迁移状态
+  // 应用初始化时清理旧版 localStorage key
   useEffect(() => {
-    verifyStorageMigration(false);
+    verifyStorageMigration(true);
   }, []);
 
   // 初始化模板服务

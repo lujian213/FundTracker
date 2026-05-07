@@ -28,7 +28,7 @@ export const CHART_DIMENSIONS = {
   width: 960,
   height: 200,
   padLeft: 80,
-  padRight: 20,
+  padRight: 28, // 增大右侧内边距，确保最后一个 X 轴刻度文本（中心对齐）不被截断
   padTop: 20,
   padBottom: 32,
 } as const;
