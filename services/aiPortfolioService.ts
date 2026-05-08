@@ -3,6 +3,8 @@ import { queryAI, StreamCallback } from './aiService';
 import { getById, TEMPLATE_IDS } from './promptTemplateService';
 import { PromptTemplate } from '../types/promptTemplateTypes';
 import { AIConfiguration } from './aiConfigService';
+import { toLocalDateKey } from '../utils/priceResolver';
+import { formatDateDisplay } from '../utils/dateFormat';
 
 /**
  * 投资组合项数据结构
@@ -64,8 +66,13 @@ export async function analyzePortfolio(
   // 格式化投资组合数据
   const portfolioText = formatPortfolioData(portfolioData);
 
+  // 获取当前日期
+  const currentDate = formatDateDisplay(toLocalDateKey(new Date()));
+
   // 替换模板变量
-  const prompt = template.template.replace(/{portfolio}/g, portfolioText);
+  const prompt = template.template
+    .replace(/{currentDate}/g, currentDate)
+    .replace(/{portfolio}/g, portfolioText);
 
   // 调用AI，传递流式回调
   return queryAI(config, prompt, undefined, onChunk);

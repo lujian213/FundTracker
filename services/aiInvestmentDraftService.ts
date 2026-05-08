@@ -10,6 +10,7 @@ import { toLocalDateKey } from '../utils/priceResolver';
 import { computeSMAsForLast } from '../utils/movingAverage';
 import { DraftEntry } from '../types/appDataTypes';
 import * as marketFundService from './marketFundService';
+import { formatDateDisplay } from '../utils/dateFormat';
 
 // Re-export DraftEntry type for backward compatibility
 export type { DraftEntry };
@@ -462,7 +463,9 @@ export async function generateAIAdviceWithValidation(
   ];
 
   // 第1步：模板1 → 获取投资建议
+  const currentDate = formatDateDisplay(toLocalDateKey(new Date()));
   const prompt1 = template1.template
+    .replace(/{currentDate}/g, currentDate)
     .replace(/{json_schema}/g, AI_ADVICE_JSON_SCHEMA)
     .replace(/{json_content}/g, jsonContent);
 
@@ -699,8 +702,12 @@ export async function analyzeInvestmentDraft(
   // 转为JSON字符串
   const jsonContent = JSON.stringify(analysisData, null, 2);
 
+  // 获取当前日期
+  const currentDate = formatDateDisplay(toLocalDateKey(new Date()));
+
   // 替换模板变量
   const prompt = template.template
+    .replace(/{currentDate}/g, currentDate)
     .replace(/{json_schema}/g, JSON_SCHEMA)
     .replace(/{json_content}/g, jsonContent);
 
@@ -765,8 +772,12 @@ export async function generateAIInvestmentAdvice(
   // 转为JSON字符串
   const jsonContent = JSON.stringify(analysisData, null, 2);
 
+  // 获取当前日期
+  const currentDate = formatDateDisplay(toLocalDateKey(new Date()));
+
   // 替换模板变量
   const prompt = targetTemplate.template
+    .replace(/{currentDate}/g, currentDate)
     .replace(/{json_schema}/g, AI_ADVICE_JSON_SCHEMA)
     .replace(/{json_content}/g, jsonContent);
 
