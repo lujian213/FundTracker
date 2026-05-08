@@ -47,13 +47,12 @@ export default defineConfig({
           if (id.includes('tesseract.js') || id.includes('tesseract.js-core')) {
             return 'tesseract';
           }
-          // AI 侧边栏组件（包含大量 markdown 渲染）
-          if (id.includes('AISidePanelBase') || id.includes('AIPortfolioAnalysisModal')) {
+          // AI 侧边栏组件、详情模态框及持仓分析模态框（合并为一个大 chunk，避免循环依赖）
+          if (id.includes('AISidePanelBase') || id.includes('AIPortfolioAnalysisModal') ||
+              id.includes('PositionsModal') || id.includes('InvestmentDraftModal') ||
+              id.includes('FundAISidePanel') || id.includes('IndexAISidePanel') ||
+              id.includes('FundDetailsModal') || id.includes('IndexDetailsModal')) {
             return 'ai-panels';
-          }
-          // 详情模态框（大组件）
-          if (id.includes('FundDetailsModal') || id.includes('IndexDetailsModal')) {
-            return 'detail-modals';
           }
         },
       },
