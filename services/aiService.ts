@@ -292,10 +292,48 @@ export async function queryAIWithMessages(
 }
 
 /**
- * 使用模板发送AI查询
+ * 使用模板发送AI查询（自动使用模板的 maxTokens 和 temperature）
+ * @param templateId 模板ID，默认使用 FUND_ANALYSIS
+ * @param filledPrompt 已填充变量的提示词（如果为空则使用模板原始内容）
  * @param onChunk 可选的流式回调
+ * @returns AI响应
  */
 export async function queryAIWithTemplate(
+  config: AIConfiguration,
+  templateId: string,
+  filledPrompt?: string,
+  onChunk?: StreamCallback
+): Promise<AIResponse> {
+  const template = getById(templateId);
+
+  if (!template) {
+    const errorMsg = `模板 "${templateId}" 未找到`;
+    console.error(errorMsg);
+    return {
+      content: errorMsg,
+      success: false,
+      error: 'No template'
+    };
+  }
+
+  const prompt = filledPrompt || template.template;
+
+  return queryAI(
+    config,
+    prompt,
+    undefined,
+    onChunk,
+    template.maxTokens,
+    template.temperature
+  );
+}
+
+/**
+ * 使用模板ID发送AI查询（填充基金上下文变量）
+ * @deprecated 建议使用 queryAIWithTemplate 并自行填充变量
+ * @param onChunk 可选的流式回调
+ */
+export async function queryAIWithTemplateById(
   config: AIConfiguration,
   templateId?: string,
   context?: AIQueryContext,
@@ -322,7 +360,7 @@ export async function queryAIWithTemplate(
     ...context
   } as FundAIQueryContext);
 
-  return queryAI(config, filledPrompt, context, onChunk);
+  return queryAI(config, filledPrompt, context, onChunk, template.maxTokens, template.temperature);
 }
 
 /**
@@ -356,5 +394,5 @@ export async function queryAIWithMarketTemplate(
 
   const filledPrompt = fillMarketTemplateVariables(template.template, effectiveContext);
 
-  return queryAI(config, filledPrompt, context as AIQueryContext, onChunk);
+  return queryAI(config, filledPrompt, context as AIQueryContext, onChunk, template.maxTokens, template.temperature);
 }

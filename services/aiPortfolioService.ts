@@ -1,7 +1,6 @@
 // services/aiPortfolioService.ts
 import { queryAI, StreamCallback } from './aiService';
 import { getById, TEMPLATE_IDS } from './promptTemplateService';
-import { PromptTemplate } from '../types/promptTemplateTypes';
 import { AIConfiguration } from './aiConfigService';
 import { toLocalDateKey } from '../utils/priceResolver';
 import { formatDateDisplay } from '../utils/dateFormat';
@@ -74,6 +73,5 @@ export async function analyzePortfolio(
     .replace(/{currentDate}/g, currentDate)
     .replace(/{portfolio}/g, portfolioText);
 
-  // 调用AI，传递流式回调
-  return queryAI(config, prompt, undefined, onChunk);
+  return queryAI(config, prompt, undefined, onChunk, template.maxTokens, template.temperature);
 }

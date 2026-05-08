@@ -129,8 +129,14 @@ export async function refreshStrategyRecommendations(
     .replace('{strategy_list}', formatStrategyListForPrompt())
     .replace('{strategy_keys}', getStrategyKeysForPrompt());
 
-  // 调用 AI
-  const response: AIResponse = await queryAI(aiConfig, filledPrompt);
+  const response: AIResponse = await queryAI(
+    aiConfig,
+    filledPrompt,
+    undefined,
+    undefined,
+    prompt.maxTokens,
+    prompt.temperature
+  );
   if (!response.success) {
     throw new Error(response.error || 'AI 请求失败');
   }

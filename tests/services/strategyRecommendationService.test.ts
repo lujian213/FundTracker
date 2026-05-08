@@ -5,6 +5,7 @@ import {
   updateTickerRecommendedStrategy
 } from '../../services/strategyRecommendationService';
 import { Ticker, MarketType } from '../../types';
+import * as promptTemplateService from '../../services/promptTemplateService';
 
 // Mock getAvailableStrategiesInfo
 jest.mock('../../services/strategyRegistry', () => ({
@@ -22,6 +23,9 @@ jest.mock('../../services/marketFundService', () => ({
 }));
 
 const marketFundService = require('../../services/marketFundService');
+
+// Mock fetch for template loading
+global.fetch = jest.fn();
 
 describe('strategyRecommendationService', () => {
   describe('formatStrategyListForPrompt', () => {
@@ -220,6 +224,79 @@ describe('strategyRecommendationService', () => {
       expect(marketFundService.updateTicker).toHaveBeenCalledWith('000001', expect.objectContaining({
         recommended_strategy: undefined
       }));
+    });
+  });
+
+  describe('bg-strategy template configuration', () => {
+    beforeEach(() => {
+      jest.clearAllMocks();
+      promptTemplateService.resetCache();
+    });
+
+    test('bg-strategy template has maxTokens configured', async () => {
+      // Mock the template loading with maxTokens
+      const mockTemplate = {
+        templates: [
+          {
+            id: 'bg-strategy',
+            name: '推荐交易策略',
+            template: 'test template',
+            maxTokens: 4000
+          }
+        ]
+      };
+
+      (global.fetch as jest.Mock).mockImplementation((url: string) => {
+        if (url.includes('background-job-prompts')) {
+          return Promise.resolve({
+            ok: true,
+            json: () => Promise.resolve(mockTemplate)
+          });
+        }
+        return Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve({ templates: [] })
+        });
+      });
+
+      await promptTemplateService.loadAllTemplates();
+      const template = promptTemplateService.getById('bg-strategy');
+
+      expect(template).not.toBeNull();
+      expect(template?.maxTokens).toBe(4000);
+    });
+
+    test('bg-strategy template maxTokens is higher than default', async () => {
+      // 验证 maxTokens 配置足够大，避免 JSON 被截断
+      const mockTemplate = {
+        templates: [
+          {
+            id: 'bg-strategy',
+            name: '推荐交易策略',
+            template: 'test template',
+            maxTokens: 4000
+          }
+        ]
+      };
+
+      (global.fetch as jest.Mock).mockImplementation((url: string) => {
+        if (url.includes('background-job-prompts')) {
+          return Promise.resolve({
+            ok: true,
+            json: () => Promise.resolve(mockTemplate)
+          });
+        }
+        return Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve({ templates: [] })
+        });
+      });
+
+      await promptTemplateService.loadAllTemplates();
+      const template = promptTemplateService.getById('bg-strategy');
+
+      // 默认值是 2000，配置值应该大于默认值
+      expect(template?.maxTokens).toBeGreaterThan(2000);
     });
   });
 });

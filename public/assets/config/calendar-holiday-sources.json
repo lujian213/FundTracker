@@ -1,0 +1,24 @@
+{
+  "sources": {
+    "holiday_china": {
+      "name": "A股节假日",
+      "url": "https://www.sse.com.cn/disclosure/dealinstruc/closed/",
+      "description": "上海证券交易所休市安排页面"
+    },
+    "holiday_hk": {
+      "name": "港股节假日",
+      "url": "https://invest101.com.hk/hong-kong-stock-market-holiday",
+      "description": "港股市场节假日信息"
+    },
+    "holiday_us": {
+      "name": "美股节假日",
+      "url": "https://invest101.com.hk/stock-us-holidays",
+      "description": "美股市场节假日信息"
+    },
+    "holiday_sg": {
+      "name": "新加坡股市节假日",
+      "url": "https://www.ibfs.com.tw/Stockoverseas/closedday_sp.aspx?xy=2&xt=7",
+      "description": "新加坡股市休市安排"
+    }
+  }
+}

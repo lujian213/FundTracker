@@ -271,4 +271,111 @@ describe('backgroundJobService', () => {
     // These tests require mocking aiConfigService and aiService
     // Skip complex integration tests for now, focus on unit tests above
   });
+
+  describe('template maxTokens configuration', () => {
+    beforeEach(() => {
+      jest.clearAllMocks();
+      promptTemplateService.resetCache();
+    });
+
+    test('bg-calendar templates have maxTokens configured', async () => {
+      const mockTemplate = {
+        templates: [
+          {
+            id: 'bg-calendar-holiday-china',
+            name: 'Calendar A股节假日信息',
+            template: 'test template',
+            maxTokens: 8000,
+            temperature: 0
+          }
+        ]
+      };
+
+      (global.fetch as jest.Mock).mockImplementation((url: string) => {
+        if (url.includes('background-job-prompts')) {
+          return Promise.resolve({
+            ok: true,
+            json: () => Promise.resolve(mockTemplate)
+          });
+        }
+        return Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve({ templates: [] })
+        });
+      });
+
+      await promptTemplateService.loadAllTemplates();
+      const template = promptTemplateService.getById('bg-calendar-holiday-china');
+
+      expect(template).not.toBeNull();
+      expect(template?.maxTokens).toBe(8000);
+      expect(template?.temperature).toBe(0);
+    });
+
+    test('bg-holiday template can have maxTokens configured', async () => {
+      const mockTemplate = {
+        templates: [
+          {
+            id: 'bg-holiday',
+            name: '节假日信息',
+            template: 'test template',
+            maxTokens: 3000
+          }
+        ]
+      };
+
+      (global.fetch as jest.Mock).mockImplementation((url: string) => {
+        if (url.includes('background-job-prompts')) {
+          return Promise.resolve({
+            ok: true,
+            json: () => Promise.resolve(mockTemplate)
+          });
+        }
+        return Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve({ templates: [] })
+        });
+      });
+
+      await promptTemplateService.loadAllTemplates();
+      const prompt = getBackgroundJobPromptByType('holiday');
+
+      expect(prompt).not.toBeNull();
+      expect(prompt?.maxTokens).toBe(3000);
+    });
+
+    test('getBackgroundJobPromptByType returns template maxTokens and temperature', async () => {
+      const mockTemplate = {
+        templates: [
+          {
+            id: 'bg-delivery',
+            name: '交割日信息',
+            template: 'test template',
+            maxTokens: 4000,
+            temperature: 0.3
+          }
+        ]
+      };
+
+      (global.fetch as jest.Mock).mockImplementation((url: string) => {
+        if (url.includes('background-job-prompts')) {
+          return Promise.resolve({
+            ok: true,
+            json: () => Promise.resolve(mockTemplate)
+          });
+        }
+        return Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve({ templates: [] })
+        });
+      });
+
+      await promptTemplateService.loadAllTemplates();
+      const prompt = getBackgroundJobPromptByType('delivery');
+
+      expect(prompt).not.toBeNull();
+      expect(prompt?.maxTokens).toBe(4000);
+      expect(prompt?.temperature).toBe(0.3);
+    });
+  });
 });

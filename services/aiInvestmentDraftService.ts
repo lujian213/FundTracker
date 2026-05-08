@@ -711,8 +711,7 @@ export async function analyzeInvestmentDraft(
     .replace(/{json_schema}/g, JSON_SCHEMA)
     .replace(/{json_content}/g, jsonContent);
 
-  // 调用AI
-  return queryAI(config, prompt, undefined, onChunk);
+  return queryAI(config, prompt, undefined, onChunk, template.maxTokens, template.temperature);
 }
 
 /**
@@ -781,8 +780,7 @@ export async function generateAIInvestmentAdvice(
     .replace(/{json_schema}/g, AI_ADVICE_JSON_SCHEMA)
     .replace(/{json_content}/g, jsonContent);
 
-  // 调用AI（增加maxTokens避免响应被截断）
-  const result = await queryAI(config, prompt, undefined, undefined, 4000);
+  const result = await queryAI(config, prompt, undefined, undefined, targetTemplate.maxTokens, targetTemplate.temperature);
 
   if (!result.success) {
     return {

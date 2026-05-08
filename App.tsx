@@ -53,12 +53,13 @@ import { getAIConfig } from './services/aiConfigService';
 import { refreshStrategyRecommendations } from './services/strategyRecommendationService';
 import { refreshFundProfiles } from './services/fundProfileService';
 import { fetchWithProxy } from './services/proxyService';
-import { updateCalendarData, getEventsForYear, getUpcomingEvents, loadCalendarData, getFirstEventInWorkdays } from './services/calendarService';
+import { updateCalendarData, getEventsForYear, getUpcomingEvents, loadCalendarData, getFirstEventInWorkdays, HolidayType } from './services/calendarService';
 import { calculateDeliveryDates } from './services/deliveryDateService';
 import { formatDateDisplay } from './utils/dateFormat';
 import { verifyStorageMigration } from './services/localStorageService';
 import { mountRoot } from './services/rootService';
 import { loadAllTemplates } from './services/promptTemplateService';
+import { getHolidaySource } from './services/calendarHolidaySourceService';
 
 const createPlaceholderIndex = (symbol: string): MarketIndex => {
   const normalized = normalizeIndexSymbol(symbol);
@@ -285,51 +286,50 @@ async function processCalendarHoliday(
 }
 
 /**
+ * 刷新 Calendar 节假日信息（统一处理各市场）
+ */
+async function refreshCalendarHolidayByType(
+  promptType: string,
+  calendarType: HolidayType
+): Promise<void> {
+  const source = await getHolidaySource(calendarType);
+  if (!source) {
+    throw new Error(`未找到 ${calendarType} 的节假日来源配置`);
+  }
+  await processCalendarHoliday(
+    promptType,
+    source.url,
+    source.name,
+    calendarType
+  );
+}
+
+/**
  * 刷新 Calendar A股节假日信息
  */
 async function refreshCalendarHolidays(): Promise<void> {
-  await processCalendarHoliday(
-    'calendar_holiday_china',
-    'https://www.sse.com.cn/disclosure/dealinstruc/closed',
-    'A股',
-    'holiday_china'
-  );
+  await refreshCalendarHolidayByType('calendar_holiday_china', 'holiday_china');
 }
 
 /**
  * 刷新 Calendar 港股节假日信息
  */
 async function refreshCalendarHolidaysHK(): Promise<void> {
-  await processCalendarHoliday(
-    'calendar_holiday_hk',
-    'https://invest101.com.hk/hong-kong-stock-market-holiday',
-    '港股',
-    'holiday_hk'
-  );
+  await refreshCalendarHolidayByType('calendar_holiday_hk', 'holiday_hk');
 }
 
 /**
  * 刷新 Calendar 美股节假日信息
  */
 async function refreshCalendarHolidaysUS(): Promise<void> {
-  await processCalendarHoliday(
-    'calendar_holiday_us',
-    'https://invest101.com.hk/stock-us-holidays',
-    '美股',
-    'holiday_us'
-  );
+  await refreshCalendarHolidayByType('calendar_holiday_us', 'holiday_us');
 }
 
 /**
  * 刷新 Calendar 新加坡股市节假日信息
  */
 async function refreshCalendarHolidaysSG(): Promise<void> {
-  await processCalendarHoliday(
-    'calendar_holiday_sg',
-    'https://www.ibfs.com.tw/Stockoverseas/closedday_sp.aspx?xy=2&xt=7',
-    '新加坡股市',
-    'holiday_sg'
-  );
+  await refreshCalendarHolidayByType('calendar_holiday_sg', 'holiday_sg');
 }
 
 const AppContent: React.FC = () => {

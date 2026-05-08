@@ -245,8 +245,14 @@ export async function refreshTickerAlerts(
     .replace(/{current_date}/g, current_date)
     .replace('{code_list}', codeList);
 
-  // 调用 AI（非流式）
-  const response: AIResponse = await queryAI(aiConfig, filledPrompt);
+  const response: AIResponse = await queryAI(
+    aiConfig,
+    filledPrompt,
+    undefined,
+    undefined,
+    prompt.maxTokens,
+    prompt.temperature
+  );
 
   if (!response.success) {
     throw new Error(response.error || 'AI 请求失败');
