@@ -708,7 +708,8 @@ const AppContent: React.FC = () => {
           item.info.current,
           item.info.changePercent,
           item.info.lastUpdated,
-          item.info.tradeDate
+          item.info.tradeDate,
+          item.info.tradingPeriodBegin
         );
       } catch (e) { /* ignore */ }
     });

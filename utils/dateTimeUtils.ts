@@ -91,13 +91,31 @@ export function dedupeByMinute<T extends { timestamp: number }>(points: T[]): T[
  * @returns 交易日期字符串，如 "2026-05-08"；解析失败返回 null
  */
 export function extractTradeDateFromF80(f80: string | null | undefined): string | null {
+  const ts = extractTradingPeriodBeginTimestamp(f80);
+  return ts ? extractDateFromTimestamp(ts) : null;
+}
+
+/**
+ * 从 f80 字段提取交易时段开始时间戳（毫秒）
+ * f80 格式: [{"b":202605082130,"e":202605090400}]
+ * 取第一个时段的 b 字段，计算开始时间戳
+ * @param f80 f80 字段值
+ * @returns 开始时间戳（毫秒）；解析失败返回 null
+ */
+export function extractTradingPeriodBeginTimestamp(f80: string | null | undefined): number | null {
   if (!f80 || typeof f80 !== 'string') return null;
 
   const match = f80.match(/"b":(\d{12})/);
   if (!match) return null;
 
-  const num = match[1];
-  return `${num.substring(0, 4)}-${num.substring(4, 6)}-${num.substring(6, 8)}`;
+  const num = match[1]; // 如 "202605082130"
+  const year = parseInt(num.substring(0, 4));
+  const month = parseInt(num.substring(4, 6)) - 1; // JS month 0-indexed
+  const day = parseInt(num.substring(6, 8));
+  const hour = parseInt(num.substring(8, 10));
+  const minute = parseInt(num.substring(10, 12));
+
+  return new Date(year, month, day, hour, minute).getTime();
 }
 
 import { formatDateISO } from './dateFormat';

@@ -2,6 +2,7 @@ import { ValuationData, MarketIndex, IndexInfo, HistoricalPoint, OverallProfitSu
 import { computeProfitTimeline } from '../utils/profitCalculator';
 import { toLocalDateKey, resolvePreferredPrice, ResolvedPrice } from '../utils/priceResolver';
 import { getTradesForSymbol } from '../hooks/useTrades';
+import { extractTradingPeriodBeginTimestamp } from '../utils/dateTimeUtils';
 import * as marketFundService from './marketFundService';
 import * as indexService from './indexService';
 
@@ -843,11 +844,13 @@ export async function fetchSingleIndex(symbol: string, ignoreCache: boolean = fa
     const item = response?.data;
 
     if (item) {
-
       // 解析 f80 字段获取交易时段信息
       // f80 格式: [{"b":202605052130,"e":202605060400}]
       // 可能包含多个时段（如 A股有上午和下午两个时段）
       const tradingPeriods = parseF80TradingPeriods(item.f80);
+
+      // 计算当前交易时段的开始时间戳
+      const tradingPeriodBegin = extractTradingPeriodBeginTimestamp(item.f80);
 
       // 时间戳处理：
       // 1. 如果 f124 有效（非0），使用 f124（API 提供的实时更新时间）
@@ -886,6 +889,7 @@ export async function fetchSingleIndex(symbol: string, ignoreCache: boolean = fa
         previousClose: parseFloat(item.f60) || undefined,
         volume: 0,
         amount: 0,
+        tradingPeriodBegin: tradingPeriodBegin ?? undefined,
       };
     }
   } catch (e) {}

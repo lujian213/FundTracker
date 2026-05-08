@@ -91,6 +91,7 @@ export interface IndexInfo {
   previousClose?: number; // 前收盘价
   volume?: number; // 成交量（手）
   amount?: number; // 成交额（元）
+  tradingPeriodBegin?: number; // 当前交易时段开始时间戳（毫秒），用于过滤上一个时段的旧数据
 }
 
 // 指数完整数据（运行时，包含日内和历史）

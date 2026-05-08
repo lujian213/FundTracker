@@ -531,13 +531,15 @@ export function updateIntraday(symbol: string, points: IntradayPoint[], f80?: st
 
 /**
  * 添加单个日内数据点（用于实时更新）
+ * @param tradingPeriodBegin 当前交易时段开始时间戳，用于过滤上一个时段的旧数据
  */
 export function appendIntradayPoint(
   symbol: string,
   value: number,
   equityReturn: number,
   lastUpdated?: string | number,
-  tradeDate?: string
+  tradeDate?: string,
+  tradingPeriodBegin?: number
 ): void {
   // 构建 timestamp
   let ts = Date.now();
@@ -562,8 +564,9 @@ export function appendIntradayPoint(
   const existing = indices.get(symbol);
   if (!existing) return;
 
-  // 过滤掉非当天数据和比新时间戳更晚的脏数据
-  let intraday = existing.intraday.filter(p => isSameLocalDay(p.timestamp) && p.timestamp <= minuteTs);
+  // 使用 tradingPeriodBegin 清空上一个交易时段的旧数据，并过滤脏数据
+  const minTs = tradingPeriodBegin ?? 0;
+  let intraday = existing.intraday.filter(p => p.timestamp >= minTs && p.timestamp <= minuteTs);
 
   // 检查是否与上一个点值相同（跳过连续相同值）
   const last = intraday[intraday.length - 1];
