@@ -30,14 +30,15 @@ describe('marketFundService - Intraday Operations', () => {
       expect(intraday[0].value).toBeCloseTo(1.23);
     });
 
-    test('should NOT add intraday point when tradeDate is not today', () => {
+    test('should add intraday point even when tradeDate is not today (no local time check)', () => {
       marketFundService.addFund('000001', '测试基金');
 
-      // tradeDate is yesterday
+      // tradeDate is yesterday - now will still add since local time check was removed
       marketFundService.appendIntradayPoint('000001', 1.23, 0.5, '2026-03-16 15:00', '2026-03-16');
 
       const intraday = marketFundService.getIntraday('000001');
-      expect(intraday.length).toBe(0);
+      expect(intraday.length).toBe(1);
+      expect(intraday[0].value).toBeCloseTo(1.23);
     });
 
     test('should add intraday point when tradeDate is undefined', () => {
@@ -111,6 +112,84 @@ describe('marketFundService - Intraday Operations', () => {
       expect(got.length).toBe(2);
       expect(got[0].value).toBeCloseTo(1.23);
       expect(got[1].value).toBeCloseTo(1.24);
+    });
+  });
+
+  describe('updateIntraday - f80 trade date handling', () => {
+    test('should clear old intraday when f80 indicates new trade date', () => {
+      marketFundService.addFund('000001', '测试基金');
+
+      // Set initial intraday data (old date)
+      const oldTs = new Date('2026-05-07 10:00').getTime();
+      const oldPts: IntradayPoint[] = [
+        { timestamp: oldTs, value: 1.20, equityReturn: 0 },
+      ];
+      marketFundService.updateIntraday('000001', oldPts);
+
+      // Verify old data was added
+      expect(marketFundService.getIntraday('000001').length).toBe(1);
+
+      // Update with new data and f80 indicating new trade date
+      const newTs = new Date('2026-05-08 10:00').getTime();
+      const newPts: IntradayPoint[] = [
+        { timestamp: newTs, value: 1.25, equityReturn: 0 },
+      ];
+      // f80 indicates trade date 2026-05-08 (different from old data's date)
+      const f80 = '[{"b":202605081000,"e":202605081130}]';
+      marketFundService.updateIntraday('000001', newPts, f80);
+
+      const intraday = marketFundService.getIntraday('000001');
+      expect(intraday.length).toBe(1);
+      expect(intraday[0].value).toBeCloseTo(1.25);
+    });
+
+    test('should NOT clear old intraday when f80 indicates same trade date', () => {
+      marketFundService.addFund('000001', '测试基金');
+
+      // Set initial intraday data (same date as f80)
+      const oldTs = new Date('2026-05-08 09:30').getTime();
+      const oldPts: IntradayPoint[] = [
+        { timestamp: oldTs, value: 1.20, equityReturn: 0 },
+      ];
+      marketFundService.updateIntraday('000001', oldPts);
+
+      // Update with new data and f80 indicating same trade date
+      const newTs = new Date('2026-05-08 10:00').getTime();
+      const newPts: IntradayPoint[] = [
+        { timestamp: newTs, value: 1.25, equityReturn: 0 },
+      ];
+      // f80 indicates trade date 2026-05-08 (same as old data's date)
+      const f80 = '[{"b":202605081000,"e":202605081130}]';
+      marketFundService.updateIntraday('000001', newPts, f80);
+
+      const intraday = marketFundService.getIntraday('000001');
+      // Old data should be cleared because updateIntraday replaces all data
+      expect(intraday.length).toBe(1);
+      expect(intraday[0].value).toBeCloseTo(1.25);
+    });
+
+    test('should NOT clear old intraday when f80 is undefined (fallback)', () => {
+      marketFundService.addFund('000001', '测试基金');
+
+      // Set initial intraday data
+      const oldTs = new Date('2026-05-07 10:00').getTime();
+      const oldPts: IntradayPoint[] = [
+        { timestamp: oldTs, value: 1.20, equityReturn: 0 },
+      ];
+      marketFundService.updateIntraday('000001', oldPts);
+
+      // Update without f80 - should not clear old data based on date check
+      const newTs = new Date('2026-05-08 10:00').getTime();
+      const newPts: IntradayPoint[] = [
+        { timestamp: newTs, value: 1.25, equityReturn: 0 },
+      ];
+      // No f80 provided
+      marketFundService.updateIntraday('000001', newPts);
+
+      const intraday = marketFundService.getIntraday('000001');
+      // updateIntraday replaces all data, so only new data should exist
+      expect(intraday.length).toBe(1);
+      expect(intraday[0].value).toBeCloseTo(1.25);
     });
   });
 

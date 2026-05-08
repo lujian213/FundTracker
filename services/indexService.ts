@@ -9,7 +9,7 @@
 
 import { IndexInfo, MarketIndex, HistoricalPoint, IntradayPoint } from '../types';
 import { STORAGE_KEYS, OLD_STORAGE_KEYS } from './storageKeys';
-import { floorToMinute, isSameLocalDay, filterTodayIntraday, dedupeByMinute } from '../utils/dateTimeUtils';
+import { floorToMinute, isSameLocalDay, filterTodayIntraday, dedupeByMinute, extractTradeDateFromF80, extractDateFromTimestamp } from '../utils/dateTimeUtils';
 import { compressConsecutiveSameValues } from '../utils/intradayCompression';
 import { toLocalDateKey } from '../utils/priceResolver';
 import { compressToStorage, decompressFromStorage, truncateHistory, truncateArray, MAX_HISTORY_POINTS } from '../utils/storageCompression';
@@ -494,19 +494,27 @@ export function getIntraday(symbol: string): IntradayPoint[] {
 
 /**
  * 更新指数日内数据（统一保存到 fund_all_indices_data）
+ * @param symbol 指数符号
+ * @param points 日内数据点
+ * @param f80 可选的 f80 字段，用于判断是否需要清空旧数据
  */
-export function updateIntraday(symbol: string, points: IntradayPoint[]): void {
-  // 只保留当天的数据
-  const todayPoints = filterTodayIntraday(points);
-  // 同一分钟内去重，保留最后一个
-  const dedupedPoints = dedupeByMinute(todayPoints);
-  // 压缩连续相同值
-  const compressedPoints = compressConsecutiveSameValues(dedupedPoints);
+export function updateIntraday(symbol: string, points: IntradayPoint[], f80?: string): void {
+  const newTradeDate = f80 ? extractTradeDateFromF80(f80) : null;
+
   const existing = indices.get(symbol);
+  if (existing && existing.intraday.length > 0 && newTradeDate) {
+    const existingTradeDate = extractDateFromTimestamp(existing.intraday[0].timestamp);
+    if (existingTradeDate && existingTradeDate !== newTradeDate) {
+      existing.intraday = [];
+    }
+  }
+
+  const dedupedPoints = dedupeByMinute(points);
+  const compressedPoints = compressConsecutiveSameValues(dedupedPoints);
+
   if (existing) {
     existing.intraday = compressedPoints;
   } else {
-    // 创建新记录（使用默认 info）
     const newInfo: IndexInfo = {
       symbol,
       name: INDEX_NAME_MAP[symbol] || symbol,
@@ -531,14 +539,6 @@ export function appendIntradayPoint(
   lastUpdated?: string | number,
   tradeDate?: string
 ): void {
-  // 检查 tradeDate：如果不是今天，不添加日内点
-  if (tradeDate) {
-    const todayStr = toLocalDateKey(new Date());
-    if (tradeDate !== todayStr) {
-      return;
-    }
-  }
-
   // 构建 timestamp
   let ts = Date.now();
   if (lastUpdated) {

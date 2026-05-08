@@ -82,3 +82,32 @@ export function dedupeByMinute<T extends { timestamp: number }>(points: T[]): T[
     return acc;
   }, []);
 }
+
+/**
+ * 从 f80 字段提取交易日期（YYYY-MM-DD）
+ * f80 格式: [{"b":202605080930,"e":202605081130}]
+ * 取第一个时段的 b 字段，提取日期部分
+ * @param f80 f80 字段值
+ * @returns 交易日期字符串，如 "2026-05-08"；解析失败返回 null
+ */
+export function extractTradeDateFromF80(f80: string | null | undefined): string | null {
+  if (!f80 || typeof f80 !== 'string') return null;
+
+  const match = f80.match(/"b":(\d{12})/);
+  if (!match) return null;
+
+  const num = match[1];
+  return `${num.substring(0, 4)}-${num.substring(4, 6)}-${num.substring(6, 8)}`;
+}
+
+import { formatDateISO } from './dateFormat';
+
+/**
+ * 从时间戳提取日期（YYYY-MM-DD）
+ * @param ts 毫秒时间戳
+ * @returns 日期字符串，如 "2026-05-08"；无效时间戳返回 null
+ */
+export function extractDateFromTimestamp(ts: number): string | null {
+  if (!Number.isFinite(ts) || ts <= 0) return null;
+  return formatDateISO(new Date(ts));
+}

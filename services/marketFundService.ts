@@ -12,7 +12,9 @@ import {
   HistoricalPoint, IntradayPoint, ValuationData, Ticker, MarketType
 } from '../types';
 import { STORAGE_KEYS, OLD_STORAGE_KEYS } from './storageKeys';
-import { floorToMinute, isSameLocalDay, filterTodayIntraday, dedupeByMinute } from '../utils/dateTimeUtils';
+import {
+  floorToMinute, isSameLocalDay, dedupeByMinute, extractTradeDateFromF80, extractDateFromTimestamp, filterTodayIntraday
+} from '../utils/dateTimeUtils';
 import { toLocalDateKey } from '../utils/priceResolver';
 import { compressConsecutiveSameValues } from '../utils/intradayCompression';
 import { compressToStorage, decompressFromStorage, truncateHistory, truncateArray, MAX_HISTORY_POINTS } from '../utils/storageCompression';
@@ -724,20 +726,24 @@ export function getIntraday(symbol: string): IntradayPoint[] {
 /**
  * 更新基金日内数据
  */
-export function updateIntraday(symbol: string, points: IntradayPoint[]): void {
-  // 只保留当天的数据
-  const todayPoints = filterTodayIntraday(points);
-  // 按分钟去重（同一分钟只保留最新的）
-  const dedupedPoints = dedupeByMinute(todayPoints);
-  // 压缩连续相同值
-  const compressedPoints = compressConsecutiveSameValues(dedupedPoints);
+export function updateIntraday(symbol: string, points: IntradayPoint[], f80?: string): void {
+  const newTradeDate = f80 ? extractTradeDateFromF80(f80) : null;
 
   const existing = funds.get(symbol);
+  if (existing && existing.intraday.length > 0 && newTradeDate) {
+    const existingTradeDate = extractDateFromTimestamp(existing.intraday[0].timestamp);
+    if (existingTradeDate && existingTradeDate !== newTradeDate) {
+      existing.intraday = [];
+    }
+  }
+
+  const dedupedPoints = dedupeByMinute(points);
+  const compressedPoints = compressConsecutiveSameValues(dedupedPoints);
+
   if (existing) {
     existing.intraday = compressedPoints;
     saveToStorage();
   } else {
-    // 创建新基金记录
     const info: FundInfo = {
       ticker: {
         id: Math.random().toString(36).substr(2, 9),
@@ -762,14 +768,6 @@ export function appendIntradayPoint(
   lastUpdated?: string | number,
   tradeDate?: string
 ): void {
-  // 检查 tradeDate：如果不是今天，不添加日内点
-  if (tradeDate) {
-    const todayStr = toLocalDateKey(new Date());
-    if (tradeDate !== todayStr) {
-      return;
-    }
-  }
-
   // 构建 timestamp
   let ts = Date.now();
   if (lastUpdated) {

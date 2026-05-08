@@ -41,14 +41,14 @@ describe('indexService - Intraday Operations', () => {
       expect(intraday[0].value).toBeCloseTo(3300);
     });
 
-    test('should NOT add intraday point when tradeDate is not today', () => {
+    test('should add intraday point when tradeDate is not today (no local time check)', () => {
       indexService.saveIndexInfo(createTestIndexInfo('1.000001'));
 
-      // tradeDate is yesterday
+      // tradeDate is yesterday - now allowed since local time check was removed
       indexService.appendIntradayPoint('1.000001', 3300, 0.3, '2026-03-16 15:00', '2026-03-16');
 
       const intraday = indexService.getIntraday('1.000001');
-      expect(intraday.length).toBe(0);
+      expect(intraday.length).toBe(1);
     });
 
     test('should add intraday point when tradeDate is undefined', () => {
