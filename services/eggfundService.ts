@@ -1,10 +1,11 @@
-import { EggfundFund, EggfundTradeRecord } from '../types/syncTypes';
+import { EggfundFund, EggfundTradeRecord, EggfundInvestRecord } from '../types/syncTypes';
 
 // Eggfund API 配置
 const EGGFUND_BASE_URL = 'https://eggfund.website';
 const EGGFUND_API = {
   FUNDS: `${EGGFUND_BASE_URL}/api/funds`,
-  INVESTS: `${EGGFUND_BASE_URL}/api/invests`,
+  INVESTS: `${EGGFUND_BASE_URL}/api/invests`,  // 获取历史交易（查询）
+  INVEST: `${EGGFUND_BASE_URL}/api/invest`,    // 反向同步（添加/修改/删除）
   LOGIN_USER: `${EGGFUND_BASE_URL}/api/loginUser`,
 };
 
@@ -38,6 +39,28 @@ function buildHeaders(username: string, password: string): Record<string, string
 }
 
 /**
+ * 处理 API 响应错误
+ */
+function handleResponseError(response: Response, operationName: string): void {
+  if (!response.ok) {
+    if (response.status === 401) {
+      throw new Error('认证失败：用户名或密码错误');
+    }
+    throw new Error(`${operationName}失败: ${response.status} ${response.statusText}`);
+  }
+}
+
+/**
+ * 处理网络请求异常
+ */
+function handleFetchError(error: any): Error {
+  if (error.name === 'TypeError' && error.message.includes('fetch')) {
+    return new Error('网络连接失败，请检查网络');
+  }
+  return error;
+}
+
+/**
  * 获取 eggfund 基金列表
  */
 export async function getEggfundFunds(username: string, password: string): Promise<EggfundFund[]> {
@@ -46,9 +69,7 @@ export async function getEggfundFunds(username: string, password: string): Promi
     headers: buildHeaders(username, password),
   });
 
-  if (!response.ok) {
-    throw new Error(`获取基金列表失败: ${response.status} ${response.statusText}`);
-  }
+  handleResponseError(response, '获取基金列表');
 
   return response.json();
 }
@@ -64,9 +85,7 @@ export async function getHistoricalTrades(username: string, password: string, fu
     headers: buildHeaders(username, password),
   });
 
-  if (!response.ok) {
-    throw new Error(`获取基金 ${fundCode} 的历史交易失败: ${response.status} ${response.statusText}`);
-  }
+  handleResponseError(response, `获取基金 ${fundCode} 的历史交易`);
 
   return response.json();
 }
@@ -90,9 +109,89 @@ export async function testConnection(username: string, password: string): Promis
 
     return { success: true, message: '连接成功！' };
   } catch (error: any) {
-    if (error.name === 'TypeError' && error.message.includes('fetch')) {
-      return { success: false, message: '网络连接失败，请检查网络' };
-    }
-    return { success: false, message: `连接失败: ${error.message || '未知错误'}` };
+    return { success: false, message: handleFetchError(error).message };
+  }
+}
+
+/**
+ * 添加投资记录到 Eggfund（批量）
+ * @param username Eggfund 用户名
+ * @param password Eggfund 密码
+ * @param records 要添加的记录数组
+ */
+export async function addInvestRecords(
+  username: string,
+  password: string,
+  records: EggfundInvestRecord[]
+): Promise<void> {
+  try {
+    const apiUrl = `${EGGFUND_API.INVEST}/${encodeURIComponent(username)}`;
+
+    const response = await fetch(apiUrl, {
+      method: 'PUT',
+      headers: {
+        ...buildHeaders(username, password),
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(records),
+    });
+
+    handleResponseError(response, '添加投资记录');
+  } catch (error: any) {
+    throw handleFetchError(error);
+  }
+}
+
+/**
+ * 修改 Eggfund 中的单条投资记录
+ * @param username Eggfund 用户名
+ * @param password Eggfund 密码
+ * @param record 要修改的记录（需包含原记录的 id）
+ */
+export async function updateInvestRecord(
+  username: string,
+  password: string,
+  record: EggfundInvestRecord
+): Promise<void> {
+  try {
+    const apiUrl = `${EGGFUND_API.INVEST}/${encodeURIComponent(username)}`;
+
+    const response = await fetch(apiUrl, {
+      method: 'POST',
+      headers: {
+        ...buildHeaders(username, password),
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(record),
+    });
+
+    handleResponseError(response, '修改投资记录');
+  } catch (error: any) {
+    throw handleFetchError(error);
+  }
+}
+
+/**
+ * 删除 Eggfund 中的投资记录（批量）
+ * @param username Eggfund 用户名
+ * @param password Eggfund 密码
+ * @param investIds 要删除的交易ID列表
+ */
+export async function deleteInvestRecords(
+  username: string,
+  password: string,
+  investIds: string[]
+): Promise<void> {
+  try {
+    const apiUrl = `${EGGFUND_API.INVEST}/${encodeURIComponent(username)}?${investIds.map(id => `investIds=${encodeURIComponent(id)}`).join('&')}`;
+
+    const response = await fetch(apiUrl, {
+      method: 'DELETE',
+      headers: buildHeaders(username, password),
+    });
+
+    handleResponseError(response, '删除投资记录');
+  } catch (error: any) {
+    throw handleFetchError(error);
   }
 }

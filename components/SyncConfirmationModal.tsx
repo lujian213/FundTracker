@@ -1,13 +1,15 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { TradeDifference, SyncDifferenceType } from '../types/syncTypes';
-import { compareTrades, applySyncUpdates } from '../services/syncService';
+import { compareTrades, applySyncUpdates, applyReverseSyncUpdates } from '../services/syncService';
 import { getEggfundFunds, getHistoricalTrades } from '../services/eggfundService';
 import { getTradesForFund } from '../utils/realProfitCalculator';
 import TradeManager from '../components/TradeManager';
 import { ValuationData } from '../types';
 import { getSyncConfig, getSyncFilterConfig, saveSyncFilterConfig } from '../services/systemConfigService';
 import * as marketFundService from '../services/marketFundService';
+
+type SyncDirection = 'forward' | 'reverse';
 
 interface Props {
   isOpen: boolean;
@@ -43,6 +45,7 @@ const SyncConfirmationModal: React.FC<Props> = ({
   });
   // 控制是否显示特定基金的交易管理器
   const [showTradeManager, setShowTradeManager] = useState<string | null>(null);
+  const [syncDirection, setSyncDirection] = useState<SyncDirection>('forward');
 
   // Initialize the earliest date on component mount
   useEffect(() => {
@@ -320,39 +323,62 @@ const SyncConfirmationModal: React.FC<Props> = ({
   const handleConfirm = async () => {
     if (selectedItems.length > 0) {
       try {
-        // 应用同步更新
-        applySyncUpdates(selectedItems);
+        setSyncMessage('正在同步...');
 
-        // 显示成功消息
-        setSyncMessage(`成功同步 ${selectedItems.length} 个交易差异`);
+        if (syncDirection === 'forward') {
+          // 正向同步：更新本地数据
+          applySyncUpdates(selectedItems);
+          setSyncMessage(`成功同步 ${selectedItems.length} 个交易差异`);
 
-        // 使用之前存储的eggfund数据重新计算差异，而不是重新加载
-        const allDifferences: TradeDifference[] = [];
+          // 使用之前存储的eggfund数据重新计算差异
+          const allDifferences: TradeDifference[] = [];
+          const tickers = marketFundService.getAllTickers();
 
-        // Get current portfolio from marketFundService
-        const tickers = marketFundService.getAllTickers();
+          Object.entries(eggfundData).forEach(([fundCode, externalTrades]) => {
+            if (tickers.some((pf) => pf.symbol === fundCode)) {
+              const localTrades = getTradesForFund(fundCode);
+              const fundDifferences = compareTrades(localTrades, externalTrades, fundCode);
+              allDifferences.push(...fundDifferences);
+            }
+          });
 
-        // Iterate through the eggfund data we have already loaded
-        Object.entries(eggfundData).forEach(([fundCode, externalTrades]) => {
-          // Only process funds that are in the current portfolio
-          if (tickers.some((pf) => pf.symbol === fundCode)) {
-            // Get local trades after sync (updated data)
-            const localTrades = getTradesForFund(fundCode);
-
-            // Compare and get differences
-            const fundDifferences = compareTrades(localTrades, externalTrades, fundCode);
-            allDifferences.push(...fundDifferences);
+          setDifferences(allDifferences);
+          setSelectedItems([]);
+        } else {
+          // 反向同步：更新 Eggfund 数据
+          const syncConfig = getSyncConfig();
+          if (!syncConfig.eggfundUsername || !syncConfig.eggfundPassword) {
+            setSyncMessage('请先在"同步配置"中设置 Eggfund 账户信息');
+            return;
           }
-        });
 
-        // Update the differences display with new comparison
-        setDifferences(allDifferences);
+          const result = await applyReverseSyncUpdates(
+            selectedItems,
+            syncConfig.eggfundUsername,
+            syncConfig.eggfundPassword
+          );
 
-        // 清空选中的项目
-        setSelectedItems([]);
-      } catch (error) {
+          if (result.failed > 0) {
+            setSyncMessage(`同步部分失败：成功 ${result.success}，失败 ${result.failed}`);
+            console.error('同步失败详情:', result.errors);
+          } else {
+            setSyncMessage(`成功同步 ${result.success} 个交易差异到 Eggfund`);
+          }
+
+          // 刷新 Eggfund 数据并重新计算差异
+          await fetchSyncData({ closeOnNoMatch: false, isRefresh: true });
+          setSelectedItems([]);
+        }
+      } catch (error: any) {
         console.error('同步过程中出现错误:', error);
-        setSyncMessage('同步过程中出现错误，请查看控制台了解详细信息');
+
+        if (error.message.includes('认证失败')) {
+          setSyncMessage('认证失败：请检查 Eggfund 账户配置');
+        } else if (error.message.includes('网络')) {
+          setSyncMessage('网络连接失败，请检查网络后重试');
+        } else {
+          setSyncMessage(`同步失败: ${error.message}`);
+        }
       }
     }
   };
@@ -360,6 +386,28 @@ const SyncConfirmationModal: React.FC<Props> = ({
   // 检查是否所有显示的项都被选中
   const isAllSelected = filteredDifferences.length > 0 &&
                         selectedItems.length === filteredDifferences.length;
+
+  /**
+   * 根据同步方向映射差异类型的显示文本和颜色
+   */
+  function getMappedTypeInfo(
+    originalType: SyncDifferenceType,
+    direction: SyncDirection
+  ): { label: string; color: string } {
+    const forwardMap = {
+      new: { label: '新增', color: 'bg-green-100 text-green-800' },
+      modified: { label: '修改', color: 'bg-yellow-100 text-yellow-800' },
+      deleted: { label: '删除', color: 'bg-red-100 text-red-800' }
+    };
+
+    const reverseMap = {
+      new: { label: '删除', color: 'bg-red-100 text-red-800' },
+      modified: { label: '修改', color: 'bg-yellow-100 text-yellow-800' },
+      deleted: { label: '新增', color: 'bg-green-100 text-green-800' }
+    };
+
+    return direction === 'forward' ? forwardMap[originalType] : reverseMap[originalType];
+  }
 
   if (!isOpen) {
     return null;
@@ -544,6 +592,31 @@ const SyncConfirmationModal: React.FC<Props> = ({
             >
               保存过滤条件
             </button>
+            {/* 同步方向开关 */}
+            <div className="flex items-center justify-between px-3 py-2 bg-gray-50 rounded-lg mt-2">
+              <span className="text-xs font-medium text-gray-700">同步方向</span>
+              <div className="flex items-center space-x-2">
+                <span className={`text-xs ${syncDirection === 'forward' ? 'text-blue-600 font-semibold' : 'text-gray-500'}`}>
+                  正向
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setSyncDirection(prev => prev === 'forward' ? 'reverse' : 'forward')}
+                  className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${
+                    syncDirection === 'reverse' ? 'bg-blue-600' : 'bg-gray-300'
+                  }`}
+                  role="switch"
+                  aria-checked={syncDirection === 'reverse'}
+                >
+                  <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                    syncDirection === 'reverse' ? 'translate-x-4' : 'translate-x-1'
+                  }`} />
+                </button>
+                <span className={`text-xs ${syncDirection === 'reverse' ? 'text-blue-600 font-semibold' : 'text-gray-500'}`}>
+                  反向
+                </span>
+              </div>
+            </div>
           </div>
         </div>
 
@@ -578,26 +651,10 @@ const SyncConfirmationModal: React.FC<Props> = ({
                 item => item.date === diff.date && item.symbol === diff.symbol
               );
 
-              // 根据差异类型设置样式
-              let typeLabel = '';
-              let typeColor = '';
-              switch (diff.type) {
-                case 'new':
-                  typeLabel = '新增';
-                  typeColor = 'bg-green-100 text-green-800';
-                  break;
-                case 'modified':
-                  typeLabel = '修改';
-                  typeColor = 'bg-yellow-100 text-yellow-800';
-                  break;
-                case 'deleted':
-                  typeLabel = '删除';
-                  typeColor = 'bg-red-100 text-red-800';
-                  break;
-                default:
-                  typeLabel = diff.type;
-                  typeColor = 'bg-gray-100 text-gray-800';
-              }
+              // 根据差异类型和同步方向设置样式
+              const mappedTypeInfo = getMappedTypeInfo(diff.type, syncDirection);
+              const typeLabel = mappedTypeInfo.label;
+              const typeColor = mappedTypeInfo.color;
 
               // Get fund name from available funds
               const fundInfo = availableFunds.find(f => f.code === diff.symbol);

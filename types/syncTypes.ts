@@ -69,3 +69,23 @@ export interface DifferenceDetail {
   localValue: any;
   externalValue: any;
 }
+
+// 反向同步：发送给 Eggfund 的投资记录格式
+export interface EggfundInvestRecord {
+  day: string;           // 交易日期，格式为 yyyy-MM-dd
+  type: string;          // 固定值 "trade"
+  id: string;            // 交易ID，新增时为空，修改/删除时使用原ID
+  code: string;          // 基金代码
+  share: number;         // 份额，保留2位小数，买入为正，卖出为负
+  unitPrice: number;     // 固定值 -1（Eggfund 自动计算）
+  totalSpend: number;    // 固定值 0
+  fee: number;           // 手续费，保留2位小数
+  tax: number;           // 固定值 0
+  fxRate: number;        // 固定值 1.0
+  userIndex: number;     // 固定值 0
+  enabled: boolean;      // 固定值 true
+  batch: number;         // 固定值 0
+  comments: string;      // 固定值 "sync from FundTracker"
+  amount: number;        // 固定值 0
+  misMatchAlert: boolean; // 固定值 true
+}
