@@ -1393,12 +1393,80 @@ test.describe('testBedWithData', () => {
     console.log('表格恢复验证完成');
 
     // ══════════════════════════════════════════════════════════════════════════════
-    // 14. 关闭窗口
+    // 15-23. 日历功能测试（合并优化）
     // ══════════════════════════════════════════════════════════════════════════════
-    await page.click('button[aria-label="关闭整体盈亏窗口"]');
+    // 切换到日历视图并验证期间累计信息保留
+    await page.locator('button[aria-label="显示盈利日历"]').click();
+    await expect(periodTotal).toBeVisible();
+
+    // 验证模式切换按钮
+    const dayBtn = page.locator('button:has-text("日")').first();
+    const monthBtn = page.locator('button:has-text("月")').first();
+    const yearBtn = page.locator('button:has-text("年")').first();
+    await Promise.all([
+      expect(dayBtn).toBeVisible(),
+      expect(monthBtn).toBeVisible(),
+      expect(yearBtn).toBeVisible()
+    ]);
+    await expect(dayBtn).toHaveClass(/bg-blue-100/);
+
+    // 验证日历格子：星期标题 + 颜色规则
+    expect(await page.locator('.grid-cols-7.gap-1.mb-1 > div').count()).toBe(7);
+    const dayGrid = page.locator('.grid-cols-7.gap-1').nth(1);
+    await expect(dayGrid).toBeVisible();
+    expect(await dayGrid.locator('.text-red-600').count()).toBeGreaterThan(0);
+    expect(await dayGrid.locator('.text-green-600').count()).toBeGreaterThan(0);
+
+    // 验证月份导航：点击一次验证功能，直接验证边界状态
+    const monthNav = page.locator('text=/\\d{4}年\\d{1,2}月/');
+    await expect(monthNav).toBeVisible();
+    const prevMonthBtn = page.locator('button[aria-label="上一月"]');
+    const nextMonthBtn = page.locator('button[aria-label="下一月"]');
+
+    // 点击左箭头验证月份减少
+    await prevMonthBtn.click();
+    await expect(monthNav).not.toHaveText('2026年4月', { timeout: 1000 });
+
+    // 继续点击直到边界（4月→3月→2月，最多2次）
+    await prevMonthBtn.click();
+    const isPrevDisabled = await prevMonthBtn.getAttribute('disabled');
+    expect(isPrevDisabled).not.toBeNull(); // 到达2月后应该已禁用
+
+    // 切换到月历视图
+    await monthBtn.click();
+    await expect(monthBtn).toHaveClass(/bg-blue-100/);
+    expect(await page.locator('.grid-cols-4.gap-2 > div').count()).toBe(12);
+    await expect(page.locator('text=/\\d{4}年$/')).toBeVisible();
+
+    // 验证年份导航禁用（期间只有2026年）
+    expect(await page.locator('button[aria-label="上一年"]').getAttribute('disabled')).not.toBeNull();
+
+    // 切换到年历视图
+    await yearBtn.click();
+    await expect(yearBtn).toHaveClass(/bg-blue-100/);
+    expect(await page.locator('.flex.justify-center.gap-2 > div, .grid-cols-4.gap-2 > div').count()).toBeGreaterThanOrEqual(1);
+
+    // 切换回图表视图
+    await page.locator('button[aria-label="显示盈亏曲线图表"]').click();
+    await expect(chartPoints.first()).toBeVisible({ timeout: 1000 });
+
+    console.log('日历功能测试完成');
+
+    // ══════════════════════════════════════════════════════════════════════════════
+    // 24. 关闭窗口（使用 JavaScript 绕过视口问题）
+    // ══════════════════════════════════════════════════════════════════════════════
+    await page.evaluate(() => {
+      const modal = document.querySelector('.fixed.inset-0.z-\\[130\\]');
+      if (modal) {
+        const closeBtn = modal.querySelector('button .fa-times')?.closest('button');
+        if (closeBtn) {
+          (closeBtn as HTMLElement).click();
+        }
+      }
+    });
     await expect(profitModal).not.toBeVisible();
 
-    console.log('整体盈亏测试完成');
+    console.log('整体盈亏测试完成（含日历功能）');
   });
 
   // ═══════════════════════════════════════════════════════════════════════════════

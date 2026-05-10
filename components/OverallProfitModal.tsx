@@ -15,6 +15,9 @@ interface Props {
   onSelectFund?: (symbol: string) => void;
 }
 
+type ViewMode = 'chart' | 'calendar';
+type CalendarMode = 'day' | 'month' | 'year';
+
 const OverallProfitModal: React.FC<Props> = ({ symbols, onClose, onSelectFund }) => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -24,6 +27,13 @@ const OverallProfitModal: React.FC<Props> = ({ symbols, onClose, onSelectFund })
   const [hoverIndex, setHoverIndex] = useState<number | null>(null);
   // 图表 x 轴起始日期（= defaultFrom，即持仓最早 startDate），与表格日期选择器分离
   const [chartFromDate, setChartFromDate] = useState<string | null>(null);
+  // 视图模式：图表或日历
+  const [viewMode, setViewMode] = useState<ViewMode>('chart');
+  // 日历模式：日、月、年
+  const [calendarMode, setCalendarMode] = useState<CalendarMode>('day');
+  // 日历当前显示的年月
+  const [calendarYear, setCalendarYear] = useState<number>(new Date().getFullYear());
+  const [calendarMonth, setCalendarMonth] = useState<number>(new Date().getMonth() + 1);
 
   const chartWrapRef = useRef<HTMLDivElement | null>(null);
   const chartSvgRef = useRef<SVGSVGElement | null>(null);
@@ -197,6 +207,176 @@ const OverallProfitModal: React.FC<Props> = ({ symbols, onClose, onSelectFund })
     return summary.timeline[summary.timeline.length - 1].date;
   }, [summary]);
 
+  // 日历数据：从 chartTimeline 构建 date -> dailyProfit 的映射
+  const dailyProfitMap = useMemo(() => {
+    const map: Record<string, number> = {};
+    if (!chartTimeline) return map;
+    for (const point of chartTimeline) {
+      map[point.date] = point.dailyProfit || 0;
+    }
+    return map;
+  }, [chartTimeline]);
+
+  // 日历专用数据：期间累计起始日期的当日盈利设为 0（不影响其他计算）
+  const calendarProfitMap = useMemo(() => {
+    const map: Record<string, number> = { ...dailyProfitMap };
+    if (chartFromDate && map.hasOwnProperty(chartFromDate)) {
+      map[chartFromDate] = 0;
+    }
+    return map;
+  }, [dailyProfitMap, chartFromDate]);
+
+  // 日历导航范围：最早和最晚可显示的年月
+  const calendarRange = useMemo(() => {
+    if (!chartFromDate || !chartEndDate) return null;
+    const startDate = new Date(chartFromDate);
+    const endDate = new Date(chartEndDate);
+    return {
+      minYear: startDate.getFullYear(),
+      minMonth: startDate.getMonth() + 1,
+      maxYear: endDate.getFullYear(),
+      maxMonth: endDate.getMonth() + 1
+    };
+  }, [chartFromDate, chartEndDate]);
+
+  // 初始化日历到结束日期所在的月份
+  useEffect(() => {
+    if (chartEndDate) {
+      const d = new Date(chartEndDate);
+      setCalendarYear(d.getFullYear());
+      setCalendarMonth(d.getMonth() + 1);
+    }
+  }, [chartEndDate]);
+
+  // 日历导航按钮是否可用
+  const canGoPrevMonth = useMemo(() => {
+    if (!calendarRange) return false;
+    if (calendarYear > calendarRange.minYear) return true;
+    if (calendarYear === calendarRange.minYear && calendarMonth > calendarRange.minMonth) return true;
+    return false;
+  }, [calendarYear, calendarMonth, calendarRange]);
+
+  const canGoNextMonth = useMemo(() => {
+    if (!calendarRange) return false;
+    if (calendarYear < calendarRange.maxYear) return true;
+    if (calendarYear === calendarRange.maxYear && calendarMonth < calendarRange.maxMonth) return true;
+    return false;
+  }, [calendarYear, calendarMonth, calendarRange]);
+
+  // 月历年份导航按钮是否可用
+  const canGoPrevYear = useMemo(() => {
+    if (!calendarRange) return false;
+    return calendarYear > calendarRange.minYear;
+  }, [calendarYear, calendarRange]);
+
+  const canGoNextYear = useMemo(() => {
+    if (!calendarRange) return false;
+    return calendarYear < calendarRange.maxYear;
+  }, [calendarYear, calendarRange]);
+
+  // 日历月份切换
+  const handlePrevMonth = useCallback(() => {
+    if (!canGoPrevMonth) return;
+    if (calendarMonth === 1) {
+      setCalendarYear(calendarYear - 1);
+      setCalendarMonth(12);
+    } else {
+      setCalendarMonth(calendarMonth - 1);
+    }
+  }, [canGoPrevMonth, calendarYear, calendarMonth]);
+
+  const handleNextMonth = useCallback(() => {
+    if (!canGoNextMonth) return;
+    if (calendarMonth === 12) {
+      setCalendarYear(calendarYear + 1);
+      setCalendarMonth(1);
+    } else {
+      setCalendarMonth(calendarMonth + 1);
+    }
+  }, [canGoNextMonth, calendarYear, calendarMonth]);
+
+  // 日历年份切换（月历用）
+  const handlePrevYear = useCallback(() => {
+    if (!canGoPrevYear) return;
+    setCalendarYear(calendarYear - 1);
+  }, [canGoPrevYear, calendarYear]);
+
+  const handleNextYear = useCallback(() => {
+    if (!canGoNextYear) return;
+    setCalendarYear(calendarYear + 1);
+  }, [canGoNextYear, calendarYear]);
+
+  const monthlyProfits = useMemo(() => {
+    const monthTotals: Record<number, number> = {};
+    for (let m = 1; m <= 12; m++) {
+      monthTotals[m] = 0;
+    }
+
+    for (const [date, profit] of Object.entries(calendarProfitMap)) {
+      const [y, m] = date.split('-');
+      if (parseInt(y) === calendarYear) {
+        const month = parseInt(m);
+        monthTotals[month] = (monthTotals[month] || 0) + profit;
+      }
+    }
+
+    return Array.from({ length: 12 }, (_, i) => {
+      const m = i + 1;
+      const daysInMonth = new Date(calendarYear, m, 0).getDate();
+      const monthStart = `${calendarYear}-${String(m).padStart(2, '0')}-01`;
+      const monthEnd = `${calendarYear}-${String(m).padStart(2, '0')}-${String(daysInMonth).padStart(2, '0')}`;
+      const isInRange = chartFromDate && chartEndDate
+        ? monthEnd >= chartFromDate && monthStart <= chartEndDate
+        : false;
+      return { month: m, profit: monthTotals[m], isInRange };
+    });
+  }, [calendarYear, calendarProfitMap, chartFromDate, chartEndDate]);
+
+  const yearlyProfits = useMemo(() => {
+    if (!calendarRange) return [];
+    const yearTotals: Record<number, number> = {};
+
+    for (const [date, profit] of Object.entries(calendarProfitMap)) {
+      const year = parseInt(date.substring(0, 4));
+      if (year >= calendarRange.minYear && year <= calendarRange.maxYear) {
+        yearTotals[year] = (yearTotals[year] || 0) + profit;
+      }
+    }
+
+    return Array.from(
+      { length: calendarRange.maxYear - calendarRange.minYear + 1 },
+      (_, i) => ({
+        year: calendarRange.minYear + i,
+        profit: yearTotals[calendarRange.minYear + i] || 0
+      })
+    );
+  }, [calendarRange, calendarProfitMap]);
+
+  // 日历格子数据：当前月份的所有日期和盈利
+  const calendarDays = useMemo(() => {
+    const days: { date: number; profit: number; isInRange: boolean }[] = [];
+    const firstDay = new Date(calendarYear, calendarMonth - 1, 1);
+    const lastDay = new Date(calendarYear, calendarMonth, 0);
+    const startDayOfWeek = firstDay.getDay();
+
+    // 填充前面的空格（周日为0）
+    for (let i = 0; i < startDayOfWeek; i++) {
+      days.push({ date: 0, profit: 0, isInRange: false });
+    }
+
+    // 填充日期
+    for (let d = 1; d <= lastDay.getDate(); d++) {
+      const dateStr = `${calendarYear}-${String(calendarMonth).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+      const profit = calendarProfitMap[dateStr] ?? 0;
+      const isInRange = chartFromDate && chartEndDate
+        ? dateStr >= chartFromDate && dateStr <= chartEndDate
+        : false;
+      days.push({ date: d, profit, isInRange });
+    }
+
+    return days;
+  }, [calendarYear, calendarMonth, calendarProfitMap, chartFromDate, chartEndDate]);
+
   // 图表完整期间的累计盈利（从 chartFromDate 到 chartEndDate）
   // 与日期选择器无关，固定显示图表起始到终止的总累计变化
   const chartPeriodTotal = useMemo(() => {
@@ -330,7 +510,40 @@ const OverallProfitModal: React.FC<Props> = ({ symbols, onClose, onSelectFund })
             </div>
           ) : (
             <div className="space-y-4">
-              <div ref={chartWrapRef} className="bg-gradient-to-b from-gray-50 to-white rounded-xl p-4 relative shadow-inner">
+              {/* 视图切换按钮：图表/日历 */}
+              <div className="flex items-center justify-between">
+                <div className="flex items-center space-x-1">
+                  <button
+                    type="button"
+                    onClick={() => setViewMode('chart')}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+                      viewMode === 'chart'
+                        ? 'bg-blue-100 text-blue-700 border border-blue-200'
+                        : 'bg-gray-50 text-gray-500 border border-gray-200 hover:bg-gray-100'
+                    }`}
+                    aria-label="显示盈亏曲线图表"
+                  >
+                    <i className="fas fa-chart-line mr-1" />
+                    图表
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setViewMode('calendar')}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+                      viewMode === 'calendar'
+                        ? 'bg-blue-100 text-blue-700 border border-blue-200'
+                        : 'bg-gray-50 text-gray-500 border border-gray-200 hover:bg-gray-100'
+                    }`}
+                    aria-label="显示盈利日历"
+                  >
+                    <i className="fas fa-calendar-alt mr-1" />
+                    日历
+                  </button>
+                </div>
+              </div>
+
+              {viewMode === 'chart' ? (
+                <div ref={chartWrapRef} className="bg-gradient-to-b from-gray-50 to-white rounded-xl p-4 relative shadow-inner">
                 <svg ref={chartSvgRef} className="w-full drop-shadow-sm" viewBox={`0 0 ${chart.width ?? 960} ${chart.height ?? 200}`} style={{ height: chart.height ?? 200 }} onMouseLeave={() => setHoverIndex(null)}>
                   {/* 背景渐变定义 */}
                   <defs>
@@ -489,6 +702,205 @@ const OverallProfitModal: React.FC<Props> = ({ symbols, onClose, onSelectFund })
                   );
                 })()}
               </div>
+              ) : (
+              <div className="bg-gradient-to-b from-gray-50 to-white rounded-xl p-4 relative shadow-inner overflow-y-auto" style={{ height: 232 }}>
+                <div className="flex items-center justify-center mb-2">
+                  <div className="flex items-center space-x-1">
+                    <button
+                      type="button"
+                      onClick={() => setCalendarMode('day')}
+                      className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+                        calendarMode === 'day'
+                          ? 'bg-blue-100 text-blue-700 border border-blue-200'
+                          : 'bg-gray-50 text-gray-500 border border-gray-200 hover:bg-gray-100'
+                      }`}
+                    >
+                      日
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setCalendarMode('month')}
+                      className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+                        calendarMode === 'month'
+                          ? 'bg-blue-100 text-blue-700 border border-blue-200'
+                          : 'bg-gray-50 text-gray-500 border border-gray-200 hover:bg-gray-100'
+                      }`}
+                    >
+                      月
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setCalendarMode('year')}
+                      className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+                        calendarMode === 'year'
+                          ? 'bg-blue-100 text-blue-700 border border-blue-200'
+                          : 'bg-gray-50 text-gray-500 border border-gray-200 hover:bg-gray-100'
+                      }`}
+                    >
+                      年
+                    </button>
+                  </div>
+                </div>
+                {calendarMode === 'day' && (
+                  <div className="flex flex-col">
+                    <div className="flex items-center justify-between mb-1 px-2">
+                      <button
+                        type="button"
+                        onClick={handlePrevMonth}
+                        disabled={!canGoPrevMonth}
+                        className={`w-6 h-6 flex items-center justify-center rounded transition-colors ${
+                          canGoPrevMonth
+                            ? 'text-gray-600 hover:bg-gray-200'
+                            : 'text-gray-300 cursor-not-allowed'
+                        }`}
+                        aria-label="上一月"
+                      >
+                        <i className="fas fa-chevron-left text-xs" />
+                      </button>
+                      <span className="text-sm font-medium text-gray-700">
+                        {calendarYear}年{calendarMonth}月
+                      </span>
+                      <button
+                        type="button"
+                        onClick={handleNextMonth}
+                        disabled={!canGoNextMonth}
+                        className={`w-6 h-6 flex items-center justify-center rounded transition-colors ${
+                          canGoNextMonth
+                            ? 'text-gray-600 hover:bg-gray-200'
+                            : 'text-gray-300 cursor-not-allowed'
+                        }`}
+                        aria-label="下一月"
+                      >
+                        <i className="fas fa-chevron-right text-xs" />
+                      </button>
+                    </div>
+                    <div className="grid grid-cols-7 gap-1 mb-1">
+                      {['日', '一', '二', '三', '四', '五', '六'].map(day => (
+                        <div key={day} className="text-center text-xs text-gray-400 font-medium">
+                          {day}
+                        </div>
+                      ))}
+                    </div>
+                    <div className="grid grid-cols-7 gap-1">
+                      {calendarDays.map((day, i) => (
+                        <div
+                          key={i}
+                          className={`text-center py-1 rounded border ${
+                            day.date === 0
+                              ? 'border-transparent'
+                              : day.isInRange
+                                ? 'bg-white hover:bg-gray-100 border-gray-200'
+                                : 'bg-gray-100 border-gray-200'
+                          }`}
+                        >
+                          {day.date > 0 && (
+                            <>
+                              <div className="text-xs text-gray-600">{day.date}</div>
+                              <div className={`text-xs font-mono ${
+                                day.profit > 0 ? 'text-red-600' : day.profit < 0 ? 'text-green-600' : 'text-gray-700'
+                              }`}>
+                                {day.profit === 0 ? '-' : (day.profit > 0 ? '+' : '') + formatMoneyWithSeparators(day.profit)}
+                              </div>
+                            </>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                {calendarMode === 'month' && (
+                  <div className="flex flex-col">
+                    <div className="flex items-center justify-between mb-2 px-2">
+                      <button
+                        type="button"
+                        onClick={handlePrevYear}
+                        disabled={!canGoPrevYear}
+                        className={`w-6 h-6 flex items-center justify-center rounded transition-colors ${
+                          canGoPrevYear
+                            ? 'text-gray-600 hover:bg-gray-200'
+                            : 'text-gray-300 cursor-not-allowed'
+                        }`}
+                        aria-label="上一年"
+                      >
+                        <i className="fas fa-chevron-left text-xs" />
+                      </button>
+                      <span className="text-sm font-medium text-gray-700">
+                        {calendarYear}年
+                      </span>
+                      <button
+                        type="button"
+                        onClick={handleNextYear}
+                        disabled={!canGoNextYear}
+                        className={`w-6 h-6 flex items-center justify-center rounded transition-colors ${
+                          canGoNextYear
+                            ? 'text-gray-600 hover:bg-gray-200'
+                            : 'text-gray-300 cursor-not-allowed'
+                        }`}
+                        aria-label="下一年"
+                      >
+                        <i className="fas fa-chevron-right text-xs" />
+                      </button>
+                    </div>
+                    <div className="grid grid-cols-4 gap-2">
+                      {monthlyProfits.map(mp => (
+                        <div
+                          key={mp.month}
+                          className={`text-center py-2 rounded border ${
+                            mp.isInRange
+                              ? 'bg-white hover:bg-gray-100 border-gray-200'
+                              : 'bg-gray-100 border-gray-200'
+                          }`}
+                        >
+                          <div className="text-xs text-gray-600 font-medium">{mp.month}月</div>
+                          <div className={`text-xs font-mono ${
+                            mp.profit > 0 ? 'text-red-600' : mp.profit < 0 ? 'text-green-600' : 'text-gray-700'
+                          }`}>
+                            {mp.profit === 0 ? '-' : (mp.profit > 0 ? '+' : '') + formatMoneyWithSeparators(mp.profit)}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                {calendarMode === 'year' && (
+                  <div className="flex flex-col">
+                    {yearlyProfits.length <= 4 ? (
+                      <div className="flex justify-center gap-2">
+                        {yearlyProfits.map(yp => (
+                          <div
+                            key={yp.year}
+                            className="text-center py-3 px-4 rounded bg-white hover:bg-gray-100 border border-gray-200"
+                          >
+                            <div className="text-sm text-gray-600 font-medium">{yp.year}年</div>
+                            <div className={`text-xs font-mono ${
+                              yp.profit > 0 ? 'text-red-600' : yp.profit < 0 ? 'text-green-600' : 'text-gray-700'
+                            }`}>
+                              {yp.profit === 0 ? '-' : (yp.profit > 0 ? '+' : '') + formatMoneyWithSeparators(yp.profit)}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="grid grid-cols-4 gap-2">
+                        {yearlyProfits.map(yp => (
+                          <div
+                            key={yp.year}
+                            className="text-center py-3 rounded bg-white hover:bg-gray-100 border border-gray-200"
+                          >
+                            <div className="text-sm text-gray-600 font-medium">{yp.year}年</div>
+                            <div className={`text-xs font-mono ${
+                              yp.profit > 0 ? 'text-red-600' : yp.profit < 0 ? 'text-green-600' : 'text-gray-700'
+                            }`}>
+                              {yp.profit === 0 ? '-' : (yp.profit > 0 ? '+' : '') + formatMoneyWithSeparators(yp.profit)}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+              )}
 
               {/* 图表完整期间累计：与日期选择器无关 */}
               <div data-testid="overall-period-total" className="text-xs mt-2">
