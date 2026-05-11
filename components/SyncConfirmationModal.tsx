@@ -597,7 +597,7 @@ const SyncConfirmationModal: React.FC<Props> = ({
               <span className="text-xs font-medium text-gray-700">同步方向</span>
               <div className="flex items-center space-x-2">
                 <span className={`text-xs ${syncDirection === 'forward' ? 'text-blue-600 font-semibold' : 'text-gray-500'}`}>
-                  正向
+                  同步到FundTracker
                 </span>
                 <button
                   type="button"
@@ -613,7 +613,7 @@ const SyncConfirmationModal: React.FC<Props> = ({
                   }`} />
                 </button>
                 <span className={`text-xs ${syncDirection === 'reverse' ? 'text-blue-600 font-semibold' : 'text-gray-500'}`}>
-                  反向
+                  同步到eggfund
                 </span>
               </div>
             </div>
