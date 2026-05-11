@@ -37,6 +37,7 @@ const OverallProfitModal: React.FC<Props> = ({ symbols, onClose, onSelectFund })
 
   const chartWrapRef = useRef<HTMLDivElement | null>(null);
   const chartSvgRef = useRef<SVGSVGElement | null>(null);
+  const prevViewModeRef = useRef<ViewMode>(viewMode);
 
   useEffect(() => {
     let mounted = true;
@@ -247,6 +248,25 @@ const OverallProfitModal: React.FC<Props> = ({ symbols, onClose, onSelectFund })
       setCalendarMonth(d.getMonth() + 1);
     }
   }, [chartEndDate]);
+
+  // 切换到日历模式或切换日历子模式时，重置为默认值
+  useEffect(() => {
+    if (viewMode === 'calendar' && chartEndDate) {
+      const d = new Date(chartEndDate);
+      const isSwitchingFromChart = prevViewModeRef.current === 'chart';
+      prevViewModeRef.current = viewMode;
+
+      // 从图表切换到日历模式时，重置子模式为"日"
+      if (isSwitchingFromChart) {
+        setCalendarMode('day');
+      }
+      // 重置年份和月份
+      setCalendarYear(d.getFullYear());
+      setCalendarMonth(d.getMonth() + 1);
+    } else {
+      prevViewModeRef.current = viewMode;
+    }
+  }, [viewMode, calendarMode, chartEndDate]);
 
   // 日历导航按钮是否可用
   const canGoPrevMonth = useMemo(() => {
@@ -494,7 +514,36 @@ const OverallProfitModal: React.FC<Props> = ({ symbols, onClose, onSelectFund })
       <div className="relative bg-white rounded-2xl w-full max-w-4xl shadow-2xl animate-in zoom-in-95 duration-200 flex flex-col overflow-hidden" style={{ maxWidth: '64rem' }} role="dialog" aria-modal="true">
         <div className="px-6 py-4 border-b border-gray-100 flex justify-between items-center flex-shrink-0">
           <h3 className="text-lg font-bold">整体盈亏</h3>
-          <button aria-label="关闭整体盈亏窗口" className="w-8 h-8 rounded-full bg-gray-50 flex items-center justify-center text-gray-400 hover:bg-gray-100" onClick={onClose}><i className="fas fa-times"></i></button>
+          <div className="flex items-center space-x-2">
+            {/* 视图切换按钮：图表/日历 */}
+            <button
+              type="button"
+              onClick={() => setViewMode('chart')}
+              className={`w-10 h-10 rounded-full flex items-center justify-center transition-colors ${
+                viewMode === 'chart'
+                  ? 'bg-blue-100 text-blue-700'
+                  : 'bg-gray-50 text-gray-500 hover:bg-gray-100'
+              }`}
+              aria-label="显示盈亏曲线图表"
+              title="盈亏曲线"
+            >
+              <i className="fas fa-chart-line" />
+            </button>
+            <button
+              type="button"
+              onClick={() => setViewMode('calendar')}
+              className={`w-10 h-10 rounded-full flex items-center justify-center transition-colors ${
+                viewMode === 'calendar'
+                  ? 'bg-blue-100 text-blue-700'
+                  : 'bg-gray-50 text-gray-500 hover:bg-gray-100'
+              }`}
+              aria-label="显示盈利日历"
+              title="盈利日历"
+            >
+              <i className="fas fa-calendar-alt" />
+            </button>
+            <button aria-label="关闭整体盈亏窗口" className="w-8 h-8 rounded-full bg-gray-50 flex items-center justify-center text-gray-400 hover:bg-gray-100" onClick={onClose}><i className="fas fa-times"></i></button>
+          </div>
         </div>
         <div className="p-6 overflow-y-auto flex-1 min-h-0">
           {loading ? (
@@ -510,38 +559,6 @@ const OverallProfitModal: React.FC<Props> = ({ symbols, onClose, onSelectFund })
             </div>
           ) : (
             <div className="space-y-4">
-              {/* 视图切换按钮：图表/日历 */}
-              <div className="flex items-center justify-between">
-                <div className="flex items-center space-x-1">
-                  <button
-                    type="button"
-                    onClick={() => setViewMode('chart')}
-                    className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
-                      viewMode === 'chart'
-                        ? 'bg-blue-100 text-blue-700 border border-blue-200'
-                        : 'bg-gray-50 text-gray-500 border border-gray-200 hover:bg-gray-100'
-                    }`}
-                    aria-label="显示盈亏曲线图表"
-                  >
-                    <i className="fas fa-chart-line mr-1" />
-                    图表
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setViewMode('calendar')}
-                    className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
-                      viewMode === 'calendar'
-                        ? 'bg-blue-100 text-blue-700 border border-blue-200'
-                        : 'bg-gray-50 text-gray-500 border border-gray-200 hover:bg-gray-100'
-                    }`}
-                    aria-label="显示盈利日历"
-                  >
-                    <i className="fas fa-calendar-alt mr-1" />
-                    日历
-                  </button>
-                </div>
-              </div>
-
               {viewMode === 'chart' ? (
                 <div ref={chartWrapRef} className="bg-gradient-to-b from-gray-50 to-white rounded-xl p-4 relative shadow-inner">
                 <svg ref={chartSvgRef} className="w-full drop-shadow-sm" viewBox={`0 0 ${chart.width ?? 960} ${chart.height ?? 200}`} style={{ height: chart.height ?? 200 }} onMouseLeave={() => setHoverIndex(null)}>
@@ -703,47 +720,55 @@ const OverallProfitModal: React.FC<Props> = ({ symbols, onClose, onSelectFund })
                 })()}
               </div>
               ) : (
-              <div className="bg-gradient-to-b from-gray-50 to-white rounded-xl p-4 relative shadow-inner overflow-y-auto" style={{ height: 232 }}>
-                <div className="flex items-center justify-center mb-2">
-                  <div className="flex items-center space-x-1">
+              <div className="bg-gradient-to-b from-gray-50 to-white rounded-xl p-2 relative shadow-inner" style={{ height: 232 }}>
+                <div className="flex h-full">
+                  {/* 左侧：日/月/年切换按钮纵向排列 - 固定宽度 */}
+                  <div className="w-12 flex flex-col justify-center items-center space-y-2 border-r border-gray-200 pr-3 mr-3">
                     <button
                       type="button"
                       onClick={() => setCalendarMode('day')}
-                      className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+                      className={`w-10 h-10 rounded-lg flex items-center justify-center transition-colors ${
                         calendarMode === 'day'
                           ? 'bg-blue-100 text-blue-700 border border-blue-200'
                           : 'bg-gray-50 text-gray-500 border border-gray-200 hover:bg-gray-100'
                       }`}
+                      aria-label="日历视图"
+                      title="日"
                     >
-                      日
+                      <span className="text-sm font-medium">日</span>
                     </button>
                     <button
                       type="button"
                       onClick={() => setCalendarMode('month')}
-                      className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+                      className={`w-10 h-10 rounded-lg flex items-center justify-center transition-colors ${
                         calendarMode === 'month'
                           ? 'bg-blue-100 text-blue-700 border border-blue-200'
                           : 'bg-gray-50 text-gray-500 border border-gray-200 hover:bg-gray-100'
                       }`}
+                      aria-label="月历视图"
+                      title="月"
                     >
-                      月
+                      <span className="text-sm font-medium">月</span>
                     </button>
                     <button
                       type="button"
                       onClick={() => setCalendarMode('year')}
-                      className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+                      className={`w-10 h-10 rounded-lg flex items-center justify-center transition-colors ${
                         calendarMode === 'year'
                           ? 'bg-blue-100 text-blue-700 border border-blue-200'
                           : 'bg-gray-50 text-gray-500 border border-gray-200 hover:bg-gray-100'
                       }`}
+                      aria-label="年历视图"
+                      title="年"
                     >
-                      年
+                      <span className="text-sm font-medium">年</span>
                     </button>
                   </div>
-                </div>
+                  {/* 右侧：日历/月历/年历显示区域 - 自适应宽度 */}
+                  <div className="flex-1 min-w-0">
                 {calendarMode === 'day' && (
                   <div className="flex flex-col">
-                    <div className="flex items-center justify-between mb-1 px-2">
+                    <div className="flex items-center justify-between mb-0.5 px-2">
                       <button
                         type="button"
                         onClick={handlePrevMonth}
@@ -774,29 +799,29 @@ const OverallProfitModal: React.FC<Props> = ({ symbols, onClose, onSelectFund })
                         <i className="fas fa-chevron-right text-xs" />
                       </button>
                     </div>
-                    <div className="grid grid-cols-7 gap-1 mb-1">
+                    <div className="grid grid-cols-7 gap-0.5 mb-0.5">
                       {['日', '一', '二', '三', '四', '五', '六'].map(day => (
-                        <div key={day} className="text-center text-xs text-gray-400 font-medium">
+                        <div key={day} className="text-center text-[10px] text-gray-400 font-medium">
                           {day}
                         </div>
                       ))}
                     </div>
-                    <div className="grid grid-cols-7 gap-1">
+                    <div className="grid grid-cols-7 gap-0.5">
                       {calendarDays.map((day, i) => (
                         <div
                           key={i}
-                          className={`text-center py-1 rounded border ${
+                          className={`text-center py-0.5 rounded border ${
                             day.date === 0
                               ? 'border-transparent'
                               : day.isInRange
-                                ? 'bg-white hover:bg-gray-100 border-gray-200'
+                                ? `${day.profit > 0 ? 'bg-red-50 border-red-100' : day.profit < 0 ? 'bg-green-50 border-green-100' : 'bg-white border-gray-200'} hover:bg-opacity-80`
                                 : 'bg-gray-100 border-gray-200'
                           }`}
                         >
                           {day.date > 0 && (
                             <>
-                              <div className="text-xs text-gray-600">{day.date}</div>
-                              <div className={`text-xs font-mono ${
+                              <div className="text-[10px] text-gray-600">{day.date}</div>
+                              <div className={`text-[10px] font-mono ${
                                 day.profit > 0 ? 'text-red-600' : day.profit < 0 ? 'text-green-600' : 'text-gray-700'
                               }`}>
                                 {day.profit === 0 ? '-' : (day.profit > 0 ? '+' : '') + formatMoneyWithSeparators(day.profit)}
@@ -847,12 +872,12 @@ const OverallProfitModal: React.FC<Props> = ({ symbols, onClose, onSelectFund })
                           key={mp.month}
                           className={`text-center py-2 rounded border ${
                             mp.isInRange
-                              ? 'bg-white hover:bg-gray-100 border-gray-200'
+                              ? `${mp.profit > 0 ? 'bg-red-50 border-red-100' : mp.profit < 0 ? 'bg-green-50 border-green-100' : 'bg-white border-gray-200'} hover:bg-opacity-80`
                               : 'bg-gray-100 border-gray-200'
                           }`}
                         >
-                          <div className="text-xs text-gray-600 font-medium">{mp.month}月</div>
-                          <div className={`text-xs font-mono ${
+                          <div className="text-[10px] text-gray-600 font-medium">{mp.month}月</div>
+                          <div className={`text-[10px] font-mono ${
                             mp.profit > 0 ? 'text-red-600' : mp.profit < 0 ? 'text-green-600' : 'text-gray-700'
                           }`}>
                             {mp.profit === 0 ? '-' : (mp.profit > 0 ? '+' : '') + formatMoneyWithSeparators(mp.profit)}
@@ -864,15 +889,33 @@ const OverallProfitModal: React.FC<Props> = ({ symbols, onClose, onSelectFund })
                 )}
                 {calendarMode === 'year' && (
                   <div className="flex flex-col">
+                    {/* 年历顶部：期间累计信息 */}
+                    <div className="text-center text-xs mb-2 py-1 border-b border-gray-200">
+                      {chartFromDate && chartEndDate ? (
+                        <>
+                          <span className="text-gray-500">期间累计</span>
+                          <span className="text-gray-400 mx-1">（{formatDateDisplay(chartFromDate)} ~ {formatDateDisplay(chartEndDate)}）</span>
+                          <span className={`font-medium ${
+                            chartPeriodTotal === 0 ? 'text-gray-700' : chartPeriodTotal > 0 ? 'text-red-600' : 'text-green-600'
+                          }`}>
+                            {chartPeriodTotal === 0 ? '-' : (chartPeriodTotal > 0 ? '+' : '') + formatMoneyWithSeparators(chartPeriodTotal)}
+                          </span>
+                        </>
+                      ) : (
+                        <span className="text-gray-400">暂无数据</span>
+                      )}
+                    </div>
                     {yearlyProfits.length <= 4 ? (
                       <div className="flex justify-center gap-2">
                         {yearlyProfits.map(yp => (
                           <div
                             key={yp.year}
-                            className="text-center py-3 px-4 rounded bg-white hover:bg-gray-100 border border-gray-200"
+                            className={`text-center py-3 px-4 rounded border ${
+                              yp.profit > 0 ? 'bg-red-50 border-red-100' : yp.profit < 0 ? 'bg-green-50 border-green-100' : 'bg-white border-gray-200'
+                            } hover:bg-opacity-80`}
                           >
-                            <div className="text-sm text-gray-600 font-medium">{yp.year}年</div>
-                            <div className={`text-xs font-mono ${
+                            <div className="text-xs text-gray-600 font-medium">{yp.year}年</div>
+                            <div className={`text-[10px] font-mono ${
                               yp.profit > 0 ? 'text-red-600' : yp.profit < 0 ? 'text-green-600' : 'text-gray-700'
                             }`}>
                               {yp.profit === 0 ? '-' : (yp.profit > 0 ? '+' : '') + formatMoneyWithSeparators(yp.profit)}
@@ -885,10 +928,12 @@ const OverallProfitModal: React.FC<Props> = ({ symbols, onClose, onSelectFund })
                         {yearlyProfits.map(yp => (
                           <div
                             key={yp.year}
-                            className="text-center py-3 rounded bg-white hover:bg-gray-100 border border-gray-200"
+                            className={`text-center py-3 rounded border ${
+                              yp.profit > 0 ? 'bg-red-50 border-red-100' : yp.profit < 0 ? 'bg-green-50 border-green-100' : 'bg-white border-gray-200'
+                            } hover:bg-opacity-80`}
                           >
-                            <div className="text-sm text-gray-600 font-medium">{yp.year}年</div>
-                            <div className={`text-xs font-mono ${
+                            <div className="text-xs text-gray-600 font-medium">{yp.year}年</div>
+                            <div className={`text-[10px] font-mono ${
                               yp.profit > 0 ? 'text-red-600' : yp.profit < 0 ? 'text-green-600' : 'text-gray-700'
                             }`}>
                               {yp.profit === 0 ? '-' : (yp.profit > 0 ? '+' : '') + formatMoneyWithSeparators(yp.profit)}
@@ -899,12 +944,14 @@ const OverallProfitModal: React.FC<Props> = ({ symbols, onClose, onSelectFund })
                     )}
                   </div>
                 )}
+                  </div>
+                </div>
               </div>
               )}
 
-              {/* 图表完整期间累计：与日期选择器无关 */}
-              <div data-testid="overall-period-total" className="text-xs mt-2">
-                {chartFromDate && chartEndDate ? (
+              {/* 图表/日历期间累计：保持固定高度，日历视图时隐藏内容但保留空间 */}
+              <div data-testid="overall-period-total" className="text-xs mt-2 min-h-[20px]">
+                {viewMode === 'chart' && chartFromDate && chartEndDate ? (
                   <>
                     期间累计（{formatDateDisplay(chartFromDate)} ~ {formatDateDisplay(chartEndDate)}）：
                     {chartPeriodTotal === 0 ? (
@@ -915,9 +962,9 @@ const OverallProfitModal: React.FC<Props> = ({ symbols, onClose, onSelectFund })
                       <span className="text-green-600">{formatMoneyWithSeparators(chartPeriodTotal)}</span>
                     )}
                   </>
-                ) : (
+                ) : viewMode === 'chart' ? (
                   <span className="text-gray-400">暂无数据</span>
-                )}
+                ) : null}
               </div>
 
               {/* 日期选择器：位于表格上方 */}
