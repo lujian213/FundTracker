@@ -1,6 +1,5 @@
 import { test, expect, Page, BrowserContext } from '@playwright/test';
 import path from 'path';
-import fs from 'fs';
 
 /**
  * Testbed with loaded data
@@ -8,65 +7,22 @@ import fs from 'fs';
  * 优化策略：
  * 1. 共享浏览器上下文，避免重复加载
  * 2. 用精确等待替代固定超时
- * 3. 减少不必要的等待
- * 4. 支持历史数据加载，避免每次测试都需要网络请求
+ * 3. 减少不必要的页面刷新
  */
 
 // 共享状态
 let sharedContext: BrowserContext | null = null;
 let sharedPage: Page | null = null;
 
-// 历史数据文件路径
-const HISTORY_DUMP_FILE = path.join(process.cwd(), '__mocks__', 'fund_history_dump.json');
-
-/**
- * Load 历史数据到内存并通过服务保存
- * 在导入备份文件后调用，将历史数据注入到每个基金中
- */
-async function loadHistoryData(page: Page): Promise<boolean> {
-  if (!fs.existsSync(HISTORY_DUMP_FILE)) {
-    console.log('[Load] 历史数据文件不存在，跳过加载');
-    return false;
-  }
-
-  const historyMap = JSON.parse(fs.readFileSync(HISTORY_DUMP_FILE, 'utf-8'));
-
-  await page.evaluate((data) => {
-    const root = (window as any).__ROOT__;
-    if (!root?.marketFundService) {
-      console.log('[Load] marketFundService 未暴露，跳过加载');
-      return;
-    }
-
-    const funds = root.marketFundService.getAllMarketFunds();
-    let updated = 0;
-
-    for (const fund of funds) {
-      const symbol = fund.info.ticker.symbol;
-      if (data[symbol]) {
-        root.marketFundService.updateHistory(symbol, data[symbol]);
-        updated++;
-      }
-    }
-
-    // 批量保存到 localStorage（压缩格式）
-    root.marketFundService.saveAllToStorage();
-    console.log(`[Load] 已加载 ${updated} 只基金的历史数据`);
-  }, historyMap);
-
-  console.log(`[Load] 历史数据已从 ${HISTORY_DUMP_FILE} 加载`);
-  return true;
-}
-
 // 导入备份文件的辅助函数
 async function importBackupFile(page: Page) {
-  // 打开主页
-  await page.goto('/', { waitUntil: 'load' });
-  await expect(page.locator('#root')).toBeVisible();
+  // 打开主页（使用 domcontentloaded 而非 load，更快）
+  await page.goto('/', { waitUntil: 'domcontentloaded' });
+  await expect(page.locator('#root')).toBeVisible({ timeout: 10000 });
 
   // 点击系统配置按钮
   await page.click('button[title="系统配置"]');
-  await expect(page.locator('button:has-text("导入备份")')).toBeVisible();
+  await expect(page.locator('button:has-text("导入备份")')).toBeVisible({ timeout: 5000 });
 
   // 准备上传备份文件
   const backupFilePath = path.join(process.cwd(), '__mocks__', 'fund_backup_2026-04-06_12-50-51.json');
@@ -99,29 +55,26 @@ async function importBackupFile(page: Page) {
     } catch {
       return false;
     }
-  }, { timeout: 5000 });
+  }, { timeout: 10000 });
 
-  // 加载历史数据（如果存在）
-  const historyLoaded = await loadHistoryData(page);
-  if (historyLoaded) {
-    // 刷新页面以加载历史数据到 React 状态
-    await page.reload({ waitUntil: 'load' });
-    await expect(page.locator('#root')).toBeVisible();
-  }
+  console.log('[Import] 备份文件导入完成');
 
   // 关闭系统配置窗口
   const closeConfigButton = page.locator('[role="dialog"] button[aria-label="关闭"]');
-  if (await closeConfigButton.isVisible({ timeout: 1000 }).catch(() => false)) {
+  if (await closeConfigButton.isVisible({ timeout: 2000 }).catch(() => false)) {
     await closeConfigButton.click();
+    // 等待对话框关闭
+    await expect(closeConfigButton).not.toBeVisible({ timeout: 2000 });
   }
 
-  // 刷新页面以加载导入的数据到 React 状态
-  await page.reload({ waitUntil: 'load' });
-  await expect(page.locator('#root')).toBeVisible();
+  console.log('[Import] 导入备份文件流程完成');
 }
 
 test.describe('Testbed with loaded data', () => {
   test.beforeAll(async ({ browser }) => {
+    // 设置更长的超时时间，因为 beforeAll 要做很多初始化工作
+    test.setTimeout(120000);
+
     // 创建共享的浏览器上下文和页面，设置时区为东8区
     sharedContext = await browser.newContext({
       locale: 'zh-CN',

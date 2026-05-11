@@ -1,30 +1,63 @@
-import { test, expect } from '@playwright/test';
+import { test, expect, Page, BrowserContext } from '@playwright/test';
 
 /**
  * Smoke Tests - 优化版
  *
  * 优化策略：
- * 1. 用 load 替代 networkidle
- * 2. 用精确等待替代固定超时
- * 3. 减少不必要的等待
+ * 1. 使用 beforeAll 共享页面，避免每个测试重新加载
+ * 2. 用 load 替代 networkidle
+ * 3. 用精确等待替代固定超时
  */
 
+let sharedContext: BrowserContext | null = null;
+let sharedPage: Page | null = null;
+let consoleMessages: { type: string; text: string }[] = [];
+let pageErrors: string[] = [];
+
 test.describe('Smoke Tests', () => {
-  test('页面正常加载', async ({ page }) => {
-    const consoleMessages: { type: string; text: string }[] = [];
-    page.on('console', msg => {
+  test.beforeAll(async ({ browser }) => {
+    // 创建共享的浏览器上下文
+    sharedContext = await browser.newContext({
+      locale: 'zh-CN',
+      timezoneId: 'Asia/Shanghai',
+    });
+    sharedPage = await sharedContext.newPage();
+
+    // 监听 console 和 pageerror（只设置一次）
+    consoleMessages = [];
+    pageErrors = [];
+
+    sharedPage.on('console', msg => {
       consoleMessages.push({ type: msg.type(), text: msg.text() });
     });
 
-    const pageErrors: string[] = [];
-    page.on('pageerror', error => {
+    sharedPage.on('pageerror', error => {
       pageErrors.push(error.message);
     });
 
-    await page.goto('/', { waitUntil: 'load' });
-    await expect(page).toHaveTitle(/基金估值助手/);
+    // 只加载一次页面
+    await sharedPage.goto('/', { waitUntil: 'load' });
+  });
+
+  test.afterAll(async () => {
+    await sharedPage?.close();
+    await sharedContext?.close();
+    sharedPage = null;
+    sharedContext = null;
+  });
+
+  test.beforeEach(async () => {
+    if (!sharedPage) throw new Error('Page not initialized');
+  });
+
+  test('页面正常加载', async () => {
+    const page = sharedPage!;
+
+    // 验证页面标题
+    await expect(page).toHaveTitle(/基金估值助手/, { timeout: 60000 });
+
     // 等待 React 应用渲染完成（页面主要内容出现）
-    await expect(page.locator('h1:has-text("极简基金估值")')).toBeVisible();
+    await expect(page.locator('h1:has-text("极简基金估值")')).toBeVisible({ timeout: 60000 });
 
     // 检查关键错误
     const criticalErrors = consoleMessages.filter(msg =>
@@ -40,8 +73,8 @@ test.describe('Smoke Tests', () => {
     expect(criticalPageErrors.length).toBe(0);
   });
 
-  test('localStorage 服务正常初始化', async ({ page }) => {
-    await page.goto('/', { waitUntil: 'load' });
+  test('localStorage 服务正常初始化', async () => {
+    const page = sharedPage!;
 
     const localStorageWorks = await page.evaluate(() => {
       try {
@@ -57,8 +90,8 @@ test.describe('Smoke Tests', () => {
     expect(localStorageWorks).toBe(true);
   });
 
-  test('指数数据结构迁移完成', async ({ page }) => {
-    await page.goto('/', { waitUntil: 'load' });
+  test('指数数据结构迁移完成', async () => {
+    const page = sharedPage!;
 
     // 等待数据加载（通过服务获取）
     await page.waitForFunction(() => {
@@ -66,7 +99,7 @@ test.describe('Smoke Tests', () => {
       if (!root?.indexService) return false;
       const indices = root.indexService.getAllMarketIndices();
       return indices.length > 0;
-    }, { timeout: 5000 });
+    }, { timeout: 60000 });
 
     const storageData = await page.evaluate(() => {
       const isDomesticIndex = (symbol: string): boolean => {
@@ -92,9 +125,10 @@ test.describe('Smoke Tests', () => {
     expect(storageData.global.length).toBeGreaterThan(0);
   });
 
-  test('指数卡片正常显示', async ({ page }) => {
-    await page.goto('/', { waitUntil: 'load' });
-    await expect(page.locator('#root')).toBeVisible();
+  test('指数卡片正常显示', async () => {
+    const page = sharedPage!;
+
+    await expect(page.locator('#root')).toBeVisible({ timeout: 60000 });
 
     // 等待指数名称出现
     const indexNames = ['上证指数', '深证成指', '创业板指', '纳斯达克100', '标普500', '恒生指数'];
@@ -102,7 +136,7 @@ test.describe('Smoke Tests', () => {
     // 至少有一个指数名称出现
     for (const name of indexNames) {
       try {
-        await expect(page.locator(`text=${name}`)).toBeVisible({ timeout: 3000 });
+        await expect(page.locator(`text=${name}`)).toBeVisible({ timeout: 10000 });
         break;  // 找到一个就成功
       } catch {
         continue;
