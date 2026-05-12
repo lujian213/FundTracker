@@ -195,6 +195,78 @@ const OverallProfitModal: React.FC<Props> = ({ symbols, onClose, onSelectFund })
     setToDate(current.date);
   }, [chartTimeline]);
 
+  // 日历格子点击：fromDate = 选中日期前一天，toDate = 选中日期
+  const handleDayClick = useCallback((day: number) => {
+    if (day === 0) return; // 跳过空白格子
+
+    const selectedDateStr = `${calendarYear}-${String(calendarMonth).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+    const selectedDate = new Date(selectedDateStr);
+    selectedDate.setDate(selectedDate.getDate() - 1);
+    const prevDateStr = toLocalDateKey(selectedDate);
+
+    setFromDate(prevDateStr);
+    setToDate(selectedDateStr);
+  }, [calendarYear, calendarMonth]);
+
+  // 月历格子点击：fromDate = 前一月最后一天，toDate = 选中月份最后一天（超限则用当天）
+  const handleMonthClick = useCallback((month: number) => {
+    // 选中月份的最后一天（month 是 1-12，Date 的月份参数是 0-11，所以传入 month）
+    const lastDayOfMonthDate = new Date(calendarYear, month, 0);
+    const lastDayOfMonthStr = toLocalDateKey(lastDayOfMonthDate);
+
+    // 获取当天日期
+    const todayStr = toLocalDateKey(new Date());
+
+    // 如果选中月份的最后一天超过了当天，则选用当天作为日期2
+    const toDateStr = lastDayOfMonthStr > todayStr ? todayStr : lastDayOfMonthStr;
+
+    // 前一月份的最后一天（处理跨年：1月的前一月是上年12月）
+    let prevYear = calendarYear;
+    let prevMonth = month - 1;
+    if (prevMonth === 0) {
+      prevMonth = 12;
+      prevYear = calendarYear - 1;
+    }
+    const lastDayOfPrevMonthDate = new Date(prevYear, prevMonth, 0);
+    const fromDateStr = toLocalDateKey(lastDayOfPrevMonthDate);
+
+    setFromDate(fromDateStr);
+    setToDate(toDateStr);
+  }, [calendarYear]);
+
+  // 年历格子点击：fromDate = 前一年最后一天，toDate = 选中年份最后一天（超限则用当天）
+  const handleYearClick = useCallback((year: number) => {
+    // 选中年份的最后一天
+    const lastDayOfYearStr = `${year}-12-31`;
+
+    // 获取当天日期
+    const todayStr = toLocalDateKey(new Date());
+
+    // 如果选中年份的最后一天超过了当天，则选用当天作为日期2
+    const toDateStr = lastDayOfYearStr > todayStr ? todayStr : lastDayOfYearStr;
+
+    // 前一年的最后一天
+    const fromDateStr = `${year - 1}-12-31`;
+
+    setFromDate(fromDateStr);
+    setToDate(toDateStr);
+  }, []);
+
+  // 年历格子组件：减少两种布局的冗余
+  const YearCell = ({ year, profit, onClick }: { year: number; profit: number; onClick: () => void }) => (
+    <div
+      onClick={onClick}
+      className={`text-center py-2 rounded border cursor-pointer ${
+        profit > 0 ? 'bg-red-50 border-red-100' : profit < 0 ? 'bg-green-50 border-green-100' : 'bg-white border-gray-200'
+      } hover:bg-opacity-80`}
+    >
+      <div className="text-[10px] text-gray-600 font-medium">{year}年</div>
+      <div className={`text-[10px] font-mono ${profit > 0 ? 'text-red-600' : profit < 0 ? 'text-green-600' : 'text-gray-700'}`}>
+        {profit === 0 ? '-' : (profit > 0 ? '+' : '') + formatMoneyWithSeparators(profit)}
+      </div>
+    </div>
+  );
+
   const [tableRows, setTableRows] = useState<OverallFundRow[]>([]);
   const [tableError, setTableError] = useState<string | null>(null);
   // 表格列排序：三列共用一个排序状态，点击某列时该列启用排序
@@ -810,12 +882,13 @@ const OverallProfitModal: React.FC<Props> = ({ symbols, onClose, onSelectFund })
                       {calendarDays.map((day, i) => (
                         <div
                           key={i}
+                          onClick={() => day.date > 0 && day.isInRange && handleDayClick(day.date)}
                           className={`text-center py-0.5 rounded border ${
                             day.date === 0
                               ? 'border-transparent'
-                              : day.isInRange
+                              : `${day.isInRange ? 'cursor-pointer' : ''} ${day.isInRange
                                 ? `${day.profit > 0 ? 'bg-red-50 border-red-100' : day.profit < 0 ? 'bg-green-50 border-green-100' : 'bg-white border-gray-200'} hover:bg-opacity-80`
-                                : 'bg-gray-100 border-gray-200'
+                                : 'bg-gray-100 border-gray-200'}`
                           }`}
                         >
                           {day.date > 0 && (
@@ -870,7 +943,8 @@ const OverallProfitModal: React.FC<Props> = ({ symbols, onClose, onSelectFund })
                       {monthlyProfits.map(mp => (
                         <div
                           key={mp.month}
-                          className={`text-center py-2 rounded border ${
+                          onClick={() => mp.isInRange && handleMonthClick(mp.month)}
+                          className={`text-center py-2 rounded border ${mp.isInRange ? 'cursor-pointer' : ''} ${
                             mp.isInRange
                               ? `${mp.profit > 0 ? 'bg-red-50 border-red-100' : mp.profit < 0 ? 'bg-green-50 border-green-100' : 'bg-white border-gray-200'} hover:bg-opacity-80`
                               : 'bg-gray-100 border-gray-200'
@@ -905,39 +979,17 @@ const OverallProfitModal: React.FC<Props> = ({ symbols, onClose, onSelectFund })
                         <span className="text-gray-400">暂无数据</span>
                       )}
                     </div>
-                    {yearlyProfits.length <= 4 ? (
-                      <div className="flex justify-center gap-2">
+                    {yearlyProfits.length >= 4 ? (
+                      <div className="grid grid-cols-4 gap-2">
                         {yearlyProfits.map(yp => (
-                          <div
-                            key={yp.year}
-                            className={`text-center py-3 px-4 rounded border ${
-                              yp.profit > 0 ? 'bg-red-50 border-red-100' : yp.profit < 0 ? 'bg-green-50 border-green-100' : 'bg-white border-gray-200'
-                            } hover:bg-opacity-80`}
-                          >
-                            <div className="text-xs text-gray-600 font-medium">{yp.year}年</div>
-                            <div className={`text-[10px] font-mono ${
-                              yp.profit > 0 ? 'text-red-600' : yp.profit < 0 ? 'text-green-600' : 'text-gray-700'
-                            }`}>
-                              {yp.profit === 0 ? '-' : (yp.profit > 0 ? '+' : '') + formatMoneyWithSeparators(yp.profit)}
-                            </div>
-                          </div>
+                          <YearCell key={yp.year} year={yp.year} profit={yp.profit} onClick={() => handleYearClick(yp.year)} />
                         ))}
                       </div>
                     ) : (
-                      <div className="grid grid-cols-4 gap-2">
+                      <div className="flex justify-center gap-2">
                         {yearlyProfits.map(yp => (
-                          <div
-                            key={yp.year}
-                            className={`text-center py-3 rounded border ${
-                              yp.profit > 0 ? 'bg-red-50 border-red-100' : yp.profit < 0 ? 'bg-green-50 border-green-100' : 'bg-white border-gray-200'
-                            } hover:bg-opacity-80`}
-                          >
-                            <div className="text-xs text-gray-600 font-medium">{yp.year}年</div>
-                            <div className={`text-[10px] font-mono ${
-                              yp.profit > 0 ? 'text-red-600' : yp.profit < 0 ? 'text-green-600' : 'text-gray-700'
-                            }`}>
-                              {yp.profit === 0 ? '-' : (yp.profit > 0 ? '+' : '') + formatMoneyWithSeparators(yp.profit)}
-                            </div>
+                          <div key={yp.year} className="w-1/4">
+                            <YearCell year={yp.year} profit={yp.profit} onClick={() => handleYearClick(yp.year)} />
                           </div>
                         ))}
                       </div>
