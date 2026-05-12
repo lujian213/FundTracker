@@ -45,6 +45,7 @@ export const CalendarEventTooltip: React.FC<CalendarEventTooltipProps> = ({
 
   return (
     <div
+      data-testid="calendar-event-tooltip"
       className={`w-56 bg-white rounded-lg shadow-xl border border-gray-200 p-3 text-xs ${className}`}
       style={style}
       onMouseEnter={onMouseEnter}

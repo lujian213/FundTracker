@@ -597,7 +597,7 @@ test.describe('testBedWithData', () => {
       await dateCell.hover();
 
       // 验证 tooltip 出现（自动等待）
-      const tooltip = page.locator('div.shadow-xl.border-gray-200');
+      const tooltip = page.getByTestId('calendar-event-tooltip');
       await expect(tooltip).toBeVisible({ timeout: 2000 });
 
       // 验证 tooltip 内项目数量与格子内一致
@@ -739,22 +739,18 @@ test.describe('testBedWithData', () => {
     const autoBackupCard = page.locator('div.bg-white').filter({ has: page.locator('h3:has-text("自动备份")') });
 
     // 验证"启用自动备份"开关是打开的
-    // checkbox 使用 sr-only 类（隐藏），需要使用 force 或通过 label 点击
-    const autoBackupCheckbox = autoBackupCard.locator('input[type="checkbox"]');
-    await expect(autoBackupCheckbox).toBeChecked();
+    // 使用 button[role="switch"] 模式（与 SystemPanel 一致）
+    const autoBackupSwitch = autoBackupCard.locator('button[role="switch"]');
+    await expect(autoBackupSwitch).toHaveAttribute('aria-checked', 'true');
 
     // 验证"每日自动导出时间"显示为"16:00"
     const timeInput = autoBackupCard.locator('input#auto-export-time');
     const timeValue = await timeInput.inputValue();
     expect(timeValue).toBe('16:00');
 
-    // 关闭开关：找到包含"启用自动备份"文本的开关行，点击其中的 label
-    const toggleRow = autoBackupCard.locator('div.flex.items-center.justify-between').filter({ has: page.locator('span:has-text("启用自动备份")') });
-    const autoBackupToggleLabel = toggleRow.locator('label');
-    await autoBackupToggleLabel.click();
-
-    // 验证开关已关闭
-    await expect(autoBackupCheckbox).not.toBeChecked({ timeout: 3000 });
+    // 关闭开关
+    await autoBackupSwitch.click();
+    await expect(autoBackupSwitch).toHaveAttribute('aria-checked', 'false', { timeout: 3000 });
 
     // 验证"每日自动导出时间"输入框为灰色（disabled 状态）
     await expect(timeInput).toBeDisabled();
@@ -767,8 +763,8 @@ test.describe('testBedWithData', () => {
     await expect(nextBackupTime).not.toBeVisible();
 
     // 重新打开开关，恢复状态
-    await autoBackupToggleLabel.click();
-    await expect(autoBackupCheckbox).toBeChecked({ timeout: 3000 });
+    await autoBackupSwitch.click();
+    await expect(autoBackupSwitch).toHaveAttribute('aria-checked', 'true', { timeout: 3000 });
 
     console.log('备份管理验证完成');
 

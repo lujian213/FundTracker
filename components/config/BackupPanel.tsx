@@ -149,15 +149,25 @@ const BackupPanel: React.FC<BackupPanelProps> = ({
           {/* 启用/禁用开关 */}
           <div className="flex items-center justify-between">
             <span className="text-sm font-medium text-gray-700">启用自动备份</span>
-            <label className="relative inline-flex items-center cursor-pointer">
-              <input
-                type="checkbox"
-                checked={tmpEnabled}
-                onChange={e => setTmpEnabled(e.target.checked)}
-                className="sr-only peer"
-              />
-              <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600 rounded-full"></div>
-            </label>
+            <div className="flex items-center space-x-3">
+              <button
+                role="switch"
+                aria-checked={tmpEnabled}
+                onClick={() => setTmpEnabled(!tmpEnabled)}
+                className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+                  tmpEnabled ? 'bg-blue-600' : 'bg-gray-300'
+                }`}
+              >
+                <span
+                  className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                    tmpEnabled ? 'translate-x-6' : 'translate-x-1'
+                  }`}
+                />
+              </button>
+              <span className="text-xs text-gray-500 w-8">
+                {tmpEnabled ? '开启' : '关闭'}
+              </span>
+            </div>
           </div>
 
           {/* 备份时间输入 */}
