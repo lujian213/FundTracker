@@ -164,40 +164,52 @@ const InvestmentDraftModal: React.FC<InvestmentDraftModalProps> = ({
   }, [draftData]);
 
   // Filter portfolio to only include funds with fullCapacity and sort by gain/loss percentage
-  const fundsWithPositions = [...portfolio].filter(fund => {
-    const pos = marketFundService.getPosition(fund.symbol);
-    return pos && typeof pos.fullCapacity === 'number' && pos.fullCapacity > 0;
-  }).sort((a, b) => {
-    const today = toLocalDateKey(new Date());
+  // 使用 useMemo 缓存基金列表和对应的估值数据，确保排序和渲染数据一致
+  const { fundsWithPositions, valuationCache } = useMemo(() => {
+    const filtered = [...portfolio].filter(fund => {
+      const pos = marketFundService.getPosition(fund.symbol);
+      return pos && typeof pos.fullCapacity === 'number' && pos.fullCapacity > 0;
+    });
 
-    // 使用 marketFundService.getValuation 获取增强估值数据，与表格显示逻辑一致
-    const valA = marketFundService.getValuation(a.symbol) || marketData[a.symbol];
-    const valB = marketFundService.getValuation(b.symbol) || marketData[b.symbol];
+    // 预计算所有估值数据，确保排序和渲染使用相同数据源
+    const cache: Record<string, ValuationData | undefined> = {};
+    filtered.forEach(fund => {
+      cache[fund.symbol] = marketFundService.getValuation(fund.symbol) || marketData[fund.symbol];
+    });
 
-    // 判断是否有当日估值：realtimeDate 等于今天日期
-    const hasTodayValuationA = valA?.realtimeDate === today;
-    const hasTodayValuationB = valB?.realtimeDate === today;
+    const sorted = filtered.sort((a, b) => {
+      const today = toLocalDateKey(new Date());
 
-    // A类（有当日估值）排在B类（无当日估值）前面
-    if (hasTodayValuationA && !hasTodayValuationB) return -1;
-    if (!hasTodayValuationA && hasTodayValuationB) return 1;
+      const valA = cache[a.symbol];
+      const valB = cache[b.symbol];
 
-    // 同类内部按涨跌幅降序排序（最高涨幅在前）
-    const changeA = valA?.changePercentage ?? -9999;
-    const changeB = valB?.changePercentage ?? -9999;
-    return changeB - changeA;
-  });
+      // 判断是否有当日估值：realtimeDate 等于今天日期
+      const hasTodayValuationA = valA?.realtimeDate === today;
+      const hasTodayValuationB = valB?.realtimeDate === today;
+
+      // A类（有当日估值）排在B类（无当日估值）前面
+      if (hasTodayValuationA && !hasTodayValuationB) return -1;
+      if (!hasTodayValuationA && hasTodayValuationB) return 1;
+
+      // 同类内部按涨跌幅降序排序（最高涨幅在前）
+      const changeA = valA?.changePercentage ?? -9999;
+      const changeB = valB?.changePercentage ?? -9999;
+      return changeB - changeA;
+    });
+
+    return { fundsWithPositions: sorted, valuationCache: cache };
+  }, [portfolio, marketData]);
 
   // 预计算所有基金的上一交易日涨跌幅（避免 N+1 问题）
   const prevDayChangeMap = useMemo(() => {
     const map = new Map<string, number | undefined>();
     for (const fund of fundsWithPositions) {
       const history = fundHistories?.[fund.symbol];
-      const valuation = marketFundService.getValuation(fund.symbol) || marketData[fund.symbol];
+      const valuation = valuationCache[fund.symbol];
       map.set(fund.symbol, getPreviousDayChange(history, valuation?.realtimeDate));
     }
     return map;
-  }, [fundsWithPositions, fundHistories, marketData]);
+  }, [fundsWithPositions, valuationCache, fundHistories]);
 
   const handleOperationChange = (fundSymbol: string, operation: '买入' | '卖出' | '不操作') => {
     setDraftData(prev => ({
@@ -770,11 +782,8 @@ const InvestmentDraftModal: React.FC<InvestmentDraftModalProps> = ({
     const amount = parseFloat(entry.amount);
     if (isNaN(amount)) return '-';
 
-    // Use enhanced valuation from marketFundService which includes validation logic
-    const enhancedValuation = marketFundService.getValuation(fundSymbol);
-
-    // If enhanced valuation is not available, fallback to marketData
-    const valuation = enhancedValuation || marketData[fundSymbol];
+    // Use cached valuation data for consistency
+    const valuation = valuationCache[fundSymbol];
 
     if (!valuation || !valuation.currentPrice) return '-';
 
@@ -783,11 +792,8 @@ const InvestmentDraftModal: React.FC<InvestmentDraftModalProps> = ({
   };
 
   const getGainLoss = (fundSymbol: string): string => {
-    // Use enhanced valuation from marketFundService which includes validation logic
-    const enhancedValuation = marketFundService.getValuation(fundSymbol);
-
-    // If enhanced valuation is not available, fallback to marketData
-    const valuation = enhancedValuation || marketData[fundSymbol];
+    // Use cached valuation data for consistency
+    const valuation = valuationCache[fundSymbol];
 
     if (!valuation) return '-';
 
@@ -805,11 +811,8 @@ const InvestmentDraftModal: React.FC<InvestmentDraftModalProps> = ({
   };
 
   const getGainLossColor = (fundSymbol: string): string => {
-    // Use enhanced valuation from marketFundService which includes validation logic
-    const enhancedValuation = marketFundService.getValuation(fundSymbol);
-
-    // If enhanced valuation is not available, fallback to marketData
-    const valuation = enhancedValuation || marketData[fundSymbol];
+    // Use cached valuation data for consistency
+    const valuation = valuationCache[fundSymbol];
 
     if (!valuation) return 'text-gray-400';
 
@@ -961,10 +964,6 @@ const InvestmentDraftModal: React.FC<InvestmentDraftModalProps> = ({
                     fundsWithPositions.map((fund, index) => {
                       const entry = draftData[fund.symbol] || { operation: '不操作', amount: '' };
 
-                      // Try to get enhanced valuation from marketFundService first, fallback to marketData
-                      const enhancedValuation = marketFundService.getValuation(fund.symbol);
-                      const valuation = enhancedValuation || marketData[fund.symbol];
-
                       return (
                         <tr key={fund.symbol} className={`border-b border-gray-50 hover:bg-gray-50 transition-colors ${index % 2 === 0 ? 'bg-white' : 'bg-gray-25'}`} style={{ height: '40px' }}>
                           {/* 复选框列 - 只有有金额的行才能选中 */}
@@ -1021,11 +1020,8 @@ const InvestmentDraftModal: React.FC<InvestmentDraftModalProps> = ({
                           <td className="px-2 py-1 text-left text-xs">
                             <div className="truncate flex items-center" style={{ maxWidth: '90px' }}>
                               {(() => {
-                                // Use enhanced valuation from marketFundService which includes validation logic
-                                const enhancedValuation = marketFundService.getValuation(fund.symbol);
-
-                                // If enhanced valuation is not available, fallback to marketData
-                                const valuation = enhancedValuation || marketData[fund.symbol];
+                                // Use cached valuation data for consistency
+                                const valuation = valuationCache[fund.symbol];
 
                                 if (valuation && valuation.currentPrice) {
                                   return (
@@ -1046,11 +1042,8 @@ const InvestmentDraftModal: React.FC<InvestmentDraftModalProps> = ({
                           <td className="px-2 py-1 text-left text-xs">
                             <div className="truncate flex items-center" style={{ maxWidth: '90px' }}>
                               {(() => {
-                                // Use enhanced valuation from marketFundService which includes validation logic
-                                const enhancedValuation = marketFundService.getValuation(fund.symbol);
-
-                                // If enhanced valuation is not available, fallback to marketData
-                                const valuation = enhancedValuation || marketData[fund.symbol];
+                                // Use cached valuation data for consistency
+                                const valuation = valuationCache[fund.symbol];
 
                                 if (valuation && valuation.previousPrice) {
                                   return (
