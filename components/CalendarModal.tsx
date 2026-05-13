@@ -1,7 +1,5 @@
 // components/CalendarModal.tsx
 import React, { useState, useMemo, useRef } from 'react';
-import { zhCN } from 'date-fns/locale';
-import { CalendarData } from '../types';
 import { getEventsForYear, getUpcomingEvents, isHolidayType } from '../services/calendarService';
 import { toLocalDateKey } from '../utils/priceResolver';
 import CalendarEventTooltip, { CalendarEventItem } from './CalendarEventTooltip';
@@ -34,7 +32,7 @@ export const CalendarModal: React.FC<CalendarModalProps> = ({
   const [currentYear, setCurrentYear] = useState(today.getFullYear());
   const [viewMonth, setViewMonth] = useState(today.getMonth());
   const [tooltipData, setTooltipData] = useState<{ x: number; y: number; events: CalendarEventItem[]; dateStr: string } | null>(null);
-  const hideTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const gridRef = useRef<HTMLDivElement | null>(null);
 
   // 月份名称
   const months = ['一月', '二月', '三月', '四月', '五月', '六月', '七月', '八月', '九月', '十月', '十一月', '十二月'];
@@ -98,50 +96,52 @@ export const CalendarModal: React.FC<CalendarModalProps> = ({
       currentYear === today.getFullYear();
   };
 
-  // 处理鼠标进入 - 清除之前的timeout并显示tooltip
-  const handleMouseEnter = (day: number, e: React.MouseEvent) => {
-    if (day === 0) return;
-    // 清除可能存在的隐藏timeout
-    if (hideTimeoutRef.current) {
-      clearTimeout(hideTimeoutRef.current);
-      hideTimeoutRef.current = null;
-    }
-    const events = getEventsForDay(day);
-    const dateStr = makeDateStr(currentYear, viewMonth, day);
+  // 处理鼠标移动 - 检测鼠标所在格子并显示tooltip
+  const handleMouseMove = (e: React.MouseEvent) => {
+    if (!gridRef.current) return;
 
-    // 如果该日期没有事件，不显示tooltip
-    if (events.length === 0) {
+    const gridRect = gridRef.current.getBoundingClientRect();
+    const cellWidth = gridRect.width / 7;
+    const cellHeight = gridRect.height / Math.ceil((firstDayOfMonth + daysInMonth) / 7);
+
+    // 计算鼠标所在的格子索引
+    const col = Math.floor((e.clientX - gridRect.left) / cellWidth);
+    const row = Math.floor((e.clientY - gridRect.top) / cellHeight);
+
+    if (col < 0 || col >= 7 || row < 0) {
+      setTooltipData(null);
       return;
     }
 
-    // 使用 e.currentTarget 获取格子元素，而不是 e.target（可能是子元素）
-    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+    const cellIndex = row * 7 + col;
+    const dayInfo = calendarDays[cellIndex];
+    const day = dayInfo?.date || 0;
+
+    if (day === 0 || !dayInfo.isCurrentMonth) {
+      setTooltipData(null);
+      return;
+    }
+
+    const events = getEventsForDay(day);
+    if (events.length === 0) {
+      setTooltipData(null);
+      return;
+    }
+
+    const dateStr = makeDateStr(currentYear, viewMonth, day);
+    const cellLeft = gridRect.left + col * cellWidth;
+    const cellTop = gridRect.top + row * cellHeight;
+
     setTooltipData({
-      x: rect.left + rect.width / 2,
-      y: rect.top,
+      x: cellLeft + 5,
+      y: cellTop + 5,
       events,
       dateStr
     });
   };
 
-  // 处理鼠标离开 - 使用延迟隐藏
-  const handleMouseLeave = () => {
-    // 延迟500ms后隐藏，让鼠标有时间移动到tooltip上
-    hideTimeoutRef.current = setTimeout(() => {
-      setTooltipData(null);
-    }, 500);
-  };
-
-  // 处理鼠标进入tooltip - 清除隐藏timeout
-  const handleTooltipMouseEnter = () => {
-    if (hideTimeoutRef.current) {
-      clearTimeout(hideTimeoutRef.current);
-      hideTimeoutRef.current = null;
-    }
-  };
-
-  // 处理鼠标离开tooltip - 立即隐藏
-  const handleTooltipMouseLeave = () => {
+  // 处理鼠标移出格子网格区域
+  const handleGridMouseLeave = () => {
     setTooltipData(null);
   };
 
@@ -266,7 +266,13 @@ export const CalendarModal: React.FC<CalendarModalProps> = ({
           </div>
 
           {/* 日期格子网格 - 根据实际行数显示 */}
-          <div className={`grid grid-cols-7 gap-px bg-gray-200`} style={{ gridTemplateRows: `repeat(${Math.ceil((firstDayOfMonth + daysInMonth) / 7)}, 1fr)` }}>
+          <div
+            ref={gridRef}
+            className={`grid grid-cols-7 gap-px bg-gray-200`}
+            style={{ gridTemplateRows: `repeat(${Math.ceil((firstDayOfMonth + daysInMonth) / 7)}, 1fr)` }}
+            onMouseMove={handleMouseMove}
+            onMouseLeave={handleGridMouseLeave}
+          >
             {calendarDays.map((dayInfo, idx) => {
               const day = dayInfo.date;
               const events = getEventsForDay(day);
@@ -277,8 +283,6 @@ export const CalendarModal: React.FC<CalendarModalProps> = ({
                 <div
                   key={idx}
                   className={`relative bg-white p-1 flex flex-col items-center h-[90px] ${isCurrentMonth ? 'text-gray-800' : 'text-gray-300'} ${isTodayCell ? 'bg-blue-50' : ''}`}
-                  onMouseEnter={(e) => handleMouseEnter(day, e)}
-                  onMouseLeave={handleMouseLeave}
                 >
                   {/* 日期数字 */}
                   <span className={`text-sm ${isTodayCell ? 'font-bold text-blue-600' : ''}`}>
@@ -327,12 +331,10 @@ export const CalendarModal: React.FC<CalendarModalProps> = ({
             style={{
               position: 'fixed',
               left: tooltipData.x,
-              top: tooltipData.y + 10,
-              transform: 'translateX(-50%)',
-              zIndex: 9999
+              top: tooltipData.y,
+              zIndex: 9999,
+              pointerEvents: 'none'
             }}
-            onMouseEnter={handleTooltipMouseEnter}
-            onMouseLeave={handleTooltipMouseLeave}
           />
         )}
       </div>
