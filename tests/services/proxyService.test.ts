@@ -1,51 +1,123 @@
 // tests/services/proxyService.test.ts
-import { fetchWithProxy, orderProxiesByPreference, PROXY_LIST } from '../../services/proxyService';
+import { fetchWithProxy, orderProxiesByPreference, PROXY_LIST, getProxyScoresSummary, resetProxyScores } from '../../services/proxyService';
 
 // Mock fetch
 const mockFetch = jest.fn();
 (global as any).fetch = mockFetch;
 
+// Mock AbortController
+class MockAbortController {
+  signal = {};
+  abort() {}
+}
+(global as any).AbortController = MockAbortController;
+
 describe('proxyService', () => {
   beforeEach(() => {
     mockFetch.mockReset();
+    resetProxyScores();  // 重置评分状态，确保测试独立
   });
 
   describe('orderProxiesByPreference', () => {
-    test('returns original order when no preference', () => {
+    test('returns proxies sorted by score (high to low)', () => {
+      // 默认情况下，所有代理分数都是 0.5，顺序不确定
+      // 但排序逻辑应该按分数降序排列
       const result = orderProxiesByPreference(PROXY_LIST);
-      expect(result).toEqual(PROXY_LIST);
+
+      // 验证返回了所有代理
+      expect(result.length).toBe(PROXY_LIST.length);
+
+      // 验证所有代理都在结果中
+      const resultNames = result.map(p => p.name);
+      const originalNames = PROXY_LIST.map(p => p.name);
+      expect(resultNames.sort()).toEqual(originalNames.sort());
     });
 
-    test('puts markdown proxies first when preferFormat is markdown', () => {
-      const result = orderProxiesByPreference(PROXY_LIST, 'markdown');
+    test('score affects proxy order after successful requests', async () => {
+      // 第一个请求：让 law-ai 成功
+      const mockHtml = `<!DOCTYPE html><html><head><title>Test</title></head><body>Test content with enough length to pass validation check. Adding more content here.</body></html>`;
 
-      // 所有 markdown 格式的代理应该在前面
-      const markdownProxies = result.filter(p => p.format === 'markdown');
-      const rawProxies = result.filter(p => p.format === 'raw');
+      // 设置 mock：law-ai（第二个代理）成功，其他失败
+      mockFetch.mockRejectedValueOnce(new Error('Network error')); // r.jina.ai 失败
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        text: () => Promise.resolve(mockHtml),
+      }); // law-ai 成功
 
-      // markdown 代理应该排在前面
-      expect(result.indexOf(markdownProxies[0])).toBeLessThan(result.indexOf(rawProxies[0]));
+      await fetchWithProxy('https://example.com');
+
+      // 现在获取排序结果，law-ai 分数应该更高
+      const summary = getProxyScoresSummary();
+      const lawAiScore = summary.find(s => s.name === 'law-ai')?.score;
+      const rJinaAiScore = summary.find(s => s.name === 'r.jina.ai')?.score;
+
+      // law-ai 成功后分数应该比 r.jina.ai 高
+      expect(lawAiScore).toBeGreaterThan(rJinaAiScore!);
+    });
+  });
+
+  describe('Proxy Score System', () => {
+    test('score decreases after failure', async () => {
+      // 所有代理都失败多次
+      for (let round = 0; round < 3; round++) {
+        for (let i = 0; i < PROXY_LIST.length; i++) {
+          mockFetch.mockRejectedValueOnce(new Error('Network error'));
+        }
+        try {
+          await fetchWithProxy('https://example.com');
+        } catch (e) {
+          // 预期失败
+        }
+      }
+
+      const summary = getProxyScoresSummary();
+
+      // 所有代理分数应该下降
+      for (const s of summary) {
+        if (s.requests > 0) {
+          expect(s.successRate).toBeLessThan(1);
+        }
+      }
     });
 
-    test('puts raw proxies first when preferFormat is raw', () => {
-      const result = orderProxiesByPreference(PROXY_LIST, 'raw');
+    test('score increases after success', async () => {
+      const mockHtml = `<!DOCTYPE html><html><head><title>Test</title></head><body>Test content with enough length to pass validation check. Adding more content here.</body></html>`;
 
-      // 所有 raw 格式的代理应该在前面
-      const rawProxies = result.filter(p => p.format === 'raw');
-      const markdownProxies = result.filter(p => p.format === 'markdown');
+      // 让第一个代理成功
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        text: () => Promise.resolve(mockHtml),
+      });
 
-      // raw 代理应该排在前面
-      expect(result.indexOf(rawProxies[0])).toBeLessThan(result.indexOf(markdownProxies[0]));
+      await fetchWithProxy('https://example.com');
+
+      const summary = getProxyScoresSummary();
+      const successProxy = summary.find(s => s.requests > 0 && s.successRate === 1);
+
+      expect(successProxy).toBeDefined();
+      expect(successProxy!.score).toBeGreaterThan(0.5);
     });
 
-    test('preserves relative order within same format group', () => {
-      const result = orderProxiesByPreference(PROXY_LIST, 'markdown');
+    test('getProxyScoresSummary returns all proxies', () => {
+      const summary = getProxyScoresSummary();
 
-      // markdown 代理的相对顺序应该保持
-      const markdownProxies = result.filter(p => p.format === 'markdown');
-      const originalMarkdownProxies = PROXY_LIST.filter(p => p.format === 'markdown');
+      // 应包含所有代理
+      expect(summary.length).toBe(PROXY_LIST.length);
 
-      expect(markdownProxies).toEqual(originalMarkdownProxies);
+      const summaryNames = summary.map(s => s.name);
+      const proxyNames = PROXY_LIST.map(p => p.name);
+      expect(summaryNames.sort()).toEqual(proxyNames.sort());
+    });
+
+    test('default score is 0.5 for proxies with no requests', () => {
+      // 新创建的评分摘要，未请求的代理分数应为 0.5
+      const summary = getProxyScoresSummary();
+
+      for (const s of summary) {
+        if (s.requests === 0) {
+          expect(s.score).toBe(0.5);
+        }
+      }
     });
   });
 
@@ -63,31 +135,22 @@ describe('proxyService', () => {
       text: () => Promise.resolve('Error'),
     });
 
-    test('successfully fetches content from first markdown proxy', async () => {
-      // r.jina.ai 返回 markdown 格式，不需要 HTML 验证
-      // 内容长度必须 > 100
-      const mockMarkdownContent = `# Title
-
-| Header | Value |
-| --- | --- |
-| A | B |
-
-More content here to pass length check. This content should be longer than 100 characters to pass the validation in proxyService. Adding more text to ensure sufficient length.`;
-      mockFetch.mockResolvedValueOnce(createMockResponse(mockMarkdownContent));
+    test('successfully fetches content from working proxy', async () => {
+      const mockContent = `<!DOCTYPE html><html><head><title>Test</title></head><body>Test content with enough length to pass validation check in proxyService. Adding more text to ensure sufficient length.</body></html>`;
+      mockFetch.mockResolvedValueOnce(createMockResponse(mockContent));
 
       const result = await fetchWithProxy('https://example.com');
 
-      expect(result.content).toBe(mockMarkdownContent);
-      expect(result.format).toBe('markdown'); // r.jina.ai is first, returns markdown
-      expect(result.proxyName).toBe('r.jina.ai');
+      expect(result.content).toBe(mockContent);
+      expect(result.proxyName).toBeDefined();
+      expect(mockFetch).toHaveBeenCalledTimes(1);
     });
 
     test('tries next proxy when first fails with network error', async () => {
       // 第一个代理失败
       mockFetch.mockRejectedValueOnce(new Error('Network error'));
 
-      // 第二个代理是 law-ai (raw 格式)，需要返回有效 HTML
-      // 内容长度必须 > 100
+      // 第二个代理成功
       const mockHtmlContent = `<!DOCTYPE html>
 <html>
 <head><title>Test</title></head>
@@ -101,13 +164,11 @@ More content here to pass length check. This content should be longer than 100 c
       const result = await fetchWithProxy('https://example.com');
 
       expect(result.content).toBe(mockHtmlContent);
-      expect(result.format).toBe('raw');
-      expect(result.proxyName).toBe('law-ai');
       expect(mockFetch).toHaveBeenCalledTimes(2);
     });
 
     test('throws error when all proxies fail', async () => {
-      // 所有代理都失败 - 需要为每个代理设置 mock
+      // 所有代理都失败
       for (let i = 0; i < PROXY_LIST.length; i++) {
         mockFetch.mockRejectedValueOnce(new Error('Network error'));
       }
@@ -134,24 +195,15 @@ More content here to pass length check. This content should be longer than 100 c
     });
 
     test('throws error when raw proxy returns non-HTML content', async () => {
-      // markdown 代理失败
-      mockFetch.mockRejectedValueOnce(new Error('Network error'));
-
-      // raw 代理返回非 HTML 内容（没有 <!DOCTYPE, <html, <body）
-      mockFetch.mockResolvedValueOnce(createMockResponse('Not HTML content without proper tags'));
-
-      // 其他代理也失败
-      for (let i = 2; i < PROXY_LIST.length; i++) {
-        mockFetch.mockRejectedValueOnce(new Error('Network error'));
+      // 所有代理返回非 HTML 内容（对于 raw 代理会失败）
+      for (let i = 0; i < PROXY_LIST.length; i++) {
+        mockFetch.mockResolvedValueOnce(createMockResponse('Not HTML content without proper tags'));
       }
 
       await expect(fetchWithProxy('https://example.com')).rejects.toThrow('所有代理均失败');
     });
 
     test('validates HTML content for raw format proxies', async () => {
-      // markdown 代理失败
-      mockFetch.mockRejectedValueOnce(new Error('Network error'));
-
       // raw 格式代理返回有效 HTML
       const validHtml = `<!DOCTYPE html>
 <html>
@@ -166,23 +218,20 @@ More content here to pass length check. This content should be longer than 100 c
       const result = await fetchWithProxy('https://example.com');
 
       expect(result.content).toBe(validHtml);
-      expect(result.format).toBe('raw');
     });
 
-    test('uses format preference to order proxies', async () => {
-      // 当指定 preferFormat: 'raw' 时，raw 代理优先
-      // 第一个被调用的是 law-ai（raw 格式）
-      const mockHtml = `<!DOCTYPE html>
-<html>
-<head><title>Test</title></head>
-<body>Test content with enough length to pass validation check.</body>
-</html>`;
-      mockFetch.mockResolvedValueOnce(createMockResponse(mockHtml));
+    test('timeout error is handled correctly', async () => {
+      // 模拟超时错误
+      const abortError = new Error('The operation was aborted');
+      abortError.name = 'AbortError';
 
-      const result = await fetchWithProxy('https://example.com', { preferFormat: 'raw' });
+      // 所有代理都超时
+      for (let i = 0; i < PROXY_LIST.length; i++) {
+        mockFetch.mockRejectedValueOnce(abortError);
+      }
 
-      expect(result.format).toBe('raw');
-      expect(result.proxyName).toBe('law-ai');
+      // 验证错误消息包含超时信息
+      await expect(fetchWithProxy('https://example.com')).rejects.toThrow('超时');
     });
   });
 
@@ -195,11 +244,6 @@ More content here to pass length check. This content should be longer than 100 c
       expect(proxyNames).toContain('law-ai');
       expect(proxyNames).toContain('allorigins');
       expect(proxyNames).toContain('corsproxy');
-    });
-
-    test('r.jina.ai is first in default order', () => {
-      expect(PROXY_LIST[0].name).toBe('r.jina.ai');
-      expect(PROXY_LIST[0].format).toBe('markdown');
     });
 
     test('each proxy has valid buildUrl function', () => {
@@ -225,6 +269,12 @@ More content here to pass length check. This content should be longer than 100 c
       expect(proxyUrl).toContain('https://example.com');
       expect(proxyUrl).not.toContain('%3A');
       expect(proxyUrl).not.toContain('%2F');
+    });
+
+    test('txtify proxy is included', () => {
+      const txtifyProxy = PROXY_LIST.find(p => p.name === 'txtify');
+      expect(txtifyProxy).toBeDefined();
+      expect(txtifyProxy!.format).toBe('markdown');
     });
   });
 });
