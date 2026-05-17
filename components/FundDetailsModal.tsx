@@ -25,6 +25,7 @@ import { prepareChartData } from '../utils/chartDataHelper';
 import { computePositionSharesByDate, prepareVolumeBars } from '../utils/tradeVolumeHelper';
 import { isFeatureEnabled } from '../services/systemConfigService';
 import InitialPriceAdjustModal from './InitialPriceAdjustModal';
+import { buildCashFlows, computeXIRR, computeSimpleAnnualizedReturn } from '../utils/xirrHelper';
 
 interface FundDetailsModalProps {
   data: ValuationData;
@@ -884,6 +885,67 @@ export const FundDetailsModal: React.FC<FundDetailsModalProps> = ({ data, onClos
       return computeAvgCostPrice(data.symbol, tradeList);
     }, [data.symbol, tradeList, initialPrice]);
 
+    // 计算累计收益率（简单年化收益率）
+    // 返回对象：shouldShow 表示是否显示，value 为 null 时显示 "—"
+    const cumulativeReturn = useMemo((): { shouldShow: boolean; value: number | null } => {
+      // 必须配置满仓份额才显示
+      if (!fullCapacity || fullCapacity <= 0) {
+        return { shouldShow: false, value: null };
+      }
+
+      // 既无初始仓位也无交易记录 → 显示 "—"
+      if (initialPosition <= 0 && (!tradeList || tradeList.length === 0)) {
+        return { shouldShow: true, value: null };
+      }
+
+      // 确定当前日期：取 max(realtimeDate, netWorthDate)
+      const realtimeDateStr = valuationData.realtimeDate && valuationData.realtimeDate !== '---' ? valuationData.realtimeDate : null;
+      const netWorthDateStr = valuationData.netWorthDate && valuationData.netWorthDate !== '---' ? valuationData.netWorthDate : null;
+
+      let currentDate: string | null = null;
+      let currentPrice: number = 0;
+
+      if (realtimeDateStr && netWorthDateStr) {
+        // 取两者中较晚的日期
+        if (realtimeDateStr > netWorthDateStr) {
+          currentDate = realtimeDateStr;
+          currentPrice = valuationData.currentPrice;
+        } else {
+          currentDate = netWorthDateStr;
+          currentPrice = valuationData.previousPrice;
+        }
+      } else if (realtimeDateStr) {
+        currentDate = realtimeDateStr;
+        currentPrice = valuationData.currentPrice;
+      } else if (netWorthDateStr) {
+        currentDate = netWorthDateStr;
+        currentPrice = valuationData.previousPrice;
+      }
+
+      if (!currentDate || !currentPrice || currentPrice <= 0) {
+        return { shouldShow: true, value: null }; // 无法计算 → 显示 "—"
+      }
+
+      const cashFlows = buildCashFlows({
+        initialPosition,
+        initialPrice,
+        startDate,
+        trades: tradeList || [],
+        currentShares: totalShares,
+        currentPrice,
+        currentDate
+      });
+
+      // 现金流少于 2 笔 → 显示 "—"
+      if (!cashFlows || cashFlows.length < 2) {
+        return { shouldShow: true, value: null };
+      }
+
+      const result = computeSimpleAnnualizedReturn(cashFlows);
+      // 年化收益率计算失败 → 显示 "—"
+      return { shouldShow: true, value: result };
+    }, [fullCapacity, initialPosition, tradeList, startDate, initialPrice, totalShares, valuationData.realtimeDate, valuationData.netWorthDate, valuationData.currentPrice, valuationData.previousPrice]);
+
     // 计算仓位占比
     const holdingsPositionRate = (fullCapacity > 0 && typeof totalShares === 'number')
       ? (totalShares / fullCapacity) * 100
@@ -1034,6 +1096,9 @@ export const FundDetailsModal: React.FC<FundDetailsModalProps> = ({ data, onClos
                <span className="whitespace-nowrap">盈利：<span className={`font-medium ${typeof profit === 'number' ? (profit < 0 ? 'text-green-600' : profit > 0 ? 'text-red-600' : 'text-gray-600') : ''}`}>{(typeof profit === 'number') ? formatCurrency(profit, 2) : '—'}</span></span>
                {avgCostPrice !== null && (
                  <span className="whitespace-nowrap">成本价：<span className="font-medium">{fmtNav(avgCostPrice)}</span></span>
+               )}
+               {cumulativeReturn.shouldShow && (
+                <span className="whitespace-nowrap">累计收益率：<span className={`font-medium ${cumulativeReturn.value === null ? 'text-gray-600' : cumulativeReturn.value >= 0 ? 'text-red-600' : 'text-green-600'}`}>{cumulativeReturn.value !== null ? formatPercent(cumulativeReturn.value, 2) : '—'}</span></span>
                )}
              </div>
            ) : null}
