@@ -2,9 +2,20 @@ import { ValuationData } from '../types';
 import { AIConfiguration, getAIConfig } from './aiConfigService';
 import { FundAIQueryContext, IndexAIQueryContext } from '../types/aiServiceTypes';
 import { fillTemplateVariables as fillMarketTemplateVariables, getById, TEMPLATE_IDS } from './promptTemplateService';
+import { fillTemplate, TemplateContext, FillTemplateResult } from '../utils/templateFiller';
+import { PromptTemplate } from '../types/promptTemplateTypes';
 
 // Re-export PromptTemplate for backward compatibility
 export type { PromptTemplate } from '../types/promptTemplateTypes';
+
+/**
+ * 扩展的 AI 配置（包含联网搜索能力）
+ */
+export interface AIConfigurationWithWebSearch extends AIConfiguration {
+  webSearch?: {
+    params: Record<string, any>;
+  };
+}
 
 export interface AIQueryContext {
   fundName?: string;
@@ -395,4 +406,82 @@ export async function queryAIWithMarketTemplate(
   const filledPrompt = fillMarketTemplateVariables(template.template, effectiveContext);
 
   return queryAI(config, filledPrompt, context as AIQueryContext, onChunk, template.maxTokens, template.temperature);
+}
+
+/**
+ * 判断是否启用联网搜索
+ * 规则：AI配置有webSearch && 模板要求enableWebSearch
+ */
+function shouldEnableWebSearch(
+  config: AIConfigurationWithWebSearch,
+  template: PromptTemplate
+): boolean {
+  return !!config.webSearch && !!template.enableWebSearch;
+}
+
+/**
+ * 使用模板和联网搜索发送AI查询
+ * @param config AI配置
+ * @param template 提示词模板
+ * @param context 模板上下文（占位符值）
+ * @param onChunk 可选的流式回调
+ * @returns AI响应
+ */
+export async function queryAIWithWebSearch(
+  config: AIConfigurationWithWebSearch,
+  template: PromptTemplate,
+  context: TemplateContext,
+  onChunk?: StreamCallback
+): Promise<AIResponse> {
+  try {
+    const promptResult = fillTemplate(template.template, context);
+    if (!promptResult.success) {
+      console.warn(`提示词模板 "${template.name}" ${promptResult.error}`);
+    }
+    const prompt = promptResult.success ? promptResult.content : template.template;
+
+    const enableWebSearch = shouldEnableWebSearch(config, template);
+
+    const requestBody: {
+      model: string;
+      messages: Array<{ role: string; content: string }>;
+      stream: boolean;
+      temperature: number;
+      max_tokens: number;
+      tools?: Array<{ type: string; web_search: Record<string, any> }>;
+    } = {
+      model: config.model || 'gpt-4',
+      messages: [{ role: 'user', content: prompt }],
+      stream: true,
+      temperature: template.temperature ?? 0.7,
+      max_tokens: template.maxTokens ?? 2000,
+    };
+
+    if (enableWebSearch && config.webSearch) {
+      requestBody.tools = [{
+        type: 'web_search',
+        web_search: {
+          enable: true,
+          ...config.webSearch.params
+        }
+      }];
+    }
+
+    const response = await fetchWithRetry(config.apiEndpoint, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${config.apiKey}`,
+      },
+      body: JSON.stringify(requestBody)
+    });
+
+    return processStreamResponse(response, onChunk);
+  } catch (error: any) {
+    return {
+      content: `Error communicating with AI service: ${error.message}`,
+      success: false,
+      error: error.message
+    };
+  }
 }

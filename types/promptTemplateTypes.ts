@@ -12,4 +12,7 @@ export interface PromptTemplate {
   enabled?: boolean;    // 可选，默认true
   maxTokens?: number;   // 可选，默认使用系统默认值
   temperature?: number; // 可选，默认使用系统默认值
+  // 联网搜索配置
+  enableWebSearch?: boolean;  // 可选，是否需要联网搜索，默认false
+  webSearchHint?: string;     // 可选，联网搜索提示词（用于两段式搜索场景）
 }

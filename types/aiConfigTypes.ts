@@ -26,4 +26,8 @@ export interface AITemplate {
   name: string;
   apiEndpoint: string;
   model: string;
+  // 联网搜索配置（可选，无则表示不支持）
+  webSearch?: {
+    params: Record<string, any>;  // 提供商特定的联网搜索参数
+  };
 }

@@ -43,7 +43,7 @@ interface PromptTemplateGroup {
   id: string;
   name: string;
   description: string;
-  templates: Array<{ enabled: boolean; template: string }>;
+  templates: Array<{ enabled: boolean; template: string; enableWebSearch?: boolean; webSearchHint?: string }>;
 }
 
 interface TemplateConfigFile {
@@ -92,6 +92,8 @@ async function loadConfigFile(path: string): Promise<void> {
           template: enabledTemplate.template,
           description: group.description,
           enabled: true,
+          enableWebSearch: enabledTemplate.enableWebSearch,
+          webSearchHint: enabledTemplate.webSearchHint,
         });
       }
     }

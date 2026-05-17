@@ -9,7 +9,9 @@
     },
     {
       "enabled": true,
-      "template": "请你扮演一个专业的投资顾问，详细分析这只基金（基金代码：{code}，基金名称：{name}）。\n\n基金基本信息：\n- 满仓份额：{fullCapacity}\n- 初始份额：{initialCapacity}\n- 起始日期：{initialDate}\n- 初始价格：{initialPrice}\n\n当前行情：\n- 当前价格：{currentPrice}（{currentDate}）\n- 前值：{previousPrice}（{previousDate}）\n- 涨跌幅：{rate}\n\n持仓情况：\n- 市场价值：{marketValue}\n- 当前仓位：{position} 份\n- 仓位占比：{positionRate}\n- 整体盈利：{profit}\n- 平均成本价：{avgCostPrice}\n\n交易历史：\n{history}\n\n请结合当前国内外市场情况、政治经济形势、行业发展等，帮我分析这只基金的表现、未来的机会和潜在风险。"
+      "template": "请你扮演一个专业的投资顾问，详细分析这只基金（基金代码：{code}，基金名称：{name}）。\n\n基金基本信息：\n- 满仓份额：{fullCapacity}\n- 初始份额：{initialCapacity}\n- 起始日期：{initialDate}\n- 初始价格：{initialPrice}\n\n当前行情：\n- 当前价格：{currentPrice}（{currentDate}）\n- 前值：{previousPrice}（{previousDate}）\n- 涨跌幅：{rate}\n\n持仓情况：\n- 市场价值：{marketValue}\n- 当前仓位：{position} 份\n- 仓位占比：{positionRate}\n- 整体盈利：{profit}\n- 平均成本价：{avgCostPrice}\n\n交易历史：\n{history}\n\n请结合当前国内外市场情况、政治经济形势、行业发展等，帮我分析这只基金的表现、未来的机会和潜在风险。",
+      "enableWebSearch": true,
+      "webSearchHint": "搜索{name}({code}){currentDate}相关行业财经新闻"
     },
     {
       "enabled": false,

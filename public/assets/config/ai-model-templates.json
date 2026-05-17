@@ -37,6 +37,20 @@
       "model": "deepseek-chat"
     },
     {
+      "id": "zhipu-glm",
+      "name": "智谱AI GLM-4",
+      "apiEndpoint": "https://open.bigmodel.cn/api/paas/v4/chat/completions",
+      "model": "glm-4-flash",
+      "webSearch": {
+        "params": {
+          "search_engine": "search_pro",
+          "search_result": true,
+          "count": 5,
+          "content_size": "medium"
+        }
+      }
+    },
+    {
       "id": "custom-template",
       "name": "自定义模型配置",
       "apiEndpoint": "",

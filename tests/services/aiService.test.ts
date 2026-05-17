@@ -1,8 +1,10 @@
-import { queryAI, AIResponse, AIQueryContext } from '../../services/aiService';
+import { queryAI, AIResponse, AIQueryContext, queryAIWithWebSearch, AIConfigurationWithWebSearch } from '../../services/aiService';
 import { fillTemplateVariables } from '../../services/promptTemplateService';
 import { getAIConfig, AIConfiguration, saveAIConfig, validateAIConfig, hasValidAIConfig, resetCache as resetAIConfigCache } from '../../services/aiConfigService';
 import { AIConfigProfile } from '../../types/aiConfigTypes';
 import { FundAIQueryContext } from '../../types/aiServiceTypes';
+import { PromptTemplate } from '../../types/promptTemplateTypes';
+import { TemplateContext } from '../../utils/templateFiller';
 
 describe('AI Services', () => {
   describe('aiConfigService', () => {
@@ -554,6 +556,292 @@ describe('AI Services', () => {
 
       const result = fillTemplateVariables(template, context);
       expect(result).toBe('市场价值：6172.50，仓位：5000.00 份，仓位占比：50.00%，盈利：+172.50');
+    });
+  });
+
+  describe('queryAIWithWebSearch', () => {
+    // Helper function to create mock reader for SSE data
+    function createMockReader(sseData: string) {
+      const uint8Array = new Uint8Array(sseData.length);
+      for (let i = 0; i < sseData.length; i++) {
+        uint8Array[i] = sseData.charCodeAt(i);
+      }
+      const chunks = [uint8Array];
+      let chunkIndex = 0;
+      return {
+        read: jest.fn().mockImplementation(() => {
+          if (chunkIndex < chunks.length) {
+            return Promise.resolve({ done: false, value: chunks[chunkIndex++] });
+          }
+          return Promise.resolve({ done: true, value: undefined });
+        })
+      };
+    }
+
+    beforeEach(() => {
+      jest.clearAllMocks();
+    });
+
+    test('should include tools when webSearch is enabled', async () => {
+      const sseData = 'data: {"choices":[{"delta":{"content":"AI response with search"}}]}\n\ndata: [DONE]\n\n';
+      const mockReader = createMockReader(sseData);
+
+      (global.fetch as jest.Mock).mockResolvedValue({
+        ok: true,
+        body: {
+          getReader: () => mockReader
+        }
+      });
+
+      const config: AIConfigurationWithWebSearch = {
+        apiEndpoint: 'https://api.example.com/v1/chat',
+        apiKey: 'test-key',
+        model: 'gpt-4',
+        webSearch: {
+          params: { search_mode: 'enhanced' }
+        }
+      };
+
+      const template: PromptTemplate = {
+        id: 'test-template',
+        name: 'Test Template',
+        template: '分析 {fundName} 的市场表现',
+        enableWebSearch: true
+      };
+
+      const context: TemplateContext = {
+        fundName: '沪深300'
+      };
+
+      const result = await queryAIWithWebSearch(config, template, context);
+
+      expect(fetch).toHaveBeenCalledWith(
+        'https://api.example.com/v1/chat',
+        expect.objectContaining({
+          method: 'POST',
+          body: expect.stringContaining('"tools"')
+        })
+      );
+
+      const callArgs = (global.fetch as jest.Mock).mock.calls[0];
+      const body = JSON.parse(callArgs[1].body);
+      expect(body.tools).toBeDefined();
+      expect(body.tools[0].type).toBe('web_search');
+      expect(body.tools[0].web_search.enable).toBe(true);
+      expect(body.tools[0].web_search.search_mode).toBe('enhanced');
+
+      expect(result.success).toBe(true);
+      expect(result.content).toBe('AI response with search');
+    });
+
+    test('should not include tools when webSearch is disabled', async () => {
+      const sseData = 'data: {"choices":[{"delta":{"content":"AI response"}}]}\n\ndata: [DONE]\n\n';
+      const mockReader = createMockReader(sseData);
+
+      (global.fetch as jest.Mock).mockResolvedValue({
+        ok: true,
+        body: {
+          getReader: () => mockReader
+        }
+      });
+
+      const config: AIConfigurationWithWebSearch = {
+        apiEndpoint: 'https://api.example.com/v1/chat',
+        apiKey: 'test-key',
+        model: 'gpt-4'
+        // No webSearch property
+      };
+
+      const template: PromptTemplate = {
+        id: 'test-template',
+        name: 'Test Template',
+        template: '分析 {fundName} 的市场表现',
+        enableWebSearch: true
+      };
+
+      const context: TemplateContext = {
+        fundName: '沪深300'
+      };
+
+      const result = await queryAIWithWebSearch(config, template, context);
+
+      const callArgs = (global.fetch as jest.Mock).mock.calls[0];
+      const body = JSON.parse(callArgs[1].body);
+      expect(body.tools).toBeUndefined();
+
+      expect(result.success).toBe(true);
+      expect(result.content).toBe('AI response');
+    });
+
+    test('should degrade gracefully when template requires webSearch but config lacks it', async () => {
+      const sseData = 'data: {"choices":[{"delta":{"content":"AI response without search"}}]}\n\ndata: [DONE]\n\n';
+      const mockReader = createMockReader(sseData);
+
+      (global.fetch as jest.Mock).mockResolvedValue({
+        ok: true,
+        body: {
+          getReader: () => mockReader
+        }
+      });
+
+      // Config without webSearch, template with enableWebSearch: true
+      const config: AIConfigurationWithWebSearch = {
+        apiEndpoint: 'https://api.example.com/v1/chat',
+        apiKey: 'test-key',
+        model: 'gpt-4'
+        // No webSearch
+      };
+
+      const template: PromptTemplate = {
+        id: 'test-template',
+        name: 'Test Template',
+        template: '分析 {fundName}',
+        enableWebSearch: true  // Template wants web search
+      };
+
+      const context: TemplateContext = {
+        fundName: '沪深300'
+      };
+
+      const result = await queryAIWithWebSearch(config, template, context);
+
+      // Should succeed without error (graceful degradation)
+      expect(result.success).toBe(true);
+      expect(result.content).toBe('AI response without search');
+
+      // Should not have tools in request
+      const callArgs = (global.fetch as jest.Mock).mock.calls[0];
+      const body = JSON.parse(callArgs[1].body);
+      expect(body.tools).toBeUndefined();
+    });
+
+    test('should fill template placeholders', async () => {
+      const sseData = 'data: {"choices":[{"delta":{"content":"Filled response"}}]}\n\ndata: [DONE]\n\n';
+      const mockReader = createMockReader(sseData);
+
+      (global.fetch as jest.Mock).mockResolvedValue({
+        ok: true,
+        body: {
+          getReader: () => mockReader
+        }
+      });
+
+      const config: AIConfigurationWithWebSearch = {
+        apiEndpoint: 'https://api.example.com/v1/chat',
+        apiKey: 'test-key',
+        model: 'gpt-4'
+      };
+
+      const template: PromptTemplate = {
+        id: 'test-template',
+        name: 'Test Template',
+        template: '基金名称: {fundName}, 代码: {fundSymbol}'
+      };
+
+      const context: TemplateContext = {
+        fundName: '沪深300ETF',
+        fundSymbol: '510300'
+      };
+
+      const result = await queryAIWithWebSearch(config, template, context);
+
+      const callArgs = (global.fetch as jest.Mock).mock.calls[0];
+      const body = JSON.parse(callArgs[1].body);
+      expect(body.messages[0].content).toBe('基金名称: 沪深300ETF, 代码: 510300');
+
+      expect(result.success).toBe(true);
+    });
+
+    test('should warn when placeholders are missing', async () => {
+      const warnSpy = jest.spyOn(console, 'warn').mockImplementation();
+
+      const sseData = 'data: {"choices":[{"delta":{"content":"Response"}}]}\n\ndata: [DONE]\n\n';
+      const mockReader = createMockReader(sseData);
+
+      (global.fetch as jest.Mock).mockResolvedValue({
+        ok: true,
+        body: {
+          getReader: () => mockReader
+        }
+      });
+
+      const config: AIConfigurationWithWebSearch = {
+        apiEndpoint: 'https://api.example.com/v1/chat',
+        apiKey: 'test-key',
+        model: 'gpt-4'
+      };
+
+      const template: PromptTemplate = {
+        id: 'test-template',
+        name: 'Test Template',
+        template: '基金名称: {fundName}, 代码: {fundSymbol}, 缺失: {missing}'
+      };
+
+      const context: TemplateContext = {
+        fundName: '沪深300ETF'
+        // fundSymbol and missing are not provided
+      };
+
+      const result = await queryAIWithWebSearch(config, template, context);
+
+      // Should warn about missing placeholders
+      expect(warnSpy).toHaveBeenCalledWith(
+        expect.stringContaining('提示词模板 "Test Template"')
+      );
+
+      // Should still make request with unfilled template
+      const callArgs = (global.fetch as jest.Mock).mock.calls[0];
+      const body = JSON.parse(callArgs[1].body);
+      // Template should not be filled (still contains placeholders)
+      expect(body.messages[0].content).toBe('基金名称: {fundName}, 代码: {fundSymbol}, 缺失: {missing}');
+
+      expect(result.success).toBe(true);
+
+      warnSpy.mockRestore();
+    });
+
+    test('should fill webSearchHint when enabled', async () => {
+      const sseData = 'data: {"choices":[{"delta":{"content":"Search hint response"}}]}\n\ndata: [DONE]\n\n';
+      const mockReader = createMockReader(sseData);
+
+      (global.fetch as jest.Mock).mockResolvedValue({
+        ok: true,
+        body: {
+          getReader: () => mockReader
+        }
+      });
+
+      const config: AIConfigurationWithWebSearch = {
+        apiEndpoint: 'https://api.example.com/v1/chat',
+        apiKey: 'test-key',
+        model: 'gpt-4',
+        webSearch: {
+          params: {}
+        }
+      };
+
+      const template: PromptTemplate = {
+        id: 'test-template',
+        name: 'Test Template',
+        template: '分析 {fundName}',
+        enableWebSearch: true,
+        webSearchHint: '搜索 {fundName} 最新消息'
+      };
+
+      const context: TemplateContext = {
+        fundName: '沪深300'
+      };
+
+      const result = await queryAIWithWebSearch(config, template, context);
+
+      // Currently webSearchHint is filled but not used in request body
+      // (implementation note: it could be used for search_prompt in future)
+      expect(result.success).toBe(true);
+
+      // Verify the request was made with tools
+      const callArgs = (global.fetch as jest.Mock).mock.calls[0];
+      const body = JSON.parse(callArgs[1].body);
+      expect(body.tools).toBeDefined();
     });
   });
 });

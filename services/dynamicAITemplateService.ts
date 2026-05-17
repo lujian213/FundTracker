@@ -29,6 +29,7 @@ function getDefaultTemplates(): AITemplate[] {
     { id: 'google-gemini', name: 'Google Gemini Pro', apiEndpoint: 'https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent', model: 'gemini-pro' },
     { id: 'ali-qwen', name: '阿里通义千问', apiEndpoint: 'https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions', model: 'qwen-max' },
     { id: 'deepseek', name: 'DeepSeek Chat', apiEndpoint: 'https://api.deepseek.com/chat/completions', model: 'deepseek-chat' },
+    { id: 'zhipu-glm', name: '智谱AI GLM-4', apiEndpoint: 'https://open.bigmodel.cn/api/paas/v4/chat/completions', model: 'glm-4-flash', webSearch: { params: { search_engine: 'search_pro', search_result: true, count: 5, content_size: 'medium' } } },
     { id: 'custom-template', name: '自定义模型配置', apiEndpoint: '', model: 'gpt-4' }
   ];
 }
