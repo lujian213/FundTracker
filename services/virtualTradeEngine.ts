@@ -63,9 +63,6 @@ export function runVirtualTrade(strategy: VirtualStrategy, history: HistoricalPo
   const startNav = byDate[start];
   const initialTotal = round2(opts.initialCash + opts.initialShares * startNav);
 
-  // numeric base unit recommended by PRD: 初始总资产 / 开始日期净值 / 10
-  const baseUnit = Math.floor(initialTotal / startNav / 10) || 1;
-
   let cash = opts.initialCash;
   let shares = opts.initialShares;
 
@@ -89,12 +86,11 @@ export function runVirtualTrade(strategy: VirtualStrategy, history: HistoricalPo
     // context history up to previous day (ascending)
     const histUpToPrev = dates.slice(0, idx).map((dd, j) => ({ date: new Date(dd + ' 00:00').getTime(), value: byDate[dd], equityReturn: 0 } as HistoricalPoint));
 
-    // build strategy context (baseUnit computed above) with transaction history
+    // build strategy context with transaction history
     const ctx: VirtualStrategyContext = {
       history: histUpToPrev,
       cash,
       shares,
-      baseUnit,
       startNav,
       transactionHistory,
       fundConfig: opts.fundConfig,
@@ -180,7 +176,6 @@ export function runVirtualTrade(strategy: VirtualStrategy, history: HistoricalPo
     history: dates.slice(0, lastIdx + 1).map(dd => ({ date: new Date(dd + ' 00:00').getTime(), value: byDate[dd], equityReturn: 0 } as HistoricalPoint)),
     cash,
     shares,
-    baseUnit,
     startNav,
     transactionHistory,
     fundConfig: opts.fundConfig,

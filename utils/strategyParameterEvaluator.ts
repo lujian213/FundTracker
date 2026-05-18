@@ -1,172 +1,87 @@
-// utils/strategyParameterEvaluator.ts
-// Utility to safely evaluate strategy parameters that may contain expressions
+/**
+ * 策略参数计算器
+ * 使用 expr-eval 库进行表达式计算
+ */
 
-export interface StrategyContext {
-  fundConfig?: {
-    maxPosition?: number;
-    initialDate?: string;
-    initialPosition?: number;
-    riskLevel?: 'low' | 'medium' | 'high';
-    category?: string;
-    [key: string]: any;
-  };
-  userConfig?: {
-    globalMaxPosition?: number;
-    riskPreference?: 'conservative' | 'balanced' | 'aggressive';
-    [key: string]: any;
-  };
-  [key: string]: any; // Allow additional properties
-}
+import { Parser } from 'expr-eval';
+import { VirtualStrategyContext, StrategyParam, StrategyParams } from '../types';
+
+const parser = new Parser();
+
+// 表达式解析缓存，避免重复解析相同表达式
+const parseCache = new Map<string, any>();
 
 /**
- * Safely evaluates a parameter value that might be an expression
- * Supports expressions like: '${fundConfig.maxPosition || 100000}'
+ * 计算策略参数值
+ * - 如果 value 是表达式字符串 ${...}，计算表达式
+ * - 否则，按目标类型转换
+ *
+ * @param param 策略参数配置
+ * @param ctx 策略上下文（包含 cash, shares, startNav 等）
+ * @returns 计算后的值（number/bool/string）
  */
-export function evaluateStrategyParameter(paramValue: any, ctx: StrategyContext): any {
-  if (typeof paramValue !== 'string') {
-    return paramValue;
-  }
+export function evaluateStrategyParameter(param: StrategyParam, ctx: VirtualStrategyContext): any {
+  const { value, type } = param;
 
-  // Check if this is an expression in the format ${expression}
-  const expressionMatch = paramValue.match(/^\$\{(.+)\}$/);
-  if (!expressionMatch) {
-    return paramValue;
-  }
-
-  const expression = expressionMatch[1].trim();
-
-  // Evaluate the expression safely by substituting values from context
-  try {
-    // Replace context references with actual values
-    let evaluatedExpression = expression;
-
-    // Handle fundConfig references
-    if (ctx.fundConfig) {
-      for (const [key, value] of Object.entries(ctx.fundConfig)) {
-        const placeholder = `fundConfig.${key}`;
-        if (evaluatedExpression.includes(placeholder)) {
-          if (typeof value === 'string') {
-            evaluatedExpression = evaluatedExpression.replace(
-              new RegExp(placeholder, 'g'),
-              JSON.stringify(value)
-            );
-          } else {
-            evaluatedExpression = evaluatedExpression.replace(
-              new RegExp(placeholder, 'g'),
-              String(value)
-            );
-          }
-        }
-      }
-    }
-
-    // Handle userConfig references
-    if (ctx.userConfig) {
-      for (const [key, value] of Object.entries(ctx.userConfig)) {
-        const placeholder = `userConfig.${key}`;
-        if (evaluatedExpression.includes(placeholder)) {
-          if (typeof value === 'string') {
-            evaluatedExpression = evaluatedExpression.replace(
-              new RegExp(placeholder, 'g'),
-              JSON.stringify(value)
-            );
-          } else {
-            evaluatedExpression = evaluatedExpression.replace(
-              new RegExp(placeholder, 'g'),
-              String(value)
-            );
-          }
-        }
-      }
-    }
-
-    // Handle the '||' operator for defaults by simulating it
-    // This is a simple replacement, for more complex logic we'd need a proper parser
-    if (evaluatedExpression.includes('||')) {
-      const parts = evaluatedExpression.split('||').map(part => part.trim());
-
-      // Try to evaluate the first part
+  // 1. 如果是表达式字符串 ${...}，计算表达式
+  if (typeof value === 'string') {
+    const match = value.match(/^\$\{(.+)\}$/);
+    if (match) {
+      const expr = match[1].trim();
       try {
-        // Use a safe evaluation - we'll implement a simple numeric/string evaluation
-        // For security, only allow simple operations on numbers and strings
-        const firstPartResult = safeEvaluate(parts[0].trim());
-
-        // If the first part is null, undefined, or NaN, use the second part
-        if (firstPartResult != null && !isNaN(firstPartResult as number)) {
-          return firstPartResult;
-        } else {
-          // Try the second part
-          return safeEvaluate(parts[1].trim());
+        // 使用缓存的解析结果
+        let parsed = parseCache.get(expr);
+        if (!parsed) {
+          parsed = parser.parse(expr);
+          parseCache.set(expr, parsed);
         }
-      } catch {
-        // If evaluation fails, try the second part as a fallback
-        return safeEvaluate(parts[1].trim());
+        // 为可选对象提供默认值，防止 undefined 变量错误
+        const evalCtx = {
+          ...ctx,
+          fundConfig: ctx.fundConfig || {},
+          userConfig: ctx.userConfig || {},
+        };
+        const result = parsed.evaluate(evalCtx as Record<string, any>);
+        return convertToType(result, type);
+      } catch (error: any) {
+        throw new Error(`表达式计算失败: "${expr}" - ${error.message}`);
       }
-    } else {
-      // Direct evaluation of the expression
-      return safeEvaluate(evaluatedExpression);
     }
-  } catch (error) {
-    console.warn(`Failed to evaluate strategy parameter expression: ${expression}. Using original value.`, error);
-    return paramValue;
+  }
+
+  // 2. 非表达式，按目标类型转换
+  return convertToType(value, type);
+}
+
+/**
+ * 将值转换为目标类型
+ */
+function convertToType(value: any, type: "string" | "number" | "bool"): any {
+  switch (type) {
+    case "number":
+      if (typeof value === "number") return value;
+      const num = Number(value);
+      if (isNaN(num)) throw new Error(`无法转换为数字: "${value}"`);
+      return num;
+    case "bool":
+      if (typeof value === "boolean") return value;
+      if (value === "true" || value === "1") return true;
+      if (value === "false" || value === "0") return false;
+      return Boolean(value);
+    case "string":
+      return String(value);
   }
 }
 
 /**
- * Safely evaluate a simple expression
- * Only supports basic arithmetic and values from context
+ * 批量计算策略参数
  */
-function safeEvaluate(expression: string): any {
-  // Remove any potentially dangerous characters
-  const sanitized = expression.trim();
-
-  // Check if it's a simple number
-  if (/^[0-9+\-*/.() ]+$/.test(sanitized)) {
-    // Use Function constructor instead of eval for slightly better security
-    // Still risky, but we limit the input to numbers and operators
-    try {
-      // For security, only allow arithmetic operations on numbers
-      return new Function(`return (${sanitized})`)();
-    } catch {
-      throw new Error(`Invalid expression: ${sanitized}`);
-    }
+export function evaluateStrategyParams(params: StrategyParams, ctx: VirtualStrategyContext): Record<string, any> {
+  const result: Record<string, any> = {};
+  for (const [key, param] of Object.entries(params)) {
+    result[key] = evaluateStrategyParameter(param, ctx);
   }
-
-  // If it's a string literal surrounded by quotes
-  if ((sanitized.startsWith('"') && sanitized.endsWith('"')) ||
-      (sanitized.startsWith("'") && sanitized.endsWith("'"))) {
-    return sanitized.slice(1, -1); // Remove quotes
-  }
-
-  // If it's a boolean
-  if (sanitized === 'true') return true;
-  if (sanitized === 'false') return false;
-
-  // If it's null or undefined
-  if (sanitized === 'null') return null;
-  if (sanitized === 'undefined') return undefined;
-
-  // If it looks like a number but wasn't caught by the regex
-  const num = Number(sanitized);
-  if (!isNaN(num)) {
-    return num;
-  }
-
-  throw new Error(`Unsupported expression format: ${sanitized}`);
+  return result;
 }
 
-/**
- * Evaluates all parameters in a strategy config object
- */
-export function evaluateStrategyParams(
-  params: Record<string, any>,
-  ctx: StrategyContext
-): Record<string, any> {
-  const evaluatedParams: Record<string, any> = {};
-
-  for (const [key, value] of Object.entries(params)) {
-    evaluatedParams[key] = evaluateStrategyParameter(value, ctx);
-  }
-
-  return evaluatedParams;
-}
+export default { evaluateStrategyParameter, evaluateStrategyParams };

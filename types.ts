@@ -300,6 +300,15 @@ export interface BatchTradeInput {
 // structured reason for strategy decisions (for hovertip)
 export type StrategyReasonType = 'golden' | 'death' | 'insufficient' | 'info' | 'other';
 
+// Strategy parameter configuration structure
+export interface StrategyParam {
+  value: string | number | boolean;  // 配置值（表达式字符串、数字、布尔）
+  type: "string" | "number" | "bool"; // 最终类型
+  description: string;                // 描述信息，用于界面显示
+}
+
+export type StrategyParams = Record<string, StrategyParam>;
+
 export interface StrategyReason {
   type: StrategyReasonType;
   date?: string; // YYYY-MM-DD when the signal occurred
@@ -344,8 +353,7 @@ export interface VirtualStrategyContext {
   history: HistoricalPoint[];
   cash: number;
   shares: number;
-  // numeric base unit recommended by PRD
-  baseUnit: number;
+  // baseUnit 移除，由策略自行从配置计算
   // startNav (net value on start date)
   startNav: number;
   // optional: transaction history from previous decisions by this strategy

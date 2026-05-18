@@ -1,19 +1,11 @@
 import { VirtualStrategy, VirtualStrategyContext, StrategyReason } from '../../types';
 import { strategyConfig } from '../strategyConfig';
 import { evaluateStrategyParameter } from '../../utils/strategyParameterEvaluator';
+import { extractDateFromTimestamp } from '../../utils/dateTimeUtils';
 
 // Helper function to safely calculate amounts and shares
 function calculateSharesFromFixedAmount(amount: number, nav: number): number {
   return Math.floor(amount / nav * 100) / 100; // Round to 2 decimal places
-}
-
-// Helper function to format date as string for reference
-function toLocalDateKeyFromTimestamp(ts: number): string {
-  const d = new Date(ts);
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, '0');
-  const day = String(d.getDate()).padStart(2, '0');
-  return `${y}-${m}-${day}`;
 }
 
 export const fixedAmountPyramidStrategy: VirtualStrategy = {
@@ -105,7 +97,7 @@ export const fixedAmountPyramidStrategy: VirtualStrategy = {
           const reason: StrategyReason = {
             type: 'other',
             text: `净值${current_nav.toFixed(4)}同时跌破买入阈值${buy_threshold.toFixed(4)}和突破卖出阈值${sell_threshold.toFixed(4)}，根据策略优先买入固定金额${fixedBuyAmount.toFixed(2)}元，约${shares_to_buy.toFixed(2)}份（最大仓位:${maxPosition.toFixed(2)}元）`,
-            date: ctx.history.length > 0 ? toLocalDateKeyFromTimestamp(ctx.history[ctx.history.length - 1].date) : undefined
+            date: ctx.history.length > 0 ? extractDateFromTimestamp(ctx.history[ctx.history.length - 1].date) ?? undefined : undefined
           };
           return {
             action: 'buy',
@@ -122,7 +114,7 @@ export const fixedAmountPyramidStrategy: VirtualStrategy = {
             const reason: StrategyReason = {
               type: 'other',
               text: `净值${current_nav.toFixed(4)}同时跌破买入阈值${buy_threshold.toFixed(4)}和突破卖出阈值${sell_threshold.toFixed(4)}，优先买入但受仓位限制，买入调整后金额${max_buyable_amount.toFixed(2)}元，约${adjusted_shares.toFixed(2)}份（最大仓位:${maxPosition.toFixed(2)}元）`,
-              date: ctx.history.length > 0 ? toLocalDateKeyFromTimestamp(ctx.history[ctx.history.length - 1].date) : undefined
+              date: ctx.history.length > 0 ? extractDateFromTimestamp(ctx.history[ctx.history.length - 1].date) ?? undefined : undefined
             };
             return {
               action: 'buy',
@@ -138,7 +130,7 @@ export const fixedAmountPyramidStrategy: VirtualStrategy = {
               const reason: StrategyReason = {
                 type: 'other',
                 text: `净值${current_nav.toFixed(4)}同时跌破买入阈值${buy_threshold.toFixed(4)}和突破卖出阈值${sell_threshold.toFixed(4)}，买入受限，改为卖出固定金额${fixedSellAmount.toFixed(2)}元，约${actual_shares_to_sell.toFixed(2)}份`,
-                date: ctx.history.length > 0 ? toLocalDateKeyFromTimestamp(ctx.history[ctx.history.length - 1].date) : undefined
+                date: ctx.history.length > 0 ? extractDateFromTimestamp(ctx.history[ctx.history.length - 1].date) ?? undefined : undefined
               };
               return {
                 action: 'sell',
@@ -167,7 +159,7 @@ export const fixedAmountPyramidStrategy: VirtualStrategy = {
           const reason: StrategyReason = {
             type: 'other',
             text: `净值${current_nav.toFixed(4)}同时跌破买入阈值${buy_threshold.toFixed(4)}和突破卖出阈值${sell_threshold.toFixed(4)}，优先买入但资金限制，买入调整后金额${affordable_amount.toFixed(2)}元，约${adjusted_shares.toFixed(2)}份`,
-            date: ctx.history.length > 0 ? toLocalDateKeyFromTimestamp(ctx.history[ctx.history.length - 1].date) : undefined
+            date: ctx.history.length > 0 ? extractDateFromTimestamp(ctx.history[ctx.history.length - 1].date) ?? undefined : undefined
           };
           return {
             action: 'buy',
@@ -204,7 +196,7 @@ export const fixedAmountPyramidStrategy: VirtualStrategy = {
           const reason: StrategyReason = {
             type: 'other',
             text: `净值${current_nav.toFixed(4)}跌破买入阈值${buy_threshold.toFixed(4)}，买入固定金额${fixedBuyAmount.toFixed(2)}元，约${shares_to_buy.toFixed(2)}份（最大仓位:${maxPosition.toFixed(2)}元）`,
-            date: ctx.history.length > 0 ? toLocalDateKeyFromTimestamp(ctx.history[ctx.history.length - 1].date) : undefined
+            date: ctx.history.length > 0 ? extractDateFromTimestamp(ctx.history[ctx.history.length - 1].date) ?? undefined : undefined
           };
           return {
             action: 'buy',
@@ -221,7 +213,7 @@ export const fixedAmountPyramidStrategy: VirtualStrategy = {
             const reason: StrategyReason = {
               type: 'other',
               text: `净值${current_nav.toFixed(4)}跌破买入阈值${buy_threshold.toFixed(4)}，买入但受仓位限制，实际买入${max_buyable_amount.toFixed(2)}元，约${adjusted_shares.toFixed(2)}份（最大仓位:${maxPosition.toFixed(2)}元）`,
-              date: ctx.history.length > 0 ? toLocalDateKeyFromTimestamp(ctx.history[ctx.history.length - 1].date) : undefined
+              date: ctx.history.length > 0 ? extractDateFromTimestamp(ctx.history[ctx.history.length - 1].date) ?? undefined : undefined
             };
             return {
               action: 'buy',
@@ -250,7 +242,7 @@ export const fixedAmountPyramidStrategy: VirtualStrategy = {
           const reason: StrategyReason = {
             type: 'other',
             text: `净值${current_nav.toFixed(4)}跌破买入阈值${buy_threshold.toFixed(4)}，因资金限制买入调整后金额${affordable_amount.toFixed(2)}元，约${adjusted_shares.toFixed(2)}份`,
-            date: ctx.history.length > 0 ? toLocalDateKeyFromTimestamp(ctx.history[ctx.history.length - 1].date) : undefined
+            date: ctx.history.length > 0 ? extractDateFromTimestamp(ctx.history[ctx.history.length - 1].date) ?? undefined : undefined
           };
           return {
             action: 'buy',
@@ -279,7 +271,7 @@ export const fixedAmountPyramidStrategy: VirtualStrategy = {
         const reason: StrategyReason = {
           type: 'other',
           text: `净值${current_nav.toFixed(4)}突破卖出阈值${sell_threshold.toFixed(4)}，卖出固定金额${fixedSellAmount.toFixed(2)}元，约${actual_shares_to_sell.toFixed(2)}份`,
-          date: ctx.history.length > 0 ? toLocalDateKeyFromTimestamp(ctx.history[ctx.history.length - 1].date) : undefined
+          date: ctx.history.length > 0 ? extractDateFromTimestamp(ctx.history[ctx.history.length - 1].date) ?? undefined : undefined
         };
         return {
           action: 'sell',

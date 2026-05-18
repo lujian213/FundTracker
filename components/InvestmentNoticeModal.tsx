@@ -515,21 +515,21 @@ const InvestmentNoticeModal: React.FC<InvestmentNoticeModalProps> = ({
               </p>
 
               <div className="border border-gray-100 rounded-xl overflow-hidden">
-                <div className="overflow-y-auto" style={{ maxHeight: '500px' }}>
-                  <table className="w-full text-sm table-fixed border-collapse">
+                <div className="overflow-x-auto overflow-y-auto" style={{ maxHeight: '500px' }}>
+                  <table className="w-full text-sm border-collapse min-w-[900px]">
                     <colgroup>
-                      <col style={{ width: '15%' }} />
+                      <col style={{ width: '150px' }} />
                       {availableStrategyKeys.map((strategyKey, idx) => (
                         <Fragment key={`col-group-${strategyKey}`}>
-                          <col style={{ width: `${60 / availableStrategyKeys.length}%` }} />
-                          <col style={{ width: '3%' }} />
+                          <col style={{ width: '120px' }} />
+                          <col style={{ width: '30px' }} />
                         </Fragment>
                       ))}
-                      <col style={{ width: '15%' }} />
+                      <col style={{ width: '100px' }} />
                     </colgroup>
                     <thead className="sticky top-0 z-10 bg-gray-50">
                       <tr className="border-b border-gray-200">
-                        <th className="px-3 py-2 text-left text-xs font-semibold text-gray-500">基金名称</th>
+                        <th className="relative px-3 py-2 text-left text-xs font-semibold text-gray-500 sticky left-0 z-20 bg-gray-50 after:absolute after:right-0 after:top-0 after:bottom-0 after:w-[12px] after:bg-gray-50 after:z-30">基金名称</th>
                         {availableStrategyKeys.map((strategyKey) => {
                           // Get the strategy meta to display the Chinese name
                           const strategyMeta = strategyConfig[strategyKey];
@@ -548,9 +548,9 @@ const InvestmentNoticeModal: React.FC<InvestmentNoticeModalProps> = ({
                     </thead>
                     <tbody>
                       {recommendationsWithBest.map((rec, index) => (
-                        <tr key={`${rec.fund.symbol}-${index}`} className="border-b border-gray-50 hover:bg-gray-50 transition-colors">
+                        <tr key={`${rec.fund.symbol}-${index}`} className="border-b border-gray-50 hover:bg-gray-50 transition-colors group">
                           <td
-                            className="px-3 py-2 text-left text-xs text-gray-700 cursor-pointer hover:underline truncate max-w-[150px]"
+                            className="relative px-3 py-2 text-left text-xs text-gray-700 cursor-pointer hover:underline truncate max-w-[150px] sticky left-0 z-20 bg-white group-hover:bg-gray-50 after:absolute after:right-0 after:top-0 after:bottom-0 after:w-[12px] after:bg-white after:group-hover:bg-gray-50 after:z-30"
                             onClick={() => onSelectFund(rec.fund.symbol)}
                             title={rec.fund.name || rec.fund.symbol}
                           >
@@ -571,7 +571,7 @@ const InvestmentNoticeModal: React.FC<InvestmentNoticeModalProps> = ({
                             return (
                               <Fragment key={`cell-group-${rec.fund.symbol}-${strategyKey}`}>
                                 <td
-                                  className={`px-3 py-2 text-left text-xs ${shouldHighlight ? 'border-2 border-amber-400 bg-amber-50' : ''}`}
+                                  className={`px-3 py-2 text-left text-xs relative ${shouldHighlight ? 'bg-amber-50 shadow-[inset_0_0_0_2px_#f59e0b] z-0' : ''}`}
                                 >
                                   {renderRecommendationCell(
                                     strategyTip,
@@ -601,9 +601,9 @@ const InvestmentNoticeModal: React.FC<InvestmentNoticeModalProps> = ({
                         </tr>
                       ))}
                     </tbody>
-                    <tfoot className="sticky bottom-0 z-10 bg-gray-50">
+                    <tfoot className="sticky bottom-0 z-30 bg-gray-50">
                       <tr className="border-t border-gray-200">
-                        <td colSpan={2 + availableStrategyKeys.length * 2} className="px-3 py-2 text-left text-xs font-bold text-gray-700">
+                        <td className="relative px-3 py-2 text-left text-xs font-bold text-gray-700 sticky left-0 z-40 bg-gray-50 after:absolute after:right-0 after:top-0 after:bottom-0 after:w-[12px] after:bg-gray-50 after:z-50">
                           总计：{recommendationsWithBest.length}条记录
                         </td>
                       </tr>

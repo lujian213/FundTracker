@@ -1,13 +1,7 @@
 import { VirtualStrategy, VirtualStrategyContext } from '../../types';
 import { strategyConfig } from '../strategyConfig';
-
-function toLocalDateKeyFromTimestamp(ts: number): string {
-  const d = new Date(ts);
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, '0');
-  const day = String(d.getDate()).padStart(2, '0');
-  return `${y}-${m}-${day}`;
-}
+import { extractDateFromTimestamp } from '../../utils/dateTimeUtils';
+import { evaluateStrategyParameter } from '../../utils/strategyParameterEvaluator';
 
 function floorToUnit(value: number, unit: number): number {
   if (!unit || unit <= 0) return Math.floor(value * 100) / 100; // keep 2dp
@@ -26,16 +20,11 @@ export const constantMixStrategy: VirtualStrategy = {
     const nav = last.value;
     if (!nav || nav <= 0) return { action: 'hold', shares: 0, reason: { type: 'insufficient', text: '最近净值不可用' } };
 
-    // config defaults
+    // 从配置读取参数
     const cfg = strategyConfig.constantMix.params || {};
-    const target_ratio: number = typeof cfg.target_ratio === 'number' ? cfg.target_ratio : 0.5;
-    const rebalance_threshold: number = typeof cfg.rebalance_threshold === 'number' ? cfg.rebalance_threshold : 0.05;
-
-    // min unit preference: strategy config min_unit or engine-provided baseUnit
-    let min_unit: number | null = null;
-    if (cfg.min_unit && typeof cfg.min_unit === 'number') min_unit = cfg.min_unit as number;
-    // fall back to engine baseUnit
-    if (!min_unit) min_unit = ctx.baseUnit || 1;
+    const target_ratio = evaluateStrategyParameter(cfg.target_ratio, ctx);
+    const rebalance_threshold = evaluateStrategyParameter(cfg.rebalance_threshold, ctx);
+    const min_unit = evaluateStrategyParameter(cfg.min_unit, ctx);
 
     const cash = ctx.cash;
     const shares = ctx.shares;
@@ -47,7 +36,7 @@ export const constantMixStrategy: VirtualStrategy = {
     const current_ratio = holdingValue / total;
     const deviation = Math.abs(current_ratio - target_ratio);
 
-    const crossDate = last && typeof last.date === 'number' ? toLocalDateKeyFromTimestamp(last.date) : undefined;
+    const crossDate = last && typeof last.date === 'number' ? extractDateFromTimestamp(last.date) ?? undefined : undefined;
 
     if (deviation <= rebalance_threshold) {
       return { action: 'hold', shares: 0, reason: { type: 'info', text: `${crossDate ? crossDate + ' ' : ''}当前仓位 ${ (current_ratio*100).toFixed(2) }% 与目标仓位 ${(target_ratio*100).toFixed(2)}% 偏离 ${ (deviation*100).toFixed(2) }%，未超过阈值` } };

@@ -1,5 +1,7 @@
 import { VirtualStrategy, VirtualStrategyContext } from '../../types';
 import { strategyConfig } from '../strategyConfig';
+import { extractDateFromTimestamp } from '../../utils/dateTimeUtils';
+import { evaluateStrategyParameter } from '../../utils/strategyParameterEvaluator';
 
 function safeMean(values: number[], window: number, idx: number): number | null {
   if (idx + 1 < window) return null;
@@ -19,14 +21,6 @@ function safeStd(values: number[], window: number, idx: number): number | null {
   return Math.sqrt(sumSq / window);
 }
 
-function toLocalDateKeyFromTimestamp(ts: number): string {
-  const d = new Date(ts);
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, '0');
-  const day = String(d.getDate()).padStart(2, '0');
-  return `${y}-${m}-${day}`;
-}
-
 export const meanReversionStrategy: VirtualStrategy = {
   name: strategyConfig.meanReversion.name,
   description: strategyConfig.meanReversion.description,
@@ -34,32 +28,36 @@ export const meanReversionStrategy: VirtualStrategy = {
     const hist = ctx.history || [];
     if (!hist || hist.length === 0) return { action: 'hold', shares: 0, reason: { type: 'insufficient', text: '历史数据不足，无法计算布林带' } };
 
+    // 从配置读取参数
+    const cfg = strategyConfig.meanReversion.params || {};
+    const bbWindow = evaluateStrategyParameter(cfg.bb_window, ctx);
+    const numStd = evaluateStrategyParameter(cfg.num_std, ctx);
+    const baseUnit = evaluateStrategyParameter(cfg.base_unit, ctx);
+    const buyRatio = evaluateStrategyParameter(cfg.buy_ratio, ctx);
+    const sellRatio = evaluateStrategyParameter(cfg.sell_ratio, ctx);
+
     const values = hist.map(p => p.value);
     const n = values.length;
     const idx = n - 1; // last available point (yesterday)
 
-    const bb_window = 20;
-    const num_std = 2;
-
-    const middle = safeMean(values, bb_window, idx);
-    const std = safeStd(values, bb_window, idx);
+    const middle = safeMean(values, bbWindow, idx);
+    const std = safeStd(values, bbWindow, idx);
 
     if (middle === null || std === null) {
       return { action: 'hold', shares: 0, reason: { type: 'insufficient', text: '历史数据不足，无法计算布林带' } };
     }
 
-    const upper = middle + num_std * std;
-    const lower = middle - num_std * std;
+    const upper = middle + numStd * std;
+    const lower = middle - numStd * std;
 
     const nav = values[idx];
-    const crossDate = hist[idx] && typeof hist[idx].date === 'number' ? toLocalDateKeyFromTimestamp(hist[idx].date) : undefined;
+    const crossDate = hist[idx] && typeof hist[idx].date === 'number' ? extractDateFromTimestamp(hist[idx].date) ?? undefined : undefined;
 
     // buy if below lower
     if (nav < lower) {
       const maxBuy = Math.floor((ctx.cash / nav) * 100) / 100;
-      const target = Math.floor(((ctx.cash * 0.3) / nav) * 100) / 100; // 30% cash
-      const base = ctx.baseUnit || 1;
-      const desired = Math.min(target, base);
+      const target = Math.floor(((ctx.cash * buyRatio) / nav) * 100) / 100;
+      const desired = Math.min(target, baseUnit);
       const actual = Math.min(desired, maxBuy);
       const text = `${crossDate ? crossDate + ' ' : ''}净值 ${nav.toFixed(4)} 低于下轨 ${lower.toFixed(4)}，触及超卖区，保守买入 ${actual.toFixed(2)} 份`;
       return {
@@ -75,9 +73,8 @@ export const meanReversionStrategy: VirtualStrategy = {
 
     // sell if above upper
     if (nav > upper) {
-      const target = Math.floor((ctx.shares * 0.3) * 100) / 100; // sell 30% holdings
-      const base = ctx.baseUnit || 1;
-      const desired = Math.min(target, base);
+      const target = Math.floor((ctx.shares * sellRatio) * 100) / 100;
+      const desired = Math.min(target, baseUnit);
       const actual = Math.min(desired, ctx.shares);
       const text = `${crossDate ? crossDate + ' ' : ''}净值 ${nav.toFixed(4)} 高于上轨 ${upper.toFixed(4)}，触及超买区，卖出 ${actual.toFixed(2)} 份`;
       return {
