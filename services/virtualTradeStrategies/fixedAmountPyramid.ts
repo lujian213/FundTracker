@@ -1,5 +1,6 @@
 import { VirtualStrategy, VirtualStrategyContext, StrategyReason } from '../../types';
 import { strategyConfig } from '../strategyConfig';
+import { getEffectiveStrategyParams } from '../strategyConfigService';
 import { evaluateStrategyParameter } from '../../utils/strategyParameterEvaluator';
 import { extractDateFromTimestamp } from '../../utils/dateTimeUtils';
 
@@ -12,25 +13,15 @@ export const fixedAmountPyramidStrategy: VirtualStrategy = {
   name: strategyConfig.fixedAmountPyramid.name,
   description: strategyConfig.fixedAmountPyramid.description,
   decide(ctx: VirtualStrategyContext) {
-    // Extract parameters from strategy config and evaluate any expressions using context
-    const rawParams = strategyConfig.fixedAmountPyramid.params || {};
-
-    const initial_nav = evaluateStrategyParameter(rawParams.initial_nav, ctx);
-    const down_step = evaluateStrategyParameter(rawParams.down_step, ctx);
-    const up_step = evaluateStrategyParameter(rawParams.up_step, ctx);
-    const fixed_buy_amount = evaluateStrategyParameter(rawParams.fixed_buy_amount, ctx);
-    const fixed_sell_amount = evaluateStrategyParameter(rawParams.fixed_sell_amount, ctx);
-    const max_position_expr = evaluateStrategyParameter(rawParams.max_position, ctx);
-    const min_cash_reserve_expr = evaluateStrategyParameter(rawParams.min_cash_reserve, ctx);
-
-    // Ensure evaluated parameters are numbers
-    const initialNav = typeof initial_nav === 'number' ? initial_nav : ctx.startNav;  // Use startNav as fallback
-    const downStep = typeof down_step === 'number' ? down_step : 0.05;
-    const upStep = typeof up_step === 'number' ? up_step : 0.05;
-    const fixedBuyAmount = typeof fixed_buy_amount === 'number' ? fixed_buy_amount : 1000;
-    const fixedSellAmount = typeof fixed_sell_amount === 'number' ? fixed_sell_amount : 1000;
-    const maxPosition = typeof max_position_expr === 'number' ? max_position_expr : 100000;
-    const minCashReserve = typeof min_cash_reserve_expr === 'number' ? min_cash_reserve_expr : 1000;
+    // 从配置读取参数（合合默认值与用户值）
+    // 所有参数在 strategyConfig 中声明为 number 类型，运行时转换确保为数字
+    const params = getEffectiveStrategyParams('fixedAmountPyramid');
+    const downStep = evaluateStrategyParameter(params.down_step, ctx) as number;
+    const upStep = evaluateStrategyParameter(params.up_step, ctx) as number;
+    const fixedBuyAmount = evaluateStrategyParameter(params.fixed_buy_amount, ctx) as number;
+    const fixedSellAmount = evaluateStrategyParameter(params.fixed_sell_amount, ctx) as number;
+    const maxPosition = evaluateStrategyParameter(params.max_position, ctx) as number;
+    const minCashReserve = evaluateStrategyParameter(params.min_cash_reserve, ctx) as number;
 
     // Current NAV is the most recent value from history, or startNav if no history
     const current_nav = ctx.history.length > 0 ? ctx.history[ctx.history.length - 1].value : ctx.startNav;
@@ -71,8 +62,8 @@ export const fixedAmountPyramidStrategy: VirtualStrategy = {
     }
 
     // Calculate trigger thresholds based on reference prices
-    const buy_threshold = lastBuyReferencePrice * (1 - downStep);  // e.g., lastBuyRef * (1 - 0.05)
-    const sell_threshold = lastSellReferencePrice * (1 + upStep);  // e.g., lastSellRef * (1 + 0.05)
+    const buy_threshold = lastBuyReferencePrice * (1 - downStep);
+    const sell_threshold = lastSellReferencePrice * (1 + upStep);
 
     // Determine trigger conditions
     const buy_triggered = current_nav <= buy_threshold;

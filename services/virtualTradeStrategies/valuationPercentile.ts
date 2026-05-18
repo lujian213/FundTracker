@@ -1,5 +1,6 @@
 import { VirtualStrategy, VirtualStrategyContext } from '../../types';
 import { strategyConfig } from '../strategyConfig';
+import { getEffectiveStrategyParams } from '../strategyConfigService';
 import { extractDateFromTimestamp } from '../../utils/dateTimeUtils';
 import { evaluateStrategyParameter } from '../../utils/strategyParameterEvaluator';
 
@@ -31,13 +32,14 @@ export const valuationPercentileStrategy: VirtualStrategy = {
       return { action: 'hold', shares: 0, reason: { type: 'insufficient', text: '历史数据不足（至少需要20天），无法计算分位数' } };
     }
 
-    // 从配置读取参数
-    const cfg = strategyConfig.valuationPercentile.params || {};
-    const window_days = evaluateStrategyParameter(cfg.window_days, ctx);
-    const low_percentile = evaluateStrategyParameter(cfg.low_percentile, ctx);
-    const high_percentile = evaluateStrategyParameter(cfg.high_percentile, ctx);
-    const buy_ratio = evaluateStrategyParameter(cfg.buy_ratio, ctx);
-    const sell_ratio = evaluateStrategyParameter(cfg.sell_ratio, ctx);
+    // 从配置读取参数（合合默认值与用户值）
+    // 所有参数在 strategyConfig 中声明为 number 类型，运行时转换确保为数字
+    const params = getEffectiveStrategyParams('valuationPercentile');
+    const window_days = evaluateStrategyParameter(params.window_days, ctx) as number;
+    const low_percentile = evaluateStrategyParameter(params.low_percentile, ctx) as number;
+    const high_percentile = evaluateStrategyParameter(params.high_percentile, ctx) as number;
+    const buy_ratio = evaluateStrategyParameter(params.buy_ratio, ctx) as number;
+    const sell_ratio = evaluateStrategyParameter(params.sell_ratio, ctx) as number;
 
     // 取最近window_days天的数据（或全部可用数据）
     const startIdx = Math.max(0, hist.length - window_days);

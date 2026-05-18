@@ -20,7 +20,7 @@ const parseCache = new Map<string, any>();
  * @param ctx 策略上下文（包含 cash, shares, startNav 等）
  * @returns 计算后的值（number/bool/string）
  */
-export function evaluateStrategyParameter(param: StrategyParam, ctx: VirtualStrategyContext): any {
+export function evaluateStrategyParameter(param: StrategyParam, ctx: VirtualStrategyContext): string | number | boolean {
   const { value, type } = param;
 
   // 1. 如果是表达式字符串 ${...}，计算表达式
@@ -56,7 +56,7 @@ export function evaluateStrategyParameter(param: StrategyParam, ctx: VirtualStra
 /**
  * 将值转换为目标类型
  */
-function convertToType(value: any, type: "string" | "number" | "bool"): any {
+function convertToType(value: any, type: "string" | "number" | "bool"): string | number | boolean {
   switch (type) {
     case "number":
       if (typeof value === "number") return value;
@@ -76,8 +76,8 @@ function convertToType(value: any, type: "string" | "number" | "bool"): any {
 /**
  * 批量计算策略参数
  */
-export function evaluateStrategyParams(params: StrategyParams, ctx: VirtualStrategyContext): Record<string, any> {
-  const result: Record<string, any> = {};
+export function evaluateStrategyParams(params: StrategyParams, ctx: VirtualStrategyContext): Record<string, string | number | boolean> {
+  const result: Record<string, string | number | boolean> = {};
   for (const [key, param] of Object.entries(params)) {
     result[key] = evaluateStrategyParameter(param, ctx);
   }

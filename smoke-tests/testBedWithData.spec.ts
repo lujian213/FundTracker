@@ -711,15 +711,15 @@ test.describe('testBedWithData', () => {
     await expect(configModal).toBeVisible({ timeout: 5000 });
 
     // ══════════════════════════════════════════════════════════════════════════════
-    // 2. 验证左边显示7个选项
+    // 2. 验证左边显示8个选项
     // ══════════════════════════════════════════════════════════════════════════════
     const navItems = page.locator('nav button');
     const navCount = await navItems.count();
-    expect(navCount).toBe(7);
+    expect(navCount).toBe(8);
 
     // 验证导航项名称
-    const navLabels = ['备份管理', '同步管理', 'AI配置', '系统开关', '系统参数', '系统资源', '数据快照'];
-    for (let i = 0; i < 7; i++) {
+    const navLabels = ['备份管理', '同步管理', 'AI配置', '系统开关', '系统参数', '交易策略', '系统资源', '数据快照'];
+    for (let i = 0; i < 8; i++) {
       const navText = await navItems.nth(i).textContent();
       expect(navText).toContain(navLabels[i]);
     }
@@ -882,9 +882,49 @@ test.describe('testBedWithData', () => {
     console.log('系统参数验证完成');
 
     // ══════════════════════════════════════════════════════════════════════════════
-    // 6.5. 点击"系统资源"，验证 localStorage 使用情况显示
+    // 6.6. 点击"交易策略"，验证策略参数配置
     // ══════════════════════════════════════════════════════════════════════════════
-    await navItems.nth(5).click(); // 系统资源
+    await navItems.nth(5).click(); // 交易策略
+
+    // 等待面板加载
+    await page.waitForTimeout(500);
+
+    // 验证顶部提示信息显示
+    await expect(page.locator('div.bg-blue-50 p:has-text("参数可填固定值或表达式")')).toBeVisible({ timeout: 2000 });
+
+    // 验证策略卡片容器存在
+    const strategyCardContainer = page.locator('div.bg-white.rounded-xl.border');
+    await expect(strategyCardContainer).toBeVisible();
+
+    // 验证有策略卡片（border-b 分隔）
+    const strategyCards = strategyCardContainer.locator('div.border-b');
+    const strategyCount = await strategyCards.count();
+    expect(strategyCount).toBeGreaterThanOrEqual(6);
+
+    // 点击第一个策略卡片（趋势追踪策略）展开参数
+    const firstStrategyCard = strategyCards.first();
+    await firstStrategyCard.locator('button').click();
+
+    // 等待展开后验证参数列表显示（参数名以 span.text-sm 显示）
+    await expect(firstStrategyCard.locator('span.text-sm.font-medium:has-text("short_window")')).toBeVisible({ timeout: 2000 });
+
+    // 验证参数类型显示（第一个参数的类型标签）
+    await expect(firstStrategyCard.locator('span.text-xs.text-gray-400:has-text("(number)")').first()).toBeVisible();
+
+    // 验证保存按钮存在（在整个面板内）
+    const saveButton = page.locator('button:has-text("保存")');
+    await expect(saveButton).toBeVisible();
+
+    // 验证重置按钮存在（展开后的策略卡片内）
+    const resetButton = firstStrategyCard.locator('button:has-text("重置为默认")');
+    await expect(resetButton).toBeVisible();
+
+    console.log('交易策略验证完成');
+
+    // ══════════════════════════════════════════════════════════════════════════════
+    // 6.7. 点击"系统资源"，验证 localStorage 使用情况显示
+    // ══════════════════════════════════════════════════════════════════════════════
+    await navItems.nth(6).click(); // 系统资源
 
     // 验证 localStorage 使用情况标题显示
     await expect(page.locator('h3:has-text("localStorage 使用情况")')).toBeVisible({ timeout: 2000 });
@@ -936,6 +976,9 @@ test.describe('testBedWithData', () => {
     expect(backupContent.config.features.initialPriceAdjustmentEnabled).toBe(true);
     expect(backupContent.config.features.jobLogEnabled).toBe(false);
     expect(backupContent.config.features.ocrDebugPanelEnabled).toBe(false);
+
+    // 验证策略参数配置为空对象（默认值）或不存在（兼容旧版本备份）
+    expect(backupContent.config.strategyParams ?? {}).toEqual({});
 
     console.log('导出备份验证完成');
 
@@ -5649,5 +5692,207 @@ test.describe('testBedWithData', () => {
     console.log(`最终基金数量: ${finalFundCount}（增加1个）`);
 
     console.log('主界面智能添加基金测试完成');
+  });
+
+  // ═══════════════════════════════════════════════════════════════════════════════
+  // 测试用例 100.7：交易策略参数配置测试
+  // ═══════════════════════════════════════════════════════════════════════════════
+
+  test('交易策略参数配置测试', async () => {
+    const page = sharedPage!;
+
+    // ══════════════════════════════════════════════════════════════════════════════
+    // 1. 打开系统配置窗口，进入交易策略
+    // ══════════════════════════════════════════════════════════════════════════════
+    const configButton = page.locator('button[title="系统配置"]');
+    await expect(configButton).toBeVisible();
+    await configButton.click();
+
+    const configModal = page.locator('h2:has-text("系统配置")');
+    await expect(configModal).toBeVisible({ timeout: 5000 });
+
+    const navItems = page.locator('nav button');
+    await navItems.nth(5).click(); // 交易策略
+
+    await page.waitForTimeout(500);
+
+    // ══════════════════════════════════════════════════════════════════════════════
+    // 2. 展开趋势追踪策略，修改参数
+    // ══════════════════════════════════════════════════════════════════════════════
+    const strategyCardContainer = page.locator('div.bg-white.rounded-xl.border');
+    await expect(strategyCardContainer).toBeVisible();
+
+    const strategyCards = strategyCardContainer.locator('div.border-b');
+    const firstStrategyCard = strategyCards.first();
+
+    // 展开策略
+    await firstStrategyCard.locator('button').click();
+    await expect(firstStrategyCard.locator('span.text-sm.font-medium:has-text("short_window")')).toBeVisible({ timeout: 2000 });
+
+    // 找到 short_window 输入框
+    const shortWindowInput = firstStrategyCard.locator('div.flex.flex-col.gap-1').filter({
+      has: page.locator('span.text-sm.font-medium:has-text("short_window")')
+    }).locator('input');
+
+    await expect(shortWindowInput).toBeVisible();
+
+    // 验证当前值为默认值 5
+    const currentValue = await shortWindowInput.inputValue();
+    expect(currentValue).toBe('5');
+
+    // 修改值为 10
+    await shortWindowInput.fill('10');
+    await page.waitForTimeout(200);
+    const newValue = await shortWindowInput.inputValue();
+    expect(newValue).toBe('10');
+
+    console.log('short_window 参数已修改为 10');
+
+    // ══════════════════════════════════════════════════════════════════════════════
+    // 3. 点击保存按钮
+    // ══════════════════════════════════════════════════════════════════════════════
+    // 保存按钮在面板底部，需要滚动
+    const saveButton = page.locator('button:has-text("保存")');
+    await saveButton.scrollIntoViewIfNeeded();
+
+    // 点击保存按钮，等待 ConfirmDialog 出现
+    await saveButton.click();
+
+    // ConfirmDialog 使用 z-[250]，使用 aria-modal 来精确定位
+    const confirmDialog = page.locator('[aria-modal="true"][aria-labelledby="confirm-title"]');
+    await expect(confirmDialog).toBeVisible({ timeout: 5000 });
+
+    // 验证对话框标题和消息
+    const dialogTitle = confirmDialog.locator('#confirm-title');
+    await expect(dialogTitle).toHaveText('保存成功');
+    const dialogMessage = await confirmDialog.locator('p').textContent();
+    expect(dialogMessage).toContain('策略参数已保存');
+
+    // 点击确定按钮关闭对话框
+    await confirmDialog.locator('button[aria-label="确认"]').click();
+    await expect(confirmDialog).not.toBeVisible();
+
+    console.log('保存按钮已点击，提示已确认');
+
+    // ══════════════════════════════════════════════════════════════════════════════
+    // 4. 关闭窗口后重新打开，验证修改已持久化
+    // ══════════════════════════════════════════════════════════════════════════════
+    const closeButton = page.locator('button[aria-label="关闭"]');
+    await closeButton.click();
+    await expect(configModal).not.toBeVisible();
+
+    // 重新打开
+    await configButton.click();
+    await expect(configModal).toBeVisible({ timeout: 5000 });
+
+    // 再次进入交易策略
+    await navItems.nth(5).click();
+    await page.waitForTimeout(500);
+
+    // 展开趋势追踪策略
+    await firstStrategyCard.locator('button').click();
+    await expect(firstStrategyCard.locator('span.text-sm.font-medium:has-text("short_window")')).toBeVisible({ timeout: 2000 });
+
+    // 验证参数值仍为 10
+    const persistedInput = firstStrategyCard.locator('div.flex.flex-col.gap-1').filter({
+      has: page.locator('span.text-sm.font-medium:has-text("short_window")')
+    }).locator('input');
+    const persistedValue = await persistedInput.inputValue();
+    expect(persistedValue).toBe('10');
+
+    console.log('修改已持久化验证完成: short_window = 10');
+
+    // ══════════════════════════════════════════════════════════════════════════════
+    // 5. 点击重置为默认按钮
+    // ══════════════════════════════════════════════════════════════════════════════
+    const resetButton = firstStrategyCard.locator('button:has-text("重置为默认")');
+    await expect(resetButton).toBeVisible();
+
+    // 点击重置按钮，等待 ConfirmDialog 出现
+    await resetButton.click();
+
+    // ConfirmDialog 使用 aria-modal 来精确定位
+    const resetDialog = page.locator('[aria-modal="true"][aria-labelledby="confirm-title"]');
+    await expect(resetDialog).toBeVisible({ timeout: 5000 });
+
+    // 验证对话框标题和消息包含策略名称
+    const resetDialogTitle = resetDialog.locator('#confirm-title');
+    await expect(resetDialogTitle).toHaveText('重置确认');
+    const resetDialogMessage = await resetDialog.locator('p').textContent();
+    expect(resetDialogMessage).toContain('趋势追踪策略');
+
+    // 点击确认重置按钮
+    await resetDialog.locator('button[aria-label="确认"]').click();
+    await expect(resetDialog).not.toBeVisible();
+
+    // 验证参数值恢复为 5
+    const resetValue = await persistedInput.inputValue();
+    expect(resetValue).toBe('5');
+
+    console.log('重置验证完成: short_window = 5');
+
+    // ══════════════════════════════════════════════════════════════════════════════
+    // 6. 再次保存重置后的状态
+    // ══════════════════════════════════════════════════════════════════════════════
+    await saveButton.click();
+    const saveDialog = page.locator('[aria-modal="true"][aria-labelledby="confirm-title"]');
+    await expect(saveDialog).toBeVisible({ timeout: 5000 });
+    await saveDialog.locator('button[aria-label="确认"]').click();
+    await expect(saveDialog).not.toBeVisible();
+
+    console.log('重置后保存完成');
+
+    // ══════════════════════════════════════════════════════════════════════════════
+    // 7. 关闭后再次验证
+    // ══════════════════════════════════════════════════════════════════════════════
+    await closeButton.click();
+    await expect(configModal).not.toBeVisible();
+
+    await configButton.click();
+    await expect(configModal).toBeVisible({ timeout: 5000 });
+
+    await navItems.nth(5).click();
+    await page.waitForTimeout(500);
+
+    await firstStrategyCard.locator('button').click();
+    await expect(firstStrategyCard.locator('span.text-sm.font-medium:has-text("short_window")')).toBeVisible({ timeout: 2000 });
+
+    const finalInput = firstStrategyCard.locator('div.flex.flex-col.gap-1').filter({
+      has: page.locator('span.text-sm.font-medium:has-text("short_window")')
+    }).locator('input');
+    const finalValue = await finalInput.inputValue();
+    expect(finalValue).toBe('5');
+
+    console.log('重置后持久化验证完成: short_window = 5');
+
+    // ══════════════════════════════════════════════════════════════════════════════
+    // 8. 导出备份验证 strategyParams 为空对象
+    // ══════════════════════════════════════════════════════════════════════════════
+    await navItems.nth(0).click(); // 备份管理
+    await expect(page.locator('h3:has-text("自动备份")')).toBeVisible({ timeout: 2000 });
+
+    const exportButton = page.locator('button:has-text("导出备份")');
+    await expect(exportButton).toBeVisible();
+
+    const downloadPromise = page.waitForEvent('download');
+    await exportButton.click();
+    const download = await downloadPromise;
+
+    const downloadPath = await download.path();
+    const content = fs.readFileSync(downloadPath, 'utf-8');
+    const backupContent = JSON.parse(content);
+
+    // 验证 strategyParams 为空对象（所有参数都恢复默认值）
+    expect(backupContent.config.strategyParams ?? {}).toEqual({});
+
+    console.log('导出备份验证完成: strategyParams = {}');
+
+    // ══════════════════════════════════════════════════════════════════════════════
+    // 9. 关闭系统配置窗口
+    // ══════════════════════════════════════════════════════════════════════════════
+    await closeButton.click();
+    await expect(configModal).not.toBeVisible();
+
+    console.log('交易策略参数配置测试完成');
   });
 });

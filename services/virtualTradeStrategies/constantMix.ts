@@ -1,5 +1,6 @@
 import { VirtualStrategy, VirtualStrategyContext } from '../../types';
 import { strategyConfig } from '../strategyConfig';
+import { getEffectiveStrategyParams } from '../strategyConfigService';
 import { extractDateFromTimestamp } from '../../utils/dateTimeUtils';
 import { evaluateStrategyParameter } from '../../utils/strategyParameterEvaluator';
 
@@ -20,11 +21,12 @@ export const constantMixStrategy: VirtualStrategy = {
     const nav = last.value;
     if (!nav || nav <= 0) return { action: 'hold', shares: 0, reason: { type: 'insufficient', text: '最近净值不可用' } };
 
-    // 从配置读取参数
-    const cfg = strategyConfig.constantMix.params || {};
-    const target_ratio = evaluateStrategyParameter(cfg.target_ratio, ctx);
-    const rebalance_threshold = evaluateStrategyParameter(cfg.rebalance_threshold, ctx);
-    const min_unit = evaluateStrategyParameter(cfg.min_unit, ctx);
+    // 从配置读取参数（合合默认值与用户值）
+    // 所有参数在 strategyConfig 中声明为 number 类型，运行时转换确保为数字
+    const params = getEffectiveStrategyParams('constantMix');
+    const target_ratio = evaluateStrategyParameter(params.target_ratio, ctx) as number;
+    const rebalance_threshold = evaluateStrategyParameter(params.rebalance_threshold, ctx) as number;
+    const min_unit = evaluateStrategyParameter(params.min_unit, ctx) as number;
 
     const cash = ctx.cash;
     const shares = ctx.shares;

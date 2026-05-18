@@ -14,6 +14,7 @@ import {
   AIConfigProfileSection,
   FeatureConfigSection,
   SystemParamsSection,
+  StrategyParamsSection,  // 新增
   DEFAULT_SYSTEM_CONFIG,
 } from '../types/systemConfigTypes';
 import { STORAGE_KEYS, OLD_STORAGE_KEYS } from './storageKeys';
@@ -27,6 +28,7 @@ export type {
   AIConfigProfileSection,
   FeatureConfigSection,
   SystemParamsSection,
+  StrategyParamsSection,  // 新增
 };
 
 const STORAGE_KEY = STORAGE_KEYS.SYSTEM_CONFIG;
@@ -206,6 +208,26 @@ export function getOcrConcurrency(): number {
 
 export function setOcrConcurrency(value: number): void {
   saveSystemParams({ ocrConcurrency: value });
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// 策略参数配置
+// ═══════════════════════════════════════════════════════════════════════════════
+
+/**
+ * 获取用户配置的策略参数（原始存储值，不含默认值）
+ */
+export function getStrategyParamsConfig(): StrategyParamsSection {
+  return getCache().strategyParams ?? {};
+}
+
+/**
+ * 保存策略参数配置
+ */
+export function saveStrategyParamsConfig(cfg: StrategyParamsSection): void {
+  const config = getCache();
+  config.strategyParams = cfg;
+  saveSystemConfig(config);
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════

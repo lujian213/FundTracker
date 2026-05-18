@@ -132,4 +132,39 @@ describe('systemConfigService', () => {
       expect(sync.eggfundPassword).toBe('testpass');
     });
   });
+
+  describe('Strategy params config', () => {
+    test('should return default strategy params config (empty)', () => {
+      const { getStrategyParamsConfig } = require('../../services/systemConfigService');
+      const strategyParams = getStrategyParamsConfig();
+      expect(strategyParams).toEqual({});
+    });
+
+    test('should save and retrieve strategy params config', () => {
+      const { saveStrategyParamsConfig, getStrategyParamsConfig } = require('../../services/systemConfigService');
+      saveStrategyParamsConfig({
+        trendFollowing: { short_window: 10, buy_ratio: 0.3 }
+      });
+      const strategyParams = getStrategyParamsConfig();
+      expect(strategyParams.trendFollowing?.short_window).toBe(10);
+      expect(strategyParams.trendFollowing?.buy_ratio).toBe(0.3);
+    });
+
+    test('should not affect other sections when saving strategy params', () => {
+      const { saveStrategyParamsConfig, getFeatureConfig, getStrategyParamsConfig, saveFeatureConfig } = require('../../services/systemConfigService');
+      // 先设置 feature
+      saveFeatureConfig({ initialPriceAdjustmentEnabled: true, jobLogEnabled: false, ocrDebugPanelEnabled: false });
+
+      // 再设置 strategy params
+      saveStrategyParamsConfig({ meanReversion: { bb_window: 15 } });
+
+      // 验证 feature 不受影响
+      const features = getFeatureConfig();
+      expect(features.initialPriceAdjustmentEnabled).toBe(true);
+
+      // 验证 strategy params 正确保存
+      const strategyParams = getStrategyParamsConfig();
+      expect(strategyParams.meanReversion?.bb_window).toBe(15);
+    });
+  });
 });

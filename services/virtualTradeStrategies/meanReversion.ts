@@ -1,5 +1,6 @@
 import { VirtualStrategy, VirtualStrategyContext } from '../../types';
 import { strategyConfig } from '../strategyConfig';
+import { getEffectiveStrategyParams } from '../strategyConfigService';
 import { extractDateFromTimestamp } from '../../utils/dateTimeUtils';
 import { evaluateStrategyParameter } from '../../utils/strategyParameterEvaluator';
 
@@ -28,13 +29,14 @@ export const meanReversionStrategy: VirtualStrategy = {
     const hist = ctx.history || [];
     if (!hist || hist.length === 0) return { action: 'hold', shares: 0, reason: { type: 'insufficient', text: '历史数据不足，无法计算布林带' } };
 
-    // 从配置读取参数
-    const cfg = strategyConfig.meanReversion.params || {};
-    const bbWindow = evaluateStrategyParameter(cfg.bb_window, ctx);
-    const numStd = evaluateStrategyParameter(cfg.num_std, ctx);
-    const baseUnit = evaluateStrategyParameter(cfg.base_unit, ctx);
-    const buyRatio = evaluateStrategyParameter(cfg.buy_ratio, ctx);
-    const sellRatio = evaluateStrategyParameter(cfg.sell_ratio, ctx);
+    // 从配置读取参数（合合默认值与用户值）
+    // 所有参数在 strategyConfig 中声明为 number 类型，运行时转换确保为数字
+    const params = getEffectiveStrategyParams('meanReversion');
+    const bbWindow = evaluateStrategyParameter(params.bb_window, ctx) as number;
+    const numStd = evaluateStrategyParameter(params.num_std, ctx) as number;
+    const baseUnit = evaluateStrategyParameter(params.base_unit, ctx) as number;
+    const buyRatio = evaluateStrategyParameter(params.buy_ratio, ctx) as number;
+    const sellRatio = evaluateStrategyParameter(params.sell_ratio, ctx) as number;
 
     const values = hist.map(p => p.value);
     const n = values.length;

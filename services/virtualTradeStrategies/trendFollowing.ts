@@ -1,5 +1,6 @@
 import { VirtualStrategy, VirtualStrategyContext } from '../../types';
 import { strategyConfig } from '../strategyConfig';
+import { getEffectiveStrategyParams } from '../strategyConfigService';
 import { extractDateFromTimestamp } from '../../utils/dateTimeUtils';
 import { evaluateStrategyParameter } from '../../utils/strategyParameterEvaluator';
 
@@ -17,13 +18,14 @@ export const trendFollowingStrategy: VirtualStrategy = {
     const hist = ctx.history || [];
     if (!hist || hist.length === 0) return { action: 'hold', shares: 0, reason: { type: 'insufficient', text: '历史数据不足，无法计算均线信号' } };
 
-    // 从配置读取参数
-    const cfg = strategyConfig.trendFollowing.params || {};
-    const shortWindow = evaluateStrategyParameter(cfg.short_window, ctx);
-    const longWindow = evaluateStrategyParameter(cfg.long_window, ctx);
-    const baseUnit = evaluateStrategyParameter(cfg.base_unit, ctx);
-    const buyRatio = evaluateStrategyParameter(cfg.buy_ratio, ctx);
-    const sellRatio = evaluateStrategyParameter(cfg.sell_ratio, ctx);
+    // 从配置读取参数（合合默认值与用户值）
+    // 所有参数在 strategyConfig 中声明为 number 类型，运行时转换确保为数字
+    const params = getEffectiveStrategyParams('trendFollowing');
+    const shortWindow = evaluateStrategyParameter(params.short_window, ctx) as number;
+    const longWindow = evaluateStrategyParameter(params.long_window, ctx) as number;
+    const baseUnit = evaluateStrategyParameter(params.base_unit, ctx) as number;
+    const buyRatio = evaluateStrategyParameter(params.buy_ratio, ctx) as number;
+    const sellRatio = evaluateStrategyParameter(params.sell_ratio, ctx) as number;
 
     // build values array ascending by date
     const values = hist.map(p => p.value);

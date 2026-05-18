@@ -1,5 +1,6 @@
 import { VirtualStrategy, VirtualStrategyContext } from '../../types';
 import { strategyConfig } from '../strategyConfig';
+import { getEffectiveStrategyParams } from '../strategyConfigService';
 import { extractDateFromTimestamp } from '../../utils/dateTimeUtils';
 import { evaluateStrategyParameter } from '../../utils/strategyParameterEvaluator';
 
@@ -31,11 +32,12 @@ export const drawdownBuyStrategy: VirtualStrategy = {
       return { action: 'hold', shares: 0, reason: { type: 'insufficient', text: '历史数据不足（至少需要10天），无法计算回撤' } };
     }
 
-    // 从配置读取参数
-    const cfg = strategyConfig.drawdownBuy.params || {};
-    const drawdown_threshold = evaluateStrategyParameter(cfg.drawdown_threshold, ctx);
-    const recovery_threshold = evaluateStrategyParameter(cfg.recovery_threshold, ctx);
-    const buy_ratio = evaluateStrategyParameter(cfg.buy_ratio, ctx);
+    // 从配置读取参数（合合默认值与用户值）
+    // 所有参数在 strategyConfig 中声明为 number 类型，运行时转换确保为数字
+    const params = getEffectiveStrategyParams('drawdownBuy');
+    const drawdown_threshold = evaluateStrategyParameter(params.drawdown_threshold, ctx) as number;
+    const recovery_threshold = evaluateStrategyParameter(params.recovery_threshold, ctx) as number;
+    const buy_ratio = evaluateStrategyParameter(params.buy_ratio, ctx) as number;
 
     // 找历史最高
     const historicalHigh = findHistoricalHigh(hist);
