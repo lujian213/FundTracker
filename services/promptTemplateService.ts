@@ -2,9 +2,11 @@
 
 import { FundAIQueryContext, IndexAIQueryContext } from '../types/aiServiceTypes';
 import { PromptTemplate } from '../types/promptTemplateTypes';
+import { fillTemplate, FillTemplateResult } from '../utils/templateFiller';
 
-// Re-export PromptTemplate for convenience
+// Re-export for convenience
 export type { PromptTemplate } from '../types/promptTemplateTypes';
+export type { FillTemplateResult } from '../utils/templateFiller';
 
 /** 模板ID常量（按id查询时使用） */
 export const TEMPLATE_IDS = {
@@ -130,89 +132,71 @@ export function resetCache(): void {
   loaded = false;
 }
 
-/** 通用变量填充 */
-export function fillTemplate(
-  template: string,
-  variables: Record<string, string | number | object | undefined | null>
-): string {
-  let result = template;
-  for (const [key, value] of Object.entries(variables)) {
-    const placeholder = `{${key}}`;
-    const regex = new RegExp(placeholder.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g');
-    if (value === undefined || value === null) {
-      result = result.replace(regex, '未设置');
-    } else if (typeof value === 'object') {
-      result = result.replace(regex, JSON.stringify(value));
-    } else {
-      result = result.replace(regex, String(value));
-    }
-  }
-  return result;
-}
-
 /**
  * 填充基金模板变量
  * 从模板字符串中替换基金相关的变量占位符
+ * @returns FillTemplateResult - 填充结果，包含 success、content、missingPlaceholders、error
  */
-export function fillFundTemplateVariables(template: string, context: FundAIQueryContext): string {
-  const variables: Record<string, string | number | object | undefined | null> = {
-    name: context.fundName,
-    code: context.fundSymbol,
-    // 空数组显示"[]"，而不是"未设置"
+export function fillFundTemplateVariables(template: string, context: FundAIQueryContext): FillTemplateResult {
+  // 构建变量映射，确保所有字段都有值（无 undefined/null）
+  const variables: Record<string, string | number | object> = {
+    name: context.fundName ?? '',
+    code: context.fundSymbol ?? '',
     history: context.tradeHistory && context.tradeHistory.length > 0 ? context.tradeHistory : [],
-    // 值为 0 时显示"未设置"
-    fullCapacity: context.fullCapacity !== undefined && context.fullCapacity > 0 ? context.fullCapacity : undefined,
-    initialCapacity: context.initialCapacity !== undefined && context.initialCapacity > 0 ? context.initialCapacity : undefined,
-    initialDate: context.initialDate || undefined,
-    initialPrice: context.initialPrice,
+    fullCapacity: context.fullCapacity ?? '',
+    initialCapacity: context.initialCapacity ?? '',
+    initialDate: context.initialDate ?? '',
+    initialPrice: context.initialPrice ?? '',
   };
 
+  // 处理估值数据
   if (context.valuationData) {
     variables.currentPrice = context.valuationData.currentPrice !== undefined && context.valuationData.currentPrice !== null
       ? context.valuationData.currentPrice.toFixed(4)
-      : undefined;
-    variables.currentDate = context.valuationData.realtimeDate || undefined;
+      : '';
+    variables.currentDate = context.valuationData.realtimeDate ?? '';
     variables.previousPrice = context.valuationData.previousPrice !== undefined && context.valuationData.previousPrice !== null
       ? context.valuationData.previousPrice.toFixed(4)
-      : undefined;
-    variables.previousDate = context.valuationData.netWorthDate || undefined;
+      : '';
+    variables.previousDate = context.valuationData.netWorthDate ?? '';
 
     // 涨跌幅格式化带正负号
     if (context.valuationData.changePercentage !== undefined && context.valuationData.changePercentage !== null) {
       const rate = context.valuationData.changePercentage;
       variables.rate = `${rate >= 0 ? '+' : ''}${rate.toFixed(2)}%`;
     } else {
-      variables.rate = undefined;
+      variables.rate = '';
     }
   } else {
-    variables.currentPrice = undefined;
-    variables.currentDate = undefined;
-    variables.previousPrice = undefined;
-    variables.previousDate = undefined;
-    variables.rate = undefined;
+    variables.currentPrice = '';
+    variables.currentDate = '';
+    variables.previousPrice = '';
+    variables.previousDate = '';
+    variables.rate = '';
   }
 
+  // 持仓和盈利数据
   variables.marketValue = context.marketValue !== undefined && context.marketValue !== null
     ? context.marketValue.toFixed(2)
-    : undefined;
+    : '';
   variables.position = context.position !== undefined && context.position !== null
     ? context.position.toFixed(2)
-    : undefined;
+    : '';
   variables.positionRate = context.positionRate !== undefined && context.positionRate !== null
     ? `${context.positionRate.toFixed(2)}%`
-    : undefined;
+    : '';
 
   // 盈利格式化带正负号
   if (context.profit !== undefined && context.profit !== null) {
     const profit = context.profit;
     variables.profit = `${profit >= 0 ? '+' : ''}${profit.toFixed(2)}`;
   } else {
-    variables.profit = undefined;
+    variables.profit = '';
   }
 
   variables.avgCostPrice = context.avgCostPrice !== undefined && context.avgCostPrice !== null
     ? context.avgCostPrice.toFixed(4)
-    : undefined;
+    : '';
 
   return fillTemplate(template, variables);
 }
@@ -220,30 +204,59 @@ export function fillFundTemplateVariables(template: string, context: FundAIQuery
 /**
  * 填充指数模板变量
  * 从模板字符串中替换指数相关的变量占位符
+ * @returns FillTemplateResult - 填充结果，包含 success、content、missingPlaceholders、error
  */
-export function fillIndexTemplateVariables(template: string, context: IndexAIQueryContext): string {
-  const variables: Record<string, string | number | object | undefined | null> = {
-    name: context.indexName,
-    code: context.indexSymbol,
-    datetime: context.datetime,
-    // 空数组显示"[]"
+export function fillIndexTemplateVariables(template: string, context: IndexAIQueryContext): FillTemplateResult {
+  // 当前点位直接使用 currentValue
+  const currentPrice = context.currentValue !== undefined && context.currentValue !== null
+    ? context.currentValue.toFixed(2)
+    : '';
+
+  // 当前成交量直接使用 currentVolume
+  const currentVolume = context.currentVolume !== undefined && context.currentVolume !== null
+    ? formatVolume(context.currentVolume) + '手'
+    : '';
+
+  // 格式化历史成交量数组
+  const formattedVolumes = context.volumes && context.volumes.length > 0
+    ? context.volumes.map(v => formatVolume(v) + '手')
+    : [];
+
+  // 构建变量映射，确保所有字段都有值（无 undefined/null）
+  const variables: Record<string, string | number | object> = {
+    name: context.indexName ?? '',
+    code: context.indexSymbol ?? '',
+    datetime: context.datetime ?? '',
+    current_price: currentPrice,
+    current_volume: currentVolume,
     closing_prices: context.closingPrices && context.closingPrices.length > 0 ? context.closingPrices : [],
     ma5: context.ma5 && context.ma5.length > 0 ? context.ma5 : [],
     ma10: context.ma10 && context.ma10.length > 0 ? context.ma10 : [],
     ma20: context.ma20 && context.ma20.length > 0 ? context.ma20 : [],
-    volumes: context.volumes && context.volumes.length > 0 ? context.volumes : [],
+    volumes: formattedVolumes,
     realtime_prices: context.realtimePrices && context.realtimePrices.length > 0 ? context.realtimePrices : [],
-    realtime_volume: context.realtimeVolume,
   };
 
   return fillTemplate(template, variables);
+}
+
+/**
+ * 格式化成交量（亿/万）
+ */
+function formatVolume(volume: number): string {
+  if (volume >= 100000000) {
+    return `${(volume / 100000000).toFixed(2)}亿`;
+  } else if (volume >= 10000) {
+    return `${(volume / 10000).toFixed(2)}万`;
+  }
+  return volume.toFixed(0);
 }
 
 /** 统一入口：根据 marketType 选择填充函数 */
 export function fillTemplateVariables(
   template: string,
   context: FundAIQueryContext | IndexAIQueryContext
-): string {
+): FillTemplateResult {
   if (context.marketType === 'fund') {
     return fillFundTemplateVariables(template, context);
   } else {

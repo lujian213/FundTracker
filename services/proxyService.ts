@@ -170,8 +170,12 @@ export const PROXY_LIST: ProxyConfig[] = [
   { name: 'txtify', buildUrl: (url) => `https://txtify.it/${url}`, format: 'markdown' },
 ];
 
-export interface FetchOptions {
-  preferFormat?: 'raw' | 'markdown';  // 已弃用：评分系统决定优先级，格式偏好不再影响排序
+export interface FetchWithProxyOptions {
+  method?: 'GET' | 'POST' | 'PUT' | 'DELETE';
+  headers?: Record<string, string>;
+  body?: string;          // POST/PUT 的请求体（JSON 字符串）
+  timeout?: number;       // 超时时间（毫秒），默认 8000
+  preferFormat?: 'raw' | 'markdown';  // 代理选择倾向，默认按评分排序
 }
 
 export interface FetchResult {
@@ -181,31 +185,98 @@ export interface FetchResult {
 }
 
 /**
- * 通过代理获取网页内容
+ * 基于 response content-type 验证内容
+ * @param content 响应内容
+ * @param contentType HTTP content-type header 值
+ * @param proxyFormat 代理格式（raw 时才验证 HTML）
+ * @returns 验证是否通过
+ */
+function validateContentByContentType(
+  content: string,
+  contentType: string | null,
+  proxyFormat: 'raw' | 'markdown'
+): { valid: boolean; error?: string } {
+  // 基本检查：非空
+  if (!content) {
+    return { valid: false, error: '返回内容为空' };
+  }
+
+  const contentTypeLower = contentType?.toLowerCase() || '';
+
+  // JSON 验证：尝试解析（不要求最小长度）
+  if (contentTypeLower.includes('application/json')) {
+    try {
+      JSON.parse(content);
+      return { valid: true };
+    } catch {
+      return { valid: false, error: '返回内容不是有效的 JSON 格式' };
+    }
+  }
+
+  // 非 JSON 响应需要最小长度检查
+  if (content.length < 100) {
+    return { valid: false, error: '返回内容过短' };
+  }
+
+  // HTML 验证：仅 raw 格式代理需要检查
+  if (contentTypeLower.includes('text/html') && proxyFormat === 'raw') {
+    const isValidHtml = content.includes('<!DOCTYPE') || content.includes('<html') || content.includes('<body');
+    if (!isValidHtml) {
+      return { valid: false, error: '返回内容不是有效的 HTML 格式' };
+    }
+  }
+
+  return { valid: true };
+}
+
+/**
+ * 通过代理发送请求
  * @param targetUrl 目标 URL
- * @param options 可选参数，包括格式偏好
+ * @param options 可选参数，包括 HTTP 方法、headers、body、格式偏好
  * @returns FetchResult 包含内容、格式和成功的代理名称
  * @throws Error 当所有代理都失败时抛出异常
  */
 export async function fetchWithProxy(
   targetUrl: string,
-  options?: FetchOptions
+  options?: FetchWithProxyOptions
 ): Promise<FetchResult> {
+  const method = options?.method || 'GET';
+  const customHeaders = options?.headers;
+  const body = options?.body;
+  const timeout = options?.timeout || PROXY_TIMEOUT_MS;
+  const preferFormat = options?.preferFormat;
+
   const errors: { proxy: string; error: Error }[] = [];
 
-  // 根据评分排序代理
-  const orderedProxies = orderProxiesByPreference(PROXY_LIST);
+  // 根据评分和 preferFormat 排序代理
+  const orderedProxies = orderProxiesByPreference(PROXY_LIST, preferFormat);
 
   for (const proxy of orderedProxies) {
     const proxyUrl = proxy.buildUrl(targetUrl);
 
     // 使用 AbortController 实现超时
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), PROXY_TIMEOUT_MS);
+    const timeoutId = setTimeout(() => controller.abort(), timeout);
     const startTime = Date.now();
 
     try {
-      const response = await fetch(proxyUrl, { signal: controller.signal });
+      // 构建 fetch options
+      const fetchOptions: RequestInit = {
+        method,
+        signal: controller.signal,
+      };
+
+      // 添加 headers（如果有）
+      if (customHeaders) {
+        fetchOptions.headers = customHeaders;
+      }
+
+      // 添加 body（如果有）
+      if (body) {
+        fetchOptions.body = body;
+      }
+
+      const response = await fetch(proxyUrl, fetchOptions);
       clearTimeout(timeoutId);
       const responseTime = Date.now() - startTime;
 
@@ -217,17 +288,13 @@ export async function fetchWithProxy(
       const content = await response.text();
       const totalTime = Date.now() - startTime;
 
-      // 基本内容验证
-      if (!content || content.length < 100) {
-        scoreManager.record(proxy.name, false, totalTime);
-        throw new Error('返回内容过短或为空');
-      }
+      // 基于 content-type 验证内容
+      const contentType = response.headers.get('content-type');
+      const validation = validateContentByContentType(content, contentType, proxy.format);
 
-      // raw 格式代理需要验证是否返回了有效 HTML
-      const isValidHtml = content.includes('<!DOCTYPE') || content.includes('<html') || content.includes('<body');
-      if (proxy.format === 'raw' && !isValidHtml) {
+      if (!validation.valid) {
         scoreManager.record(proxy.name, false, totalTime);
-        throw new Error('返回内容不是有效的 HTML 格式');
+        throw new Error(validation.error || '内容验证失败');
       }
 
       scoreManager.record(proxy.name, true, totalTime);
@@ -239,7 +306,7 @@ export async function fetchWithProxy(
     } catch (e: any) {
       clearTimeout(timeoutId);
       const responseTime = Date.now() - startTime;
-      const errorMsg = e.name === 'AbortError' ? `超时(${PROXY_TIMEOUT_MS}ms)` : e.message;
+      const errorMsg = e.name === 'AbortError' ? `超时(${timeout}ms)` : e.message;
       scoreManager.record(proxy.name, false, responseTime);
       errors.push({ proxy: proxy.name, error: new Error(errorMsg) });
     }
@@ -251,13 +318,28 @@ export async function fetchWithProxy(
 }
 
 /**
- * 根据评分排序代理列表（分数高的优先）
+ * 根据评分和 preferFormat 排序代理列表
+ * - 指定 preferFormat 时：匹配格式的代理优先（组内按评分），其他次之（组内按评分）
+ * - 不指定 preferFormat 时：全部按评分排序
  * 导出供测试使用
  */
 export function orderProxiesByPreference(
-  proxies: ProxyConfig[]
+  proxies: ProxyConfig[],
+  preferFormat?: 'raw' | 'markdown'
 ): ProxyConfig[] {
-  return [...proxies].sort((a, b) => scoreManager.getScore(b.name) - scoreManager.getScore(a.name));
+  // 先按评分排序
+  const sortedByScore = [...proxies].sort(
+    (a, b) => scoreManager.getScore(b.name) - scoreManager.getScore(a.name)
+  );
+
+  // 指定 preferFormat 时：匹配格式优先，其他次之（组内保持评分排序）
+  if (preferFormat !== undefined) {
+    const matchingProxies = sortedByScore.filter(p => p.format === preferFormat);
+    const otherProxies = sortedByScore.filter(p => p.format !== preferFormat);
+    return [...matchingProxies, ...otherProxies];
+  }
+
+  return sortedByScore;
 }
 
 /**
@@ -294,4 +376,46 @@ export async function checkProxyHealth(): Promise<{ name: string; healthy: boole
   }
 
   return results;
+}
+
+/**
+ * @DEBUG 测试代理是否支持 POST API 请求
+ * 用于验证 CORS preflight 是否通过
+ */
+export async function testProxyPostApi(proxyName: string): Promise<{ success: boolean; error?: string; data?: any }> {
+  const proxy = PROXY_LIST.find(p => p.name === proxyName);
+  if (!proxy) {
+    return { success: false, error: `代理 ${proxyName} 不存在` };
+  }
+
+  // 使用 httpbin.org 测试 POST
+  const testUrl = 'https://httpbin.org/post';
+  const proxyUrl = proxy.buildUrl(testUrl);
+  const testBody = { test: 'hello', timestamp: Date.now() };
+
+  console.log(`[ProxyTest] 测试 ${proxyName} POST: ${proxyUrl}`);
+
+  try {
+    const response = await fetch(proxyUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(testBody),
+    });
+
+    console.log(`[ProxyTest] ${proxyName} 响应状态: ${response.status}`);
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      return { success: false, error: `HTTP ${response.status}: ${errorText}` };
+    }
+
+    const data = await response.json();
+    console.log(`[ProxyTest] ${proxyName} 成功! 响应数据:`, JSON.stringify(data).substring(0, 200));
+    return { success: true, data };
+  } catch (error: any) {
+    console.log(`[ProxyTest] ${proxyName} 失败: ${error.message}`);
+    return { success: false, error: error.message };
+  }
 }

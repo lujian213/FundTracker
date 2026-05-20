@@ -8,6 +8,8 @@ interface IndexAISidePanelProps {
   onClose: () => void;
   indexSymbol: string;
   indexName: string;
+  currentValue?: number;  // 当前点位值
+  currentVolume?: number;  // 当前成交量（手）
   history?: HistoricalPoint[];
   maValues?: Record<number, (number | null)[]>;
   volumeData?: VolumeData[];
@@ -23,6 +25,8 @@ const IndexAISidePanel: React.FC<IndexAISidePanelProps> = ({
   onClose,
   indexSymbol,
   indexName,
+  currentValue,
+  currentVolume,
   history,
   maValues,
   volumeData,
@@ -40,19 +44,19 @@ const IndexAISidePanel: React.FC<IndexAISidePanelProps> = ({
       second: '2-digit'
     });
 
-    // 构建历史收盘价（最近90个交易日）
-    const closingPrices = history?.slice(-90).map(p => ({
+    // 构建历史收盘价（最近30个交易日）
+    const closingPrices = history?.slice(-30).map(p => ({
       date: new Date(p.date).toISOString().split('T')[0],
       price: p.value
     }));
 
-    // 获取均线值（最近90个交易日）
-    const ma5 = maValues?.[5]?.slice(-90);
-    const ma10 = maValues?.[10]?.slice(-90);
-    const ma20 = maValues?.[20]?.slice(-90);
+    // 获取均线值（最近30个交易日）
+    const ma5 = maValues?.[5]?.slice(-30);
+    const ma10 = maValues?.[10]?.slice(-30);
+    const ma20 = maValues?.[20]?.slice(-30);
 
-    // 获取成交量（最近90个交易日）
-    const volumes = volumeData?.slice(-90).map(v => v.volume);
+    // 获取成交量（最近30个交易日）
+    const volumes = volumeData?.slice(-30).map(v => v.volume);
 
     // 构建实时价格
     const realtimePrices = intradayPoints?.slice(-50).map(p => ({
@@ -60,25 +64,21 @@ const IndexAISidePanel: React.FC<IndexAISidePanelProps> = ({
       price: p.value
     }));
 
-    // 获取实时成交量（当日成交量，取 volumeData 最后一个点）
-    const realtimeVolume = volumeData && volumeData.length > 0
-      ? volumeData[volumeData.length - 1].volume
-      : undefined;
-
     return {
       marketType: 'index',
       indexName,
       indexSymbol,
       datetime,
+      currentValue,  // 当前点位值
+      currentVolume,  // 当前成交量（手）
       closingPrices,
       ma5,
       ma10,
       ma20,
       volumes,
       realtimePrices,
-      realtimeVolume
     };
-  }, [indexName, indexSymbol, history, maValues, volumeData, intradayPoints]);
+  }, [indexName, indexSymbol, currentValue, currentVolume, history, maValues, volumeData, intradayPoints]);
 
   // 构建 stateKey
   const stateKey = `index_${indexSymbol}`;

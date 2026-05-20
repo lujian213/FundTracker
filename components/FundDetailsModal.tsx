@@ -18,7 +18,7 @@ import { localDateKey, AggregatedMarker, aggregateTradesByDate, generatePosition
 import IntradayChart from './IntradayChart';
 import HistoryChart from './HistoryChart';
 import FundAISidePanel from './FundAISidePanel';
-import { queryAI, AIResponse, AIQueryContext } from '../services/aiService';
+import { queryAI, AIResponse } from '../services/aiService';
 import { formatMoneyWithSeparators, fmtNav, fmtNumber, formatPercent } from '../utils/format';
 import { getAIConfig, AIConfiguration } from '../services/aiConfigService';
 import { prepareChartData } from '../utils/chartDataHelper';
@@ -704,7 +704,9 @@ export const FundDetailsModal: React.FC<FundDetailsModalProps> = ({ data, onClos
       // Get the current AI config
       const currentConfig = aiConfig;
 
-      const response = await queryAI(currentConfig, aiInputValue, context);
+      const response = await queryAI(currentConfig, {
+        messages: [{ role: 'user', content: aiInputValue }]
+      });
 
       const aiMessage = {
         id: `ai-${Date.now()}`,

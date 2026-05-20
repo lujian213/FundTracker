@@ -73,5 +73,10 @@ export async function analyzePortfolio(
     .replace(/{currentDate}/g, currentDate)
     .replace(/{portfolio}/g, portfolioText);
 
-  return queryAI(config, prompt, undefined, onChunk, template.maxTokens, template.temperature);
+  return queryAI(config, {
+    messages: [{ role: 'user', content: prompt }],
+    enableWebSearch: template.enableWebSearch,
+    maxTokens: template.maxTokens,
+    temperature: template.temperature
+  }, onChunk);
 }

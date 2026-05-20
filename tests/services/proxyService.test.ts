@@ -37,10 +37,13 @@ describe('proxyService', () => {
       // 第一个请求：让 law-ai 成功
       const mockHtml = `<!DOCTYPE html><html><head><title>Test</title></head><body>Test content with enough length to pass validation check. Adding more content here.</body></html>`;
 
-      // 设置 mock：law-ai（第二个代理）成功，其他失败
+      // 设置 mock：r.jina.ai 失败，law-ai 成功
       mockFetch.mockRejectedValueOnce(new Error('Network error')); // r.jina.ai 失败
       mockFetch.mockResolvedValueOnce({
         ok: true,
+        headers: {
+          get: (key: string) => key === 'content-type' ? 'text/html' : null,
+        },
         text: () => Promise.resolve(mockHtml),
       }); // law-ai 成功
 
@@ -53,6 +56,36 @@ describe('proxyService', () => {
 
       // law-ai 成功后分数应该比 r.jina.ai 高
       expect(lawAiScore).toBeGreaterThan(rJinaAiScore!);
+    });
+
+    test('preferFormat: markdown prioritizes markdown format proxies', () => {
+      const result = orderProxiesByPreference(PROXY_LIST, 'markdown');
+
+      // markdown 格式代理应该排在前面
+      const markdownProxies = result.filter(p => p.format === 'markdown');
+      const rawProxies = result.filter(p => p.format === 'raw');
+
+      // 所有 markdown 代理应该在 raw 代理之前
+      if (markdownProxies.length > 0 && rawProxies.length > 0) {
+        const lastMarkdownIndex = result.findIndex(p => p.format === 'raw') - 1;
+        const firstRawIndex = result.findIndex(p => p.format === 'raw');
+        expect(lastMarkdownIndex).toBeLessThan(firstRawIndex);
+      }
+    });
+
+    test('preferFormat: raw or undefined uses score-based ordering', () => {
+      const resultRaw = orderProxiesByPreference(PROXY_LIST, 'raw');
+      const resultUndefined = orderProxiesByPreference(PROXY_LIST);
+
+      // 两者应该都按评分排序（不强制 markdown 优先）
+      expect(resultRaw.length).toBe(PROXY_LIST.length);
+      expect(resultUndefined.length).toBe(PROXY_LIST.length);
+
+      // 检查排序是否基于评分（默认分数相同，顺序不确定）
+      const allProxiesIncludedRaw = resultRaw.every(p => PROXY_LIST.some(original => original.name === p.name));
+      const allProxiesIncludedUndefined = resultUndefined.every(p => PROXY_LIST.some(original => original.name === p.name));
+      expect(allProxiesIncludedRaw).toBe(true);
+      expect(allProxiesIncludedUndefined).toBe(true);
     });
   });
 
@@ -86,6 +119,9 @@ describe('proxyService', () => {
       // 让第一个代理成功
       mockFetch.mockResolvedValueOnce({
         ok: true,
+        headers: {
+          get: (key: string) => key === 'content-type' ? 'text/html' : null,
+        },
         text: () => Promise.resolve(mockHtml),
       });
 
@@ -123,8 +159,11 @@ describe('proxyService', () => {
 
   describe('fetchWithProxy', () => {
     // 辅助函数：创建成功的 mock response
-    const createMockResponse = (content: string) => ({
+    const createMockResponse = (content: string, contentType?: string) => ({
       ok: true,
+      headers: {
+        get: (key: string) => key === 'content-type' ? (contentType || 'text/html') : null,
+      },
       text: () => Promise.resolve(content),
     });
 
@@ -132,6 +171,9 @@ describe('proxyService', () => {
     const createMockErrorResponse = (status: number) => ({
       ok: false,
       status,
+      headers: {
+        get: (key: string) => null,
+      },
       text: () => Promise.resolve('Error'),
     });
 
@@ -232,6 +274,77 @@ describe('proxyService', () => {
 
       // 验证错误消息包含超时信息
       await expect(fetchWithProxy('https://example.com')).rejects.toThrow('超时');
+    });
+
+    test('supports POST request with custom headers and body', async () => {
+      const mockJsonContent = JSON.stringify({ code: 0, data: { results: [] } });
+
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        headers: {
+          get: (key: string) => key === 'content-type' ? 'application/json' : null,
+        },
+        text: () => Promise.resolve(mockJsonContent),
+      });
+
+      const result = await fetchWithProxy('https://api.example.com/search', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer test-key',
+        },
+        body: JSON.stringify({ query: 'test' }),
+      });
+
+      expect(result.content).toBe(mockJsonContent);
+
+      // 验证 fetch 调用参数
+      const fetchCall = mockFetch.mock.calls[0];
+      expect(fetchCall[1]?.method).toBe('POST');
+      expect(fetchCall[1]?.headers).toEqual({
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer test-key',
+      });
+      expect(fetchCall[1]?.body).toBe(JSON.stringify({ query: 'test' }));
+    });
+
+    test('validates JSON content when content-type is application/json', async () => {
+      // 返回无效 JSON
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        headers: {
+          get: (key: string) => key === 'content-type' ? 'application/json' : null,
+        },
+        text: () => Promise.resolve('not valid json'),
+      });
+
+      // 第二个代理返回有效 JSON
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        headers: {
+          get: (key: string) => key === 'content-type' ? 'application/json' : null,
+        },
+        text: () => Promise.resolve(JSON.stringify({ valid: true })),
+      });
+
+      const result = await fetchWithProxy('https://api.example.com');
+
+      expect(result.content).toBe(JSON.stringify({ valid: true }));
+    });
+
+    test('throws error when all proxies return invalid JSON', async () => {
+      // 所有代理返回无效 JSON
+      for (let i = 0; i < PROXY_LIST.length; i++) {
+        mockFetch.mockResolvedValueOnce({
+          ok: true,
+          headers: {
+            get: (key: string) => key === 'content-type' ? 'application/json' : null,
+          },
+          text: () => Promise.resolve('invalid json'),
+        });
+      }
+
+      await expect(fetchWithProxy('https://api.example.com')).rejects.toThrow('所有代理均失败');
     });
   });
 

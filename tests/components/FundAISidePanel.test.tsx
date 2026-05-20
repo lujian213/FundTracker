@@ -29,12 +29,6 @@ jest.mock('../../services/aiService', () => ({
     success: true,
     content: 'Test response from AI'
   }),
-  queryAIWithTemplate: jest.fn().mockResolvedValue({
-    success: true,
-    content: 'Welcome to the AI assistant!'
-  }),
-  AIResponse: {},
-  AIQueryContext: {},
 }));
 
 jest.mock('../../services/promptTemplateService', () => ({
@@ -42,7 +36,7 @@ jest.mock('../../services/promptTemplateService', () => ({
     { id: 'test-1', name: '测试问题1', template: '这是测试问题1的模板' },
     { id: 'test-2', name: '测试问题2', template: '这是测试问题2的模板' },
   ]),
-  fillTemplateVariables: jest.fn((template) => template),
+  fillTemplateVariables: jest.fn((template) => ({ success: true, content: template })),
   TEMPLATE_TYPES: {
     FUND_COMMON_QUESTION: 'fund-common-question',
     INDEX_COMMON_QUESTION: 'index-common-question',

@@ -635,7 +635,9 @@ const AISidePanelBase: React.FC<AISidePanelBaseProps> = ({
         ));
       };
 
-      const response: AIResponse = await queryAI(config, fullPrompt, context as any, handleStreamChunk);
+      const response: AIResponse = await queryAI(config, {
+        messages: [{ role: 'user', content: fullPrompt }]
+      }, handleStreamChunk);
 
       // 更新AI消息的最终内容（确保使用完整响应）
       const finalAiMessage: Message = {
@@ -814,7 +816,11 @@ const AISidePanelBase: React.FC<AISidePanelBaseProps> = ({
     const context = propsRef.current.getContextData();
 
     // 替换模板变量得到实际内容
-    const actualPrompt = fillTemplateVariables(question.template, context as any);
+    const promptResult = fillTemplateVariables(question.template, context as any);
+    const actualPrompt = promptResult.success ? promptResult.content : question.template;
+    if (!promptResult.success) {
+      console.warn(`模板填充失败: ${promptResult.error}`);
+    }
 
     // 设置用户消息（显示问题名称，但存储实际提示词）
     const userMessage: Message = {
@@ -865,7 +871,9 @@ const AISidePanelBase: React.FC<AISidePanelBaseProps> = ({
         ));
       };
 
-      const response: AIResponse = await queryAI(config, fullPrompt, context as any, handleStreamChunk);
+      const response: AIResponse = await queryAI(config, {
+        messages: [{ role: 'user', content: fullPrompt }]
+      }, handleStreamChunk);
 
       // 更新AI消息
       const finalAiMessage: Message = {

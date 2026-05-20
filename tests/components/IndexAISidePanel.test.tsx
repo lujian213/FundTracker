@@ -31,15 +31,13 @@ jest.mock('../../services/aiService', () => ({
     success: true,
     content: 'Index analysis from AI'
   }),
-  AIResponse: {},
-  AIQueryContext: {},
 }));
 
 jest.mock('../../services/promptTemplateService', () => ({
   getByType: jest.fn().mockReturnValue([
     { id: 'trend-prediction', name: '走势预测', template: '走势预测模板' },
   ]),
-  fillTemplateVariables: jest.fn((template) => template),
+  fillTemplateVariables: jest.fn((template) => ({ success: true, content: template })),
   TEMPLATE_TYPES: {
     FUND_COMMON_QUESTION: 'fund-common-question',
     INDEX_COMMON_QUESTION: 'index-common-question',
@@ -77,22 +75,16 @@ describe('IndexAISidePanel', () => {
     });
   });
 
-  // === realtimeVolume 计算逻辑测试 ===
-  describe('realtimeVolume calculation', () => {
-    it('should extract realtimeVolume from last volumeData point', async () => {
+  // === currentVolume 逻辑测试 ===
+  describe('currentVolume calculation', () => {
+    it('should use currentVolume prop directly', async () => {
       const { queryAIWithMarketTemplate } = require('../../services/aiService');
       queryAIWithMarketTemplate.mockClear();
-
-      const volumeData = [
-        { x: 0, volume: 1000000, isUp: true },
-        { x: 1, volume: 1200000, isUp: true },
-        { x: 2, volume: 1500000, isUp: false }, // 最后一个点
-      ];
 
       render(
         <IndexAISidePanel
           {...defaultProps}
-          volumeData={volumeData}
+          currentVolume={1500000}
         />
       );
 
@@ -105,18 +97,18 @@ describe('IndexAISidePanel', () => {
       const callArgs = queryAIWithMarketTemplate.mock.calls[0];
       const context = callArgs[2]; // 第三个参数是 context
 
-      // 验证 realtimeVolume 是最后一个数据点的成交量
-      expect(context.realtimeVolume).toBe(1500000);
+      // 验证 currentVolume 直接传递
+      expect(context.currentVolume).toBe(1500000);
     });
 
-    it('should handle empty volumeData gracefully', async () => {
+    it('should handle undefined currentVolume gracefully', async () => {
       const { queryAIWithMarketTemplate } = require('../../services/aiService');
       queryAIWithMarketTemplate.mockClear();
 
       render(
         <IndexAISidePanel
           {...defaultProps}
-          volumeData={[]}
+          currentVolume={undefined}
         />
       );
 
@@ -127,45 +119,18 @@ describe('IndexAISidePanel', () => {
       const callArgs = queryAIWithMarketTemplate.mock.calls[0];
       const context = callArgs[2];
 
-      // 空 volumeData 时 realtimeVolume 应为 undefined
-      expect(context.realtimeVolume).toBeUndefined();
+      // currentVolume 未定义时应为 undefined
+      expect(context.currentVolume).toBeUndefined();
     });
 
-    it('should handle undefined volumeData gracefully', async () => {
+    it('should handle currentVolume with zero volume', async () => {
       const { queryAIWithMarketTemplate } = require('../../services/aiService');
       queryAIWithMarketTemplate.mockClear();
 
       render(
         <IndexAISidePanel
           {...defaultProps}
-          volumeData={undefined}
-        />
-      );
-
-      await waitFor(() => {
-        expect(queryAIWithMarketTemplate).toHaveBeenCalled();
-      });
-
-      const callArgs = queryAIWithMarketTemplate.mock.calls[0];
-      const context = callArgs[2];
-
-      // undefined volumeData 时 realtimeVolume 应为 undefined
-      expect(context.realtimeVolume).toBeUndefined();
-    });
-
-    it('should handle volumeData with zero volume', async () => {
-      const { queryAIWithMarketTemplate } = require('../../services/aiService');
-      queryAIWithMarketTemplate.mockClear();
-
-      const volumeData = [
-        { x: 0, volume: 1000000, isUp: true },
-        { x: 1, volume: 0, isUp: false }, // 最后一个点 volume 为 0
-      ];
-
-      render(
-        <IndexAISidePanel
-          {...defaultProps}
-          volumeData={volumeData}
+          currentVolume={0}
         />
       );
 
@@ -177,7 +142,7 @@ describe('IndexAISidePanel', () => {
       const context = callArgs[2];
 
       // volume 为 0 时应该正常传递
-      expect(context.realtimeVolume).toBe(0);
+      expect(context.currentVolume).toBe(0);
     });
   });
 
@@ -209,6 +174,8 @@ describe('IndexAISidePanel', () => {
       render(
         <IndexAISidePanel
           {...defaultProps}
+          currentValue={3150}
+          currentVolume={1000000}
           history={history}
           maValues={maValues}
           volumeData={volumeData}
@@ -228,13 +195,14 @@ describe('IndexAISidePanel', () => {
       expect(context.indexName).toBe('上证指数');
       expect(context.indexSymbol).toBe('000001');
       expect(context.datetime).toBeDefined();
+      expect(context.currentValue).toBe(3150);
       expect(context.closingPrices).toBeDefined();
       expect(context.ma5).toBeDefined();
       expect(context.ma10).toBeDefined();
       expect(context.ma20).toBeDefined();
       expect(context.volumes).toBeDefined();
       expect(context.realtimePrices).toBeDefined();
-      expect(context.realtimeVolume).toBe(1000000);
+      expect(context.currentVolume).toBe(1000000);
     });
   });
 });

@@ -104,8 +104,8 @@ describe('aiPortfolioService', () => {
 
       expect(queryAI).toHaveBeenCalled();
       const callArgs = (queryAI as jest.Mock).mock.calls[0];
-      expect(callArgs[1]).toContain('分析以下投资组合');
-      expect(callArgs[1]).toContain('测试基金');
+      expect(callArgs[1].messages[0].content).toContain('分析以下投资组合');
+      expect(callArgs[1].messages[0].content).toContain('测试基金');
       expect(result.content).toBe('AI分析结果');
       expect(result.success).toBe(true);
     });

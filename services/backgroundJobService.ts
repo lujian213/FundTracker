@@ -11,6 +11,7 @@ export interface BackgroundJobPrompt {
   template: string;
   maxTokens?: number;
   temperature?: number;
+  enableWebSearch?: boolean;
 }
 
 /** 旧 type 到新 id 的映射 */
@@ -54,6 +55,7 @@ export function getBackgroundJobPromptByType(type: BackgroundJobPrompt['type']):
     template: template.template,
     maxTokens: template.maxTokens,
     temperature: template.temperature,
+    enableWebSearch: template.enableWebSearch,
   };
 }
 
@@ -247,11 +249,12 @@ export async function refreshTickerAlerts(
 
   const response: AIResponse = await queryAI(
     aiConfig,
-    filledPrompt,
-    undefined,
-    undefined,
-    prompt.maxTokens,
-    prompt.temperature
+    {
+      messages: [{ role: 'user', content: filledPrompt }],
+      enableWebSearch: prompt.enableWebSearch,
+      maxTokens: prompt.maxTokens,
+      temperature: prompt.temperature
+    }
   );
 
   if (!response.success) {

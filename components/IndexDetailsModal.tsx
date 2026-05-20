@@ -432,6 +432,8 @@ export const IndexDetailsModal: React.FC<IndexDetailsModalProps> = ({ data, onCl
         onClose={() => setShowAI(false)}
         indexSymbol={data.info.symbol}
         indexName={data.info.name}
+        currentValue={data.info.current}
+        currentVolume={data.info.volume}
         history={chartData}
         maValues={maValues}
         volumeData={volumeData}

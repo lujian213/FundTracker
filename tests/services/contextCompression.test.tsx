@@ -3,7 +3,7 @@ import { render, screen, waitFor, fireEvent } from '@testing-library/react';
 import FundAISidePanel from '../../components/FundAISidePanel';
 import { aiAssistantStateManager } from '../../services/aiAssistantStateManager';
 import { getAIConfig, hasValidAIConfig } from '../../services/aiConfigService';
-import { queryAI, queryAIWithTemplate } from '../../services/aiService';
+import { queryAI } from '../../services/aiService';
 import { ContextCompressionService } from '../../services/ContextCompressionService';
 
 // Mock DOMPurify
@@ -74,9 +74,7 @@ jest.mock('../../services/aiConfigService', () => ({
 }));
 jest.mock('../../services/aiService', () => ({
   queryAI: jest.fn(),
-  queryAIWithTemplate: jest.fn(),
-  AIResponse: {},
-  AIQueryContext: {},
+  ChatMessage: {},
 }));
 jest.mock('../../services/aiAssistantStateManager', () => ({
   aiAssistantStateManager: {
@@ -142,11 +140,6 @@ describe('FundAISidePanel Context Compression Test', () => {
 
   it('should trigger compression when new content exceeds threshold', async () => {
     // Mock API responses
-    (queryAIWithTemplate as jest.MockedFunction<any>).mockResolvedValue({
-      success: true,
-      content: 'Welcome to the AI assistant!'
-    });
-
     (queryAI as jest.MockedFunction<any>).mockResolvedValue({
       success: true,
       content: 'Response to user query'

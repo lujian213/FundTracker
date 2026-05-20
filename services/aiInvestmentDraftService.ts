@@ -1,7 +1,7 @@
 // services/aiInvestmentDraftService.ts
 import { Ticker, ValuationData, HistoricalPoint, MarketIndex, TradeRecord, MarketFund } from '../types';
 import { AIConfiguration } from './aiConfigService';
-import { queryAI, StreamCallback, ChatMessage, queryAIWithMessages } from './aiService';
+import { queryAI, StreamCallback, ChatMessage } from './aiService';
 import { getById, TEMPLATE_IDS } from './promptTemplateService';
 import { PromptTemplate } from '../types/promptTemplateTypes';
 import { getTradesForSymbol } from '../hooks/useTrades';
@@ -471,7 +471,7 @@ export async function generateAIAdviceWithValidation(
 
   messages.push({ role: 'user', content: prompt1 });
 
-  const result1 = await queryAIWithMessages(config, messages, undefined, 4000);
+  const result1 = await queryAI(config, { messages, maxTokens: 4000 });
 
   if (!result1.success) {
     return {
@@ -503,7 +503,7 @@ export async function generateAIAdviceWithValidation(
   const prompt2 = template2.template;
   messages.push({ role: 'user', content: prompt2 });
 
-  const result2 = await queryAIWithMessages(config, messages, undefined, 4000);
+  const result2 = await queryAI(config, { messages, maxTokens: 4000 });
 
   if (!result2.success) {
     return {
@@ -539,7 +539,7 @@ export async function generateAIAdviceWithValidation(
     const prompt3 = template3.template;
     messages.push({ role: 'user', content: prompt3 });
 
-    const result3 = await queryAIWithMessages(config, messages, undefined, 4000);
+    const result3 = await queryAI(config, { messages, maxTokens: 4000 });
 
     if (!result3.success) {
       // 修正失败，返回当前结果
@@ -570,7 +570,7 @@ export async function generateAIAdviceWithValidation(
     // 再次评分
     messages.push({ role: 'user', content: prompt2 });
 
-    const result4 = await queryAIWithMessages(config, messages, undefined, 4000);
+    const result4 = await queryAI(config, { messages, maxTokens: 4000 });
 
     if (!result4.success) {
       return {
@@ -711,7 +711,12 @@ export async function analyzeInvestmentDraft(
     .replace(/{json_schema}/g, JSON_SCHEMA)
     .replace(/{json_content}/g, jsonContent);
 
-  return queryAI(config, prompt, undefined, onChunk, template.maxTokens, template.temperature);
+  return queryAI(config, {
+    messages: [{ role: 'user', content: prompt }],
+    enableWebSearch: template.enableWebSearch,
+    maxTokens: template.maxTokens,
+    temperature: template.temperature
+  }, onChunk);
 }
 
 /**
@@ -780,7 +785,12 @@ export async function generateAIInvestmentAdvice(
     .replace(/{json_schema}/g, AI_ADVICE_JSON_SCHEMA)
     .replace(/{json_content}/g, jsonContent);
 
-  const result = await queryAI(config, prompt, undefined, undefined, targetTemplate.maxTokens, targetTemplate.temperature);
+  const result = await queryAI(config, {
+    messages: [{ role: 'user', content: prompt }],
+    enableWebSearch: targetTemplate.enableWebSearch,
+    maxTokens: targetTemplate.maxTokens,
+    temperature: targetTemplate.temperature
+  });
 
   if (!result.success) {
     return {

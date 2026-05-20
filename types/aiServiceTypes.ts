@@ -30,13 +30,14 @@ export interface IndexAIQueryContext {
   indexName: string;
   indexSymbol: string;
   datetime: string;
+  currentValue?: number;  // 当前点位值
+  currentVolume?: number;  // 当前成交量（手）
   closingPrices?: { date: string; price: number }[];
   ma5?: (number | null)[];
   ma10?: (number | null)[];
   ma20?: (number | null)[];
   volumes?: number[];
   realtimePrices?: { time: string; price: number }[];
-  realtimeVolume?: number;
 }
 
 /**

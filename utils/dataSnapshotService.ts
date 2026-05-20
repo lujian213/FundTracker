@@ -14,6 +14,7 @@ import { STORAGE_KEYS } from '../services/storageKeys';
 import { getNews, NewsItem } from '../services/marketNewsService';
 import * as marketFundService from '../services/marketFundService';
 import * as indexService from '../services/indexService';
+import { searchProvidersConfig } from '../services/searchProvidersConfig';
 
 // 需导出的 localStorage key（7个整合后的key，与 testDataPrepare.spec.ts 一致）
 const KEYS_TO_DUMP = [
@@ -62,6 +63,7 @@ function formatTimestamp(date: Date): string {
  * - sync.eggfundUsername → ***MASKED***
  * - sync.eggfundPassword → ***MASKED***
  * - ai.manager.configs[].apiKey → ***MASKED***
+ * - searchProviders.providers[].params.apiKey 等敏感参数 → '' (空字符串)
  */
 function maskSystemConfig(rawConfig: string): string {
   try {
@@ -83,6 +85,21 @@ function maskSystemConfig(rawConfig: string): string {
         ...c,
         apiKey: '***MASKED***',
       }));
+    }
+
+    // Mask 搜索服务配置中的敏感参数
+    if (config.searchProviders?.providers) {
+      for (const [providerKey, providerConfig] of Object.entries(config.searchProviders.providers)) {
+        const providerMeta = searchProvidersConfig[providerKey];
+        if (providerMeta?.params && (providerConfig as any).params) {
+          for (const [paramKey, paramMeta] of Object.entries(providerMeta.params)) {
+            if (paramMeta.isSensitive && (providerConfig as any).params[paramKey]) {
+              // 搜索服务的敏感参数使用空字符串（而非 ***MASKED***）
+              (providerConfig as any).params[paramKey] = '';
+            }
+          }
+        }
+      }
     }
 
     return JSON.stringify(config);

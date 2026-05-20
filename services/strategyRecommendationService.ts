@@ -131,11 +131,12 @@ export async function refreshStrategyRecommendations(
 
   const response: AIResponse = await queryAI(
     aiConfig,
-    filledPrompt,
-    undefined,
-    undefined,
-    prompt.maxTokens,
-    prompt.temperature
+    {
+      messages: [{ role: 'user', content: filledPrompt }],
+      enableWebSearch: prompt.enableWebSearch,
+      maxTokens: prompt.maxTokens,
+      temperature: prompt.temperature
+    }
   );
   if (!response.success) {
     throw new Error(response.error || 'AI 请求失败');

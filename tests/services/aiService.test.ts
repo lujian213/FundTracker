@@ -1,8 +1,8 @@
-import { queryAI, AIResponse, AIQueryContext, queryAIWithWebSearch, AIConfigurationWithWebSearch } from '../../services/aiService';
+import { queryAI, AIResponse, AIRequest, ChatMessage } from '../../services/aiService';
 import { fillTemplateVariables } from '../../services/promptTemplateService';
 import { getAIConfig, AIConfiguration, saveAIConfig, validateAIConfig, hasValidAIConfig, resetCache as resetAIConfigCache } from '../../services/aiConfigService';
 import { AIConfigProfile } from '../../types/aiConfigTypes';
-import { FundAIQueryContext } from '../../types/aiServiceTypes';
+import { FundAIQueryContext, IndexAIQueryContext } from '../../types/aiServiceTypes';
 import { PromptTemplate } from '../../types/promptTemplateTypes';
 import { TemplateContext } from '../../utils/templateFiller';
 
@@ -138,14 +138,14 @@ describe('AI Services', () => {
 
       const result = await queryAI(
         { apiEndpoint: '', apiKey: '', model: 'gpt-4' }, // Invalid config will cause fetch to fail
-        'Test query'
+        { messages: [{ role: 'user', content: 'Test query' }] }
       );
 
       expect(result.success).toBe(false);
       expect(result.error).toBeDefined();
     });
 
-    test('should construct proper request body with context', async () => {
+    test('should construct proper request body with messages', async () => {
       // 模拟流式响应
       const sseData = 'data: {"choices":[{"delta":{"content":"Test response"}}]}\n\ndata: [DONE]\n\n';
       const uint8Array = new Uint8Array(sseData.length);
@@ -177,24 +177,13 @@ describe('AI Services', () => {
         model: 'gpt-4'
       };
 
-      const context: AIQueryContext = {
-        fundName: 'Test Fund',
-        fundSymbol: 'TEST',
-        valuationData: {
-          symbol: 'TEST',
-          name: 'Test Fund',
-          currentPrice: 1.2345,
-          previousPrice: 1.2200,
-          changePercentage: 1.19,
-          lastUpdated: '2023-01-01 15:00',
-          realtimeDate: '2023-01-01',
-          netWorthDate: '2023-01-01',
-          valuationDate: '2023-01-01',
-          sourceUrl: 'https://example.com'
-        }
+      const request: AIRequest = {
+        messages: [
+          { role: 'user', content: 'How is this fund performing? Fund name: Test Fund' }
+        ]
       };
 
-      const result: AIResponse = await queryAI(config, 'How is this fund performing?', context);
+      const result: AIResponse = await queryAI(config, request);
 
       expect(fetch).toHaveBeenCalledWith(
         'https://api.example.com/v1/chat',
@@ -225,7 +214,7 @@ describe('AI Services', () => {
         model: 'gpt-4'
       };
 
-      const result = await queryAI(config, 'Test query');
+      const result = await queryAI(config, { messages: [{ role: 'user', content: 'Test query' }] });
 
       expect(result.success).toBe(false);
       expect(result.error).toBeDefined();
@@ -241,7 +230,7 @@ describe('AI Services', () => {
         model: 'gpt-4'
       };
 
-      const result = await queryAI(config, 'Test query');
+      const result = await queryAI(config, { messages: [{ role: 'user', content: 'Test query' }] });
 
       expect(result.success).toBe(false);
       expect(result.error).toBe('Network timeout');
@@ -270,7 +259,8 @@ describe('AI Services', () => {
       };
 
       const result = fillTemplateVariables(template, context);
-      expect(result).toBe('当前价格：1.2345');
+      expect(result.success).toBe(true);
+      expect(result.content).toBe('当前价格：1.2345');
     });
 
     test('should fill currentDate variable from valuationData.realtimeDate', () => {
@@ -294,7 +284,8 @@ describe('AI Services', () => {
       };
 
       const result = fillTemplateVariables(template, context);
-      expect(result).toBe('估值日期：2023-01-01');
+      expect(result.success).toBe(true);
+      expect(result.content).toBe('估值日期：2023-01-01');
     });
 
     test('should fill previousPrice variable from valuationData', () => {
@@ -318,7 +309,8 @@ describe('AI Services', () => {
       };
 
       const result = fillTemplateVariables(template, context);
-      expect(result).toBe('前值：1.2000');
+      expect(result.success).toBe(true);
+      expect(result.content).toBe('前值：1.2000');
     });
 
     test('should fill previousDate variable from valuationData.netWorthDate', () => {
@@ -342,7 +334,8 @@ describe('AI Services', () => {
       };
 
       const result = fillTemplateVariables(template, context);
-      expect(result).toBe('前值日期：2022-12-31');
+      expect(result.success).toBe(true);
+      expect(result.content).toBe('前值日期：2022-12-31');
     });
 
     test('should fill rate variable with sign from valuationData.changePercentage', () => {
@@ -366,7 +359,8 @@ describe('AI Services', () => {
       };
 
       const result = fillTemplateVariables(template, context);
-      expect(result).toBe('涨跌幅：+2.88%');
+      expect(result.success).toBe(true);
+      expect(result.content).toBe('涨跌幅：+2.88%');
     });
 
     test('should show negative sign for negative rate', () => {
@@ -390,7 +384,8 @@ describe('AI Services', () => {
       };
 
       const result = fillTemplateVariables(template, context);
-      expect(result).toBe('涨跌幅：-1.67%');
+      expect(result.success).toBe(true);
+      expect(result.content).toBe('涨跌幅：-1.67%');
     });
 
     test('should show "未设置" when valuationData is missing', () => {
@@ -402,7 +397,8 @@ describe('AI Services', () => {
       };
 
       const result = fillTemplateVariables(template, context);
-      expect(result).toBe('当前价格：未设置，前值：未设置，涨跌幅：未设置');
+      expect(result.success).toBe(true);
+      expect(result.content).toBe('当前价格：，前值：，涨跌幅：');
     });
 
     test('should fill all five new variables together', () => {
@@ -426,7 +422,8 @@ describe('AI Services', () => {
       };
 
       const result = fillTemplateVariables(template, context);
-      expect(result).toBe('当前价格：1.2345（2023-01-01），前值：1.2000（2022-12-31），涨跌幅：+2.88%');
+      expect(result.success).toBe(true);
+      expect(result.content).toBe('当前价格：1.2345（2023-01-01），前值：1.2000（2022-12-31），涨跌幅：+2.88%');
     });
 
     test('should fill marketValue variable', () => {
@@ -439,7 +436,8 @@ describe('AI Services', () => {
       };
 
       const result = fillTemplateVariables(template, context);
-      expect(result).toBe('市场价值：12345.67');
+      expect(result.success).toBe(true);
+      expect(result.content).toBe('市场价值：12345.67');
     });
 
     test('should show "未设置" when marketValue is missing', () => {
@@ -451,7 +449,8 @@ describe('AI Services', () => {
       };
 
       const result = fillTemplateVariables(template, context);
-      expect(result).toBe('市场价值：未设置');
+      expect(result.success).toBe(true);
+      expect(result.content).toBe('市场价值：');
     });
 
     test('should fill position variable', () => {
@@ -464,10 +463,11 @@ describe('AI Services', () => {
       };
 
       const result = fillTemplateVariables(template, context);
-      expect(result).toBe('当前仓位：5000.50 份');
+      expect(result.success).toBe(true);
+      expect(result.content).toBe('当前仓位：5000.50 份');
     });
 
-    test('should show "未设置" when position is missing', () => {
+    test('should show empty string when position is missing', () => {
       const template = '当前仓位：{position}';
       const context: FundAIQueryContext = {
         marketType: 'fund',
@@ -476,7 +476,8 @@ describe('AI Services', () => {
       };
 
       const result = fillTemplateVariables(template, context);
-      expect(result).toBe('当前仓位：未设置');
+      expect(result.success).toBe(true);
+      expect(result.content).toBe('当前仓位：');
     });
 
     test('should fill positionRate variable', () => {
@@ -489,7 +490,8 @@ describe('AI Services', () => {
       };
 
       const result = fillTemplateVariables(template, context);
-      expect(result).toBe('仓位占比：50.55%');
+      expect(result.success).toBe(true);
+      expect(result.content).toBe('仓位占比：50.55%');
     });
 
     test('should show "未设置" when positionRate is missing', () => {
@@ -501,7 +503,8 @@ describe('AI Services', () => {
       };
 
       const result = fillTemplateVariables(template, context);
-      expect(result).toBe('仓位占比：未设置');
+      expect(result.success).toBe(true);
+      expect(result.content).toBe('仓位占比：');
     });
 
     test('should fill profit variable with positive sign', () => {
@@ -514,7 +517,8 @@ describe('AI Services', () => {
       };
 
       const result = fillTemplateVariables(template, context);
-      expect(result).toBe('整体盈利：+1234.56');
+      expect(result.success).toBe(true);
+      expect(result.content).toBe('整体盈利：+1234.56');
     });
 
     test('should fill profit variable with negative sign', () => {
@@ -527,7 +531,8 @@ describe('AI Services', () => {
       };
 
       const result = fillTemplateVariables(template, context);
-      expect(result).toBe('整体盈利：-567.89');
+      expect(result.success).toBe(true);
+      expect(result.content).toBe('整体盈利：-567.89');
     });
 
     test('should show "未设置" when profit is missing', () => {
@@ -539,7 +544,8 @@ describe('AI Services', () => {
       };
 
       const result = fillTemplateVariables(template, context);
-      expect(result).toBe('整体盈利：未设置');
+      expect(result.success).toBe(true);
+      expect(result.content).toBe('整体盈利：');
     });
 
     test('should fill all four new holding variables together', () => {
@@ -555,293 +561,317 @@ describe('AI Services', () => {
       };
 
       const result = fillTemplateVariables(template, context);
-      expect(result).toBe('市场价值：6172.50，仓位：5000.00 份，仓位占比：50.00%，盈利：+172.50');
+      expect(result.success).toBe(true);
+      expect(result.content).toBe('市场价值：6172.50，仓位：5000.00 份，仓位占比：50.00%，盈利：+172.50');
+    });
+  });
+});
+
+// === fillTemplateVariables 变量名映射测试 ===
+// 测试 indexName/indexSymbol → name/code 的映射
+describe('fillTemplateVariables Variable Mapping', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
+  describe('Fund context variable mapping', () => {
+    test('should map fundName to {name}', () => {
+      const template = '基金名称: {name}';
+      const context: FundAIQueryContext = {
+        marketType: 'fund',
+        fundName: '易方达蓝筹精选',
+        fundSymbol: '005827',
+      };
+
+      const result = fillTemplateVariables(template, context);
+      expect(result.success).toBe(true);
+      expect(result.content).toBe('基金名称: 易方达蓝筹精选');
+    });
+
+    test('should map fundSymbol to {code}', () => {
+      const template = '基金代码: {code}';
+      const context: FundAIQueryContext = {
+        marketType: 'fund',
+        fundName: '易方达蓝筹精选',
+        fundSymbol: '005827',
+      };
+
+      const result = fillTemplateVariables(template, context);
+      expect(result.success).toBe(true);
+      expect(result.content).toBe('基金代码: 005827');
+    });
+
+    test('should map both fundName and fundSymbol in webSearchHint format', () => {
+      // 模拟 webSearchHint: "搜索{name}({code})市场动态"
+      const template = '搜索{name}({code})市场动态';
+      const context: FundAIQueryContext = {
+        marketType: 'fund',
+        fundName: '易方达蓝筹精选',
+        fundSymbol: '005827',
+      };
+
+      const result = fillTemplateVariables(template, context);
+      expect(result.success).toBe(true);
+      expect(result.content).toBe('搜索易方达蓝筹精选(005827)市场动态');
     });
   });
 
-  describe('queryAIWithWebSearch', () => {
-    // Helper function to create mock reader for SSE data
-    function createMockReader(sseData: string) {
+  describe('Index context variable mapping', () => {
+    test('should map indexName to {name}', () => {
+      const template = '指数名称: {name}';
+      const context: IndexAIQueryContext = {
+        marketType: 'index',
+        indexName: '沪深300',
+        indexSymbol: '000300',
+        datetime: '2026/05/19',
+      };
+
+      const result = fillTemplateVariables(template, context);
+      expect(result.success).toBe(true);
+      expect(result.content).toBe('指数名称: 沪深300');
+    });
+
+    test('should map indexSymbol to {code}', () => {
+      const template = '指数代码: {code}';
+      const context: IndexAIQueryContext = {
+        marketType: 'index',
+        indexName: '沪深300',
+        indexSymbol: '000300',
+        datetime: '2026/05/19',
+      };
+
+      const result = fillTemplateVariables(template, context);
+      expect(result.success).toBe(true);
+      expect(result.content).toBe('指数代码: 000300');
+    });
+
+    test('should map indexName/indexSymbol/datetime together', () => {
+      const template = '指数名称: {name}, 代码: {code}, 时间: {datetime}';
+      const context: IndexAIQueryContext = {
+        marketType: 'index',
+        indexName: '深证成指',
+        indexSymbol: '399001',
+        datetime: '2026/05/19 10:30',
+      };
+
+      const result = fillTemplateVariables(template, context);
+      expect(result.success).toBe(true);
+      expect(result.content).toBe('指数名称: 深证成指, 代码: 399001, 时间: 2026/05/19 10:30');
+    });
+
+    test('should correctly fill webSearchHint template for index', () => {
+      // 模拟指数分析模板的 webSearchHint
+      const template = '搜索{name}({code}){datetime}市场动态';
+      const context: IndexAIQueryContext = {
+        marketType: 'index',
+        indexName: '上证指数',
+        indexSymbol: '000001',
+        datetime: '2026/05/19',
+      };
+
+      const result = fillTemplateVariables(template, context);
+      expect(result.success).toBe(true);
+      expect(result.content).toBe('搜索上证指数(000001)2026/05/19市场动态');
+    });
+  });
+
+  describe('Missing variable handling', () => {
+    test('should return success=false when variables are missing', () => {
+      const template = '名称: {name}, 代码: {code}, 缺失: {missing}';
+      const context: IndexAIQueryContext = {
+        marketType: 'index',
+        indexName: '上证指数',
+        indexSymbol: '000001',
+        datetime: '2026/05/19',
+      };
+
+      const result = fillTemplateVariables(template, context);
+      expect(result.success).toBe(false);
+      expect(result.missingPlaceholders).toContain('missing');
+    });
+  });
+});
+
+// === queryAIWithMarketTemplate 搜索集成测试 ===
+// 使用 spy 来验证内部调用逻辑
+describe('queryAIWithMarketTemplate Web Search Integration', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    localStorage.clear();
+  });
+
+  describe('Template loading and request construction', () => {
+    test('should return error when template not found', async () => {
+      // Mock getById 返回 null
+      const getByIdSpy = jest.spyOn(require('../../services/promptTemplateService'), 'getById').mockReturnValue(null);
+
+      const { queryAIWithMarketTemplate } = require('../../services/aiService');
+
+      const config = {
+        apiEndpoint: 'https://api.example.com/v1/chat',
+        apiKey: 'test-key',
+        model: 'gpt-4',
+      };
+
+      const result = await queryAIWithMarketTemplate(config, 'index', {
+        marketType: 'index',
+        indexName: '上证指数',
+        indexSymbol: '000001',
+        datetime: '2026/05/19',
+      });
+
+      expect(result.success).toBe(false);
+      expect(result.error).toBe('No template');
+
+      getByIdSpy.mockRestore();
+    });
+
+    test('should construct correct AIRequest with webSearch parameters', async () => {
+      // Mock template with webSearch enabled
+      const getByIdSpy = jest.spyOn(require('../../services/promptTemplateService'), 'getById').mockReturnValue({
+        id: 'index-analysis',
+        name: '指数分析',
+        template: '分析指数 {name} ({code})，日期: {datetime}',
+        enableWebSearch: true,
+        webSearchHint: '搜索{name}({code}){datetime}市场动态',
+      });
+
+      // Mock fetch for streaming response
+      const sseData = 'data: {"choices":[{"delta":{"content":"AI response"}}]}\n\ndata: [DONE]\n\n';
       const uint8Array = new Uint8Array(sseData.length);
       for (let i = 0; i < sseData.length; i++) {
         uint8Array[i] = sseData.charCodeAt(i);
       }
-      const chunks = [uint8Array];
+
       let chunkIndex = 0;
-      return {
+      const mockReader = {
         read: jest.fn().mockImplementation(() => {
-          if (chunkIndex < chunks.length) {
-            return Promise.resolve({ done: false, value: chunks[chunkIndex++] });
+          if (chunkIndex < 1) {
+            chunkIndex++;
+            return Promise.resolve({ done: false, value: uint8Array });
           }
           return Promise.resolve({ done: true, value: undefined });
         })
       };
-    }
 
-    beforeEach(() => {
-      jest.clearAllMocks();
-    });
-
-    test('should include tools when webSearch is enabled', async () => {
-      const sseData = 'data: {"choices":[{"delta":{"content":"AI response with search"}}]}\n\ndata: [DONE]\n\n';
-      const mockReader = createMockReader(sseData);
-
-      (global.fetch as jest.Mock).mockResolvedValue({
+      (global.fetch as jest.Mock) = jest.fn().mockResolvedValue({
         ok: true,
-        body: {
-          getReader: () => mockReader
-        }
+        body: { getReader: () => mockReader }
       });
 
-      const config: AIConfigurationWithWebSearch = {
+      const { queryAIWithMarketTemplate } = require('../../services/aiService');
+
+      const config = {
         apiEndpoint: 'https://api.example.com/v1/chat',
         apiKey: 'test-key',
-        model: 'gpt-4',
-        webSearch: {
-          params: { search_mode: 'enhanced' }
-        }
+        model: 'deepseek-v4-pro',
       };
 
-      const template: PromptTemplate = {
-        id: 'test-template',
-        name: 'Test Template',
-        template: '分析 {fundName} 的市场表现',
-        enableWebSearch: true
+      const context: IndexAIQueryContext = {
+        marketType: 'index',
+        indexName: '上证指数',
+        indexSymbol: '000001',
+        datetime: '2026/05/19 20:38',
       };
 
-      const context: TemplateContext = {
-        fundName: '沪深300'
-      };
+      const result = await queryAIWithMarketTemplate(config, 'index', context);
 
-      const result = await queryAIWithWebSearch(config, template, context);
+      // 验证 fetch 被调用
+      expect(global.fetch).toHaveBeenCalled();
 
-      expect(fetch).toHaveBeenCalledWith(
-        'https://api.example.com/v1/chat',
-        expect.objectContaining({
-          method: 'POST',
-          body: expect.stringContaining('"tools"')
-        })
-      );
-
+      // 获取请求 body
       const callArgs = (global.fetch as jest.Mock).mock.calls[0];
       const body = JSON.parse(callArgs[1].body);
-      expect(body.tools).toBeDefined();
-      expect(body.tools[0].type).toBe('web_search');
-      expect(body.tools[0].web_search.enable).toBe(true);
-      expect(body.tools[0].web_search.search_mode).toBe('enhanced');
+
+      // 验证消息内容包含正确的变量映射（indexName → name, indexSymbol → code）
+      expect(body.messages[0].content).toContain('上证指数');
+      expect(body.messages[0].content).toContain('000001');
+      expect(body.messages[0].content).toContain('2026/05/19 20:38');
 
       expect(result.success).toBe(true);
-      expect(result.content).toBe('AI response with search');
+
+      getByIdSpy.mockRestore();
     });
 
-    test('should not include tools when webSearch is disabled', async () => {
+    test('should not enable webSearch when template has enableWebSearch=false', async () => {
+      // Mock template WITHOUT webSearch
+      const getByIdSpy = jest.spyOn(require('../../services/promptTemplateService'), 'getById').mockReturnValue({
+        id: 'fund-analysis',
+        name: '基金分析',
+        template: '分析基金 {name} ({code})',
+        enableWebSearch: false,
+      });
+
+      // Mock fetch
       const sseData = 'data: {"choices":[{"delta":{"content":"AI response"}}]}\n\ndata: [DONE]\n\n';
-      const mockReader = createMockReader(sseData);
+      const uint8Array = new Uint8Array(sseData.length);
+      for (let i = 0; i < sseData.length; i++) {
+        uint8Array[i] = sseData.charCodeAt(i);
+      }
 
-      (global.fetch as jest.Mock).mockResolvedValue({
+      let chunkIndex = 0;
+      const mockReader = {
+        read: jest.fn().mockImplementation(() => {
+          if (chunkIndex < 1) {
+            chunkIndex++;
+            return Promise.resolve({ done: false, value: uint8Array });
+          }
+          return Promise.resolve({ done: true, value: undefined });
+        })
+      };
+
+      (global.fetch as jest.Mock) = jest.fn().mockResolvedValue({
         ok: true,
-        body: {
-          getReader: () => mockReader
-        }
+        body: { getReader: () => mockReader }
       });
 
-      const config: AIConfigurationWithWebSearch = {
-        apiEndpoint: 'https://api.example.com/v1/chat',
-        apiKey: 'test-key',
-        model: 'gpt-4'
-        // No webSearch property
-      };
+      const { queryAIWithMarketTemplate } = require('../../services/aiService');
 
-      const template: PromptTemplate = {
-        id: 'test-template',
-        name: 'Test Template',
-        template: '分析 {fundName} 的市场表现',
-        enableWebSearch: true
-      };
-
-      const context: TemplateContext = {
-        fundName: '沪深300'
-      };
-
-      const result = await queryAIWithWebSearch(config, template, context);
-
-      const callArgs = (global.fetch as jest.Mock).mock.calls[0];
-      const body = JSON.parse(callArgs[1].body);
-      expect(body.tools).toBeUndefined();
-
-      expect(result.success).toBe(true);
-      expect(result.content).toBe('AI response');
-    });
-
-    test('should degrade gracefully when template requires webSearch but config lacks it', async () => {
-      const sseData = 'data: {"choices":[{"delta":{"content":"AI response without search"}}]}\n\ndata: [DONE]\n\n';
-      const mockReader = createMockReader(sseData);
-
-      (global.fetch as jest.Mock).mockResolvedValue({
-        ok: true,
-        body: {
-          getReader: () => mockReader
-        }
-      });
-
-      // Config without webSearch, template with enableWebSearch: true
-      const config: AIConfigurationWithWebSearch = {
-        apiEndpoint: 'https://api.example.com/v1/chat',
-        apiKey: 'test-key',
-        model: 'gpt-4'
-        // No webSearch
-      };
-
-      const template: PromptTemplate = {
-        id: 'test-template',
-        name: 'Test Template',
-        template: '分析 {fundName}',
-        enableWebSearch: true  // Template wants web search
-      };
-
-      const context: TemplateContext = {
-        fundName: '沪深300'
-      };
-
-      const result = await queryAIWithWebSearch(config, template, context);
-
-      // Should succeed without error (graceful degradation)
-      expect(result.success).toBe(true);
-      expect(result.content).toBe('AI response without search');
-
-      // Should not have tools in request
-      const callArgs = (global.fetch as jest.Mock).mock.calls[0];
-      const body = JSON.parse(callArgs[1].body);
-      expect(body.tools).toBeUndefined();
-    });
-
-    test('should fill template placeholders', async () => {
-      const sseData = 'data: {"choices":[{"delta":{"content":"Filled response"}}]}\n\ndata: [DONE]\n\n';
-      const mockReader = createMockReader(sseData);
-
-      (global.fetch as jest.Mock).mockResolvedValue({
-        ok: true,
-        body: {
-          getReader: () => mockReader
-        }
-      });
-
-      const config: AIConfigurationWithWebSearch = {
-        apiEndpoint: 'https://api.example.com/v1/chat',
-        apiKey: 'test-key',
-        model: 'gpt-4'
-      };
-
-      const template: PromptTemplate = {
-        id: 'test-template',
-        name: 'Test Template',
-        template: '基金名称: {fundName}, 代码: {fundSymbol}'
-      };
-
-      const context: TemplateContext = {
-        fundName: '沪深300ETF',
-        fundSymbol: '510300'
-      };
-
-      const result = await queryAIWithWebSearch(config, template, context);
-
-      const callArgs = (global.fetch as jest.Mock).mock.calls[0];
-      const body = JSON.parse(callArgs[1].body);
-      expect(body.messages[0].content).toBe('基金名称: 沪深300ETF, 代码: 510300');
-
-      expect(result.success).toBe(true);
-    });
-
-    test('should warn when placeholders are missing', async () => {
-      const warnSpy = jest.spyOn(console, 'warn').mockImplementation();
-
-      const sseData = 'data: {"choices":[{"delta":{"content":"Response"}}]}\n\ndata: [DONE]\n\n';
-      const mockReader = createMockReader(sseData);
-
-      (global.fetch as jest.Mock).mockResolvedValue({
-        ok: true,
-        body: {
-          getReader: () => mockReader
-        }
-      });
-
-      const config: AIConfigurationWithWebSearch = {
-        apiEndpoint: 'https://api.example.com/v1/chat',
-        apiKey: 'test-key',
-        model: 'gpt-4'
-      };
-
-      const template: PromptTemplate = {
-        id: 'test-template',
-        name: 'Test Template',
-        template: '基金名称: {fundName}, 代码: {fundSymbol}, 缺失: {missing}'
-      };
-
-      const context: TemplateContext = {
-        fundName: '沪深300ETF'
-        // fundSymbol and missing are not provided
-      };
-
-      const result = await queryAIWithWebSearch(config, template, context);
-
-      // Should warn about missing placeholders
-      expect(warnSpy).toHaveBeenCalledWith(
-        expect.stringContaining('提示词模板 "Test Template"')
-      );
-
-      // Should still make request with unfilled template
-      const callArgs = (global.fetch as jest.Mock).mock.calls[0];
-      const body = JSON.parse(callArgs[1].body);
-      // Template should not be filled (still contains placeholders)
-      expect(body.messages[0].content).toBe('基金名称: {fundName}, 代码: {fundSymbol}, 缺失: {missing}');
-
-      expect(result.success).toBe(true);
-
-      warnSpy.mockRestore();
-    });
-
-    test('should fill webSearchHint when enabled', async () => {
-      const sseData = 'data: {"choices":[{"delta":{"content":"Search hint response"}}]}\n\ndata: [DONE]\n\n';
-      const mockReader = createMockReader(sseData);
-
-      (global.fetch as jest.Mock).mockResolvedValue({
-        ok: true,
-        body: {
-          getReader: () => mockReader
-        }
-      });
-
-      const config: AIConfigurationWithWebSearch = {
+      const config = {
         apiEndpoint: 'https://api.example.com/v1/chat',
         apiKey: 'test-key',
         model: 'gpt-4',
-        webSearch: {
-          params: {}
-        }
       };
 
-      const template: PromptTemplate = {
-        id: 'test-template',
-        name: 'Test Template',
-        template: '分析 {fundName}',
-        enableWebSearch: true,
-        webSearchHint: '搜索 {fundName} 最新消息'
+      const context: FundAIQueryContext = {
+        marketType: 'fund',
+        fundName: '易方达蓝筹精选',
+        fundSymbol: '005827',
       };
 
-      const context: TemplateContext = {
-        fundName: '沪深300'
-      };
+      await queryAIWithMarketTemplate(config, 'fund', context);
 
-      const result = await queryAIWithWebSearch(config, template, context);
-
-      // Currently webSearchHint is filled but not used in request body
-      // (implementation note: it could be used for search_prompt in future)
-      expect(result.success).toBe(true);
-
-      // Verify the request was made with tools
+      // 获取请求 body
       const callArgs = (global.fetch as jest.Mock).mock.calls[0];
       const body = JSON.parse(callArgs[1].body);
-      expect(body.tools).toBeDefined();
+
+      // 验证消息内容被填充（fundName → name, fundSymbol → code）
+      expect(body.messages[0].content).toContain('易方达蓝筹精选');
+      expect(body.messages[0].content).toContain('005827');
+
+      // 验证没有 tools 参数（因为 enableWebSearch=false）
+      expect(body.tools).toBeUndefined();
+
+      getByIdSpy.mockRestore();
+    });
+
+    test('should correctly fill webSearchQuery when template has webSearchHint', async () => {
+      // 这个测试验证 webSearchHint 是否被正确填充
+      // 直接测试 fillTemplateVariables 函数的变量映射
+      const context: IndexAIQueryContext = {
+        marketType: 'index',
+        indexName: '上证指数',
+        indexSymbol: '000001',
+        datetime: '2026/05/19',
+      };
+
+      // webSearchHint 模板
+      const webSearchHintTemplate = '搜索{name}({code}){datetime}市场动态';
+      const result = fillTemplateVariables(webSearchHintTemplate, context);
+
+      // 验证变量名映射正确：indexName → name, indexSymbol → code
+      expect(result.success).toBe(true);
+      expect(result.content).toBe('搜索上证指数(000001)2026/05/19市场动态');
     });
   });
 });

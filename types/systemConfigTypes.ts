@@ -4,6 +4,11 @@
  * 系统配置类型定义
  */
 
+import type { SearchProvidersSection } from './searchTypes';
+
+// 重新导出 SearchProvidersSection，方便其他模块使用
+export type { SearchProvidersSection } from './searchTypes';
+
 export interface SystemConfig {
   backup: BackupConfigSection;
   sync: SyncConfigSection;
@@ -11,6 +16,7 @@ export interface SystemConfig {
   features: FeatureConfigSection;
   systemParams: SystemParamsSection;
   strategyParams: StrategyParamsSection;  // 新增
+  searchProviders: SearchProvidersSection;  // 搜索服务配置
 }
 
 export interface BackupConfigSection {
@@ -96,4 +102,7 @@ export const DEFAULT_SYSTEM_CONFIG: SystemConfig = {
     ocrConcurrency: 3,
   },
   strategyParams: {},  // 空，用户未修改时使用 strategyConfig.ts 的默认值
+  searchProviders: {
+    providers: {},  // 空，用户未修改时使用 searchProvidersConfig.ts 的默认值
+  },
 };

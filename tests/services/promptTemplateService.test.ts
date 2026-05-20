@@ -7,11 +7,11 @@ import {
   loadAllTemplates,
   getById,
   getByType,
-  fillTemplate,
   resetCache,
   TEMPLATE_IDS,
   TEMPLATE_TYPES,
 } from '../../services/promptTemplateService';
+import { fillTemplate } from '../../utils/templateFiller';
 import { FundAIQueryContext, IndexAIQueryContext } from '../../types/aiServiceTypes';
 
 // Mock fetch for template loading tests
@@ -34,7 +34,8 @@ describe('promptTemplateService', () => {
       };
       const template = '基金名称：{name}，代码：{code}，满仓：{fullCapacity}';
       const result = fillFundTemplateVariables(template, context);
-      expect(result).toBe('基金名称：测试基金，代码：000001，满仓：10000');
+      expect(result.success).toBe(true);
+      expect(result.content).toBe('基金名称：测试基金，代码：000001，满仓：10000');
     });
 
     it('should fill history variable with trade history', () => {
@@ -48,8 +49,9 @@ describe('promptTemplateService', () => {
       };
       const template = '交易历史：{history}';
       const result = fillFundTemplateVariables(template, context);
-      expect(result).toContain('2024-01-01');
-      expect(result).toContain('1000');
+      expect(result.success).toBe(true);
+      expect(result.content).toContain('2024-01-01');
+      expect(result.content).toContain('1000');
     });
 
     it('should fill valuation data variables', () => {
@@ -68,12 +70,13 @@ describe('promptTemplateService', () => {
       };
       const template = '当前净值：{currentPrice}，前值：{previousPrice}，涨跌幅：{rate}';
       const result = fillFundTemplateVariables(template, context);
-      expect(result).toContain('1.2345');
-      expect(result).toContain('1.2000');
-      expect(result).toContain('+2.88%');
+      expect(result.success).toBe(true);
+      expect(result.content).toContain('1.2345');
+      expect(result.content).toContain('1.2000');
+      expect(result.content).toContain('+2.88%');
     });
 
-    it('should show "未设置" for undefined values', () => {
+    it('should fill empty string for undefined values', () => {
       const context: FundAIQueryContext = {
         marketType: 'fund',
         fundName: '测试基金',
@@ -81,7 +84,8 @@ describe('promptTemplateService', () => {
       };
       const template = '满仓：{fullCapacity}，初始份额：{initialCapacity}';
       const result = fillFundTemplateVariables(template, context);
-      expect(result).toBe('满仓：未设置，初始份额：未设置');
+      expect(result.success).toBe(true);
+      expect(result.content).toBe('满仓：，初始份额：');
     });
 
     it('should fill position and profit variables', () => {
@@ -97,11 +101,12 @@ describe('promptTemplateService', () => {
       };
       const template = '仓位：{position}份，仓位占比：{positionRate}，盈利：{profit}，成本价：{avgCostPrice}，市值：{marketValue}';
       const result = fillFundTemplateVariables(template, context);
-      expect(result).toContain('1000.50');
-      expect(result).toContain('75.50%');
-      expect(result).toContain('+150.25');
-      expect(result).toContain('1.1234');
-      expect(result).toContain('1234.56');
+      expect(result.success).toBe(true);
+      expect(result.content).toContain('1000.50');
+      expect(result.content).toContain('75.50%');
+      expect(result.content).toContain('+150.25');
+      expect(result.content).toContain('1.1234');
+      expect(result.content).toContain('1234.56');
     });
   });
 
@@ -116,9 +121,10 @@ describe('promptTemplateService', () => {
       };
       const template = '指数：{name}，代码：{code}，时间：{datetime}';
       const result = fillIndexTemplateVariables(template, context);
-      expect(result).toContain('上证指数');
-      expect(result).toContain('000001');
-      expect(result).toContain('2024-01-01T10:00:00+08:00');
+      expect(result.success).toBe(true);
+      expect(result.content).toContain('上证指数');
+      expect(result.content).toContain('000001');
+      expect(result.content).toContain('2024-01-01T10:00:00+08:00');
     });
 
     it('should fill closing_prices variable', () => {
@@ -134,8 +140,9 @@ describe('promptTemplateService', () => {
       };
       const template = '收盘价数据：{closing_prices}';
       const result = fillIndexTemplateVariables(template, context);
-      expect(result).toContain('2024-01-01');
-      expect(result).toContain('3000');
+      expect(result.success).toBe(true);
+      expect(result.content).toContain('2024-01-01');
+      expect(result.content).toContain('3000');
     });
 
     it('should fill MA data variables', () => {
@@ -150,9 +157,10 @@ describe('promptTemplateService', () => {
       };
       const template = 'MA5：{ma5}，MA10：{ma10}，MA20：{ma20}';
       const result = fillIndexTemplateVariables(template, context);
-      expect(result).toContain('3000');
-      expect(result).toContain('2950');
-      expect(result).toContain('2900');
+      expect(result.success).toBe(true);
+      expect(result.content).toContain('3000');
+      expect(result.content).toContain('2950');
+      expect(result.content).toContain('2900');
     });
 
     it('should fill volume and realtime data variables', () => {
@@ -161,21 +169,22 @@ describe('promptTemplateService', () => {
         indexName: '上证指数',
         indexSymbol: '000001',
         datetime: '2024-01-01T10:00:00+08:00',
+        currentVolume: 5000000,
         volumes: [1000000, 1200000],
         realtimePrices: [
           { time: '09:30', price: 3000 },
           { time: '09:31', price: 3005 },
         ],
-        realtimeVolume: 5000000,
       };
-      const template = '成交量：{volumes}，实时价格：{realtime_prices}，实时成交量：{realtime_volume}';
+      const template = '成交量：{volumes}，实时价格：{realtime_prices}，当前成交量：{current_volume}';
       const result = fillIndexTemplateVariables(template, context);
-      expect(result).toContain('1000000');
-      expect(result).toContain('09:30');
-      expect(result).toContain('5000000');
+      expect(result.success).toBe(true);
+      expect(result.content).toContain('100.00万手');  // 格式化后的成交量（带"手"单位）
+      expect(result.content).toContain('09:30');
+      expect(result.content).toContain('500.00万手');  // 格式化后的当前成交量（带"手"单位）
     });
 
-    it('should show "未设置" or "[]" for undefined index values', () => {
+    it('should show [] for undefined index values', () => {
       const context: IndexAIQueryContext = {
         marketType: 'index',
         indexName: '上证指数',
@@ -184,7 +193,52 @@ describe('promptTemplateService', () => {
       };
       const template = '收盘价：{closing_prices}，MA5：{ma5}';
       const result = fillIndexTemplateVariables(template, context);
-      expect(result).toContain('[]');
+      expect(result.success).toBe(true);
+      expect(result.content).toContain('[]');
+    });
+
+    it('should use currentValue for current_price directly', () => {
+      const context: IndexAIQueryContext = {
+        marketType: 'index',
+        indexName: '上证指数',
+        indexSymbol: '000001',
+        datetime: '2024-01-01T10:00:00+08:00',
+        currentValue: 3150.88,
+      };
+      const template = '当前点位：{current_price}';
+      const result = fillIndexTemplateVariables(template, context);
+      expect(result.success).toBe(true);
+      expect(result.content).toContain('3150.88');
+    });
+
+    it('should use currentVolume for current_volume directly', () => {
+      const context: IndexAIQueryContext = {
+        marketType: 'index',
+        indexName: '上证指数',
+        indexSymbol: '000001',
+        datetime: '2024-01-01T10:00:00+08:00',
+        currentVolume: 5000000,
+      };
+      const template = '当前成交量：{current_volume}';
+      const result = fillIndexTemplateVariables(template, context);
+      expect(result.success).toBe(true);
+      expect(result.content).toContain('500.00万手');
+    });
+
+    it('should not use realtimePrices or closingPrices for current_price', () => {
+      // realtimePrices 和 closingPrices 不参与当前点位计算
+      const context: IndexAIQueryContext = {
+        marketType: 'index',
+        indexName: '上证指数',
+        indexSymbol: '000001',
+        datetime: '2024-01-01T10:00:00+08:00',
+        realtimePrices: [{ time: '09:30', price: 3100 }],
+        closingPrices: [{ date: '2024-01-01', price: 3000 }],
+      };
+      const template = '当前点位：{current_price}';
+      const result = fillIndexTemplateVariables(template, context);
+      expect(result.success).toBe(true);
+      expect(result.content).toBe('当前点位：');  // 空值，因为没有 currentValue
     });
   });
 
@@ -198,7 +252,8 @@ describe('promptTemplateService', () => {
       };
       const template = '名称：{name}，满仓：{fullCapacity}';
       const result = fillTemplateVariables(template, context);
-      expect(result).toBe('名称：测试基金，满仓：10000');
+      expect(result.success).toBe(true);
+      expect(result.content).toBe('名称：测试基金，满仓：10000');
     });
 
     it('should route to index template filler when marketType is index', () => {
@@ -211,7 +266,8 @@ describe('promptTemplateService', () => {
       };
       const template = '指数：{name}，代码：{code}';
       const result = fillTemplateVariables(template, context);
-      expect(result).toBe('指数：上证指数，代码：000001');
+      expect(result.success).toBe(true);
+      expect(result.content).toBe('指数：上证指数，代码：000001');
     });
   });
 });
@@ -473,32 +529,37 @@ describe('promptTemplateService - template loading', () => {
     it('should fill template variables', () => {
       const template = '基金：{name}，代码：{code}';
       const result = fillTemplate(template, { name: '测试基金', code: '000001' });
-      expect(result).toBe('基金：测试基金，代码：000001');
+      expect(result.success).toBe(true);
+      expect(result.content).toBe('基金：测试基金，代码：000001');
     });
 
-    it('should show "未设置" for undefined values', () => {
+    it('should report error for undefined values', () => {
       const template = '值：{value}';
-      const result = fillTemplate(template, { value: undefined });
-      expect(result).toBe('值：未设置');
+      const result = fillTemplate(template, {});
+      expect(result.success).toBe(false);
+      expect(result.missingPlaceholders).toContain('value');
     });
 
-    it('should show "未设置" for null values', () => {
+    it('should report error for null values', () => {
       const template = '值：{value}';
-      const result = fillTemplate(template, { value: null });
-      expect(result).toBe('值：未设置');
+      const result = fillTemplate(template, { value: null as any });
+      expect(result.success).toBe(false);
+      expect(result.missingPlaceholders).toContain('value');
     });
 
     it('should stringify object values', () => {
       const template = '数据：{data}';
       const result = fillTemplate(template, { data: { key: 'value' } });
-      expect(result).toContain('"key"');
-      expect(result).toContain('"value"');
+      expect(result.success).toBe(true);
+      expect(result.content).toContain('"key"');
+      expect(result.content).toContain('"value"');
     });
 
     it('should handle number values', () => {
       const template = '金额：{amount}';
       const result = fillTemplate(template, { amount: 1234.56 });
-      expect(result).toBe('金额：1234.56');
+      expect(result.success).toBe(true);
+      expect(result.content).toBe('金额：1234.56');
     });
   });
 });

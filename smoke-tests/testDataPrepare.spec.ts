@@ -26,6 +26,7 @@ interface PrivateData {
   sync_user: string;
   sync_password: string;
   'api-key': string;
+  search_api_key?: string;  // 搜索服务 API 密钥（可选）
 }
 
 /**
@@ -186,6 +187,47 @@ async function configureAI(page: Page, apiKey: string) {
 
   // 验证已激活
   await expect(deepseekRow.locator('span:has-text("已激活")')).toBeVisible();
+
+  // 关闭系统配置窗口
+  const closeButton = page.locator('[role="dialog"] button[aria-label="关闭"]');
+  if (await closeButton.isVisible({ timeout: 1000 }).catch(() => false)) {
+    await closeButton.click();
+  }
+}
+
+/**
+ * 配置搜索服务
+ */
+async function configureSearchService(page: Page, apiKey: string) {
+  // 打开系统配置
+  await page.click('button[title="系统配置"]');
+  await expect(page.locator('h2:has-text("系统配置")')).toBeVisible();
+
+  // 点击"搜索服务"导航按钮
+  await page.click('button:has-text("搜索服务")');
+
+  // 等待 SearchProvidersPanel 显示
+  // 验证 AnySearch provider 卡片存在
+  await expect(page.locator('text=AnySearch')).toBeVisible();
+
+  // 点击 AnySearch 卡片头部展开参数配置
+  const anySearchCard = page.locator('div.border-b').filter({ hasText: 'AnySearch' });
+  await anySearchCard.locator('button').first().click();
+
+  // 等待参数配置展开
+  await page.waitForTimeout(300);
+
+  // 输入 API 密钥（密码输入框）
+  const apiKeyInput = page.locator('input[type="password"]');
+  if (await apiKeyInput.isVisible({ timeout: 1000 }).catch(() => false)) {
+    await apiKeyInput.fill(apiKey);
+  }
+
+  // 点击底部"保存"按钮
+  await page.click('button:has-text("保存")');
+
+  // 等待保存完成
+  await page.waitForTimeout(500);
 
   // 关闭系统配置窗口
   const closeButton = page.locator('[role="dialog"] button[aria-label="关闭"]');
@@ -359,12 +401,21 @@ test.describe('测试数据准备', () => {
     await configureAI(page, privateData['api-key']);
     console.log('AI 配置成功');
 
-    // 5. 启用后台任务日志开关
+    // 5. 配置搜索服务（如果有 API 密钥）
+    if (privateData.search_api_key) {
+      console.log('配置搜索服务...');
+      await configureSearchService(page, privateData.search_api_key);
+      console.log('搜索服务配置成功');
+    } else {
+      console.log('跳过搜索服务配置（未提供 API 密钥）');
+    }
+
+    // 6. 启用后台任务日志开关
     console.log('启用后台任务日志开关...');
     await enableJobLog(page);
     console.log('后台任务日志开关已启用');
 
-    // 6. 等待后台任务完成
+    // 7. 等待后台任务完成
     console.log('等待后台任务完成...');
     const jobsSuccess = await waitForBackgroundJobs(page);
     expect(jobsSuccess).toBe(true);
@@ -372,7 +423,7 @@ test.describe('测试数据准备', () => {
     // 关闭后台任务日志窗口
     await closeJobLogModal(page);
 
-    // 7. Dump localStorage 数据
+    // 8. Dump localStorage 数据
     console.log('Dump localStorage 数据...');
     const filepath = await dumpLocalStorage(page);
 

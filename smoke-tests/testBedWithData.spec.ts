@@ -711,15 +711,15 @@ test.describe('testBedWithData', () => {
     await expect(configModal).toBeVisible({ timeout: 5000 });
 
     // ══════════════════════════════════════════════════════════════════════════════
-    // 2. 验证左边显示8个选项
+    // 2. 验证左边显示9个选项
     // ══════════════════════════════════════════════════════════════════════════════
     const navItems = page.locator('nav button');
     const navCount = await navItems.count();
-    expect(navCount).toBe(8);
+    expect(navCount).toBe(9);
 
     // 验证导航项名称
-    const navLabels = ['备份管理', '同步管理', 'AI配置', '系统开关', '系统参数', '交易策略', '系统资源', '数据快照'];
-    for (let i = 0; i < 8; i++) {
+    const navLabels = ['备份管理', '同步管理', 'AI配置', '系统开关', '系统参数', '交易策略', '搜索服务', '系统资源', '数据快照'];
+    for (let i = 0; i < 9; i++) {
       const navText = await navItems.nth(i).textContent();
       expect(navText).toContain(navLabels[i]);
     }
@@ -924,7 +924,7 @@ test.describe('testBedWithData', () => {
     // ══════════════════════════════════════════════════════════════════════════════
     // 6.7. 点击"系统资源"，验证 localStorage 使用情况显示
     // ══════════════════════════════════════════════════════════════════════════════
-    await navItems.nth(6).click(); // 系统资源
+    await navItems.nth(7).click(); // 系统资源
 
     // 验证 localStorage 使用情况标题显示
     await expect(page.locator('h3:has-text("localStorage 使用情况")')).toBeVisible({ timeout: 2000 });

@@ -1,11 +1,11 @@
-import { ValuationData } from '../types';
-import { AIConfiguration, getAIConfig } from './aiConfigService';
+import { AIConfiguration } from './aiConfigService';
 import { FundAIQueryContext, IndexAIQueryContext } from '../types/aiServiceTypes';
-import { fillTemplateVariables as fillMarketTemplateVariables, getById, TEMPLATE_IDS } from './promptTemplateService';
-import { fillTemplate, TemplateContext, FillTemplateResult } from '../utils/templateFiller';
+import { fillTemplateVariables, getById, TEMPLATE_IDS, FillTemplateResult } from './promptTemplateService';
+import { fillTemplate, TemplateContext } from '../utils/templateFiller';
 import { PromptTemplate } from '../types/promptTemplateTypes';
+import { searchService } from './searchService';
 
-// Re-export PromptTemplate for backward compatibility
+// Re-export for convenience
 export type { PromptTemplate } from '../types/promptTemplateTypes';
 
 /**
@@ -17,26 +17,36 @@ export interface AIConfigurationWithWebSearch extends AIConfiguration {
   };
 }
 
-export interface AIQueryContext {
-  fundName?: string;
-  fundSymbol?: string;
-  valuationData?: ValuationData;
-  tradeHistory?: any[]; // 用户交易历史
-  fullCapacity?: number; // 基金满仓份额
-  initialCapacity?: number; // 用户投资该基金的初始份额
-  initialDate?: string; // 用户投资该基金的起始日期
-  initialPrice?: number; // 用户投资该基金的初始价格
-  marketValue?: number; // 当前基金的市场价值
-  position?: number; // 当前基金的仓位（份）
-  positionRate?: number; // 当前基金的仓位占比（百分比，如 50.5 表示 50.5%）
-  profit?: number; // 当前基金的整体盈利
-  avgCostPrice?: number; // 当前基金的平均成本价
-}
-
 export interface AIResponse {
   content: string;
   success: boolean;
   error?: string;
+}
+
+/**
+ * 流式响应回调类型
+ * @param chunk 新接收到的内容片段
+ * @param fullContent 到目前为止的完整内容
+ */
+export type StreamCallback = (chunk: string, fullContent: string) => void;
+
+/**
+ * 对话消息类型
+ */
+export interface ChatMessage {
+  role: 'system' | 'user' | 'assistant';
+  content: string;
+}
+
+/**
+ * 统一的 AI 查询请求
+ */
+export interface AIRequest {
+  messages: ChatMessage[];       // 完整消息数组
+  enableWebSearch?: boolean;     // 是否联网搜索
+  webSearchQuery?: string;       // 自定义搜索关键词（可选）
+  temperature?: number;          // 默认 0.7
+  maxTokens?: number;            // 默认 2000
 }
 
 /**
@@ -93,21 +103,6 @@ async function fetchWithRetry(
   }
 
   throw lastError;
-}
-
-/**
- * 流式响应回调类型
- * @param chunk 新接收到的内容片段
- * @param fullContent 到目前为止的完整内容
- */
-export type StreamCallback = (chunk: string, fullContent: string) => void;
-
-/**
- * 对话消息类型
- */
-export interface ChatMessage {
-  role: 'system' | 'user' | 'assistant';
-  content: string;
 }
 
 /**
@@ -184,102 +179,110 @@ async function processStreamResponse(
 }
 
 /**
- * Queries the AI model with the provided query and context
- * @param onChunk 可选的流式回调，每次收到新内容时调用
- * @param maxTokens 可选的最大token数，默认2000
- * @param temperature 可选的温度参数，默认0.7
+ * 统一的 AI 查询方法
+ * @param config AI配置
+ * @param request 查询请求（messages + 可选参数）
+ * @param onChunk 可选的流式回调
  */
 export async function queryAI(
-  config: AIConfiguration,
-  query: string,
-  context?: AIQueryContext,
-  onChunk?: StreamCallback,
-  maxTokens?: number,
-  temperature?: number
+  config: AIConfiguration | AIConfigurationWithWebSearch,
+  request: AIRequest,
+  onChunk?: StreamCallback
 ): Promise<AIResponse> {
   try {
-    // Construct the full prompt with context
-    let fullPrompt = query;
+    const temperature = request.temperature ?? 0.7;
+    const maxTokens = request.maxTokens ?? 2000;
+    const enableWebSearch = request.enableWebSearch ?? false;
 
-    if (context) {
-      const contextInfo = [];
+    // 情况1：AI 模型支持内置联网搜索（如智谱 GLM-4）
+    if (enableWebSearch && (config as AIConfigurationWithWebSearch).webSearch) {
+      const webSearchConfig = config as AIConfigurationWithWebSearch;
+      const requestBody: {
+        model: string;
+        messages: ChatMessage[];
+        stream: boolean;
+        temperature: number;
+        max_tokens: number;
+        tools?: Array<{ type: string; web_search: Record<string, any> }>;
+      } = {
+        model: config.model || 'gpt-4',
+        messages: request.messages,
+        stream: true,
+        temperature,
+        max_tokens: maxTokens,
+      };
 
-      if (context.fundName) {
-        contextInfo.push(`Fund Name: ${context.fundName}`);
-      }
+      const webSearchParams = webSearchConfig.webSearch?.params || {};
+      requestBody.tools = [{
+        type: 'web_search',
+        web_search: {
+          enable: true,
+          ...webSearchParams
+        }
+      }];
 
-      if (context.fundSymbol) {
-        contextInfo.push(`Fund Symbol: ${context.fundSymbol}`);
-      }
+      const response = await fetchWithRetry(config.apiEndpoint, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${config.apiKey}`,
+        },
+        body: JSON.stringify(requestBody)
+      });
 
-      if (context.valuationData) {
-        const valuation = context.valuationData;
-        contextInfo.push(
-          `Current Price: ${valuation.currentPrice}`,
-          `Previous Price: ${valuation.previousPrice}`,
-          `Change Percentage: ${valuation.changePercentage}%`,
-          `Last Updated: ${valuation.lastUpdated}`,
-          `Net Worth Date: ${valuation.netWorthDate}`
-        );
-      }
-
-      if (contextInfo.length > 0) {
-        fullPrompt = `Context information:\n${contextInfo.join('\n')}\n\nUser Query: ${query}`;
-      }
+      return processStreamResponse(response, onChunk);
     }
 
+    // 情况2：启用联网搜索但模型不支持，使用搜索服务注入
+    if (enableWebSearch && request.webSearchQuery) {
+      // 调用搜索服务
+      const searchResponse = await searchService.search({
+        query: request.webSearchQuery,
+        maxResults: 5
+      });
+
+      // 如果搜索成功，将结果注入到第一条 user 消息
+      if (searchResponse.success && searchResponse.results.length > 0) {
+        const searchContext = searchService.formatResultsForAI(searchResponse.results);
+        const enhancedMessages = request.messages.map((msg, idx) => {
+          // 只增强第一条 user 消息
+          if (idx === 0 && msg.role === 'user') {
+            return { ...msg, content: `参考资料：\n${searchContext}\n\n${msg.content}` };
+          }
+          return msg;
+        });
+
+        const requestBody = {
+          model: config.model || 'gpt-4',
+          messages: enhancedMessages,
+          stream: true,
+          temperature,
+          max_tokens: maxTokens,
+        };
+
+        const response = await fetchWithRetry(config.apiEndpoint, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${config.apiKey}`,
+          },
+          body: JSON.stringify(requestBody)
+        });
+
+        return processStreamResponse(response, onChunk);
+      }
+
+      // 搜索失败则降级为普通请求
+      console.warn('搜索服务失败或无结果，降级为普通请求', searchResponse.error);
+    }
+
+    // 情况3：普通请求（无联网搜索或搜索失败降级）
     const requestBody = {
       model: config.model || 'gpt-4',
-      messages: [
-        { role: 'system', content: 'You are an investment assistant that provides analysis and information about investment funds. Be concise and informative.' },
-        { role: 'user', content: fullPrompt }
-      ],
-      temperature: temperature ?? 0.7,
-      max_tokens: maxTokens || 2000,
-      stream: true  // 使用流式响应，避免 HTTP/2 长连接中断
-    };
-
-    // 使用流式响应
-    const response = await fetchWithRetry(config.apiEndpoint, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${config.apiKey}`,
-      },
-      body: JSON.stringify(requestBody)
-    });
-
-    // 处理流式响应
-    return processStreamResponse(response, onChunk);
-  } catch (error: any) {
-    return {
-      content: `Error communicating with AI service: ${error.message}`,
-      success: false,
-      error: error.message
-    };
-  }
-}
-
-/**
- * 使用消息历史查询AI模型
- * @param config AI配置
- * @param messages 对话消息历史
- * @param onChunk 可选的流式回调
- * @param maxTokens 最大token数
- */
-export async function queryAIWithMessages(
-  config: AIConfiguration,
-  messages: ChatMessage[],
-  onChunk?: StreamCallback,
-  maxTokens: number = 4000
-): Promise<AIResponse> {
-  try {
-    const requestBody = {
-      model: config.model || 'gpt-4',
-      messages: messages,
-      temperature: 0.7,
+      messages: request.messages,
+      stream: true,
+      temperature,
       max_tokens: maxTokens,
-      stream: true
     };
 
     const response = await fetchWithRetry(config.apiEndpoint, {
@@ -291,7 +294,6 @@ export async function queryAIWithMessages(
       body: JSON.stringify(requestBody)
     });
 
-    // 处理流式响应
     return processStreamResponse(response, onChunk);
   } catch (error: any) {
     return {
@@ -300,87 +302,18 @@ export async function queryAIWithMessages(
       error: error.message
     };
   }
-}
-
-/**
- * 使用模板发送AI查询（自动使用模板的 maxTokens 和 temperature）
- * @param templateId 模板ID，默认使用 FUND_ANALYSIS
- * @param filledPrompt 已填充变量的提示词（如果为空则使用模板原始内容）
- * @param onChunk 可选的流式回调
- * @returns AI响应
- */
-export async function queryAIWithTemplate(
-  config: AIConfiguration,
-  templateId: string,
-  filledPrompt?: string,
-  onChunk?: StreamCallback
-): Promise<AIResponse> {
-  const template = getById(templateId);
-
-  if (!template) {
-    const errorMsg = `模板 "${templateId}" 未找到`;
-    console.error(errorMsg);
-    return {
-      content: errorMsg,
-      success: false,
-      error: 'No template'
-    };
-  }
-
-  const prompt = filledPrompt || template.template;
-
-  return queryAI(
-    config,
-    prompt,
-    undefined,
-    onChunk,
-    template.maxTokens,
-    template.temperature
-  );
-}
-
-/**
- * 使用模板ID发送AI查询（填充基金上下文变量）
- * @deprecated 建议使用 queryAIWithTemplate 并自行填充变量
- * @param onChunk 可选的流式回调
- */
-export async function queryAIWithTemplateById(
-  config: AIConfiguration,
-  templateId?: string,
-  context?: AIQueryContext,
-  onChunk?: StreamCallback
-): Promise<AIResponse> {
-  const template = getById(templateId || TEMPLATE_IDS.FUND_ANALYSIS);
-
-  if (!template) {
-    const errorMsg = templateId
-      ? `模板 "${templateId}" 未找到`
-      : `没有找到基金分析模板`;
-    console.error(errorMsg);
-    return {
-      content: errorMsg,
-      success: false,
-      error: 'No template'
-    };
-  }
-
-  const filledPrompt = fillMarketTemplateVariables(template.template, {
-    marketType: 'fund',
-    fundName: context?.fundName || '',
-    fundSymbol: context?.fundSymbol || '',
-    ...context
-  } as FundAIQueryContext);
-
-  return queryAI(config, filledPrompt, context, onChunk, template.maxTokens, template.temperature);
 }
 
 /**
  * 使用市场类型特定的模板发送AI查询
+ * 自动读取模板、填充变量、启用联网搜索
+ * @param config AI配置
  * @param marketType 市场类型 ('fund' 或 'index')
+ * @param context 基金/指数上下文数据
  * @param onChunk 可选的流式回调
  */
 export async function queryAIWithMarketTemplate(
-  config: AIConfiguration,
+  config: AIConfiguration | AIConfigurationWithWebSearch,
   marketType: 'fund' | 'index',
   context?: FundAIQueryContext | IndexAIQueryContext,
   onChunk?: StreamCallback
@@ -403,85 +336,76 @@ export async function queryAIWithMarketTemplate(
     ? { marketType: 'fund' as const, fundName: '', fundSymbol: '' }
     : { marketType: 'index' as const, indexName: '', indexSymbol: '', datetime: '' });
 
-  const filledPrompt = fillMarketTemplateVariables(template.template, effectiveContext);
-
-  return queryAI(config, filledPrompt, context as AIQueryContext, onChunk, template.maxTokens, template.temperature);
-}
-
-/**
- * 判断是否启用联网搜索
- * 规则：AI配置有webSearch && 模板要求enableWebSearch
- */
-function shouldEnableWebSearch(
-  config: AIConfigurationWithWebSearch,
-  template: PromptTemplate
-): boolean {
-  return !!config.webSearch && !!template.enableWebSearch;
-}
-
-/**
- * 使用模板和联网搜索发送AI查询
- * @param config AI配置
- * @param template 提示词模板
- * @param context 模板上下文（占位符值）
- * @param onChunk 可选的流式回调
- * @returns AI响应
- */
-export async function queryAIWithWebSearch(
-  config: AIConfigurationWithWebSearch,
-  template: PromptTemplate,
-  context: TemplateContext,
-  onChunk?: StreamCallback
-): Promise<AIResponse> {
-  try {
-    const promptResult = fillTemplate(template.template, context);
-    if (!promptResult.success) {
-      console.warn(`提示词模板 "${template.name}" ${promptResult.error}`);
-    }
-    const prompt = promptResult.success ? promptResult.content : template.template;
-
-    const enableWebSearch = shouldEnableWebSearch(config, template);
-
-    const requestBody: {
-      model: string;
-      messages: Array<{ role: string; content: string }>;
-      stream: boolean;
-      temperature: number;
-      max_tokens: number;
-      tools?: Array<{ type: string; web_search: Record<string, any> }>;
-    } = {
-      model: config.model || 'gpt-4',
-      messages: [{ role: 'user', content: prompt }],
-      stream: true,
-      temperature: template.temperature ?? 0.7,
-      max_tokens: template.maxTokens ?? 2000,
-    };
-
-    if (enableWebSearch && config.webSearch) {
-      requestBody.tools = [{
-        type: 'web_search',
-        web_search: {
-          enable: true,
-          ...config.webSearch.params
-        }
-      }];
-    }
-
-    const response = await fetchWithRetry(config.apiEndpoint, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${config.apiKey}`,
-      },
-      body: JSON.stringify(requestBody)
-    });
-
-    return processStreamResponse(response, onChunk);
-  } catch (error: any) {
+  // 填充模板变量（使用 fillTemplateVariables 进行变量名映射）
+  const promptResult = fillTemplateVariables(template.template, effectiveContext);
+  if (!promptResult.success) {
+    const errorMsg = promptResult.error || '模板填充失败';
+    console.error(errorMsg);
     return {
-      content: `Error communicating with AI service: ${error.message}`,
+      content: errorMsg,
       success: false,
-      error: error.message
+      error: errorMsg
     };
   }
+
+  // 判断是否启用联网搜索
+  const enableWebSearch = template.enableWebSearch && !!promptResult.content;
+
+  // 填充 webSearchHint（同样使用 fillTemplateVariables 进行变量名映射）
+  let webSearchQuery: string | undefined;
+  if (template.webSearchHint) {
+    const searchHintResult = fillTemplateVariables(template.webSearchHint, effectiveContext);
+    webSearchQuery = searchHintResult.success ? searchHintResult.content : undefined;
+  }
+
+  // 构建请求
+  const request: AIRequest = {
+    messages: [{ role: 'user', content: promptResult.content }],
+    enableWebSearch,
+    webSearchQuery,
+    temperature: template.temperature ?? 0.7,
+    maxTokens: template.maxTokens ?? 2000,
+  };
+
+  return queryAI(config, request, onChunk);
+}
+
+/**
+ * 使用模板发送AI查询（自动启用联网搜索）
+ * @param config AI配置
+ * @param template 提示词模板
+ * @param variables 模板变量
+ * @param onChunk 可选的流式回调
+ */
+export async function queryAIWithTemplate(
+  config: AIConfiguration | AIConfigurationWithWebSearch,
+  template: PromptTemplate,
+  variables: TemplateContext,
+  onChunk?: StreamCallback
+): Promise<AIResponse> {
+  // 填充模板变量
+  const promptResult = fillTemplate(template.template, variables);
+  if (!promptResult.success) {
+    const errorMsg = promptResult.error || '模板填充失败';
+    console.error(errorMsg);
+    return {
+      content: errorMsg,
+      success: false,
+      error: errorMsg
+    };
+  }
+
+  // 判断是否启用联网搜索
+  const enableWebSearch = template.enableWebSearch;
+
+  // 构建请求
+  const request: AIRequest = {
+    messages: [{ role: 'user', content: promptResult.content }],
+    enableWebSearch,
+    webSearchQuery: template.webSearchHint ? fillTemplate(template.webSearchHint, variables).content : undefined,
+    temperature: template.temperature ?? 0.7,
+    maxTokens: template.maxTokens ?? 2000,
+  };
+
+  return queryAI(config, request, onChunk);
 }

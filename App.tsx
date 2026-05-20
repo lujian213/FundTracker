@@ -269,7 +269,11 @@ async function processCalendarHoliday(
   const temperature = prompt.temperature;
 
   // 调用 AI
-  const response: AIResponse = await queryAI(aiConfig, filledPrompt, undefined, undefined, maxTokens, temperature);
+  const response: AIResponse = await queryAI(aiConfig, {
+    messages: [{ role: 'user', content: filledPrompt }],
+    maxTokens,
+    temperature
+  });
 
   if (!response.success) {
     throw new Error(response.error || 'AI 请求失败');

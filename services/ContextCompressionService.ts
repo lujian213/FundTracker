@@ -62,7 +62,9 @@ ${currentContextContent}
 请将压缩后的摘要内容返回给我。
 `;
 
-      const result = await queryAI(effectiveConfig, summaryPrompt);
+      const result = await queryAI(effectiveConfig, {
+        messages: [{ role: 'user', content: summaryPrompt }]
+      });
 
       if (result.success && result.content) {
         return {

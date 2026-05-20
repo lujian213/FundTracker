@@ -15,6 +15,7 @@ import {
   FeatureConfigSection,
   SystemParamsSection,
   StrategyParamsSection,  // 新增
+  SearchProvidersSection,  // 搜索服务配置
   DEFAULT_SYSTEM_CONFIG,
 } from '../types/systemConfigTypes';
 import { STORAGE_KEYS, OLD_STORAGE_KEYS } from './storageKeys';
@@ -29,6 +30,7 @@ export type {
   FeatureConfigSection,
   SystemParamsSection,
   StrategyParamsSection,  // 新增
+  SearchProvidersSection,  // 搜索服务配置
 };
 
 const STORAGE_KEY = STORAGE_KEYS.SYSTEM_CONFIG;
@@ -227,6 +229,26 @@ export function getStrategyParamsConfig(): StrategyParamsSection {
 export function saveStrategyParamsConfig(cfg: StrategyParamsSection): void {
   const config = getCache();
   config.strategyParams = cfg;
+  saveSystemConfig(config);
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// 搜索服务配置
+// ═══════════════════════════════════════════════════════════════════════════════
+
+/**
+ * 获取用户配置的搜索服务参数（原始存储值，不含默认值）
+ */
+export function getSearchProvidersConfig(): SearchProvidersSection {
+  return getCache().searchProviders ?? { providers: {} };
+}
+
+/**
+ * 保存搜索服务配置
+ */
+export function saveSearchProvidersConfig(cfg: SearchProvidersSection): void {
+  const config = getCache();
+  config.searchProviders = cfg;
   saveSystemConfig(config);
 }
 
