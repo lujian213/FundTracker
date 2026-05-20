@@ -6,12 +6,14 @@
 
 import { SearchProvider } from '../../types/searchTypes';
 import { AnySearchProvider } from './anySearchProvider';
+import { ZhipuSearchProvider } from './zhipuSearchProvider';
 
 /**
  * 所有注册的 Provider 实例
  */
 export const searchProviders: SearchProvider[] = [
   new AnySearchProvider(),
+  new ZhipuSearchProvider(),
   // 未来可添加更多 provider:
   // new GoogleSearchProvider(),
   // new DuckDuckGoProvider(),
