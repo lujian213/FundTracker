@@ -172,9 +172,10 @@ const InvestmentDraftModal: React.FC<InvestmentDraftModalProps> = ({
     });
 
     // 预计算所有估值数据，确保排序和渲染使用相同数据源
+    // 只使用 marketData prop，确保数据一致性（避免服务数据和 prop 数据来自不同时间点）
     const cache: Record<string, ValuationData | undefined> = {};
     filtered.forEach(fund => {
-      cache[fund.symbol] = marketFundService.getValuation(fund.symbol) || marketData[fund.symbol];
+      cache[fund.symbol] = marketData[fund.symbol];
     });
 
     const sorted = filtered.sort((a, b) => {
@@ -246,8 +247,8 @@ const InvestmentDraftModal: React.FC<InvestmentDraftModalProps> = ({
   };
 
   const handleAddValuationToNote = (fundSymbol: string) => {
-    const enhancedValuation = marketFundService.getValuation(fundSymbol);
-    const valuation = enhancedValuation || marketData[fundSymbol];
+    // 使用 valuationCache 保持数据一致性，确保添加的涨跌幅与表格显示一致
+    const valuation = valuationCache[fundSymbol];
 
     if (valuation && typeof valuation.changePercentage === 'number') {
       const changePercent = valuation.changePercentage;
