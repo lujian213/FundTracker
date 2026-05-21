@@ -133,10 +133,13 @@ export const TradeManager: React.FC<{
   // 计算合计行数据
   const summary = useMemo(() => {
     let totalShares = 0;
+    let totalTradeAmount = 0; // 交易额合计：买入+建仓交易额 - 卖出交易额
+    let totalFee = 0; // 手续费合计：买入+建仓手续费 + 卖出手续费
 
     for (const record of matchedRecords) {
       const isSell = record.type === 'sell';
       const displayShares = record.remainingShares;
+      const displayFee = record.remainingFee;
 
       // 数量：买入和建仓为正，卖出为负
       if (isSell) {
@@ -144,9 +147,24 @@ export const TradeManager: React.FC<{
       } else {
         totalShares += displayShares;
       }
+
+      // 交易额：买入为 数量*价格+手续费，卖出为 数量*价格-手续费
+      const tradeAmount = isSell
+        ? record.price * displayShares - displayFee
+        : record.price * displayShares + displayFee;
+
+      // 交易额合计：买入+建仓为正，卖出为负
+      if (isSell) {
+        totalTradeAmount -= tradeAmount;
+      } else {
+        totalTradeAmount += tradeAmount;
+      }
+
+      // 手续费合计：所有记录的手续费相加（用于普通视图）
+      totalFee += displayFee;
     }
 
-    return { totalShares };
+    return { totalShares, totalTradeAmount, totalFee };
   }, [matchedRecords]);
 
   // 计算选中记录的统计信息（仅买入/建仓记录）
@@ -366,6 +384,26 @@ export const TradeManager: React.FC<{
     return shares * (currentPrice - tradePrice);
   };
 
+  // 计算交易额：买入为数量*价格+手续费，卖出为数量*价格-手续费
+  const calcTradeAmount = (isSell: boolean, shares: number, price: number, fee: number): number => {
+    return isSell ? price * shares - fee : price * shares + fee;
+  };
+
+  // 渲染交易额合计
+  const renderTradeAmountSummary = () => {
+    if (viewMode !== 'normal') return '-';
+    if (summary.totalTradeAmount === 0) return '0.00';
+    const isNetInflow = summary.totalTradeAmount > 0;
+    return (
+      <>
+        {formatNumber(Math.abs(summary.totalTradeAmount), 2)}
+        <span title={isNetInflow ? '净投入' : '净收回'} className="ml-1 cursor-help">
+          <i className={`fas fa-arrow-${isNetInflow ? 'up' : 'down'} ${isNetInflow ? 'text-red-500' : 'text-green-500'}`}></i>
+        </span>
+      </>
+    );
+  };
+
   return (
     <div className="fixed inset-0 flex items-center justify-center p-4" style={{ zIndex }}>
       <div className="absolute inset-0 bg-black/60" onClick={onClose}></div>
@@ -563,10 +601,10 @@ export const TradeManager: React.FC<{
             <div className="w-[8%] text-left">操作</div>
             <div className="w-[12%] text-right">数量</div>
             <div className="w-[10%] text-right">价格</div>
-            <div className="w-[14%] text-right">交易额</div>
+            <div className="w-[18%] text-right">交易额</div>
             <div className="w-[10%] text-right">手续费</div>
-            <div className="w-[12%] text-right">盈亏率</div>
-            <div className="w-[14%] text-right">盈亏额</div>
+            <div className="w-[10%] text-right">盈亏率</div>
+            <div className="w-[12%] text-right">盈亏额</div>
             <div className="w-[8%] text-right"></div>
           </div>
           <div style={{ height: tableHeight }} className="relative" ref={tableRef}>
@@ -591,13 +629,11 @@ export const TradeManager: React.FC<{
                   // 使用 remainingShares 和 remainingFee
                   const displayShares = t.remainingShares;
                   const displayFee = t.remainingFee;
-                  const tradeAmount = isSell
-                    ? t.price * displayShares - displayFee
-                    : t.price * displayShares + displayFee;
+                  const tradeAmount = calcTradeAmount(isSell, displayShares, t.price, displayFee);
 
                   // 盈亏计算：买入和建仓计算盈亏，卖出显示"-"
                   const profitRate = isSell ? 0 : calcProfitRate(t.price);
-                  const profitAmount = isSell ? 0 : displayShares * (currentPrice - t.price);
+                  const profitAmount = isSell ? 0 : calcProfitAmount(displayShares, t.price);
 
                   return (
                     <div
@@ -620,12 +656,12 @@ export const TradeManager: React.FC<{
                       </div>
                       <div className="w-[12%] text-right text-xs">{formatNumber(displayShares, 2)}</div>
                       <div className="w-[10%] text-right text-xs">{t.price.toFixed(4)}</div>
-                      <div className="w-[14%] text-right text-xs font-medium">{formatNumber(tradeAmount, 2)}</div>
+                      <div className="w-[18%] text-right text-xs font-medium">{formatNumber(tradeAmount, 2)}</div>
                       <div className="w-[10%] text-right text-xs">{displayFee === 0 ? '-' : formatNumber(displayFee, 2)}</div>
-                      <div className={`w-[12%] text-right text-xs ${profitRate > 0 ? 'text-red-500' : profitRate < 0 ? 'text-green-500' : ''}`}>
+                      <div className={`w-[10%] text-right text-xs ${profitRate > 0 ? 'text-red-500' : profitRate < 0 ? 'text-green-500' : ''}`}>
                         {profitRate === 0 ? '-' : `${profitRate > 0 ? '+' : ''}${profitRate.toFixed(2)}%`}
                       </div>
-                      <div className={`w-[14%] text-right text-xs ${profitAmount > 0 ? 'text-red-500' : profitAmount < 0 ? 'text-green-500' : ''}`}>
+                      <div className={`w-[12%] text-right text-xs ${profitAmount > 0 ? 'text-red-500' : profitAmount < 0 ? 'text-green-500' : ''}`}>
                         {profitAmount === 0 ? '-' : `${profitAmount > 0 ? '+' : '-'}${formatNumber(Math.abs(profitAmount), 2)}`}
                       </div>
                       <div className="w-[8%] text-right text-xs">
@@ -654,14 +690,18 @@ export const TradeManager: React.FC<{
             <div className="flex items-center px-2 py-1 border rounded bg-gray-100 mt-2">
               <div className="w-[12%] text-left text-xs font-medium">合计</div>
               <div className="w-[8%] text-left text-xs text-gray-400">-</div>
-              <div className="w-[12%] text-right text-xs font-medium">
-                {formatNumber(Math.abs(summary.totalShares), 2)}
+              <div className={`w-[12%] text-right text-xs font-medium ${summary.totalShares < 0 ? 'text-red-500' : ''}`}>
+                {formatNumber(summary.totalShares, 2)}
               </div>
               <div className="w-[10%] text-right text-xs text-gray-400">-</div>
-              <div className="w-[14%] text-right text-xs text-gray-400">-</div>
+              <div className="w-[18%] text-right text-xs font-medium">
+                {renderTradeAmountSummary()}
+              </div>
+              <div className="w-[10%] text-right text-xs font-medium">
+                {viewMode === 'normal' ? formatNumber(summary.totalFee, 2) : '-'}
+              </div>
               <div className="w-[10%] text-right text-xs text-gray-400">-</div>
               <div className="w-[12%] text-right text-xs text-gray-400">-</div>
-              <div className="w-[14%] text-right text-xs text-gray-400">-</div>
               <div className="w-[8%] text-right text-xs text-gray-400">-</div>
             </div>
           )}
