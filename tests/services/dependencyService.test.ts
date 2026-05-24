@@ -262,8 +262,8 @@ describe('dependencyService', () => {
 
       const checkPromise = checkAllDependencies();
 
-      // Advance timers past proxy timeout (8 seconds)
-      jest.advanceTimersByTime(9000);
+      // Advance timers past proxy timeout (12 seconds)
+      jest.advanceTimersByTime(13000);
 
       const results = await checkPromise;
 
@@ -288,8 +288,8 @@ describe('dependencyService', () => {
 
       const checkPromise = checkAllDependencies();
 
-      // Advance timers past search timeout (10 seconds)
-      jest.advanceTimersByTime(11000);
+      // Advance timers past search timeout (15 seconds)
+      jest.advanceTimersByTime(16000);
 
       const results = await checkPromise;
 
