@@ -711,15 +711,15 @@ test.describe('testBedWithData', () => {
     await expect(configModal).toBeVisible({ timeout: 5000 });
 
     // ══════════════════════════════════════════════════════════════════════════════
-    // 2. 验证左边显示9个选项
+    // 2. 验证左边显示10个选项
     // ══════════════════════════════════════════════════════════════════════════════
     const navItems = page.locator('nav button');
     const navCount = await navItems.count();
-    expect(navCount).toBe(9);
+    expect(navCount).toBe(10);
 
     // 验证导航项名称
-    const navLabels = ['备份管理', '同步管理', 'AI配置', '系统开关', '系统参数', '交易策略', '搜索服务', '系统资源', '数据快照'];
-    for (let i = 0; i < 9; i++) {
+    const navLabels = ['备份管理', '同步管理', 'AI配置', '系统开关', '系统参数', '交易策略', '搜索服务', '依赖服务', '系统资源', '数据快照'];
+    for (let i = 0; i < 10; i++) {
       const navText = await navItems.nth(i).textContent();
       expect(navText).toContain(navLabels[i]);
     }
@@ -924,7 +924,7 @@ test.describe('testBedWithData', () => {
     // ══════════════════════════════════════════════════════════════════════════════
     // 6.7. 点击"系统资源"，验证 localStorage 使用情况显示
     // ══════════════════════════════════════════════════════════════════════════════
-    await navItems.nth(7).click(); // 系统资源
+    await navItems.nth(8).click(); // 系统资源
 
     // 验证 localStorage 使用情况标题显示
     await expect(page.locator('h3:has-text("localStorage 使用情况")')).toBeVisible({ timeout: 2000 });
@@ -946,6 +946,43 @@ test.describe('testBedWithData', () => {
     await expect(page.locator('h3:has-text("说明")')).toBeVisible();
 
     console.log('系统资源验证完成');
+
+    // ══════════════════════════════════════════════════════════════════════════════
+    // 6.8. 点击"依赖服务"，验证服务状态检测功能
+    // ══════════════════════════════════════════════════════════════════════════════
+    await navItems.nth(7).click(); // 依赖服务
+
+    // 验证提示信息显示
+    await expect(page.locator('div.bg-blue-50:has-text("检查系统依赖的外部服务状态")')).toBeVisible({ timeout: 2000 });
+
+    // 验证代理服务 Section 显示
+    await expect(page.locator('div.font-semibold:has-text("代理服务 (5)")')).toBeVisible();
+
+    // 验证代理服务列表包含正确的服务名称
+    const proxyServices = ['r.jina.ai', 'law-ai', 'allorigins', 'corsproxy', 'txtify'];
+    for (const serviceName of proxyServices) {
+      await expect(page.locator(`span:has-text("${serviceName}")`).first()).toBeVisible();
+    }
+
+    // 验证搜索服务 Section 显示
+    await expect(page.locator('div.font-semibold:has-text("搜索服务 (2)")')).toBeVisible();
+
+    // 验证搜索服务列表包含正确的服务名称
+    const searchServices = ['AnySearch', '智谱搜索'];
+    for (const serviceName of searchServices) {
+      await expect(page.locator(`span:has-text("${serviceName}")`).first()).toBeVisible();
+    }
+
+    // 验证初始状态：所有服务显示"未检查"
+    const uncheckedLabels = page.locator('span:has-text("未检查")');
+    await expect(uncheckedLabels.first()).toBeVisible();
+
+    // 验证"状态检查"按钮显示
+    const checkButton = page.locator('button:has-text("状态检查")');
+    await expect(checkButton).toBeVisible();
+    await expect(checkButton).not.toHaveAttribute('disabled');
+
+    console.log('依赖服务初始状态验证完成');
 
     // ══════════════════════════════════════════════════════════════════════════════
     // 7. 点击"备份管理"，导出备份并验证ocrConcurrency值
