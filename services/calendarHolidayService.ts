@@ -6,7 +6,7 @@
 
 import { HolidayType } from './calendarService';
 import { getAIConfig } from './aiConfigService';
-import { queryAI, AIResponse } from './aiService';
+import { queryAIWithTemplate, AIResponse } from './aiService';
 import { formatDateDisplay } from '../utils/dateFormat';
 import { getById, TEMPLATE_IDS } from './promptTemplateService';
 import { fetchWithProxy } from './proxyService';
@@ -140,19 +140,13 @@ export async function processCalendarHoliday(
     throw new Error(`未找到 ${promptType} 提示词模板`);
   }
 
-  // 填充变量（包括网站内容）
+  // 使用 queryAIWithTemplate 统一处理模板和联网搜索
   const current_date = formatDateDisplay(new Date());
   const current_year = new Date().getFullYear().toString();
-  const filledPrompt = prompt.template
-    .replace(/{web_content}/g, webContent)
-    .replace(/{current_date}/g, current_date)
-    .replace(/{year}/g, current_year);
-
-  // 调用 AI
-  const response: AIResponse = await queryAI(aiConfig, {
-    messages: [{ role: 'user', content: filledPrompt }],
-    maxTokens: prompt.maxTokens,
-    temperature: prompt.temperature
+  const response: AIResponse = await queryAIWithTemplate(aiConfig, prompt, {
+    web_content: webContent,
+    current_date,
+    year: current_year
   });
 
   if (!response.success) {

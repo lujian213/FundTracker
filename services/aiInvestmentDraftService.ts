@@ -1,7 +1,7 @@
 // services/aiInvestmentDraftService.ts
 import { Ticker, ValuationData, HistoricalPoint, MarketIndex, TradeRecord, MarketFund } from '../types';
 import { AIConfiguration } from './aiConfigService';
-import { queryAI, StreamCallback, ChatMessage } from './aiService';
+import { queryAI, queryAIWithTemplate, StreamCallback, ChatMessage } from './aiService';
 import { getById, TEMPLATE_IDS } from './promptTemplateService';
 import { PromptTemplate } from '../types/promptTemplateTypes';
 import { getTradesForSymbol } from '../hooks/useTrades';
@@ -705,17 +705,11 @@ export async function analyzeInvestmentDraft(
   // 获取当前日期
   const currentDate = formatDateDisplay(toLocalDateKey(new Date()));
 
-  // 替换模板变量
-  const prompt = template.template
-    .replace(/{currentDate}/g, currentDate)
-    .replace(/{json_schema}/g, JSON_SCHEMA)
-    .replace(/{json_content}/g, jsonContent);
-
-  return queryAI(config, {
-    messages: [{ role: 'user', content: prompt }],
-    enableWebSearch: template.enableWebSearch,
-    maxTokens: template.maxTokens,
-    temperature: template.temperature
+  // 使用 queryAIWithTemplate 统一处理模板和联网搜索
+  return queryAIWithTemplate(config, template, {
+    currentDate,
+    json_schema: JSON_SCHEMA,
+    json_content: jsonContent
   }, onChunk);
 }
 
@@ -779,17 +773,11 @@ export async function generateAIInvestmentAdvice(
   // 获取当前日期
   const currentDate = formatDateDisplay(toLocalDateKey(new Date()));
 
-  // 替换模板变量
-  const prompt = targetTemplate.template
-    .replace(/{currentDate}/g, currentDate)
-    .replace(/{json_schema}/g, AI_ADVICE_JSON_SCHEMA)
-    .replace(/{json_content}/g, jsonContent);
-
-  const result = await queryAI(config, {
-    messages: [{ role: 'user', content: prompt }],
-    enableWebSearch: targetTemplate.enableWebSearch,
-    maxTokens: targetTemplate.maxTokens,
-    temperature: targetTemplate.temperature
+  // 使用 queryAIWithTemplate 统一处理模板和联网搜索
+  const result = await queryAIWithTemplate(config, targetTemplate, {
+    currentDate,
+    json_schema: AI_ADVICE_JSON_SCHEMA,
+    json_content: jsonContent
   });
 
   if (!result.success) {

@@ -1,5 +1,5 @@
 import { Ticker, TickerAlert } from '../types';
-import { queryAI, AIResponse } from './aiService';
+import { queryAIWithTemplate, AIResponse } from './aiService';
 import { getAIConfig } from './aiConfigService';
 import { formatDateDisplay } from '../utils/dateFormat';
 import { getById, TEMPLATE_IDS, PromptTemplate } from './promptTemplateService';
@@ -239,23 +239,14 @@ export async function refreshTickerAlerts(
   // 获取当前 portfolio（用于生成代码列表）
   const portfolio = getPortfolio();
 
-  // 填充变量
+  // 使用 queryAIWithTemplate 统一处理模板和联网搜索
   const codeList = formatCodeList(portfolio);
   const current_date = formatDateDisplay(new Date());
 
-  const filledPrompt = prompt.template
-    .replace(/{current_date}/g, current_date)
-    .replace('{code_list}', codeList);
-
-  const response: AIResponse = await queryAI(
-    aiConfig,
-    {
-      messages: [{ role: 'user', content: filledPrompt }],
-      enableWebSearch: prompt.enableWebSearch,
-      maxTokens: prompt.maxTokens,
-      temperature: prompt.temperature
-    }
-  );
+  const response: AIResponse = await queryAIWithTemplate(aiConfig, prompt as PromptTemplate, {
+    current_date,
+    code_list: codeList
+  });
 
   if (!response.success) {
     throw new Error(response.error || 'AI 请求失败');

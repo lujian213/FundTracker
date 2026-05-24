@@ -4,13 +4,13 @@ import {
   formatPortfolioData,
   analyzePortfolio
 } from '../../services/aiPortfolioService';
-import { queryAI } from '../../services/aiService';
+import { queryAIWithTemplate } from '../../services/aiService';
 import { PortfolioItem } from '../../services/aiPortfolioService';
 import * as promptTemplateService from '../../services/promptTemplateService';
 
 // Mock aiService
 jest.mock('../../services/aiService', () => ({
-  queryAI: jest.fn(),
+  queryAIWithTemplate: jest.fn(),
 }));
 
 describe('aiPortfolioService', () => {
@@ -85,7 +85,7 @@ describe('aiPortfolioService', () => {
       await promptTemplateService.loadAllTemplates();
       global.fetch = originalFetch;
 
-      (queryAI as jest.Mock).mockResolvedValueOnce({
+      (queryAIWithTemplate as jest.Mock).mockResolvedValueOnce({
         content: 'AI分析结果',
         success: true
       });
@@ -102,10 +102,9 @@ describe('aiPortfolioService', () => {
 
       const result = await analyzePortfolio(mockConfig, items);
 
-      expect(queryAI).toHaveBeenCalled();
-      const callArgs = (queryAI as jest.Mock).mock.calls[0];
-      expect(callArgs[1].messages[0].content).toContain('分析以下投资组合');
-      expect(callArgs[1].messages[0].content).toContain('测试基金');
+      expect(queryAIWithTemplate).toHaveBeenCalled();
+      const callArgs = (queryAIWithTemplate as jest.Mock).mock.calls[0];
+      expect(callArgs[2].portfolio).toContain('测试基金');
       expect(result.content).toBe('AI分析结果');
       expect(result.success).toBe(true);
     });
@@ -122,6 +121,46 @@ describe('aiPortfolioService', () => {
 
       expect(result.success).toBe(false);
       expect(result.error).toContain('未找到');
+    });
+
+    test('passes webSearchQuery when template has webSearchHint', async () => {
+      // Pre-load a mock template with webSearchHint
+      const mockTemplate = {
+        id: 'portfolio-analysis',
+        name: '测试模板',
+        template: '今天是 {currentDate}。分析以下投资组合：\n{portfolio}',
+        enabled: true,
+        enableWebSearch: true,
+        webSearchHint: '搜索{currentDate}市场环境'
+      };
+
+      promptTemplateService.resetCache();
+      const originalFetch = global.fetch;
+      global.fetch = jest.fn().mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ templates: [mockTemplate] })
+      });
+
+      await promptTemplateService.loadAllTemplates();
+      global.fetch = originalFetch;
+
+      (queryAIWithTemplate as jest.Mock).mockResolvedValueOnce({
+        content: 'AI分析结果',
+        success: true
+      });
+
+      const items: PortfolioItem[] = [
+        { symbol: '005827', name: '测试基金', position: 100, marketValue: 1000, ratio: 1 }
+      ];
+
+      await analyzePortfolio(mockConfig, items);
+
+      expect(queryAIWithTemplate).toHaveBeenCalled();
+      const callArgs = (queryAIWithTemplate as jest.Mock).mock.calls[0];
+      // queryAIWithTemplate 的第三个参数是 variables，包含 currentDate
+      expect(callArgs[2].currentDate).toBeDefined();
+      // queryAIWithTemplate 会自动处理 webSearchHint
+      expect(mockTemplate.webSearchHint).toContain('市场环境');
     });
   });
 });

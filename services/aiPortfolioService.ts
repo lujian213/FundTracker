@@ -1,5 +1,5 @@
 // services/aiPortfolioService.ts
-import { queryAI, StreamCallback } from './aiService';
+import { queryAIWithTemplate, StreamCallback } from './aiService';
 import { getById, TEMPLATE_IDS } from './promptTemplateService';
 import { AIConfiguration } from './aiConfigService';
 import { toLocalDateKey } from '../utils/priceResolver';
@@ -68,15 +68,9 @@ export async function analyzePortfolio(
   // 获取当前日期
   const currentDate = formatDateDisplay(toLocalDateKey(new Date()));
 
-  // 替换模板变量
-  const prompt = template.template
-    .replace(/{currentDate}/g, currentDate)
-    .replace(/{portfolio}/g, portfolioText);
-
-  return queryAI(config, {
-    messages: [{ role: 'user', content: prompt }],
-    enableWebSearch: template.enableWebSearch,
-    maxTokens: template.maxTokens,
-    temperature: template.temperature
+  // 使用 queryAIWithTemplate 统一处理模板和联网搜索
+  return queryAIWithTemplate(config, template, {
+    currentDate,
+    portfolio: portfolioText
   }, onChunk);
 }

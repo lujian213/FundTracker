@@ -1,5 +1,5 @@
 import { Ticker, RecommendedStrategy } from '../types';
-import { queryAI, AIResponse } from './aiService';
+import { queryAIWithTemplate, AIResponse } from './aiService';
 import { getAIConfig } from './aiConfigService';
 import { getAvailableStrategiesInfo } from './strategyRegistry';
 import { formatDateDisplay } from '../utils/dateFormat';
@@ -121,23 +121,15 @@ export async function refreshStrategyRecommendations(
     .map(t => t.name ? `${t.symbol} ${t.name}` : t.symbol)
     .join('\n');
 
-  // 填充变量
+  // 使用 queryAIWithTemplate 统一处理模板和联网搜索
   const current_date = formatDateDisplay(new Date());
-  const filledPrompt = prompt.template
-    .replace(/{current_date}/g, current_date)
-    .replace('{code_list}', codeList)
-    .replace('{strategy_list}', formatStrategyListForPrompt())
-    .replace('{strategy_keys}', getStrategyKeysForPrompt());
+  const response: AIResponse = await queryAIWithTemplate(aiConfig, prompt, {
+    current_date,
+    code_list: codeList,
+    strategy_list: formatStrategyListForPrompt(),
+    strategy_keys: getStrategyKeysForPrompt()
+  });
 
-  const response: AIResponse = await queryAI(
-    aiConfig,
-    {
-      messages: [{ role: 'user', content: filledPrompt }],
-      enableWebSearch: prompt.enableWebSearch,
-      maxTokens: prompt.maxTokens,
-      temperature: prompt.temperature
-    }
-  );
   if (!response.success) {
     throw new Error(response.error || 'AI 请求失败');
   }

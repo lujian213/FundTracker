@@ -525,6 +525,13 @@ describe('aiInvestmentDraftService', () => {
       expect(typeof generateAIInvestmentAdvice).toBe('function');
     });
 
-    // 注：完整的集成测试需要 mock queryAI，这里只验证函数签名
+    // 注：完整的集成测试需要 mock queryAIWithTemplate，这里验证函数签名
+  });
+
+  describe('analyzeInvestmentDraft', () => {
+    test('function exists and is callable', () => {
+      const { analyzeInvestmentDraft } = require('../../services/aiInvestmentDraftService');
+      expect(typeof analyzeInvestmentDraft).toBe('function');
+    });
   });
 });

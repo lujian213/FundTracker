@@ -398,11 +398,18 @@ export async function queryAIWithTemplate(
   // 判断是否启用联网搜索
   const enableWebSearch = template.enableWebSearch;
 
+  // 处理 webSearchHint（检查填充是否成功）
+  let webSearchQuery: string | undefined;
+  if (template.webSearchHint) {
+    const webSearchHintResult = fillTemplate(template.webSearchHint, variables);
+    webSearchQuery = webSearchHintResult.success ? webSearchHintResult.content : undefined;
+  }
+
   // 构建请求
   const request: AIRequest = {
     messages: [{ role: 'user', content: promptResult.content }],
     enableWebSearch,
-    webSearchQuery: template.webSearchHint ? fillTemplate(template.webSearchHint, variables).content : undefined,
+    webSearchQuery,
     temperature: template.temperature ?? 0.7,
     maxTokens: template.maxTokens ?? 2000,
   };
