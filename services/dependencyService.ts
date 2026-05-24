@@ -9,8 +9,8 @@ import { getAllSearchProvidersMeta } from './searchProvidersConfig';
 import { searchService } from './searchService';
 
 // 超时配置
-const PROXY_TIMEOUT_MS = 8000;   // 代理服务超时 8 秒
-const SEARCH_TIMEOUT_MS = 10000; // 搜索服务超时 10 秒
+const PROXY_TIMEOUT_MS = 12000;   // 代理服务超时 12 秒
+const SEARCH_TIMEOUT_MS = 15000; // 搜索服务超时 15 秒
 
 // 测试 URL - 使用项目中实际使用的网站（所有代理共用）
 const PROXY_TEST_URL = 'https://fund.eastmoney.com/';
