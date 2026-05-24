@@ -58,7 +58,7 @@ import { calculateDeliveryDates } from './services/deliveryDateService';
 import { formatDateDisplay } from './utils/dateFormat';
 import { verifyStorageMigration } from './services/localStorageService';
 import { mountRoot } from './services/rootService';
-import { loadAllTemplates } from './services/promptTemplateService';
+import { loadAllTemplates, TEMPLATE_IDS } from './services/promptTemplateService';
 import { getHolidaySource } from './services/calendarHolidaySourceService';
 import { processCalendarHoliday, parseCalendarAIResponse } from './services/calendarHolidayService';
 
@@ -165,28 +165,28 @@ async function refreshCalendarHolidayByType(
  * 刷新 Calendar A股节假日信息
  */
 async function refreshCalendarHolidays(): Promise<void> {
-  await refreshCalendarHolidayByType('calendar_holiday_china', 'holiday_china');
+  await refreshCalendarHolidayByType(TEMPLATE_IDS.BG_CALENDAR_HOLIDAY_CHINA, 'holiday_china');
 }
 
 /**
  * 刷新 Calendar 港股节假日信息
  */
 async function refreshCalendarHolidaysHK(): Promise<void> {
-  await refreshCalendarHolidayByType('calendar_holiday_hk', 'holiday_hk');
+  await refreshCalendarHolidayByType(TEMPLATE_IDS.BG_CALENDAR_HOLIDAY_HK, 'holiday_hk');
 }
 
 /**
  * 刷新 Calendar 美股节假日信息
  */
 async function refreshCalendarHolidaysUS(): Promise<void> {
-  await refreshCalendarHolidayByType('calendar_holiday_us', 'holiday_us');
+  await refreshCalendarHolidayByType(TEMPLATE_IDS.BG_CALENDAR_HOLIDAY_US, 'holiday_us');
 }
 
 /**
  * 刷新 Calendar 新加坡股市节假日信息
  */
 async function refreshCalendarHolidaysSG(): Promise<void> {
-  await refreshCalendarHolidayByType('calendar_holiday_sg', 'holiday_sg');
+  await refreshCalendarHolidayByType(TEMPLATE_IDS.BG_CALENDAR_HOLIDAY_SG, 'holiday_sg');
 }
 
 const AppContent: React.FC = () => {
