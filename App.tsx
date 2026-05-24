@@ -60,6 +60,7 @@ import { verifyStorageMigration } from './services/localStorageService';
 import { mountRoot } from './services/rootService';
 import { loadAllTemplates } from './services/promptTemplateService';
 import { getHolidaySource } from './services/calendarHolidaySourceService';
+import { processCalendarHoliday, parseCalendarAIResponse } from './services/calendarHolidayService';
 
 const createPlaceholderIndex = (symbol: string): MarketIndex => {
   const normalized = normalizeIndexSymbol(symbol);
@@ -140,154 +141,6 @@ const mergeIndicesForDisplay = (
 };
 
 const createManageSelectionKey = (type: ManageItemType, value: string): ManageSelectionKey => `${type}:${value}`;
-
-/**
- * 解析 Calendar AI 响应
- */
-interface CalendarAIResponse {
-  market?: string;
-  date?: string;
-  content?: string;
-  description?: string;
-}
-
-interface CalendarEventInput {
-  date: string;
-  content: string;
-  description: string;
-  market?: string;
-}
-
-function parseCalendarAIResponse(response: string): CalendarEventInput[] {
-  try {
-    let cleanedResponse = response.trim();
-
-    // 尝试从代码块中提取JSON（新格式：AI输出包含思考过程 + ```json ... ```代码块）
-    const codeBlockMatch = cleanedResponse.match(/```json\s*([\s\S]*?)\s*```/);
-    if (codeBlockMatch) {
-      cleanedResponse = codeBlockMatch[1].trim();
-    } else if (cleanedResponse.startsWith('```')) {
-      // 旧格式：从开头开始
-      const firstNewline = cleanedResponse.indexOf('\n');
-      if (firstNewline !== -1) {
-        cleanedResponse = cleanedResponse.slice(firstNewline + 1);
-      }
-      if (cleanedResponse.endsWith('```')) {
-        cleanedResponse = cleanedResponse.slice(0, -3).trim();
-      }
-    }
-
-    // 尝试修复常见的 JSON 格式错误：
-    // 1. 字符串值缺少引号（如 "description":香港 应改为 "description":"香港"）
-    // 匹配模式：属性名后有冒号，后面是未加引号的中英文内容
-    cleanedResponse = cleanedResponse.replace(
-      /"(?:market|content|description|date)":([^,\[\]{}\n\r]+)([,}\]\n\r])/g,
-      (match, value, suffix) => {
-        // 如果值已经被引号包裹，不处理
-        if (value.trim().startsWith('"') || value.trim().startsWith("'")) {
-          return match;
-        }
-        // 将未加引号的值加上引号
-        return match.replace(value, `"${value.trim()}"`);
-      }
-    );
-
-    const parsed = JSON.parse(cleanedResponse);
-    if (!Array.isArray(parsed)) {
-      console.warn('[Calendar] AI response is not an array');
-      return [];
-    }
-
-    return parsed.filter((item: CalendarAIResponse) =>
-      item.date && item.content
-    ).map((item: CalendarAIResponse) => ({
-      market: typeof item.market === 'string' ? item.market : '',
-      date: String(item.date),
-      content: typeof item.content === 'string' ? item.content : '',
-      description: typeof item.description === 'string' ? item.description : '',
-    }));
-  } catch (e) {
-    console.error('[Calendar] Failed to parse AI response:', e);
-    // 输出原始响应便于调试
-    console.error('[Calendar] Raw response snippet:', response.substring(0, 500));
-    return [];
-  }
-}
-
-/**
- * 公共函数：从网站获取内容（通过统一代理服务抓取）
- */
-async function fetchWebContent(url: string, logPrefix: string): Promise<string> {
-  try {
-    // 使用统一代理服务，不指定格式偏好（默认顺序）
-    const { content } = await fetchWithProxy(url);
-    return content;
-  } catch (e) {
-    throw new Error(`无法获取网站内容: ${url}，任务失败`);
-  }
-}
-
-/**
- * 公共函数：处理Calendar节假日AI请求
- */
-async function processCalendarHoliday(
-  promptType: string,
-  url: string,
-  logPrefix: string,
-  calendarType: 'holiday_china' | 'holiday_hk' | 'holiday_us' | 'holiday_sg'
-): Promise<void> {
-  const aiConfig = getAIConfig();
-  if (!aiConfig || !aiConfig.apiKey) {
-    throw new Error('未配置 AI API Key');
-  }
-
-  // 获取网站内容
-  const webContent = await fetchWebContent(url, logPrefix);
-
-  // 检查内容是否包含年份（基本验证）
-  const currentYear = new Date().getFullYear().toString();
-  if (!webContent.includes(currentYear) && !webContent.includes(String(parseInt(currentYear) + 1))) {
-    console.warn(`[Calendar] ${logPrefix}网站内容可能不包含有效年份信息`);
-  }
-
-  // 获取提示词模板
-  const prompt = getBackgroundJobPromptByType(promptType as any);
-  if (!prompt) {
-    throw new Error(`未找到 ${promptType} 提示词模板`);
-  }
-
-  // 填充变量（包括网站内容）
-  const current_date = formatDateDisplay(new Date());
-  const current_year = new Date().getFullYear().toString();
-  const filledPrompt = prompt.template
-    .replace(/{web_content}/g, webContent)
-    .replace(/{current_date}/g, current_date)
-    .replace(/{year}/g, current_year);
-
-  // 从提示词模板中获取maxTokens和temperature参数
-  const maxTokens = prompt.maxTokens;
-  const temperature = prompt.temperature;
-
-  // 调用 AI
-  const response: AIResponse = await queryAI(aiConfig, {
-    messages: [{ role: 'user', content: filledPrompt }],
-    maxTokens,
-    temperature
-  });
-
-  if (!response.success) {
-    throw new Error(response.error || 'AI 请求失败');
-  }
-
-  // 解析响应
-  const results = parseCalendarAIResponse(response.content);
-
-  // 更新 calendar 数据
-  updateCalendarData(calendarType, results);
-
-  // 作为子任务，计算并更新交割日信息
-  calculateDeliveryDates();
-}
 
 /**
  * 刷新 Calendar 节假日信息（统一处理各市场）
@@ -1033,8 +886,8 @@ const AppContent: React.FC = () => {
     return allIndices.find(idx => normalizeIndexSymbol(idx.info.symbol) === viewingIndexSymbol) || null;
   }, [viewingIndexSymbol, displayDomesticIndices, displayGlobalIndices]);
 
-  // 缓存即将到来的日历事件，避免每次渲染都重新计算
-  const upcomingCalendarEvents = useMemo(() => getFirstEventInWorkdays(4), []);
+  // 获取即将到来的日历事件（每次渲染都获取最新数据）
+  const upcomingCalendarEvents = getFirstEventInWorkdays(4);
 
   // 从 marketFundService 获取基金历史数据
   const fundHistories = useMemo(() => {
