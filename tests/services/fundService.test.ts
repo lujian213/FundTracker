@@ -652,17 +652,16 @@ describe('computeTradingDateAndTime', () => {
       expect(result.lastUpdated).toBe('11:30:00');
     });
 
-    test('多时段（A股）- 当前时间在午休时段（11:30-13:00）', () => {
+    test('多时段（A股）- 当前时间在午休时段（11:30-13:00），应返回上午收盘时间', () => {
       const periods = [
         createPeriod('2026-05-06', '2026-05-06', 930, 1130),
         createPeriod('2026-05-06', '2026-05-06', 1300, 1500),
       ];
-      const now = createDate('2026-05-06', '12:00:00'); // 午休时段
+      const now = createDate('2026-05-06', '11:40:00'); // 午休时段（上午收盘后）
       const result = computeTradingDateAndTime(periods, now);
-      // 午休时段不在任何交易时段内，返回上午收盘时间（最后一个时段的收盘时间是 15:00）
-      // 注意：这里取最后一个时段的收盘时间，而不是当前时段
+      // 午休时段不在任何交易时段内，应返回上午收盘时间（11:30），而非下午收盘时间（15:00）
       expect(result.tradeDate).toBe('2026-05-06');
-      expect(result.lastUpdated).toBe('15:00:00'); // 最后一个时段的收盘时间
+      expect(result.lastUpdated).toBe('11:30:00'); // 上午收盘时间
     });
 
     test('多时段（A股）- 当前时间在全天收盘后（16:00）', () => {
@@ -702,6 +701,34 @@ describe('computeTradingDateAndTime', () => {
       const result = computeTradingDateAndTime(periods, now);
       expect(result.tradeDate).toBe('2026-05-06'); // 最后一个时段的收盘日期
       expect(result.lastUpdated).toBe('15:00:00'); // 最后一个时段的收盘时间
+    });
+
+    test('非交易日 - 当前日期与交易时段日期不一致，应返回上一个交易日收盘时间', () => {
+      // 港股恒生科技：交易时段 09:30-12:00, 13:00-16:00
+      // 交易时段日期是5月22日（周四），当前日期是5月25日（周一，港股休市）
+      const periods = [
+        createPeriod('2026-05-22', '2026-05-22', 930, 1200),
+        createPeriod('2026-05-22', '2026-05-22', 1300, 1600),
+      ];
+      const now = createDate('2026-05-25', '11:49:00'); // 5月25日11:49，港股休市
+      const result = computeTradingDateAndTime(periods, now);
+      // 当前日期(5月25日)与交易时段日期(5月22日)不一致，是非交易日
+      // 应返回上一个交易日(5月22日)的最后收盘时间(16:00)
+      expect(result.tradeDate).toBe('2026-05-22');
+      expect(result.lastUpdated).toBe('16:00:00'); // 上一个交易日收盘时间
+    });
+
+    test('开盘前 - 当前日期匹配beginDate但时间在开盘前，应返回上一个交易日收盘时间', () => {
+      // 美股：交易时段 21:30-04:00（跨日）
+      // 交易时段：5月5日晚间21:30开盘，5月6日凌晨04:00收盘
+      const periods = [createPeriod('2026-05-05', '2026-05-06', 2130, 400)];
+      const now = createDate('2026-05-05', '20:00:00'); // 5月5日20:00，开盘前1.5小时
+      const result = computeTradingDateAndTime(periods, now);
+      // 当前日期(5月5日)匹配beginDate，但时间20:00在开盘时间21:30之前
+      // 这是"待开盘"状态，不是"交易日的午休/收盘后"
+      // 应返回上一个交易日收盘时间，而非即将到来的收盘时间
+      expect(result.tradeDate).toBe('2026-05-06');
+      expect(result.lastUpdated).toBe('04:00:00'); // 上一个交易日收盘时间（5月6日凌晨4点）
     });
   });
 });

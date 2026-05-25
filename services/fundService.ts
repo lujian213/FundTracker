@@ -3,6 +3,7 @@ import { computeProfitTimeline } from '../utils/profitCalculator';
 import { toLocalDateKey, resolvePreferredPrice, ResolvedPrice } from '../utils/priceResolver';
 import { getTradesForSymbol } from '../hooks/useTrades';
 import { extractTradingPeriodBeginTimestamp } from '../utils/dateTimeUtils';
+import { formatDateISO, formatTimeISO, formatHHMM } from '../utils/dateFormat';
 import * as marketFundService from './marketFundService';
 import * as indexService from './indexService';
 
@@ -777,41 +778,88 @@ export function computeTradingDateAndTime(
   periods: TradingPeriod[],
   now?: Date
 ): TradingHoursResult {
-  const pad = (n: number) => n.toString().padStart(2, '0');
-
   if (!periods || periods.length === 0) {
     const fallbackNow = now || new Date();
     return {
-      tradeDate: `${fallbackNow.getFullYear()}-${pad(fallbackNow.getMonth() + 1)}-${pad(fallbackNow.getDate())}`,
-      lastUpdated: `${pad(fallbackNow.getHours())}:${pad(fallbackNow.getMinutes())}:${pad(fallbackNow.getSeconds())}`,
+      tradeDate: formatDateISO(fallbackNow),
+      lastUpdated: formatTimeISO(fallbackNow),
     };
   }
 
   const currentTime = now || new Date();
   const nowTimeNum = currentTime.getHours() * 100 + currentTime.getMinutes();
+  const currentDate = formatDateISO(currentTime);
 
+  // 判断是否在交易时段内（只考虑时间）
   let inTradingHours = false;
+  let matchedPeriod: TradingPeriod | null = null;
 
   for (const period of periods) {
     const b = period.beginHHMM;
     const e = period.endHHMM;
     // 跨日时段（b > e）：当前时间 >= 开盘 或 <= 收盘
     // 同日时段：当前时间 >= 开盘 且 <= 收盘
-    inTradingHours = b > e ? (nowTimeNum >= b || nowTimeNum <= e) : (nowTimeNum >= b && nowTimeNum <= e);
-    if (inTradingHours) break;
+    const inThisPeriod = b > e ? (nowTimeNum >= b || nowTimeNum <= e) : (nowTimeNum >= b && nowTimeNum <= e);
+    if (inThisPeriod) {
+      inTradingHours = true;
+      matchedPeriod = period;
+      break;
+    }
   }
 
-  if (inTradingHours) {
+  // 判断当前日期是否为交易日
+  // 对于跨日时段：当前日期应该等于 beginDate（晚间开盘日）或 endDate（次日收盘日）
+  // 对于同日时段：当前日期应该等于 beginDate/endDate
+  let isTradingDay = false;
+  if (matchedPeriod) {
+    // 在交易时段内时，判断日期是否匹配
+    const b = matchedPeriod.beginHHMM;
+    const e = matchedPeriod.endHHMM;
+    if (b > e) {
+      // 跨日时段：当前日期可以是 beginDate（晚间）或 endDate（次日凌晨）
+      isTradingDay = currentDate === matchedPeriod.beginDate || currentDate === matchedPeriod.endDate;
+    } else {
+      // 同日时段：当前日期必须等于时段日期
+      isTradingDay = currentDate === matchedPeriod.beginDate;
+    }
+  } else {
+    // 不在任何时段内时，使用第一个时段的日期判断是否为同一天
+    // 如果当前日期与任何时段的日期都不一致，说明是非交易日
+    const firstBeginDate = periods[0].beginDate;
+    const lastEndDate = periods[periods.length - 1].endDate;
+    isTradingDay = currentDate === firstBeginDate || currentDate === lastEndDate;
+  }
+
+  // 只有在交易日且在交易时段内时，才返回当前时间
+  if (isTradingDay && inTradingHours) {
     return {
-      tradeDate: `${currentTime.getFullYear()}-${pad(currentTime.getMonth() + 1)}-${pad(currentTime.getDate())}`,
-      lastUpdated: `${pad(currentTime.getHours())}:${pad(currentTime.getMinutes())}:${pad(currentTime.getSeconds())}`,
+      tradeDate: currentDate,
+      lastUpdated: formatTimeISO(currentTime),
     };
   }
 
+  // 非交易日或不在交易时段内
   const lastPeriod = periods[periods.length - 1];
+
+  // 如果是交易日但不在时段内（如午休时段），返回最近的收盘时间
+  if (isTradingDay && !inTradingHours) {
+    // 找距离当前时间最近的收盘时间
+    const allEndTimes = periods.map(p => p.endHHMM);
+    const nearestClose = allEndTimes.reduce((nearest, t) => {
+      const diff = Math.abs(t - nowTimeNum);
+      const nearestDiff = Math.abs(nearest - nowTimeNum);
+      return diff < nearestDiff ? t : nearest;
+    }, allEndTimes[0]);
+    return {
+      tradeDate: lastPeriod.endDate,
+      lastUpdated: formatHHMM(nearestClose),
+    };
+  }
+
+  // 非交易日：返回交易时段的最后收盘时间
   return {
     tradeDate: lastPeriod.endDate,
-    lastUpdated: `${pad(Math.floor(lastPeriod.endHHMM / 100))}:${pad(lastPeriod.endHHMM % 100)}:00`,
+    lastUpdated: formatHHMM(lastPeriod.endHHMM),
   };
 }
 

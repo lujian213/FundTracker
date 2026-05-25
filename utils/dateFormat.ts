@@ -60,6 +60,16 @@ export function formatTimeISO(date: Date): string {
 }
 
 /**
+ * 格式化HHMM数值为 HH:mm:ss
+ * @param hhmm HHMM格式数值，如 930、1130、1500
+ */
+export function formatHHMM(hhmm: number): string {
+  const h = String(Math.floor(hhmm / 100)).padStart(2, '0');
+  const min = String(hhmm % 100).padStart(2, '0');
+  return `${h}:${min}:00`;
+}
+
+/**
  * 格式化日期时间为 yyyy/MM/dd HH:mm
  * @param date Date 对象
  */
