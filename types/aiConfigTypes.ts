@@ -3,6 +3,9 @@ export interface AIConfiguration {
   apiEndpoint: string;
   apiKey: string;
   model?: string;
+  webSearch?: {
+    params: Record<string, any>;
+  };
 }
 
 export interface AIConfigProfile {
@@ -14,6 +17,10 @@ export interface AIConfigProfile {
   isActive: boolean;
   createdAt: Date;
   updatedAt: Date;
+  // 联网搜索配置（可选，从模板继承）
+  webSearch?: {
+    params: Record<string, any>;
+  };
 }
 
 export interface AIConfigManager {

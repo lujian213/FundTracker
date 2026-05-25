@@ -198,6 +198,7 @@ export function createConfigFromTemplate(templateId: string, name: string, apiKe
     apiEndpoint: template.apiEndpoint,
     apiKey,
     model: template.model,
+    webSearch: template.webSearch,  // 传递联网搜索配置
   });
 }
 
@@ -217,6 +218,7 @@ export async function createConfigFromTemplateAsync(templateId: string, name: st
     apiEndpoint: template.apiEndpoint,
     apiKey,
     model: template.model,
+    webSearch: template.webSearch,  // 传递联网搜索配置
   });
 }
 
@@ -317,6 +319,9 @@ export interface AIConfiguration {
   apiEndpoint: string;
   apiKey: string;
   model?: string;
+  webSearch?: {
+    params: Record<string, any>;
+  };
 }
 
 /**
@@ -330,6 +335,7 @@ export function getAIConfig(): AIConfiguration | null {
     apiEndpoint: activeConfig.apiEndpoint,
     apiKey: activeConfig.apiKey,
     model: activeConfig.model,
+    webSearch: activeConfig.webSearch,  // 传递联网搜索配置
   };
 }
 
@@ -345,6 +351,7 @@ export function saveAIConfig(config: AIConfiguration): void {
       apiEndpoint: config.apiEndpoint,
       apiKey: config.apiKey,
       model: config.model || 'gpt-4',
+      webSearch: config.webSearch,
     });
     setActiveAIConfig(newConfig.id);
   } else if (manager.activeConfigId) {
@@ -353,6 +360,7 @@ export function saveAIConfig(config: AIConfiguration): void {
       apiEndpoint: config.apiEndpoint,
       apiKey: config.apiKey,
       model: config.model,
+      webSearch: config.webSearch,
     });
   }
 }
