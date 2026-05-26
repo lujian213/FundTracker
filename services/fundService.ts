@@ -233,7 +233,7 @@ class RequestQueue {
 }
 
 const globalQueue = new RequestQueue(2000);
-const indexQueue = new RequestQueue(1000);
+const indexQueue = new RequestQueue(0);  // 指数请求数量少，无需额外延迟
 const historyLoadQueue = new RequestQueue(0);
 
 // 请求序列号机制：防止并发历史请求的数据混淆
