@@ -236,6 +236,10 @@ const globalQueue = new RequestQueue(2000);
 const indexQueue = new RequestQueue(1000);
 const historyLoadQueue = new RequestQueue(0);
 
+// 请求序列号机制：防止并发历史请求的数据混淆
+let historyRequestSeq = 0;
+const activeHistoryRequests = new Map<number, { code: string; resolve: (value: HistoricalPoint[]) => void; reject: (reason?: any) => void }>();
+
 function normalizeHistoryTimestamp(input: unknown): number | null {
   // Accept numbers (ms or s), numeric strings, and common date string formats (YYYY-MM-DD or YYYYMMDD)
   try {
@@ -327,34 +331,113 @@ function toRawHistoryPoints(trendData: any[]): Array<Partial<HistoricalPoint>> {
 }
 
 function loadHistoryFromPingzhongData(code: string, url: string): Promise<HistoricalPoint[]> {
-  // 队列控制在外层批量函数进行，这里直接执行
+  // 使用请求序列号机制防止并发数据混淆
+  const seq = ++historyRequestSeq;
+
   return new Promise((resolve, reject) => {
+    // 注册活动请求
+    activeHistoryRequests.set(seq, { code, resolve, reject });
+
     const script = document.createElement('script');
     script.src = url;
+    script.setAttribute('data-history-seq', String(seq));
 
-    // 清理函数：移除脚本和全局变量
+    // 超时机制：防止 script 既不触发 onload 也不触发 onerror
+    const timeoutMs = 15000;  // 15秒超时
+    let timeoutId: ReturnType<typeof setTimeout> | null = setTimeout(() => {
+      timeoutId = null;
+      cleanup();
+      reject(new Error('REQUEST_TIMEOUT'));
+    }, timeoutMs);
+
+    // 清理函数：移除脚本、清理全局变量、清理请求注册、清理超时
     const cleanup = () => {
+      if (timeoutId) {
+        clearTimeout(timeoutId);
+        timeoutId = null;
+      }
+      activeHistoryRequests.delete(seq);
       if (script.parentNode) script.parentNode.removeChild(script);
-      // 清理全局变量，避免下次加载时读取到旧数据
-      try { delete (window as any).Data_netWorthTrend; } catch (e) {}
+      // 注意：不在这里清理全局变量，因为其他请求可能正在使用
     };
 
     script.onload = () => {
-      const trendData = (window as any).Data_netWorthTrend;
-      if (Array.isArray(trendData)) {
-        resolve(normalizeAndSyncHistory(code, toRawHistoryPoints(trendData)));
+      // 清理超时
+      if (timeoutId) {
+        clearTimeout(timeoutId);
+        timeoutId = null;
+      }
+
+      const req = activeHistoryRequests.get(seq);
+
+      // 检查请求是否仍然有效
+      if (!req) {
+        // 请求已被清理（可能因为其他请求干扰或超时），拒绝数据
         cleanup();
+        reject(new Error('REQUEST_STALE'));
         return;
       }
-      resolve(syncHistoryCache(code, []));
+
+      // 验证请求的 code 是否匹配
+      if (req.code !== code) {
+        cleanup();
+        reject(new Error('REQUEST_CODE_MISMATCH'));
+        return;
+      }
+
+      const trendData = (window as any).Data_netWorthTrend;
+
+      if (Array.isArray(trendData)) {
+        resolve(normalizeAndSyncHistory(code, toRawHistoryPoints(trendData)));
+      } else {
+        resolve(syncHistoryCache(code, []));
+      }
+
+      // 在处理完数据后，清理全局变量
+      try { delete (window as any).Data_netWorthTrend; } catch (e) {}
       cleanup();
     };
+
     script.onerror = () => {
       cleanup();
-      reject();
+      reject(new Error('SCRIPT_LOAD_ERROR'));
     };
+
     document.head.appendChild(script);
   });
+}
+
+/**
+ * 带重试的历史数据加载函数
+ * 当请求因并发竞争失败时（REQUEST_STALE），自动重试
+ * @param code 基金代码
+ * @param maxRetries 最大重试次数
+ */
+async function loadHistoryFromPingzhongDataWithRetry(code: string, maxRetries = 2): Promise<HistoricalPoint[]> {
+  const ts = formatYMDHMS(new Date());
+  const url = `https://fund.eastmoney.com/pingzhongdata/${code}.js?v=${ts}`;
+
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    try {
+      return await loadHistoryFromPingzhongData(code, url);
+    } catch (e) {
+      const errorMsg = (e as Error)?.message || '';
+
+      // 如果是并发竞争导致的数据混淆，重试
+      if (errorMsg === 'REQUEST_STALE' || errorMsg === 'REQUEST_CODE_MISMATCH') {
+        if (attempt < maxRetries) {
+          // 等待一小段时间后重试，避免立即重复竞争
+          await new Promise(r => setTimeout(r, 100));
+          continue;
+        }
+      }
+
+      // 其他错误或重试次数耗尽，返回空数组
+      console.warn(`loadHistoryFromPingzhongDataWithRetry(${code}) failed after ${attempt + 1} attempts:`, errorMsg);
+      return [];
+    }
+  }
+  return [];
 }
 
 function jsonp<T>(url: string, callbackParam: string = 'cb', fundCode?: string, retryCount: number = 3): Promise<T> {
@@ -1027,26 +1110,23 @@ export async function fetchFundHistory(symbol: string): Promise<HistoricalPoint[
     return historyCache[code];
   }
 
-  // 3. Fetch from network
-  const ts = formatYMDHMS(new Date());
-  const url = `https://fund.eastmoney.com/pingzhongdata/${code}.js?v=${ts}`;
-  try {
-    return await loadHistoryFromPingzhongData(code, url);
-  } catch (e) { return []; }
+  // 3. Fetch from network - 通过队列执行，避免并发竞争
+  return await historyLoadQueue.add(() => loadHistoryFromPingzhongDataWithRetry(code));
 }
 
 /**
  * 强制从网络重新获取历史净值，忽略所有缓存。
  * 用于定时刷新（每20分钟）和手动刷新中的历史净值更新。
  * 获取完成后自动写入 cacheService（同时更新 localStorage）。
+ *
+ * 注意：此函数不使用队列，由调用者决定是否需要队列控制。
+ * - forceFetchFundHistories 已使用队列，调用此函数无需额外队列
+ * - 单独调用时应使用 fetchFundHistory（带队列）
  */
 export async function forceFetchFundHistory(symbol: string): Promise<HistoricalPoint[]> {
   const code = symbol.padStart(6, '0');
-  const ts = formatYMDHMS(new Date());
-  const url = `https://fund.eastmoney.com/pingzhongdata/${code}.js?v=${ts}`;
-  try {
-    return await loadHistoryFromPingzhongData(code, url);
-  } catch (e) { return []; }
+  // 直接执行，队列控制由调用者（forceFetchFundHistories 或 fetchFundHistory）负责
+  return await loadHistoryFromPingzhongDataWithRetry(code);
 }
 
 /**

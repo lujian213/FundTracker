@@ -444,7 +444,11 @@ const AppContent: React.FC = () => {
     if (validKeys.size === 0) clearSelectionMode();
   }, [portfolio, indicesConfig, isSelectionMode, clearSelectionMode]);
 
-  const updateSingleFund = useCallback(async (symbol: string, onProgress?: () => void): Promise<ValuationData | null> => {
+  const updateSingleFund = useCallback(async (
+    symbol: string,
+    onProgress?: () => void,
+    skipHistoryRefresh?: boolean
+  ): Promise<ValuationData | null> => {
     try {
       const data = await fetchFundData(symbol);
       if (data) {
@@ -461,16 +465,19 @@ const AppContent: React.FC = () => {
 
         // 自动历史补全：当估值返回的 netWorthDate 比本地缓存的历史最后日期更新时，触发对该 symbol 的强制历史刷新
         // 注意：这个历史刷新是独立任务，不计入 refreshAll 的总任务数
-        try {
-          setBackgroundTasks(prev => prev + 1);
-          maybeTriggerHistoryRefresh(symbol, enhancedData.netWorthDate).finally(() => {
+        // 在 refreshAll 场景下跳过，因为 runBatchHistoryUpdate 已在并行执行
+        if (!skipHistoryRefresh) {
+          try {
+            setBackgroundTasks(prev => prev + 1);
+            maybeTriggerHistoryRefresh(symbol, enhancedData.netWorthDate).finally(() => {
+              setBackgroundTasks(prev => Math.max(0, prev - 1));
+              // 历史数据可能已更新，触发 fundHistories 重新计算
+              setHistoryUpdateCount(prev => prev + 1);
+            });
+          } catch (e) {
             setBackgroundTasks(prev => Math.max(0, prev - 1));
-            // 历史数据可能已更新，触发 fundHistories 重新计算
             setHistoryUpdateCount(prev => prev + 1);
-          });
-        } catch (e) {
-          setBackgroundTasks(prev => Math.max(0, prev - 1));
-          setHistoryUpdateCount(prev => prev + 1);
+          }
         }
 
         // 调用进度回调（如果提供）
@@ -488,7 +495,11 @@ const AppContent: React.FC = () => {
     }
   }, []);
 
-  const runBatchUpdate = useCallback(async (targets: Ticker[], onProgress?: () => void): Promise<JobResult<void>> => {
+  const runBatchUpdate = useCallback(async (
+    targets: Ticker[],
+    onProgress?: () => void,
+    skipHistoryRefresh?: boolean
+  ): Promise<JobResult<void>> => {
     if (targets.length === 0) return { success: true, data: undefined };
 
     const symbols = targets.map(t => t.symbol);
@@ -499,7 +510,7 @@ const AppContent: React.FC = () => {
 
     for (const sym of symbols) {
       try {
-        const data = await updateSingleFund(sym, onProgress);
+        const data = await updateSingleFund(sym, onProgress, skipHistoryRefresh);
         if (!data) {
           errors.push(`${sym}: API返回空数据`);
         } else {
@@ -631,7 +642,8 @@ const AppContent: React.FC = () => {
 
     try {
       await Promise.allSettled([
-        runBatchUpdate(portfolio, onProgress),
+        // 在 refreshAll 中跳过单独的历史刷新触发，因为 runBatchHistoryUpdate 已在并行执行
+        runBatchUpdate(portfolio, onProgress, true),
         refreshMarketIndicesAsync(true, onProgress),
         runBatchHistoryUpdate(portfolio, onProgress),
         refreshIndexHistoryAsync(true, onProgress),
