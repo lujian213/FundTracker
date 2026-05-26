@@ -31,7 +31,7 @@ export interface CalendarEventInput {
  * 如果解析失败或结果无效，抛出异常而不是返回空数组
  * 这样可以防止原有数据被错误清空
  */
-export function parseCalendarAIResponse(response: string): CalendarEventInput[] {
+export function parseCalendarAIResponse(response: string, logPrefix: string = 'Calendar'): CalendarEventInput[] {
   let cleanedResponse = response.trim();
 
   // 检查空响应
@@ -55,7 +55,28 @@ export function parseCalendarAIResponse(response: string): CalendarEventInput[] 
   }
 
   // 尝试修复常见的 JSON 格式错误：
-  // 1. 字符串值缺少引号（如 "description":香港 应改为 "description":"香港"）
+
+  // 1. 移除 JavaScript 风格的注释（单行和多行）
+  cleanedResponse = cleanedResponse.replace(/\/\/[^\n\r]*$/gm, '');  // 单行注释
+  cleanedResponse = cleanedResponse.replace(/\/\*[\s\S]*?\*\//g, '');  // 多行注释
+
+  // 2. 移除尾随逗号（对象和数组中的）
+  cleanedResponse = cleanedResponse.replace(/,(\s*[}\]])/g, '$1');
+
+  // 3. 修复属性名缺少引号（如 market: "美股" -> "market": "美股"）
+  // 匹配格式：identifier: value，其中 identifier 不是已有引号的字符串
+  cleanedResponse = cleanedResponse.replace(
+    /([{,]\s*)([a-zA-Z_][a-zA-Z0-9_]*)(\s*:)/g,
+    (match, prefix, propName, colon) => {
+      // 如果属性名已经被引号包裹，不处理
+      if (prefix.endsWith('"') || prefix.endsWith("'")) {
+        return match;
+      }
+      return `${prefix}"${propName}"${colon}`;
+    }
+  );
+
+  // 4. 修复字符串值缺少引号（如 "description":香港 -> "description":"香港"）
   cleanedResponse = cleanedResponse.replace(
     /"(?:market|content|description|date)":([^,\[\]{}\n\r]+)([,}\]\n\r])/g,
     (match, value, suffix) => {
@@ -68,12 +89,27 @@ export function parseCalendarAIResponse(response: string): CalendarEventInput[] 
     }
   );
 
+  // 5. 移除多余的空白和换行（保持JSON结构）
+  cleanedResponse = cleanedResponse.trim();
+
   // 解析JSON
   let parsed: unknown;
   try {
     parsed = JSON.parse(cleanedResponse);
   } catch (e) {
-    throw new Error(`解析日历AI响应失败: JSON解析错误 - ${(e as Error).message}`);
+    // 记录详细错误信息，帮助诊断截断或格式问题
+    const errorMsg = (e as Error).message;
+    const responseEnd = cleanedResponse.slice(-100);
+    console.error(`[${logPrefix}] JSON解析失败，错误: ${errorMsg}`);
+    console.error(`[${logPrefix}] 响应末尾100字符: ...${responseEnd}`);
+    console.error(`[${logPrefix}] 响应总长度: ${cleanedResponse.length}字符`);
+
+    // 检查是否可能是截断（末尾不完整）
+    if (!cleanedResponse.endsWith(']') && !cleanedResponse.endsWith('}')) {
+      console.error(`[${logPrefix}] 可能是截断问题：JSON末尾未正确闭合`);
+    }
+
+    throw new Error(`解析日历AI响应失败: JSON解析错误 - ${errorMsg}`);
   }
 
   // 检查是否为数组
@@ -153,8 +189,13 @@ export async function processCalendarHoliday(
     throw new Error(response.error || 'AI 请求失败');
   }
 
+  // 记录响应基本信息（用于诊断截断问题）
+  const responseLength = response.content.length;
+  const responsePreview = response.content.slice(0, 200) + (response.content.length > 200 ? '...' : '');
+  console.log(`[Calendar] ${logPrefix}AI响应长度: ${responseLength}字符, 预览: ${responsePreview}`);
+
   // 解析响应 - 现在解析失败会抛出异常，不会返回空数组
-  const results = parseCalendarAIResponse(response.content);
+  const results = parseCalendarAIResponse(response.content, logPrefix);
 
   // 更新 calendar 数据
   updateCalendarData(calendarType, results);
