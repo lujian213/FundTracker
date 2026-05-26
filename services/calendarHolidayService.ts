@@ -189,11 +189,6 @@ export async function processCalendarHoliday(
     throw new Error(response.error || 'AI 请求失败');
   }
 
-  // 记录响应基本信息（用于诊断截断问题）
-  const responseLength = response.content.length;
-  const responsePreview = response.content.slice(0, 200) + (response.content.length > 200 ? '...' : '');
-  console.log(`[Calendar] ${logPrefix}AI响应长度: ${responseLength}字符, 预览: ${responsePreview}`);
-
   // 解析响应 - 现在解析失败会抛出异常，不会返回空数组
   const results = parseCalendarAIResponse(response.content, logPrefix);
 
