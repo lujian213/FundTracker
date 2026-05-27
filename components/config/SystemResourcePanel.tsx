@@ -22,6 +22,53 @@ const WARNING_THRESHOLD = 80; // 80%
 const SystemResourcePanel: React.FC = () => {
   const [usage, setUsage] = useState<StorageUsage | null>(null);
 
+  // 导出 localStorage 内容到 JSON 文件
+  const handleExportLocalStorage = () => {
+    const exportData: Record<string, string> = {};
+
+    // 遍历所有 localStorage 键值对
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (key) {
+        const value = localStorage.getItem(key);
+        if (value !== null) {
+          exportData[key] = value;
+        }
+      }
+    }
+
+    // 添加导出元数据
+    const exportObject = {
+      exportTime: new Date().toISOString(),
+      exportTimeLocal: new Date().toLocaleString(),
+      totalKeys: Object.keys(exportData).length,
+      data: exportData
+    };
+
+    // 转换为 JSON 字符串
+    const jsonString = JSON.stringify(exportObject, null, 2);
+
+    // 创建 Blob 并下载
+    const blob = new Blob([jsonString], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+
+    // 生成文件名（包含日期）
+    const today = new Date();
+    const dateStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+    const fileName = `localStorage-export-${dateStr}.json`;
+
+    // 创建下载链接
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = fileName;
+    document.body.appendChild(link);
+    link.click();
+
+    // 清理
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  };
+
   useEffect(() => {
     const calculateStorageUsage = (): StorageUsage => {
       let totalUsedBytes = 0;
@@ -96,6 +143,17 @@ const SystemResourcePanel: React.FC = () => {
             <div className="flex justify-between text-sm">
               <span className="text-gray-600">已使用: <strong>{usage.usedMB}</strong></span>
               <span className="text-gray-600">剩余: <strong>{usage.remainingMB}</strong></span>
+            </div>
+
+            {/* 导出按钮 */}
+            <div className="mt-4">
+              <button
+                onClick={handleExportLocalStorage}
+                className="w-full py-2 px-4 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg transition-colors flex items-center justify-center space-x-2"
+              >
+                <i className="fas fa-download"></i>
+                <span>导出 localStorage 内容</span>
+              </button>
             </div>
 
             {/* 警告信息 */}
