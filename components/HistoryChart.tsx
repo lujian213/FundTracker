@@ -350,10 +350,10 @@ const HistoryChart: React.FC<HistoryChartProps> = ({
           }
 
           if (m.type === 'position_start') {
-            lines = ['持仓开始', `${m.shares} 份`];
+            lines = ['持仓开始', `${m.shares !== undefined ? Number(m.shares).toFixed(2) : '—'} 份`];
             tooltipHeight = 34;
           } else {
-            lines = [(m.type === 'sell' ? '卖出' : '买入'), `${m.shares !== undefined ? m.shares : '—'} 份`, `${m.amount !== undefined ? m.amount.toFixed(2) + ' 元' : '—'}`];
+            lines = [(m.type === 'sell' ? '卖出' : '买入'), `${m.shares !== undefined ? Number(m.shares).toFixed(2) : '—'} 份`, `${m.amount !== undefined ? m.amount.toFixed(2) + ' 元' : '—'}`];
             // 如果有仓位信息，增加一行
             if (positionText) {
               lines.push(positionText);

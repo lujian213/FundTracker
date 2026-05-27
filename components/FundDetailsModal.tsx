@@ -1077,7 +1077,7 @@ export const FundDetailsModal: React.FC<FundDetailsModalProps> = ({ data, onClos
                 {fullCapacity > 0 && (
                   <span className="whitespace-nowrap">满仓份额：<span className="font-medium">{fmtNumber(fullCapacity)}份</span></span>
                 )}
-                {initialPosition > 0 && (
+                {fullCapacity > 0 && (
                   <span className="whitespace-nowrap">初始份额：<span className="font-medium">{fmtNumber(initialPosition)}份</span></span>
                 )}
                 {startDate && (

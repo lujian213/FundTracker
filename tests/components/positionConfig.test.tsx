@@ -298,4 +298,40 @@ describe('position config persistence and UI', () => {
     const pos = getPosition(data.symbol);
     expect(pos?.aliasName).toBeUndefined();
   });
+
+  test('initial position shows 0 when fullCapacity is set and initialPosition is 0', async () => {
+    render(<FundDetailsModal data={data as any} onClose={() => {}} />);
+    await waitFor(() => expect(fetchFundHistory).toHaveBeenCalled());
+
+    // initially should not show position because not configured
+    expect(screen.queryByText(/满仓/)).toBeNull();
+
+    // open config modal
+    const gear = screen.getByLabelText(/基金设置/);
+    fireEvent.click(gear);
+
+    const fullInput = await screen.findByLabelText('modal-full') as HTMLInputElement;
+    const initialInput = await screen.findByLabelText('modal-initial') as HTMLInputElement;
+    // 设置满仓份额为100，初始份额为0
+    fireEvent.change(fullInput, { target: { value: '100' } });
+    fireEvent.change(initialInput, { target: { value: '0' } });
+
+    const saveBtn = screen.getByText('保存');
+    fireEvent.click(saveBtn);
+
+    // 应该显示满仓份额和初始份额（初始份额为0）
+    await waitFor(() => expect(screen.getByText(/满仓份额/)).toBeTruthy());
+    expect(screen.getByText(/100\.00份/)).toBeTruthy();
+    expect(screen.getByText(/初始份额/)).toBeTruthy();
+    // 使用更精确的查询：找到包含"初始份额"的span，然后检查其子元素
+    const initialPositionSpan = screen.getByText('初始份额：').closest('span');
+    expect(initialPositionSpan).toBeTruthy();
+    expect(initialPositionSpan?.textContent).toContain('0.00份');
+
+    // marketFundService should have position with initialPosition = 0
+    const pos = getPosition(data.symbol);
+    expect(pos).toBeTruthy();
+    expect(pos!.fullCapacity).toBe(100);
+    expect(pos!.initialPosition).toBe(0);
+  });
 });
