@@ -40,6 +40,28 @@ jest.mock('react-dom', () => ({
 // Provide a fresh localStorage-backed useTrades mock via the real module
 // (no mock needed — we write directly to localStorage before rendering)
 
+// Mock getHistory to return valid history data for effect calculation tests
+jest.mock('../../services/marketFundService', () => {
+  const original = jest.requireActual('../../services/marketFundService');
+  // Helper: create noon timestamp (timezone-safe)
+  const noonTs = (y: number, m: number, d: number) => new Date(y, m - 1, d, 12, 0, 0).getTime();
+  return {
+    ...original,
+    getHistory: jest.fn((symbol: string) => {
+      // Return history data for 000001 so effect calculation can work
+      if (symbol === '000001') {
+        return [
+          { date: noonTs(2026, 2, 19), value: 1.45, equityReturn: 0 },
+          { date: noonTs(2026, 2, 21), value: 1.52, equityReturn: 0 },  // next valid date after 2026-02-20
+          { date: noonTs(2026, 2, 22), value: 1.55, equityReturn: 0 },
+        ];
+      }
+      return [];
+    }),
+    resetCache: original.resetCache,
+  };
+});
+
 import { setTradesForSymbol } from '../../hooks/useTrades';
 import TransactionsModal from '../../components/TransactionsModal';
 import { Ticker, ValuationData } from '../../types';
@@ -106,7 +128,7 @@ describe('TransactionsModal', () => {
 
   // 3. Table columns and headers
   describe('table structure', () => {
-    test('renders six column headers correctly', async () => {
+    test('renders seven column headers correctly', async () => {
       seed();
       render(<TransactionsModal portfolio={portfolio} marketData={marketData} onClose={jest.fn()} />);
       await waitFor(() => expect(screen.getByText('2026-02-20')).toBeInTheDocument());
@@ -116,7 +138,8 @@ describe('TransactionsModal', () => {
       expect(screen.getByText('份额')).toBeInTheDocument();
       expect(screen.getByText('手续费')).toBeInTheDocument();
       expect(screen.getByText('交易总额')).toBeInTheDocument();
-      // 第六列多选按钮 - 表头有一个全选checkbox，每行也有一个checkbox
+      expect(screen.getByText('交易盈亏')).toBeInTheDocument();
+      // 第七列多选按钮 - 表头有一个全选checkbox，每行也有一个checkbox
       const checkboxes = screen.getAllByRole('checkbox');
       expect(checkboxes.length).toBeGreaterThan(0);
     });
@@ -163,9 +186,9 @@ describe('TransactionsModal', () => {
     test('shows buy and sell counts', async () => {
       seed();
       render(<TransactionsModal portfolio={portfolio} marketData={marketData} onClose={jest.fn()} />);
-      // Find the totals container and check its text content
+      // Find the totals container by the specific text pattern
       await waitFor(() => {
-        const totalsSection = screen.getByText(/总计：/);
+        const totalsSection = screen.getByText(/总计：买入/);
         expect(totalsSection.parentElement).toHaveTextContent('买入');
         expect(totalsSection.parentElement).toHaveTextContent('卖出');
       });
@@ -177,7 +200,7 @@ describe('TransactionsModal', () => {
       seed();
       render(<TransactionsModal portfolio={portfolio} marketData={marketData} onClose={jest.fn()} />);
       await waitFor(() => {
-        const totalsSection = screen.getByText(/总计：/);
+        const totalsSection = screen.getByText(/总计：买入/);
         expect(totalsSection.parentElement).toHaveTextContent('151.50');
         expect(totalsSection.parentElement).toHaveTextContent('99.50');
       });
@@ -188,7 +211,7 @@ describe('TransactionsModal', () => {
       seed();
       render(<TransactionsModal portfolio={portfolio} marketData={marketData} onClose={jest.fn()} />);
       await waitFor(() => {
-        const totalsSection = screen.getByText(/总计：/);
+        const totalsSection = screen.getByText(/总计：买入/);
         expect(totalsSection.parentElement).toHaveTextContent('手续费');
         expect(totalsSection.parentElement).toHaveTextContent('2.00');
       });
@@ -202,7 +225,7 @@ describe('TransactionsModal', () => {
       ] as any);
       render(<TransactionsModal portfolio={portfolio} marketData={marketData} onClose={jest.fn()} />);
       await waitFor(() => {
-        const totalsSection = screen.getByText(/总计：/);
+        const totalsSection = screen.getByText(/总计：买入/);
         expect(totalsSection.parentElement).toHaveTextContent('买入 2 条');
         expect(totalsSection.parentElement).toHaveTextContent('卖出 1 条');
       });
@@ -216,7 +239,7 @@ describe('TransactionsModal', () => {
       render(<TransactionsModal portfolio={portfolio} marketData={marketData} onClose={jest.fn()} />);
       // default date is 2026-02-20 → 1 buy + 1 sell
       await waitFor(() => {
-        const totalsSection = screen.getByText(/总计：/);
+        const totalsSection = screen.getByText(/总计：买入/);
         expect(totalsSection.parentElement).toHaveTextContent('买入 1 条');
         expect(totalsSection.parentElement).toHaveTextContent('卖出 1 条');
       });
@@ -231,7 +254,7 @@ describe('TransactionsModal', () => {
 
       // table should now show 1 buy (b2 on 2026-01-10), 0 sell
       await waitFor(() => {
-        const totalsSection = screen.getByText(/总计：/);
+        const totalsSection = screen.getByText(/总计：买入/);
         expect(totalsSection.parentElement).toHaveTextContent('买入 1 条');
         expect(totalsSection.parentElement).toHaveTextContent('卖出 0 条');
       });
@@ -259,7 +282,7 @@ describe('TransactionsModal', () => {
       ] as any);
       render(<TransactionsModal portfolio={portfolio} marketData={marketData} onClose={jest.fn()} />);
       await waitFor(() => {
-        const totalsSection = screen.getByText(/总计：/);
+        const totalsSection = screen.getByText(/总计：买入/);
         expect(totalsSection.parentElement).toHaveTextContent('买入 1 条');
       });
       // fee column should show "-" for zero fee

@@ -9,6 +9,8 @@ import ComboTradeModal from './ComboTradeModal';
 import { TradeSmartInputProgressModal } from './TradeSmartInputProgressModal';
 import { TradeSmartInputResultModal } from './TradeSmartInputResultModal';
 import { useTradeSmartInput } from '../hooks/useTradeSmartInput';
+import { getHistory } from '../services/marketFundService';
+import { findNextValidTradeDate, calculateTradeEffect } from '../utils/tradeEffectCalculator';
 
 interface Props {
   portfolio: Ticker[];
@@ -111,7 +113,7 @@ const TransactionsModal: React.FC<Props> = ({ portfolio, marketData, onClose, on
   const rows = useMemo(() => {
     if (!selectedDateStr) return [];
     const all = readAll();
-    const result: { id: number; symbol: string; name: string; type: 'buy' | 'sell'; shares: number; price: number; fee: number; total: number }[] = [];
+    const result: { id: number; symbol: string; name: string; type: 'buy' | 'sell'; shares: number; price: number; fee: number; total: number; effect: number | null }[] = [];
     let id = 0;
     Object.entries(all).forEach(([symbol, records]) => {
       records.forEach(r => {
@@ -123,7 +125,14 @@ const TransactionsModal: React.FC<Props> = ({ portfolio, marketData, onClose, on
           const total = r.type === 'sell'
             ? r.price * r.shares - (r.fee || 0)
             : r.price * r.shares + (r.fee || 0);
-          result.push({ id: id++, symbol, name, type: r.type, shares: r.shares, price: r.price, fee: r.fee || 0, total });
+
+          // 计算交易盈亏
+          const history = getHistory(symbol);
+          const valuation = marketData[symbol];
+          const nextValid = findNextValidTradeDate(history, selectedDateStr, valuation);
+          const effect = calculateTradeEffect({ type: r.type, shares: r.shares, fee: r.fee || 0 }, r.price, nextValid);
+
+          result.push({ id: id++, symbol, name, type: r.type, shares: r.shares, price: r.price, fee: r.fee || 0, total, effect });
         }
       });
     });
@@ -137,6 +146,8 @@ const TransactionsModal: React.FC<Props> = ({ portfolio, marketData, onClose, on
     let buyTotal = 0;
     let sellTotal = 0;
     let totalFee = 0;
+    let totalEffect = 0;
+    let hasAnyEffect = false;
 
     for (const r of rows) {
       if (r.type === 'buy') {
@@ -147,9 +158,13 @@ const TransactionsModal: React.FC<Props> = ({ portfolio, marketData, onClose, on
         sellTotal += r.total;
       }
       totalFee += r.fee;
+      if (r.effect !== null) {
+        totalEffect += r.effect;
+        hasAnyEffect = true;
+      }
     }
 
-    return { buyCount, sellCount, buyTotal, sellTotal, totalFee };
+    return { buyCount, sellCount, buyTotal, sellTotal, totalFee, totalEffect: hasAnyEffect ? totalEffect : null };
   }, [rows]);
 
   // 全选/反选
@@ -241,7 +256,7 @@ const TransactionsModal: React.FC<Props> = ({ portfolio, marketData, onClose, on
     <div className="fixed inset-0 z-[130] flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/40" onClick={onClose} />
       <div
-        className="relative bg-white rounded-2xl w-full max-w-2xl shadow-2xl animate-in zoom-in-95 duration-200 flex flex-col"
+        className="relative bg-white rounded-2xl w-full max-w-3xl shadow-2xl animate-in zoom-in-95 duration-200 flex flex-col"
         style={{ maxHeight: '90vh' }}
         role="dialog"
         aria-modal="true"
@@ -354,6 +369,7 @@ const TransactionsModal: React.FC<Props> = ({ portfolio, marketData, onClose, on
                     <col style={{ width: '13%' }} />
                     <col style={{ width: '12%' }} />
                     <col style={{ width: '18%' }} />
+                    <col style={{ width: '12%' }} />
                     <col style={{ width: '6%' }} />
                   </colgroup>
                   <thead className="sticky top-0 z-10 bg-gray-50">
@@ -363,6 +379,7 @@ const TransactionsModal: React.FC<Props> = ({ portfolio, marketData, onClose, on
                       <th className="px-3 py-2 text-right text-xs font-semibold text-gray-500">份额</th>
                       <th className="px-3 py-2 text-right text-xs font-semibold text-gray-500">手续费</th>
                       <th className="px-3 py-2 text-right text-xs font-semibold text-gray-500">交易总额</th>
+                      <th className="px-3 py-2 text-right text-xs font-semibold text-gray-500">交易盈亏</th>
                       <th className="px-3 py-2 text-center text-xs font-semibold text-gray-500">
                         <input
                           type="checkbox"
@@ -376,7 +393,7 @@ const TransactionsModal: React.FC<Props> = ({ portfolio, marketData, onClose, on
                   <tbody>
                     {rows.length === 0 ? (
                       <tr>
-                        <td colSpan={6} className="px-3 py-8 text-center text-gray-400 text-xs">
+                        <td colSpan={7} className="px-3 py-8 text-center text-gray-400 text-xs">
                           该日期无任何交易
                         </td>
                       </tr>
@@ -406,6 +423,14 @@ const TransactionsModal: React.FC<Props> = ({ portfolio, marketData, onClose, on
                             <td className="px-3 py-2 text-right text-xs text-gray-700">{formatNum(r.shares)}</td>
                             <td className="px-3 py-2 text-right text-xs text-gray-700">{formatNum(r.fee)}</td>
                             <td className="px-3 py-2 text-right text-xs text-gray-700">{formatNum(r.total)}</td>
+                            <td className="px-3 py-2 text-right text-xs">
+                              {r.effect === null || r.effect === 0
+                                ? <span className="text-black">-</span>
+                                : <span className={r.effect > 0 ? 'text-red-500' : 'text-green-600'}>
+                                    {fmt.format(r.effect)}
+                                  </span>
+                              }
+                            </td>
                             <td className="px-3 py-2 text-center">
                               <input
                                 type="checkbox"
@@ -421,7 +446,7 @@ const TransactionsModal: React.FC<Props> = ({ portfolio, marketData, onClose, on
                   </tbody>
                   <tfoot className="sticky bottom-0 z-10 bg-gray-50">
                     <tr className="border-t border-gray-200">
-                      <td colSpan={6} className="px-3 py-3 text-xs text-gray-700">
+                      <td colSpan={7} className="px-3 py-3 text-xs text-gray-700">
                         <div className="flex justify-between">
                           <span>
                             总计：买入 <span className="font-bold text-green-600">{stats.buyCount}</span> 条，
@@ -431,6 +456,7 @@ const TransactionsModal: React.FC<Props> = ({ portfolio, marketData, onClose, on
                             <span>买入总额：<span className="font-bold text-green-600">{fmt.format(stats.buyTotal)}</span></span>
                             <span>卖出总额：<span className="font-bold text-red-500">{fmt.format(stats.sellTotal)}</span></span>
                             <span>手续费：<span className="font-bold">{fmt.format(stats.totalFee)}</span></span>
+                            <span>盈亏总计：<span className={stats.totalEffect && stats.totalEffect > 0 ? 'font-bold text-red-500' : stats.totalEffect && stats.totalEffect < 0 ? 'font-bold text-green-600' : 'font-bold text-black'}>{stats.totalEffect === null ? '-' : fmt.format(stats.totalEffect)}</span></span>
                           </span>
                         </div>
                       </td>

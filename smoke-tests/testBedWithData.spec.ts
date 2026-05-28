@@ -929,17 +929,22 @@ test.describe('testBedWithData', () => {
     // 验证 localStorage 使用情况标题显示
     await expect(page.locator('h3:has-text("localStorage 使用情况")')).toBeVisible({ timeout: 2000 });
 
-    // 验证进度条存在（使用更宽松的检查）
+    // 验证进度条存在（分段进度条：FundTracker蓝色 + 无关数据黄色）
     const progressBar = page.locator('div.w-full.h-4.bg-gray-200.rounded-full');
     await progressBar.scrollIntoViewIfNeeded();
     await expect(progressBar).toBeAttached();
 
-    // 验证进度条内部填充条存在
-    const progressFill = progressBar.locator('div.h-full.rounded-full');
-    await expect(progressFill).toBeAttached();
+    // 验证进度条内部的分段填充条存在（FundTracker数据 - 蓝色）
+    const fundTrackerFill = progressBar.locator('div.h-full.bg-blue-600');
+    await expect(fundTrackerFill).toBeAttached();
 
-    // 验证已使用和剩余空间数值显示
+    // 验证百分比标签显示
+    const percentageLabel = page.locator('span:has-text("%")').filter({ hasText: /^\d+\.\d+%$/ });
+    await expect(percentageLabel).toBeVisible();
+
+    // 验证已使用、净使用和剩余空间数值显示
     await expect(page.locator('text=已使用:')).toBeVisible();
+    await expect(page.locator('text=净使用:')).toBeVisible();
     await expect(page.locator('text=剩余:')).toBeVisible();
 
     // 验证说明区域显示
