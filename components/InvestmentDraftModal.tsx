@@ -59,6 +59,70 @@ const InvestmentDraftModal: React.FC<InvestmentDraftModalProps> = ({
   const [showAIAnalysis, setShowAIAnalysis] = useState(false);
   const modalHeightRef = useRef<number | null>(null);
 
+  // 拖拽相关状态（仅在单独呈现时允许拖拽）
+  const [dragPosition, setDragPosition] = useState<{ x: number; y: number } | null>(null);
+  const [isDragging, setIsDragging] = useState(false);
+  const dragStartRef = useRef<{ x: number; y: number; windowX: number; windowY: number } | null>(null);
+  const modalRef = useRef<HTMLDivElement | null>(null);
+
+  // 拖拽开始处理函数
+  const handleDragStart = useCallback((e: React.MouseEvent) => {
+    if (sideBySide) return; // 并排显示时不允许拖拽
+
+    e.preventDefault();
+    setIsDragging(true);
+
+    const modal = modalRef.current;
+    if (!modal) return;
+
+    const rect = modal.getBoundingClientRect();
+    dragStartRef.current = {
+      x: e.clientX,
+      y: e.clientY,
+      windowX: rect.left,
+      windowY: rect.top
+    };
+  }, [sideBySide]);
+
+  // 拖拽移动处理函数
+  const handleDragMove = useCallback((e: MouseEvent) => {
+    if (!isDragging || !dragStartRef.current) return;
+
+    const deltaX = e.clientX - dragStartRef.current.x;
+    const deltaY = e.clientY - dragStartRef.current.y;
+
+    setDragPosition({
+      x: dragStartRef.current.windowX + deltaX,
+      y: dragStartRef.current.windowY + deltaY
+    });
+  }, [isDragging]);
+
+  // 拖拽结束处理函数
+  const handleDragEnd = useCallback(() => {
+    setIsDragging(false);
+    dragStartRef.current = null;
+  }, []);
+
+  // 监听全局鼠标移动和释放事件
+  useEffect(() => {
+    if (!isDragging) return;
+
+    window.addEventListener('mousemove', handleDragMove);
+    window.addEventListener('mouseup', handleDragEnd);
+
+    return () => {
+      window.removeEventListener('mousemove', handleDragMove);
+      window.removeEventListener('mouseup', handleDragEnd);
+    };
+  }, [isDragging, handleDragMove, handleDragEnd]);
+
+  // 当 sideBySide 变化时，重置拖拽位置
+  useEffect(() => {
+    if (sideBySide) {
+      setDragPosition(null);
+    }
+  }, [sideBySide]);
+
   // 监听详情窗口高度变化
   useEffect(() => {
     const checkHeight = () => {
@@ -868,15 +932,23 @@ const InvestmentDraftModal: React.FC<InvestmentDraftModalProps> = ({
     <div className="fixed inset-0 z-[130] flex items-center justify-center pointer-events-none">
       <div className="absolute inset-0 bg-black/40 pointer-events-auto" onClick={onClose} />
       <div
-        className="investment-draft-modal-content relative bg-white w-full max-w-[880px] shadow-2xl animate-in zoom-in-95 duration-200 flex flex-col pointer-events-auto transition-transform duration-300 ease-in-out"
+        ref={modalRef}
+        className={`investment-draft-modal-content relative bg-white w-full max-w-[880px] shadow-2xl animate-in zoom-in-95 duration-200 flex flex-col pointer-events-auto ${isDragging ? 'select-none' : ''}`}
         style={{
+          position: dragPosition ? 'fixed' : undefined,
+          left: dragPosition?.x ?? undefined,
+          top: dragPosition?.y ?? undefined,
           transform: sideBySide ? `translateX(-${draftOffset}px)` : 'translateX(0)',
           height: modalHeight ? `${modalHeight}px` : '90vh',
-          maxHeight: '90vh'
+          maxHeight: '90vh',
+          transition: isDragging ? 'none' : 'transform 0.3s ease-in-out'
         }}
       >
-        <div className="px-6 pt-3 pb-1 border-b border-gray-100 flex justify-between items-center flex-shrink-0">
-          <h3 className="text-lg font-bold">投资计划草稿</h3>
+        <div
+          className={`px-6 pt-3 pb-1 border-b border-gray-100 flex justify-between items-center flex-shrink-0 ${!sideBySide ? 'cursor-move' : ''}`}
+          onMouseDown={handleDragStart}
+        >
+          <h3 className="text-lg font-bold select-none">投资计划草稿</h3>
           <div className="flex items-center gap-2">
             <button
               onClick={handleAIAdviceClick}
