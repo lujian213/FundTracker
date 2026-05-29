@@ -405,6 +405,7 @@ export interface TimerJobError {
   jobName: string;
   message: string;
   time: Date;
+  displayCount: number;  // 已显示次数
 }
 
 // 定时任务执行结果 - 用于统一报告任务状态
