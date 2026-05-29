@@ -35,7 +35,14 @@ console.log = (...args: unknown[]) => {
         message.includes('Indices after save') ||
         message.includes('Save button disabled') ||
         message.includes('aria-pressed') ||
-        message.includes('[StorageMigration] 验证结果汇总')) {
+        message.includes('[StorageMigration] 验证结果汇总') ||
+        // xirrHelper.test.ts 的现金流调试日志
+        message.includes('High return scenario cash flows') ||
+        message.includes('Cash flows count') ||
+        message.includes('Total outflow') ||
+        message.includes('Total inflow') ||
+        message.includes('Net profit') ||
+        message.includes('XIRR result')) {
       return;
     }
   }
@@ -59,7 +66,14 @@ console.error = (...args: unknown[]) => {
         message.includes('[Calendar] Failed to load calendar data') ||
         message.includes('[TimerJob]') ||
         message.includes('Error reading user preference') ||
-        message.includes('Error reading system config')) {
+        message.includes('Error reading system config') ||
+        // aiService.test.ts: 指数分析模板未找到
+        message.includes('没有找到指数分析模板') ||
+        // calendarHolidayService.test.ts: JSON解析错误测试
+        message.includes('[Calendar] JSON解析失败') ||
+        message.includes('[Calendar] 响应末尾') ||
+        message.includes('[Calendar] 响应总长度') ||
+        message.includes('[Calendar] 可能是截断问题')) {
       return;
     }
   }
@@ -76,7 +90,11 @@ console.warn = (...args: unknown[]) => {
         message.includes('加载常用问题配置失败') ||
         message.includes('[BackgroundJob] AI response is not an array') ||
         message.includes('[StrategyRecommendation] AI response is not an array') ||
-        message.includes('Failed to load template config')) {
+        message.includes('Failed to load template config') ||
+        // aiService.test.ts: 搜索服务失败测试
+        message.includes('搜索服务 AnySearch 失败') ||
+        message.includes('搜索服务 智谱搜索 失败') ||
+        message.includes('搜索服务失败或无结果')) {
       return;
     }
   }
