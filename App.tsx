@@ -61,6 +61,9 @@ import { mountRoot } from './services/rootService';
 import { loadAllTemplates, TEMPLATE_IDS } from './services/promptTemplateService';
 import { getHolidaySource } from './services/calendarHolidaySourceService';
 import { processCalendarHoliday, parseCalendarAIResponse } from './services/calendarHolidayService';
+// 调试面板和日志拦截器 - 仅开发环境使用（构建时会自动移除）
+import DebugPanel from './components/DebugPanel';
+import { initDebugIntercept } from './utils/debugLogger';
 
 const createPlaceholderIndex = (symbol: string): MarketIndex => {
   const normalized = normalizeIndexSymbol(symbol);
@@ -267,6 +270,9 @@ const AppContent: React.FC = () => {
   const [autoBackupEnabled, setAutoBackupEnabled] = useState<boolean>(() => readBackupConfig().autoBackupEnabled ?? false);
   const [autoBackupStatus, setAutoBackupStatus] = useState<'pending' | 'done' | null>(null);
   const [deepToast, setDeepToast] = useState<{ message: string, visible: boolean } | undefined>(undefined);
+  // DEBUG_START 2026-06-03: 调试面板状态
+  const [showDebugPanel, setShowDebugPanel] = useState<boolean>(false);
+  // DEBUG_END
 
   const manageableItemCount = portfolio.length + indicesConfig.length;
 
@@ -828,6 +834,36 @@ const AppContent: React.FC = () => {
     });
   }, [portfolio, marketData, sortOrder]);
 
+  // DEBUG_START 2026-06-03: 数据一致性检查 - 检测 portfolio 与 marketData 的数据是否匹配
+  useEffect(() => {
+    if (sortedPortfolio.length > 0) {
+      const inconsistencies: string[] = [];
+      sortedPortfolio.forEach((ticker, index) => {
+        const data = marketData[ticker.symbol];
+        // 检查名称不一致
+        if (data && data.name && ticker.name && data.name !== ticker.name) {
+          inconsistencies.push(`[${index}] ${ticker.symbol}: ticker.name="${ticker.name}" vs marketData.name="${data.name}"`);
+        }
+        // 检查 symbol 不存在的情况
+        if (!data && portfolio.some(p => p.symbol === ticker.symbol)) {
+          inconsistencies.push(`[${index}] ${ticker.symbol}: 无估值数据`);
+        }
+      });
+      if (inconsistencies.length > 0) {
+        console.warn('[DATA_MISMATCH]', {
+          time: new Date().toISOString(),
+          portfolioLength: portfolio.length,
+          marketDataKeys: Object.keys(marketData).length,
+          sortedPortfolioLength: sortedPortfolio.length,
+          inconsistencies,
+          portfolioSymbols: portfolio.map(p => p.symbol),
+          marketDataSymbols: Object.keys(marketData),
+        });
+      }
+    }
+  }, [sortedPortfolio, marketData, portfolio]);
+  // DEBUG_END
+
   const handleExport = async () => {
     const data = await buildBackupData(portfolio, indicesConfig, marketIndices);
     downloadBackupFile(data, false);
@@ -996,6 +1032,17 @@ const AppContent: React.FC = () => {
             <button onClick={() => setShowSystemConfig(true)} title="系统配置" aria-label="系统配置" className="p-2 w-10 h-10 rounded-full hover:bg-gray-100 text-gray-400 transition-all">
               <i className="fas fa-cog"></i>
             </button>
+            {/* 调试面板按钮 - 只在开发环境显示 */}
+            {import.meta.env.DEV && (
+              <button
+                onClick={() => setShowDebugPanel(true)}
+                title="调试面板"
+                aria-label="调试面板"
+                className="p-2 w-10 h-10 rounded-full hover:bg-gray-100 text-gray-400 transition-all"
+              >
+                <i className="fas fa-bug"></i>
+              </button>
+            )}
             {/* 日志按钮 - 仅在开关开启时显示 */}
             {isFeatureEnabled('jobLogEnabled') && (
               <button onClick={() => setShowJobLog(true)} title="后台任务日志" aria-label="后台任务日志" className="p-2 w-10 h-10 rounded-full hover:bg-gray-100 text-gray-400 transition-all">
@@ -1464,6 +1511,8 @@ const AppContent: React.FC = () => {
           }
         }}
       />
+      {/* 调试面板 - 只在开发环境渲染 */}
+      {import.meta.env.DEV && <DebugPanel visible={showDebugPanel} onClose={() => setShowDebugPanel(false)} />}
     </div>
   );
 };
@@ -1471,6 +1520,10 @@ const AppContent: React.FC = () => {
 const App: React.FC = () => {
   // 挂载 Root 到 window（供测试用例访问）
   mountRoot();
+  // 初始化调试日志拦截 - 只在开发环境执行
+  if (import.meta.env.DEV) {
+    initDebugIntercept();
+  }
   return (
     <TimerJobErrorProvider>
       <NewsProvider>

@@ -3,6 +3,8 @@ import { queryAIWithTemplate, AIResponse } from './aiService';
 import { getAIConfig } from './aiConfigService';
 import { formatDateDisplay } from '../utils/dateFormat';
 import { getById, TEMPLATE_IDS, PromptTemplate } from './promptTemplateService';
+import { parseAIJsonResponse, logJsonParseError } from '../utils/jsonParseUtils';
+import { withRetry, isJsonTruncationError } from '../utils/retryUtils';
 
 export interface BackgroundJobPrompt {
   id: string;
@@ -110,49 +112,30 @@ interface AIResponseItem {
 
 /**
  * 解析 AI 响应为结构化结果
+ * 使用 jsonParseUtils 统一处理 JSON 解析
  */
 export function parseAIResponse(response: string, type: 'holiday' | 'delivery'): BackgroundJobResult[] {
-  try {
-    // 移除可能的 markdown 代码块标记（如 ```json ... ```）
-    let cleanedResponse = response.trim();
-    if (cleanedResponse.startsWith('```')) {
-      // 移除开头的 ```json 或 ```
-      const firstNewline = cleanedResponse.indexOf('\n');
-      if (firstNewline !== -1) {
-        cleanedResponse = cleanedResponse.slice(firstNewline + 1);
-      }
-      // 移除结尾的 ```
-      if (cleanedResponse.endsWith('```')) {
-        cleanedResponse = cleanedResponse.slice(0, -3).trim();
-      }
-    }
+  const parsed = parseAIJsonResponse(response, {
+    logPrefix: 'BackgroundJob',
+    errorContext: 'AI响应',
+  });
 
-    const parsed = JSON.parse(cleanedResponse);
-    if (!Array.isArray(parsed)) {
-      console.warn('[BackgroundJob] AI response is not an array');
-      return [];
+  return (parsed as AIResponseItem[]).map((item) => {
+    const code = typeof item.code === 'string' ? item.code : String(item.code ?? '');
+    if (type === 'holiday') {
+      return {
+        code,
+        date: typeof item.holiday_date_start === 'string' ? item.holiday_date_start : null,
+        content: typeof item.explanation === 'string' ? item.explanation : null
+      };
+    } else {
+      return {
+        code,
+        date: typeof item.delivery_date === 'string' ? item.delivery_date : null,
+        content: typeof item.explanation === 'string' ? item.explanation : null
+      };
     }
-
-    return parsed.map((item: AIResponseItem) => {
-      const code = typeof item.code === 'string' ? item.code : String(item.code ?? '');
-      if (type === 'holiday') {
-        return {
-          code,
-          date: typeof item.holiday_date_start === 'string' ? item.holiday_date_start : null,
-          content: typeof item.explanation === 'string' ? item.explanation : null
-        };
-      } else {
-        return {
-          code,
-          date: typeof item.delivery_date === 'string' ? item.delivery_date : null,
-          content: typeof item.explanation === 'string' ? item.explanation : null
-        };
-      }
-    });
-  } catch (e) {
-    console.error('[BackgroundJob] Failed to parse AI response:', e);
-    return [];
-  }
+  });
 }
 
 /**
@@ -214,16 +197,18 @@ export function updateTickerAlerts(
 }
 
 /**
- * 刷新指定类型的提示信息
+ * 刷新指定类型的提示信息（带自动重试）
  * @param type 信息类型
  * @param getPortfolio 获取当前 portfolio 的函数（支持函数式更新，避免竞争条件）
  * @param onPortfolioUpdate 更新 portfolio 的回调（用于触发 React 重渲染）
+ * @param maxRetries 最大重试次数（默认2次）
  * @returns Promise<void>
  */
 export async function refreshTickerAlerts(
   type: 'holiday' | 'delivery',
   getPortfolio: () => Ticker[],
-  onPortfolioUpdate: (newPortfolio: Ticker[]) => void
+  onPortfolioUpdate: (newPortfolio: Ticker[]) => void,
+  maxRetries: number = 2
 ): Promise<void> {
   const aiConfig = getAIConfig();
   if (!aiConfig || !aiConfig.apiKey) {
@@ -238,47 +223,60 @@ export async function refreshTickerAlerts(
 
   // 获取当前 portfolio（用于生成代码列表）
   const portfolio = getPortfolio();
-
-  // 使用 queryAIWithTemplate 统一处理模板和联网搜索
   const codeList = formatCodeList(portfolio);
   const current_date = formatDateDisplay(new Date());
 
-  const response: AIResponse = await queryAIWithTemplate(aiConfig, prompt as PromptTemplate, {
-    current_date,
-    code_list: codeList
-  });
+  const logPrefix = type === 'holiday' ? 'HolidayAlert' : 'DeliveryAlert';
 
-  if (!response.success) {
-    throw new Error(response.error || 'AI 请求失败');
-  }
+  // 使用 withRetry 统一处理重试逻辑
+  await withRetry(
+    async () => {
+      const response: AIResponse = await queryAIWithTemplate(aiConfig, prompt as PromptTemplate, {
+        current_date,
+        code_list: codeList
+      });
 
-  // 解析响应
-  const results = parseAIResponse(response.content, type);
+      if (!response.success) {
+        throw new Error(response.error || 'AI 请求失败');
+      }
 
-  // 过滤掉无效结果（date 或 content 为 null/undefined），确保类型安全
-  const validResults = results.filter(
-    result => result.date !== null && result.date !== undefined &&
-              result.content !== null && result.content !== undefined
-  ) as Array<{ code: string; date: string; content: string }>;
+      // 解析响应
+      const results = parseAIResponse(response.content, type);
 
-  // 对于同一基金的多条记录，只保留日期最近的一条
-  const uniqueResults = selectNearestAlert(validResults);
+      // 过滤掉无效结果（date 或 content 为 null/undefined），确保类型安全
+      const validResults = results.filter(
+        result => result.date !== null && result.date !== undefined &&
+                  result.content !== null && result.content !== undefined
+      ) as Array<{ code: string; date: string; content: string }>;
 
-  // 再次获取最新的 portfolio（确保不覆盖其他任务的更新）
-  const latestPortfolio = getPortfolio();
+      // 对于同一基金的多条记录，只保留日期最近的一条
+      const uniqueResults = selectNearestAlert(validResults);
 
-  // 更新 portfolio
-  let updatedPortfolio = [...latestPortfolio];
-  for (const result of uniqueResults) {
-    updatedPortfolio = updateTickerAlerts(
-      updatedPortfolio,
-      result.code,
-      type,
-      result.date,
-      result.content
-    );
-  }
+      // 再次获取最新的 portfolio（确保不覆盖其他任务的更新）
+      const latestPortfolio = getPortfolio();
 
-  // 通过回调更新 React 状态
-  onPortfolioUpdate(updatedPortfolio);
+      // 更新 portfolio
+      let updatedPortfolio = [...latestPortfolio];
+      for (const result of uniqueResults) {
+        updatedPortfolio = updateTickerAlerts(
+          updatedPortfolio,
+          result.code,
+          type,
+          result.date,
+          result.content
+        );
+      }
+
+      // 通过回调更新 React 状态
+      onPortfolioUpdate(updatedPortfolio);
+    },
+    {
+      maxRetries,
+      isRetryable: isJsonTruncationError,
+      operationName: logPrefix,
+      onRetry: (attempt) => {
+        console.warn(`[${logPrefix}] 第 ${attempt} 次尝试失败（JSON问题），将重试...`);
+      },
+    }
+  );
 }

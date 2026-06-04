@@ -7,11 +7,8 @@
         "mcp-remote",
         "https://api.anysearch.com/mcp",
         "--header",
-        "Authorization: Bearer ${ANYSEARCH_API_KEY}"
-      ],
-      "env": {
-        "ANYSEARCH_API_KEY": "as_sk_14923032d1139c4eb334e1ca5ca96ba9"
-      }
+        "Authorization: Bearer as_sk_14923032d1139c4eb334e1ca5ca96ba9"
+      ]
     }
   }
 }

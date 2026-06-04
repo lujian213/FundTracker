@@ -177,19 +177,38 @@ const historyCache: Record<string, HistoricalPoint[]> = {};
 
 /**
  * 基金回调注册表 (天天基金专用)
+ * 使用 fundcode 作为键进行严格匹配
+ * 不使用 fallback 机制，匹配失败时丢弃数据
  */
-const fundRegistry: Record<string, (data: any) => void> = {};
+const fundRegistry: Record<string, {
+  callback: (data: any) => void;
+  requestTime: number;
+}> = {};
 
+/**
+ * 全局回调函数 - 严格匹配 fundcode，不 fallback
+ * 天天基金 API 返回固定的 jsonpgz({...}) 格式，不支持自定义回调名
+ */
 (window as any).jsonpgz = (data: any) => {
-  if (data && data.fundcode && fundRegistry[data.fundcode]) {
-    fundRegistry[data.fundcode](data);
-    delete fundRegistry[data.fundcode];
+  if (!data) {
+    console.warn('[jsonpgz] 收到空响应，已丢弃');
+    return;
+  }
+
+  const fundcode = data.fundcode;
+  const entry = fundRegistry[fundcode];
+
+  if (entry) {
+    // 匹配成功，调用回调并清理
+    entry.callback(data);
+    delete fundRegistry[fundcode];
   } else {
-    const firstCode = Object.keys(fundRegistry)[0];
-    if (firstCode) {
-      fundRegistry[firstCode](data);
-      delete fundRegistry[firstCode];
-    }
+    // 匹配失败，丢弃数据并打印警告（不再 fallback）
+    console.warn('[jsonpgz] 响应 fundcode 未匹配，已丢弃:', {
+      receivedFundcode: fundcode,
+      dataName: data.name,
+      waitingFundcodes: Object.keys(fundRegistry),
+    });
   }
 };
 
@@ -414,14 +433,50 @@ function loadHistoryFromPingzhongData(code: string, url: string): Promise<Histor
  * @param maxRetries 最大重试次数
  */
 async function loadHistoryFromPingzhongDataWithRetry(code: string, maxRetries = 2): Promise<HistoricalPoint[]> {
+  // DEBUG_START 2026-06-03: 历史请求追踪
+  const currentSeq = historyRequestSeq;
+  console.log('[HistoryRequest_START]', {
+    time: new Date().toISOString(),
+    symbol: code,
+    requestSeq: currentSeq,
+    globalSeq: historyRequestSeq,
+    activeRequestsCount: activeHistoryRequests.size,
+    activeRequestsSymbols: Array.from(activeHistoryRequests.keys()),
+  });
+  // DEBUG_END
   const ts = formatYMDHMS(new Date());
   const url = `https://fund.eastmoney.com/pingzhongdata/${code}.js?v=${ts}`;
 
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
     try {
-      return await loadHistoryFromPingzhongData(code, url);
+      const result = await loadHistoryFromPingzhongData(code, url);
+      // DEBUG_START 2026-06-03: 历史请求成功追踪
+      console.log('[HistoryRequest_SUCCESS]', {
+        time: new Date().toISOString(),
+        symbol: code,
+        requestSeq: currentSeq,
+        globalSeq: historyRequestSeq,
+        isStale: currentSeq !== historyRequestSeq,
+        dataLength: result.length,
+        firstDate: result[0]?.date,
+        lastDate: result[result.length - 1]?.date,
+      });
+      // DEBUG_END
+      return result;
     } catch (e) {
       const errorMsg = (e as Error)?.message || '';
+      // DEBUG_START 2026-06-03: 历史请求失败追踪
+      console.warn('[HistoryRequest_ERROR]', {
+        time: new Date().toISOString(),
+        symbol: code,
+        requestSeq: currentSeq,
+        globalSeq: historyRequestSeq,
+        attempt,
+        errorMsg,
+        isStale: errorMsg === 'REQUEST_STALE',
+        isMismatch: errorMsg === 'REQUEST_CODE_MISMATCH',
+      });
+      // DEBUG_END
 
       // 如果是并发竞争导致的数据混淆，重试
       if (errorMsg === 'REQUEST_STALE' || errorMsg === 'REQUEST_CODE_MISMATCH') {
@@ -447,17 +502,23 @@ function jsonp<T>(url: string, callbackParam: string = 'cb', fundCode?: string, 
     const doRequest = () => {
       attempts++;
       const isFundGz = callbackParam === 'jsonpgz';
+
+      // 天天基金 API 使用固定的 jsonpgz 回调名，不支持自定义
+      // 其他 API 使用随机回调名
       const callbackName = isFundGz ? 'jsonpgz' : `__jp_cb_${Math.random().toString(36).slice(2, 10)}`;
 
       const script = document.createElement('script');
       const separator = url.includes('?') ? '&' : '?';
+      // 天天基金 API 不需要 cb 参数，使用默认的 jsonpgz 回调
       const finalUrl = isFundGz ? url : `${url}${separator}${callbackParam}=${callbackName}`;
 
       const timeoutLimit = 8000;
       const timeoutId = setTimeout(() => {
-
         cleanup();
-        if (fundCode) delete fundRegistry[fundCode];
+        // 超时时清理注册表条目，防止后续响应匹配到过期请求
+        if (isFundGz && fundCode) {
+          delete fundRegistry[fundCode];
+        }
         if (attempts < retryCount) {
           // 重试前等待
           setTimeout(doRequest, 1000 * attempts);
@@ -479,9 +540,13 @@ function jsonp<T>(url: string, callbackParam: string = 'cb', fundCode?: string, 
       };
 
       if (isFundGz && fundCode) {
-        fundRegistry[fundCode] = (data: T) => {
-          cleanup();
-          resolve(data);
+        // 注册回调到 fundRegistry，全局 jsonpgz 会调用
+        fundRegistry[fundCode] = {
+          callback: (data: any) => {
+            cleanup();
+            resolve(data);
+          },
+          requestTime: Date.now(),
         };
       } else {
         (window as any)[callbackName] = (data: T) => {
@@ -494,7 +559,10 @@ function jsonp<T>(url: string, callbackParam: string = 'cb', fundCode?: string, 
       // 不设置 referrerPolicy，让浏览器自动添加 Referer
       script.onerror = () => {
         cleanup();
-        if (fundCode) delete fundRegistry[fundCode];
+        // 错误时清理注册表条目
+        if (isFundGz && fundCode) {
+          delete fundRegistry[fundCode];
+        }
         if (attempts < retryCount) {
           // 重试前等待
           setTimeout(doRequest, 1000 * attempts);
@@ -1477,6 +1545,15 @@ export async function fetchFundDailyProfit(symbol: string): Promise<DailyProfitP
 export async function computeOverallProfit(opts: { symbols?: string[]; fromDate?: string | null; toDate?: string | null }): Promise<OverallProfitSummary> {
    const { symbols, fromDate, toDate } = opts || {};
 
+  // DEBUG_START 2026-06-03: 整体盈亏计算追踪
+  console.log('[computeOverallProfit_START]', {
+    time: new Date().toISOString(),
+    inputSymbols: symbols,
+    fromDate,
+    toDate,
+  });
+  // DEBUG_END
+
   const todayLocal = toLocalDateKey(new Date());
 
  // if no symbols provided, try read portfolio from marketFundService
@@ -1685,6 +1762,27 @@ export async function computeOverallProfit(opts: { symbols?: string[]; fromDate?
   }
 
   const totalDiff = timelineOut.length > 0 ? Number((timelineOut[timelineOut.length - 1].cumulativeProfit - (timelineOut[0].cumulativeProfit || 0)).toFixed(4)) : 0;
+
+  // DEBUG_START 2026-06-03: 整体盈亏计算结果追踪
+  console.log('[computeOverallProfit_RESULT]', {
+    time: new Date().toISOString(),
+    timelineLength: timelineOut.length,
+    perFundCount: perFundRows.length,
+    totalDiff,
+    firstTimelineDate: timelineOut[0]?.date,
+    firstTimelineCum: timelineOut[0]?.cumulativeProfit,
+    lastTimelineDate: timelineOut[timelineOut.length - 1]?.date,
+    lastTimelineCum: timelineOut[timelineOut.length - 1]?.cumulativeProfit,
+    perFundDetails: perFundRows.map(r => ({
+      symbol: r.symbol,
+      name: r.name,
+      startDate: r.startDate,
+      profitFrom: r.profitFrom,
+      profitTo: r.profitTo,
+      profitDiff: r.profitDiff,
+    })),
+  });
+  // DEBUG_END
 
   return { timeline: timelineOut, perFund: perFundRows, perFundTimelines, totalDiff };
 }

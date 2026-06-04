@@ -4,6 +4,7 @@ import { fillTemplateVariables, getById, TEMPLATE_IDS, FillTemplateResult } from
 import { fillTemplate, TemplateContext } from '../utils/templateFiller';
 import { PromptTemplate } from '../types/promptTemplateTypes';
 import { searchService } from './searchService';
+import { withRetry, isJsonTruncationError, RetryOptions } from '../utils/retryUtils';
 
 // Re-export for convenience
 export type { PromptTemplate } from '../types/promptTemplateTypes';
@@ -415,4 +416,45 @@ export async function queryAIWithTemplate(
   };
 
   return queryAI(config, request, onChunk);
+}
+
+/**
+ * 带重试的 AI 模板查询
+ * 当 JSON 解析失败时自动重试
+ *
+ * @param config AI配置
+ * @param template 提示词模板
+ * @param variables 模板变量
+ * @param parseResponse 响应解析函数，将 AI 内容转换为结构化数据
+ * @param retryOptions 重试配置选项
+ * @returns 解析后的结构化数据
+ * @throws 所有重试失败后抛出错误
+ */
+export async function queryAIWithTemplateAndRetry<T>(
+  config: AIConfiguration | AIConfigurationWithWebSearch,
+  template: PromptTemplate,
+  variables: TemplateContext,
+  parseResponse: (content: string) => T,
+  retryOptions?: RetryOptions
+): Promise<T> {
+  const operationName = template.name || 'AI查询';
+
+  return withRetry(
+    async () => {
+      const response = await queryAIWithTemplate(config, template, variables);
+
+      if (!response.success) {
+        throw new Error(response.error || 'AI 请求失败');
+      }
+
+      return parseResponse(response.content);
+    },
+    {
+      maxRetries: retryOptions?.maxRetries ?? 2,
+      baseDelayMs: retryOptions?.baseDelayMs ?? 1000,
+      isRetryable: retryOptions?.isRetryable ?? isJsonTruncationError,
+      operationName,
+      onRetry: retryOptions?.onRetry,
+    }
+  );
 }

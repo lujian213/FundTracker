@@ -46,7 +46,28 @@ export const TickerCard: React.FC<TickerCardProps> = ({
     let mounted = true;
     const load = async () => {
       try {
+        // DEBUG_START 2026-06-03: 历史数据请求追踪
+        const requestTime = new Date().toISOString();
+        console.log('[TickerCard_HISTORY_REQUEST]', {
+          time: requestTime,
+          symbol: ticker.symbol,
+          id: ticker.id,
+          name: ticker.name,
+        });
+        // DEBUG_END
         const h = await fetchFn(ticker.symbol);
+        // DEBUG_START 2026-06-03: 历史数据返回追踪
+        console.log('[TickerCard_HISTORY_RESULT]', {
+          time: new Date().toISOString(),
+          symbol: ticker.symbol,
+          id: ticker.id,
+          requestTime,
+          dataLength: Array.isArray(h) ? h.length : 0,
+          mounted,
+          firstDate: Array.isArray(h) && h.length > 0 ? h[0].date : null,
+          lastDate: Array.isArray(h) && h.length > 0 ? h[h.length - 1].date : null,
+        });
+        // DEBUG_END
         if (mounted && Array.isArray(h)) setHistory(h.slice(-90));
       } catch (e) {
         // ignore
@@ -55,6 +76,25 @@ export const TickerCard: React.FC<TickerCardProps> = ({
     load();
     return () => { mounted = false; };
   }, [ticker.symbol, fetchFn, historyUpdateTrigger]);
+
+  // DEBUG_START 2026-06-03: TickerCard 渲染追踪
+  useEffect(() => {
+    console.log('[TickerCard_RENDER]', {
+      time: new Date().toISOString(),
+      symbol: ticker.symbol,
+      id: ticker.id,
+      tickerName: ticker.name,
+      dataName: data?.name,
+      dataSymbol: data?.symbol,
+      dataLastUpdated: data?.lastUpdated,
+      dataRealtimeDate: data?.realtimeDate,
+      historyLength: history.length,
+      historyFirstDate: history[0]?.date,
+      historyLastDate: history[history.length - 1]?.date,
+      status,
+    });
+  }, [ticker.symbol, ticker.id, ticker.name, data?.name, data?.lastUpdated, data?.realtimeDate, history.length, status]);
+  // DEBUG_END
 
   const intradayPoints = useMemo(() => getIntraday(ticker.symbol), [ticker.symbol, data?.lastUpdated]);
   const sparkline = useMemo(() => buildSparklinePath(intradayPoints), [intradayPoints]);

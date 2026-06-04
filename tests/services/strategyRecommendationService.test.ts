@@ -80,12 +80,16 @@ describe('strategyRecommendationService', () => {
       expect(results[0].reason).toBeNull();
     });
 
-    test('returns empty array for invalid JSON', () => {
-      expect(parseStrategyRecommendationResponse('not json')).toEqual([]);
+    test('throws exception for invalid JSON', () => {
+      expect(() => parseStrategyRecommendationResponse('not json')).toThrow('解析策略推荐响应失败');
     });
 
-    test('returns empty array for non-array response', () => {
-      expect(parseStrategyRecommendationResponse('{"key": "value"}')).toEqual([]);
+    test('throws exception for non-array response', () => {
+      expect(() => parseStrategyRecommendationResponse('{"key": "value"}')).toThrow('解析策略推荐响应失败');
+    });
+
+    test('throws exception for empty response', () => {
+      expect(() => parseStrategyRecommendationResponse('')).toThrow('解析策略推荐响应失败');
     });
 
     test('strips markdown code blocks', () => {

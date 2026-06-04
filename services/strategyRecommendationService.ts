@@ -5,6 +5,8 @@ import { getAvailableStrategiesInfo } from './strategyRegistry';
 import { formatDateDisplay } from '../utils/dateFormat';
 import { getById, TEMPLATE_IDS } from './promptTemplateService';
 import * as marketFundService from './marketFundService';
+import { parseAIJsonResponse } from '../utils/jsonParseUtils';
+import { withRetry, isJsonTruncationError } from '../utils/retryUtils';
 
 export interface StrategyRecommendationResult {
   code: string;
@@ -32,36 +34,19 @@ export function getStrategyKeysForPrompt(): string {
 
 /**
  * 解析策略推荐 AI 响应
+ * 使用 jsonParseUtils 统一处理 JSON 解析
  */
 export function parseStrategyRecommendationResponse(response: string): StrategyRecommendationResult[] {
-  try {
-    // 移除可能的 markdown 代码块标记
-    let cleanedResponse = response.trim();
-    if (cleanedResponse.startsWith('```')) {
-      const firstNewline = cleanedResponse.indexOf('\n');
-      if (firstNewline !== -1) {
-        cleanedResponse = cleanedResponse.slice(firstNewline + 1);
-      }
-      if (cleanedResponse.endsWith('```')) {
-        cleanedResponse = cleanedResponse.slice(0, -3).trim();
-      }
-    }
+  const parsed = parseAIJsonResponse(response, {
+    logPrefix: 'StrategyRecommendation',
+    errorContext: '策略推荐响应',
+  });
 
-    const parsed = JSON.parse(cleanedResponse);
-    if (!Array.isArray(parsed)) {
-      console.warn('[StrategyRecommendation] AI response is not an array');
-      return [];
-    }
-
-    return parsed.map((item: any) => ({
-      code: typeof item.code === 'string' ? item.code : String(item.code ?? ''),
-      strategy_id: typeof item.strategy_id === 'string' ? item.strategy_id : null,
-      reason: typeof item.reason === 'string' ? item.reason : null
-    }));
-  } catch (e) {
-    console.error('[StrategyRecommendation] Failed to parse AI response:', e);
-    return [];
-  }
+  return (parsed as any[]).map((item) => ({
+    code: typeof item.code === 'string' ? item.code : String(item.code ?? ''),
+    strategy_id: typeof item.strategy_id === 'string' ? item.strategy_id : null,
+    reason: typeof item.reason === 'string' ? item.reason : null
+  }));
 }
 
 /**
@@ -94,13 +79,15 @@ export function updateTickerRecommendedStrategy(
 }
 
 /**
- * 刷新策略推荐
+ * 刷新策略推荐（带自动重试）
  * @param getPortfolio 获取当前 portfolio 的函数
  * @param onPortfolioUpdate 更新 portfolio 的回调
+ * @param maxRetries 最大重试次数（默认2次）
  */
 export async function refreshStrategyRecommendations(
   getPortfolio: () => Ticker[],
-  onPortfolioUpdate: (newPortfolio: Ticker[]) => void
+  onPortfolioUpdate: (newPortfolio: Ticker[]) => void,
+  maxRetries: number = 2
 ): Promise<void> {
   const aiConfig = getAIConfig();
   if (!aiConfig || !aiConfig.apiKey) {
@@ -123,48 +110,71 @@ export async function refreshStrategyRecommendations(
 
   // 使用 queryAIWithTemplate 统一处理模板和联网搜索
   const current_date = formatDateDisplay(new Date());
-  const response: AIResponse = await queryAIWithTemplate(aiConfig, prompt, {
-    current_date,
-    code_list: codeList,
-    strategy_list: formatStrategyListForPrompt(),
-    strategy_keys: getStrategyKeysForPrompt()
-  });
 
-  if (!response.success) {
-    throw new Error(response.error || 'AI 请求失败');
-  }
+  // 格式化策略列表（在重试循环外预先计算）
+  const strategyList = formatStrategyListForPrompt();
+  const strategyKeys = getStrategyKeysForPrompt();
 
-  // 解析响应
-  const results = parseStrategyRecommendationResponse(response.content);
-
-  // 再次获取最新的 portfolio
-  const latestPortfolio = getPortfolio();
-
-  // 更新 portfolio
-  let updatedPortfolio = [...latestPortfolio];
-  for (const result of results) {
-    updatedPortfolio = updateTickerRecommendedStrategy(
-      updatedPortfolio,
-      result.code,
-      result.strategy_id,
-      result.reason
-    );
-
-    // 持久化更新到 marketFundService
-    if (result.strategy_id && result.reason) {
-      marketFundService.updateTicker(result.code, {
-        recommended_strategy: {
-          strategy_id: result.strategy_id,
-          reason: result.reason,
-        },
+  // 使用 withRetry 统一处理重试逻辑
+  await withRetry(
+    async () => {
+      const response: AIResponse = await queryAIWithTemplate(aiConfig, prompt, {
+        current_date,
+        code_list: codeList,
+        strategy_list: strategyList,
+        strategy_keys: strategyKeys
       });
-    } else {
-      // 清空推荐策略
-      marketFundService.updateTicker(result.code, {
-        recommended_strategy: undefined,
-      } as any);
-    }
-  }
 
-  onPortfolioUpdate(updatedPortfolio);
+      if (!response.success) {
+        throw new Error(response.error || 'AI 请求失败');
+      }
+
+      // 解析响应
+      const results = parseStrategyRecommendationResponse(response.content);
+
+      // 检查是否有有效结果
+      if (results.length === 0 && portfolio.length > 0) {
+        throw new Error('解析策略推荐响应失败: 没有有效的策略推荐数据');
+      }
+
+      // 再次获取最新的 portfolio
+      const latestPortfolio = getPortfolio();
+
+      // 更新 portfolio
+      let updatedPortfolio = [...latestPortfolio];
+      for (const result of results) {
+        updatedPortfolio = updateTickerRecommendedStrategy(
+          updatedPortfolio,
+          result.code,
+          result.strategy_id,
+          result.reason
+        );
+
+        // 持久化更新到 marketFundService
+        if (result.strategy_id && result.reason) {
+          marketFundService.updateTicker(result.code, {
+            recommended_strategy: {
+              strategy_id: result.strategy_id,
+              reason: result.reason,
+            },
+          });
+        } else {
+          // 清空推荐策略
+          marketFundService.updateTicker(result.code, {
+            recommended_strategy: undefined,
+          } as any);
+        }
+      }
+
+      onPortfolioUpdate(updatedPortfolio);
+    },
+    {
+      maxRetries,
+      isRetryable: isJsonTruncationError,
+      operationName: 'StrategyRecommendation',
+      onRetry: (attempt) => {
+        console.warn(`[StrategyRecommendation] 第 ${attempt} 次尝试失败（JSON问题），将重试...`);
+      },
+    }
+  );
 }

@@ -88,12 +88,16 @@ describe('backgroundJobService', () => {
       });
     });
 
-    test('returns empty array for invalid JSON', () => {
-      expect(parseAIResponse('not json', 'holiday')).toEqual([]);
+    test('throws exception for invalid JSON', () => {
+      expect(() => parseAIResponse('not json', 'holiday')).toThrow('解析AI响应失败');
     });
 
-    test('returns empty array for non-array response', () => {
-      expect(parseAIResponse('{"key": "value"}', 'holiday')).toEqual([]);
+    test('throws exception for non-array response', () => {
+      expect(() => parseAIResponse('{"key": "value"}', 'holiday')).toThrow('解析AI响应失败');
+    });
+
+    test('throws exception for empty response', () => {
+      expect(() => parseAIResponse('', 'holiday')).toThrow('解析AI响应失败');
     });
 
     test('parses JSON wrapped in markdown code block', () => {
