@@ -64,6 +64,7 @@ import { processCalendarHoliday, parseCalendarAIResponse } from './services/cale
 // 调试面板和日志拦截器 - 仅开发环境使用（构建时会自动移除）
 import DebugPanel from './components/DebugPanel';
 import { initDebugIntercept } from './utils/debugLogger';
+import { isDev } from './utils/env';
 
 const createPlaceholderIndex = (symbol: string): MarketIndex => {
   const normalized = normalizeIndexSymbol(symbol);
@@ -1033,7 +1034,7 @@ const AppContent: React.FC = () => {
               <i className="fas fa-cog"></i>
             </button>
             {/* 调试面板按钮 - 只在开发环境显示 */}
-            {import.meta.env.DEV && (
+            {isDev && (
               <button
                 onClick={() => setShowDebugPanel(true)}
                 title="调试面板"
@@ -1512,7 +1513,7 @@ const AppContent: React.FC = () => {
         }}
       />
       {/* 调试面板 - 只在开发环境渲染 */}
-      {import.meta.env.DEV && <DebugPanel visible={showDebugPanel} onClose={() => setShowDebugPanel(false)} />}
+      {isDev && <DebugPanel visible={showDebugPanel} onClose={() => setShowDebugPanel(false)} />}
     </div>
   );
 };
@@ -1521,7 +1522,7 @@ const App: React.FC = () => {
   // 挂载 Root 到 window（供测试用例访问）
   mountRoot();
   // 初始化调试日志拦截 - 只在开发环境执行
-  if (import.meta.env.DEV) {
+  if (isDev) {
     initDebugIntercept();
   }
   return (

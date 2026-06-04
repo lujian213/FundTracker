@@ -16,7 +16,10 @@ module.exports = {
     '\\.(gif|ttf|eot|svg|png)$': '<rootDir>/__mocks__/fileMock.js',
     '^react-markdown$': '<rootDir>/__mocks__/react-markdown.tsx',
     '^remark-gfm$': '<rootDir>/__mocks__/remark-gfm.ts',
-    '^rehype-raw$': '<rootDir>/__mocks__/rehype-raw.ts'
+    '^rehype-raw$': '<rootDir>/__mocks__/rehype-raw.ts',
+    // Mock utils/env.ts for Jest (import.meta not supported)
+    './utils/env': '<rootDir>/__mocks__/env.ts',
+    '^utils/env$': '<rootDir>/__mocks__/env.ts',
   },
   // Run suites in parallel across CPU cores (75% for better performance)
   maxWorkers: '75%',
