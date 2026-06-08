@@ -51,7 +51,7 @@ import { refreshTickerAlerts, getBackgroundJobPromptByType } from './services/ba
 import { queryAI, AIResponse } from './services/aiService';
 import { getAIConfig } from './services/aiConfigService';
 import { refreshStrategyRecommendations } from './services/strategyRecommendationService';
-import { refreshFundProfiles } from './services/fundProfileService';
+import { refreshFundProfiles, fetchFundProfile } from './services/fundProfileService';
 import { fetchWithProxy } from './services/proxyService';
 import { updateCalendarData, getEventsForYear, getUpcomingEvents, loadCalendarData, getFirstEventInWorkdays, HolidayType } from './services/calendarService';
 import { calculateDeliveryDates } from './services/deliveryDateService';
@@ -333,6 +333,17 @@ const AppContent: React.FC = () => {
 
     // 1. 执行删除逻辑
     if (selectedItems.size > 0) {
+      // 先从当前 portfolio 收集要删除的基金 symbols
+      const fundsToDelete = portfolio
+        .filter(t => selectedItems.has(createManageSelectionKey('fund', t.id)))
+        .map(t => t.symbol);
+
+      // 同步删除 localStorage 数据
+      if (fundsToDelete.length > 0) {
+        marketFundService.removeFunds(fundsToDelete);
+      }
+
+      // 更新 React 状态
       setPortfolio(prev => prev.filter(t => !selectedItems.has(createManageSelectionKey('fund', t.id))));
 
       const remaining = indicesConfig.filter(symbol => {
@@ -396,7 +407,7 @@ const AppContent: React.FC = () => {
     }
 
     clearSelectionMode();
-  }, [selectedItems, clearSelectionMode, indicesConfig, pendingIndexOrder]);
+  }, [selectedItems, clearSelectionMode, indicesConfig, pendingIndexOrder, portfolio]);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -552,6 +563,35 @@ const AppContent: React.FC = () => {
     // 历史数据已更新，触发 fundHistories 重新计算
     setHistoryUpdateCount(prev => prev + 1);
     return result;
+  }, []);
+
+  /**
+   * 获取新添加基金的详情（股票持仓等）
+   * 单线程顺序获取，避免并发请求过多
+   */
+  const fetchNewFundProfiles = useCallback(async (targets: Ticker[], onPortfolioUpdate: (updater: (prev: Ticker[]) => Ticker[]) => void) => {
+    if (targets.length === 0) return;
+
+    for (let i = 0; i < targets.length; i++) {
+      const fund = targets[i];
+      try {
+        const profile = await fetchFundProfile(fund.symbol);
+        if (profile) {
+          // 更新 portfolio 状态
+          onPortfolioUpdate((prev: Ticker[]) => prev.map(t =>
+            t.symbol === fund.symbol ? { ...t, profile } : t
+          ));
+          // 持久化到 localStorage
+          marketFundService.updateTicker(fund.symbol, { profile });
+        }
+        // 添加延迟，避免请求过于频繁（每个请求间隔3秒）
+        if (i < targets.length - 1) {
+          await new Promise(resolve => setTimeout(resolve, 3000));
+        }
+      } catch (e) {
+        console.error(`[fetchNewFundProfiles] 获取 ${fund.symbol} 详情失败:`, e);
+      }
+    }
   }, []);
 
   const refreshMarketIndicesAsync = useCallback(async (ignoreCache: boolean = false, onProgress?: () => void): Promise<JobResult<MarketIndex[]>> => {
@@ -1289,6 +1329,8 @@ const AppContent: React.FC = () => {
             if (news.length) {
               setPortfolio(p => [...p, ...news]);
               runBatchUpdate(news);
+              // 主动获取新添加基金的详情（股票持仓等）
+              fetchNewFundProfiles(news, setPortfolio);
             }
           }
           setIsModalOpen(false);

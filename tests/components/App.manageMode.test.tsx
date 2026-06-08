@@ -327,5 +327,65 @@ describe('App manage mode', () => {
     fireEvent.click(screen.getByLabelText('切换删除选择 纳斯达克100'));
     expect(screen.getByText('2个项目待删除')).toBeInTheDocument();
   });
+
+  test('deleting fund also removes from localStorage', async () => {
+    // Mock removeFunds to track calls
+    const removeFundsSpy = jest.spyOn(marketFundService, 'removeFunds');
+
+    // 使用 service 设置测试数据
+    marketFundService.resetCache();
+    marketFundService.addFund('000001', 'Sample Fund');
+    marketFundService.addFund('000002', 'Another Fund');
+    resetIndexCache();
+    // 设置指数，避免默认指数干扰
+    saveAllIndexInfos([
+      { symbol: '1.000001', name: '上证指数', current: 3200, change: 0, changePercent: 0, lastUpdated: '' },
+    ]);
+
+    render(<App />);
+
+    fireEvent.click(screen.getByRole('button', { name: '管理' }));
+
+    await waitFor(() => {
+      expect(screen.getByText('管理模式')).toBeInTheDocument();
+    });
+
+    await waitFor(() => {
+      const fundButtons = screen.getAllByLabelText('切换删除选择 Sample Fund');
+      expect(fundButtons.length).toBeGreaterThan(0);
+    });
+
+    // 使用 act 确保状态更新完成
+    act(() => {
+      const fundButtons = screen.getAllByLabelText('切换删除选择 Sample Fund');
+      fireEvent.click(fundButtons[0]);
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText('1个项目待删除')).toBeInTheDocument();
+    });
+
+    // 等待 React 更新所有闭包和状态
+    await act(async () => {
+      await new Promise(resolve => setTimeout(resolve, 0));
+    });
+
+    // 点击保存
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: '保存' }));
+    });
+
+    // 等待退出管理模式
+    await waitFor(() => {
+      expect(screen.getByText('我的自选基金')).toBeInTheDocument();
+    }, { timeout: 5000 });
+
+    // 验证 removeFunds 被调用，参数包含 '000001'
+    expect(removeFundsSpy).toHaveBeenCalled();
+    expect(removeFundsSpy).toHaveBeenCalledWith(expect.arrayContaining(['000001']));
+
+    // 清理 spy
+    removeFundsSpy.mockRestore();
+  });
 });
 

@@ -5,6 +5,7 @@ import {
   parseStageIncrease,
   parseFundProfileFromHtml,
   refreshFundProfiles,
+  fetchFundProfile,
 } from '../../services/fundProfileService';
 
 // Mock marketFundService
@@ -12,7 +13,13 @@ jest.mock('../../services/marketFundService', () => ({
   updateTicker: jest.fn(),
 }));
 
+// Mock proxyService
+jest.mock('../../services/proxyService', () => ({
+  fetchWithProxy: jest.fn(),
+}));
+
 const marketFundService = require('../../services/marketFundService');
+const { fetchWithProxy } = require('../../services/proxyService');
 
 describe('fundProfileService', () => {
   describe('parseStockPositions', () => {
@@ -671,6 +678,64 @@ describe('fundProfileService', () => {
       expect(marketFundService.updateTicker).toHaveBeenCalledWith('000003', { profile: profile3 });
       // 基金B 没有被调用
       expect(marketFundService.updateTicker).not.toHaveBeenCalledWith('000002', expect.anything());
+    });
+  });
+
+  describe('fetchFundProfile', () => {
+    beforeEach(() => {
+      jest.clearAllMocks();
+    });
+
+    test('returns profile when fetch succeeds with valid data', async () => {
+      const mockProfile: FundProfile = {
+        stock_positions: [{ stock_name: '宁德时代', percentage: 9.45 }],
+        stage_increase: [{ stage: '近1周', increase_percentage: 1.5 }],
+        fetched_at: '2026-06-05T10:00:00.000Z',
+      };
+
+      // Mock markdown 格式返回
+      fetchWithProxy.mockResolvedValue({
+        content: `
+| 股票名称 | 持仓占比 |
+| --- | --- |
+| [宁德时代](url "宁德时代") | 9.45% |
+
+| | 近1周 | 近1月 |
+| --- | --- | --- |
+| 阶段涨幅 | 1.50% | 2.00% |
+        `,
+        format: 'markdown',
+      });
+
+      const result = await fetchFundProfile('000001');
+
+      expect(result).not.toBeNull();
+      expect(result?.stock_positions).toHaveLength(1);
+      expect(result?.stock_positions[0].stock_name).toBe('宁德时代');
+      expect(result?.stock_positions[0].percentage).toBe(9.45);
+    });
+
+    test('returns null when fetch fails', async () => {
+      fetchWithProxy.mockRejectedValue(new Error('Network error'));
+
+      const result = await fetchFundProfile('000001');
+
+      expect(result).toBeNull();
+    });
+
+    test('returns profile with empty arrays when no data available', async () => {
+      // Mock 返回空数据
+      fetchWithProxy.mockResolvedValue({
+        content: '暂无数据',
+        format: 'markdown',
+      });
+
+      const result = await fetchFundProfile('000001');
+
+      expect(result).not.toBeNull();
+      expect(result?.stock_positions).toEqual([]);
+      expect(result?.stage_increase).toEqual([]);
+      expect(result?.fetched_at).toBeDefined();
     });
   });
 });
