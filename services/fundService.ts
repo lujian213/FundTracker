@@ -433,50 +433,15 @@ function loadHistoryFromPingzhongData(code: string, url: string): Promise<Histor
  * @param maxRetries 最大重试次数
  */
 async function loadHistoryFromPingzhongDataWithRetry(code: string, maxRetries = 2): Promise<HistoricalPoint[]> {
-  // DEBUG_START 2026-06-03: 历史请求追踪
-  const currentSeq = historyRequestSeq;
-  console.log('[HistoryRequest_START]', {
-    time: new Date().toISOString(),
-    symbol: code,
-    requestSeq: currentSeq,
-    globalSeq: historyRequestSeq,
-    activeRequestsCount: activeHistoryRequests.size,
-    activeRequestsSymbols: Array.from(activeHistoryRequests.keys()),
-  });
-  // DEBUG_END
   const ts = formatYMDHMS(new Date());
   const url = `https://fund.eastmoney.com/pingzhongdata/${code}.js?v=${ts}`;
 
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
     try {
       const result = await loadHistoryFromPingzhongData(code, url);
-      // DEBUG_START 2026-06-03: 历史请求成功追踪
-      console.log('[HistoryRequest_SUCCESS]', {
-        time: new Date().toISOString(),
-        symbol: code,
-        requestSeq: currentSeq,
-        globalSeq: historyRequestSeq,
-        isStale: currentSeq !== historyRequestSeq,
-        dataLength: result.length,
-        firstDate: result[0]?.date,
-        lastDate: result[result.length - 1]?.date,
-      });
-      // DEBUG_END
       return result;
     } catch (e) {
       const errorMsg = (e as Error)?.message || '';
-      // DEBUG_START 2026-06-03: 历史请求失败追踪
-      console.warn('[HistoryRequest_ERROR]', {
-        time: new Date().toISOString(),
-        symbol: code,
-        requestSeq: currentSeq,
-        globalSeq: historyRequestSeq,
-        attempt,
-        errorMsg,
-        isStale: errorMsg === 'REQUEST_STALE',
-        isMismatch: errorMsg === 'REQUEST_CODE_MISMATCH',
-      });
-      // DEBUG_END
 
       // 如果是并发竞争导致的数据混淆，重试
       if (errorMsg === 'REQUEST_STALE' || errorMsg === 'REQUEST_CODE_MISMATCH') {
@@ -1543,16 +1508,7 @@ export async function fetchFundDailyProfit(symbol: string): Promise<DailyProfitP
  * - 只有持仓起始日期位于用户选择范围内的基金会被纳入计算（若该配置不存在，则以历史净值最早日期为起始）
  */
 export async function computeOverallProfit(opts: { symbols?: string[]; fromDate?: string | null; toDate?: string | null }): Promise<OverallProfitSummary> {
-   const { symbols, fromDate, toDate } = opts || {};
-
-  // DEBUG_START 2026-06-03: 整体盈亏计算追踪
-  console.log('[computeOverallProfit_START]', {
-    time: new Date().toISOString(),
-    inputSymbols: symbols,
-    fromDate,
-    toDate,
-  });
-  // DEBUG_END
+  const { symbols, fromDate, toDate } = opts || {};
 
   const todayLocal = toLocalDateKey(new Date());
 
@@ -1762,27 +1718,6 @@ export async function computeOverallProfit(opts: { symbols?: string[]; fromDate?
   }
 
   const totalDiff = timelineOut.length > 0 ? Number((timelineOut[timelineOut.length - 1].cumulativeProfit - (timelineOut[0].cumulativeProfit || 0)).toFixed(4)) : 0;
-
-  // DEBUG_START 2026-06-03: 整体盈亏计算结果追踪
-  console.log('[computeOverallProfit_RESULT]', {
-    time: new Date().toISOString(),
-    timelineLength: timelineOut.length,
-    perFundCount: perFundRows.length,
-    totalDiff,
-    firstTimelineDate: timelineOut[0]?.date,
-    firstTimelineCum: timelineOut[0]?.cumulativeProfit,
-    lastTimelineDate: timelineOut[timelineOut.length - 1]?.date,
-    lastTimelineCum: timelineOut[timelineOut.length - 1]?.cumulativeProfit,
-    perFundDetails: perFundRows.map(r => ({
-      symbol: r.symbol,
-      name: r.name,
-      startDate: r.startDate,
-      profitFrom: r.profitFrom,
-      profitTo: r.profitTo,
-      profitDiff: r.profitDiff,
-    })),
-  });
-  // DEBUG_END
 
   return { timeline: timelineOut, perFund: perFundRows, perFundTimelines, totalDiff };
 }

@@ -34,13 +34,6 @@ const funds = new Map<string, MarketFund>();
  * 从 localStorage 加载数据并初始化缓存
  */
 function init(): void {
-  // DEBUG_START 2026-06-03: 加载追踪
-  console.log('[marketFundService_INIT]', {
-    time: new Date().toISOString(),
-    storageKeyExists: !!localStorage.getItem(STORAGE_KEYS.FUND_DATA),
-    storageSize: localStorage.getItem(STORAGE_KEYS.FUND_DATA)?.length || 0,
-  });
-  // DEBUG_END
   // 检查新 key 数据格式是否正确
   let needsMigration = true;
   try {
@@ -242,21 +235,6 @@ function migrateFromOldKeys(): void {
 
 // 初始化
 init();
-// DEBUG_START 2026-06-03: 加载完成追踪
-  console.log('[marketFundService_LOADED]', {
-    time: new Date().toISOString(),
-    fundsCount: funds.size,
-    symbols: Array.from(funds.keys()),
-    fundDetails: Array.from(funds.values()).map(f => ({
-      symbol: f.info.ticker.symbol,
-      name: f.info.ticker.name,
-      hasValuation: !!f.info.valuation,
-      valuationName: f.info.valuation?.name,
-      historyLength: f.history?.length || 0,
-      intradayLength: f.intraday?.length || 0,
-    })),
-  });
-  // DEBUG_END
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // 基本信息管理
@@ -505,18 +483,6 @@ export function removeFunds(symbols: string[]): void {
  * 更新基金估值数据
  */
 export function updateValuation(symbol: string, data: ValuationData): void {
-  // DEBUG_START 2026-06-03: 估值更新追踪
-  console.log('[updateValuation]', {
-    time: new Date().toISOString(),
-    symbol,
-    dataName: data.name,
-    dataCurrentPrice: data.currentPrice,
-    dataChangePercentage: data.changePercentage,
-    dataRealtimeDate: data.realtimeDate,
-    dataLastUpdated: data.lastUpdated,
-    existingFundName: funds.get(symbol)?.info.ticker.name,
-  });
-  // DEBUG_END
   const existing = funds.get(symbol);
   if (existing) {
     existing.info = {
@@ -716,18 +682,6 @@ export function getHistory(symbol: string): HistoricalPoint[] {
  * 更新基金历史数据
  */
 export function updateHistory(symbol: string, history: HistoricalPoint[]): void {
-  // DEBUG_START 2026-06-03: 历史数据更新追踪
-  console.log('[updateHistory]', {
-    time: new Date().toISOString(),
-    symbol,
-    historyLength: history.length,
-    firstDate: history[0]?.date,
-    firstValue: history[0]?.value,
-    lastDate: history[history.length - 1]?.date,
-    lastValue: history[history.length - 1]?.value,
-    existingHistoryLength: funds.get(symbol)?.history?.length || 0,
-  });
-  // DEBUG_END
   const truncatedHistory = truncateArray(history);
 
   const existing = funds.get(symbol);

@@ -265,34 +265,6 @@ const InvestmentDraftModal: React.FC<InvestmentDraftModalProps> = ({
     return { fundsWithPositions: sorted, valuationCache: cache };
   }, [portfolio, marketData]);
 
-  // DEBUG_START 2026-06-03: 投资草稿数据一致性检查
-  useEffect(() => {
-    if (fundsWithPositions.length > 0) {
-      const inconsistencies: string[] = [];
-      fundsWithPositions.forEach((fund, index) => {
-        const valuation = valuationCache[fund.symbol];
-        // 检查名称不一致
-        if (valuation && valuation.name && fund.name && valuation.name !== fund.name) {
-          inconsistencies.push(`[${index}] ${fund.symbol}: fund.name="${fund.name}" vs valuation.name="${valuation.name}"`);
-        }
-        // 检查估值数据缺失
-        if (!valuation) {
-          inconsistencies.push(`[${index}] ${fund.symbol}: 无估值数据`);
-        }
-      });
-      if (inconsistencies.length > 0) {
-        console.warn('[Draft_DATA_MISMATCH]', {
-          time: new Date().toISOString(),
-          portfolioLength: portfolio.length,
-          marketDataKeys: Object.keys(marketData).length,
-          fundsWithPositionsLength: fundsWithPositions.length,
-          inconsistencies,
-        });
-      }
-    }
-  }, [fundsWithPositions, valuationCache, portfolio, marketData]);
-  // DEBUG_END
-
   // 预计算所有基金的上一交易日涨跌幅（避免 N+1 问题）
   const prevDayChangeMap = useMemo(() => {
     const map = new Map<string, number | undefined>();

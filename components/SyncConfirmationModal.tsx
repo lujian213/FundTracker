@@ -15,6 +15,7 @@ interface Props {
   isOpen: boolean;
   onClose: () => void;
   onConfirm: (selectedDifferences: TradeDifference[]) => void;
+  onError?: (errorMessage: string) => void; // 新增：同步出错时的回调
   // 添加市场数据以供交易管理器使用
   marketData?: Record<string, ValuationData>;
 }
@@ -23,6 +24,7 @@ const SyncConfirmationModal: React.FC<Props> = ({
   isOpen,
   onClose,
   onConfirm,
+  onError,
   marketData = {}
 }) => {
   const [differences, setDifferences] = useState<TradeDifference[]>([]);
@@ -642,8 +644,18 @@ const SyncConfirmationModal: React.FC<Props> = ({
         {/* Table body */}
         <div className="overflow-y-auto flex-grow" style={{ maxHeight: '40vh' }}>
           {filteredDifferences.length === 0 ? (
-            <div className="p-8 text-center text-gray-500 text-sm">
-              {differences.length === 0 ? '本地交易记录与 Eggfund 一致，无需同步' : '没有找到符合条件的交易差异'}
+            <div className="p-8 text-center text-sm">
+              {/* 如果有错误信息，优先显示错误 */}
+              {syncMessage && syncMessage.includes('错误') || syncMessage.includes('失败') || syncMessage.includes('请先') ? (
+                <div className="text-red-600 bg-red-50 rounded-lg px-4 py-3">
+                  <i className="fas fa-exclamation-circle mr-2"></i>
+                  {syncMessage}
+                </div>
+              ) : (
+                <div className="text-gray-500">
+                  {differences.length === 0 ? '本地交易记录与 Eggfund 一致，无需同步' : '没有找到符合条件的交易差异'}
+                </div>
+              )}
             </div>
           ) : (
             filteredDifferences.map((diff, index) => {

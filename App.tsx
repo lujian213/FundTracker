@@ -875,36 +875,6 @@ const AppContent: React.FC = () => {
     });
   }, [portfolio, marketData, sortOrder]);
 
-  // DEBUG_START 2026-06-03: 数据一致性检查 - 检测 portfolio 与 marketData 的数据是否匹配
-  useEffect(() => {
-    if (sortedPortfolio.length > 0) {
-      const inconsistencies: string[] = [];
-      sortedPortfolio.forEach((ticker, index) => {
-        const data = marketData[ticker.symbol];
-        // 检查名称不一致
-        if (data && data.name && ticker.name && data.name !== ticker.name) {
-          inconsistencies.push(`[${index}] ${ticker.symbol}: ticker.name="${ticker.name}" vs marketData.name="${data.name}"`);
-        }
-        // 检查 symbol 不存在的情况
-        if (!data && portfolio.some(p => p.symbol === ticker.symbol)) {
-          inconsistencies.push(`[${index}] ${ticker.symbol}: 无估值数据`);
-        }
-      });
-      if (inconsistencies.length > 0) {
-        console.warn('[DATA_MISMATCH]', {
-          time: new Date().toISOString(),
-          portfolioLength: portfolio.length,
-          marketDataKeys: Object.keys(marketData).length,
-          sortedPortfolioLength: sortedPortfolio.length,
-          inconsistencies,
-          portfolioSymbols: portfolio.map(p => p.symbol),
-          marketDataSymbols: Object.keys(marketData),
-        });
-      }
-    }
-  }, [sortedPortfolio, marketData, portfolio]);
-  // DEBUG_END
-
   const handleExport = async () => {
     const data = await buildBackupData(portfolio, indicesConfig, marketIndices);
     downloadBackupFile(data, false);
