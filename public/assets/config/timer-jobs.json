@@ -80,6 +80,13 @@
       "cron": "0 0 * * *",
       "enabled": true,
       "initialDelay": 8000
+    },
+    {
+      "id": "nonfarm_payrolls_refresh",
+      "name": "非农数据公布日刷新",
+      "cron": "0 0 * * *",
+      "enabled": true,
+      "initialDelay": 9000
     }
   ]
 }

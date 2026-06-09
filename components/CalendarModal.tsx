@@ -1,6 +1,6 @@
 // components/CalendarModal.tsx
 import React, { useState, useMemo, useRef } from 'react';
-import { getEventsForYear, getUpcomingEvents, isHolidayType } from '../services/calendarService';
+import { getEventsForYear, getUpcomingEvents, isHolidayType, isNonfarmType } from '../services/calendarService';
 import { toLocalDateKey } from '../utils/priceResolver';
 import CalendarEventTooltip, { CalendarEventItem } from './CalendarEventTooltip';
 
@@ -17,6 +17,13 @@ function getDaysInMonth(year: number, month: number): number {
 // 获取月份第一天是星期几（0=周日）
 function getFirstDayOfMonth(year: number, month: number): number {
   return new Date(year, month, 1).getDay();
+}
+
+// 获取事件类型的圆点颜色
+function getEventDotColor(type: string): string {
+  if (isHolidayType(type)) return 'text-red-500';
+  if (isNonfarmType(type)) return 'text-green-500';
+  return 'text-amber-500';  // 交割日
 }
 
 // 根据年月日生成日期字符串 (YYYY-MM-DD)
@@ -197,7 +204,7 @@ export const CalendarModal: React.FC<CalendarModalProps> = ({
             <div className="flex flex-wrap gap-2">
               {upcomingAlerts.slice(0, 5).map((alert, idx) => (
                 <span key={idx} className="flex items-center gap-1">
-                  <span className={isHolidayType(alert.type) ? 'text-red-500' : 'text-amber-500'}>●</span>
+                  <span className={getEventDotColor(alert.type)}>●</span>
                   <span className="text-gray-700">
                     {alert.date.slice(5)} {alert.content}
                   </span>
@@ -256,6 +263,10 @@ export const CalendarModal: React.FC<CalendarModalProps> = ({
             <span className="text-amber-500">●</span>
             <span>交割日</span>
           </div>
+          <div className="flex items-center gap-1">
+            <span className="text-green-500">●</span>
+            <span>非农数据</span>
+          </div>
         </div>
 
         {/* 月历网格 - 使用CSS Grid确保每个格子大小一致 */}
@@ -297,7 +308,7 @@ export const CalendarModal: React.FC<CalendarModalProps> = ({
                           key={eIdx}
                           className="flex items-center gap-px text-[10px] leading-none whitespace-nowrap overflow-hidden"
                         >
-                          <span className={isHolidayType(event.type) ? 'text-red-500 flex-shrink-0' : 'text-amber-500 flex-shrink-0'}>●</span>
+                          <span className={`${getEventDotColor(event.type)} flex-shrink-0`}>●</span>
                           {event.market && <span className="text-gray-400 text-[9px] flex-shrink-0">{event.market}</span>}
                           <span className="truncate">{event.content}</span>
                         </div>
@@ -309,7 +320,7 @@ export const CalendarModal: React.FC<CalendarModalProps> = ({
                         <div
                           className="flex items-center gap-px text-[10px] leading-none whitespace-nowrap overflow-hidden"
                         >
-                          <span className={isHolidayType(events[5].type) ? 'text-red-500 flex-shrink-0' : 'text-amber-500 flex-shrink-0'}>●</span>
+                          <span className={`${getEventDotColor(events[5].type)} flex-shrink-0`}>●</span>
                           {events[5].market && <span className="text-gray-400 text-[9px] flex-shrink-0">{events[5].market}</span>}
                           <span className="truncate">{events[5].content}</span>
                         </div>

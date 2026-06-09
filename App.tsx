@@ -51,6 +51,7 @@ import { queryAI, AIResponse } from './services/aiService';
 import { getAIConfig } from './services/aiConfigService';
 import { refreshStrategyRecommendations } from './services/strategyRecommendationService';
 import { refreshFundProfiles, fetchFundProfile } from './services/fundProfileService';
+import { refreshNonfarmPayrolls } from './services/nonfarmPayrollsService';
 import { fetchWithProxy } from './services/proxyService';
 import { updateCalendarData, getEventsForYear, getUpcomingEvents, loadCalendarData, getFirstEventInWorkdays, HolidayType } from './services/calendarService';
 import { calculateChinaDeliveryDates, calculateHKDeliveryDates, calculateUSDeliveryDates } from './services/deliveryDateService';
@@ -788,6 +789,11 @@ const AppContent: React.FC = () => {
     // 注册基金基本信息刷新任务
     scheduler.registerHandler('fund-profile-refresh', async () => {
       return await refreshFundProfiles(() => portfolio, setPortfolio);
+    });
+
+    // 注册非农数据公布日刷新任务
+    scheduler.registerHandler('nonfarm_payrolls_refresh', async () => {
+      return await refreshNonfarmPayrolls();
     });
 
     // Set context with current portfolio
