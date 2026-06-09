@@ -181,17 +181,16 @@ describe('strategyRecommendationService', () => {
     });
 
     test('preserves other ticker properties', () => {
-      const portfolioWithAlerts: Ticker[] = [
+      const portfolioWithStrategy: Ticker[] = [
         {
           ...portfolio[0],
-          alert_list: [{ type: 'holiday', date: '2024/01/15', content: 'test' }]
+          recommended_strategy: { strategy_id: 'meanReversion', reason: 'old reason' }
         },
         portfolio[1]
       ];
 
-      const result = updateTickerRecommendedStrategy(portfolioWithAlerts, '000001', 'trendFollowing', 'test');
+      const result = updateTickerRecommendedStrategy(portfolioWithStrategy, '000001', 'trendFollowing', 'test');
 
-      expect(result[0].alert_list).toEqual([{ type: 'holiday', date: '2024/01/15', content: 'test' }]);
       expect(result[0].recommended_strategy).toEqual({
         strategy_id: 'trendFollowing',
         reason: 'test'

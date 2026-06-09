@@ -61,19 +61,6 @@ describe('marketFundService - updateTicker', () => {
       expect(storedFund.info.ticker.recommended_strategy).toEqual(recommendedStrategy);
     });
 
-    test('updates ticker with alert_list', () => {
-      marketFundService.addFund('000003', '测试基金C');
-
-      const alertList = [
-        { type: 'holiday' as const, date: '2026/04/15', content: '节假日提醒' },
-      ];
-
-      marketFundService.updateTicker('000003', { alert_list: alertList });
-
-      const fundInfo = marketFundService.getFundInfo('000003');
-      expect(fundInfo?.ticker.alert_list).toEqual(alertList);
-    });
-
     test('preserves existing ticker properties when updating', () => {
       marketFundService.addFund('000004', '测试基金D');
 

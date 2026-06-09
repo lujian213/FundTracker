@@ -1,5 +1,5 @@
 // services/deliveryDateService.ts
-import { loadCalendarData, updateCalendarData, CalendarData } from './calendarService';
+import { loadCalendarData, updateCalendarData, CalendarData, DeliveryType } from './calendarService';
 
 export interface DeliveryDateResult {
   date: string;
@@ -157,13 +157,17 @@ export function getLastDayOfMonth(year: number, month: number): Date {
   return new Date(year, month + 1, 0);
 }
 
+// ============================================================
+// A股交割日计算
+// ============================================================
+
 /**
- * 计算指定年份的交割日信息
+ * 计算指定年份的A股交割日信息
  * @param year 年份
- * @param calendarData 日历数据（用于判断节假日）
- * @returns 交割日结果数组
+ * @param calendarData 日历数据（用于判断A股节假日）
+ * @returns A股交割日结果数组
  */
-export function calculateDeliveryDatesForYear(
+export function calculateChinaDeliveryDatesForYear(
   year: number,
   calendarData: CalendarData
 ): DeliveryDateResult[] {
@@ -205,9 +209,40 @@ export function calculateDeliveryDatesForYear(
       content: 'A股-富时中国A50指数期货（SGX）交割日',
       description: 'A股：每月倒数第二个营业日，新加坡交易所规则'
     });
+  }
 
+  return results;
+}
+
+/**
+ * 计算A股交割日并更新到日历数据
+ */
+export function calculateChinaDeliveryDates(): void {
+  const year = new Date().getFullYear();
+  const calendarData = loadCalendarData();
+  const results = calculateChinaDeliveryDatesForYear(year, calendarData);
+  updateCalendarData('delivery_china', results);
+}
+
+// ============================================================
+// 港股交割日计算
+// ============================================================
+
+/**
+ * 计算指定年份的港股交割日信息
+ * @param year 年份
+ * @param calendarData 日历数据（用于判断港股节假日）
+ * @returns 港股交割日结果数组
+ */
+export function calculateHKDeliveryDatesForYear(
+  year: number,
+  calendarData: CalendarData
+): DeliveryDateResult[] {
+  const results: DeliveryDateResult[] = [];
+
+  // 月份遍历（0-11，即1月到12月）
+  for (let month = 0; month < 12; month++) {
     // 港股 - 恒指期货及期权月度交割日：合约月份倒数第二个营业日
-    // 使用港股节假日数据判断
     const hkLastDay = getLastDayOfMonth(year, month);
     const hkSecondLastBusinessDay = getNthLastBusinessDayForHK(hkLastDay, 2, calendarData);
     results.push({
@@ -215,7 +250,35 @@ export function calculateDeliveryDatesForYear(
       content: '港股-恒指/国企股/科指期货及期权交割日',
       description: '港股：合约月份倒数第二个营业日'
     });
+  }
 
+  return results;
+}
+
+/**
+ * 计算港股交割日并更新到日历数据
+ */
+export function calculateHKDeliveryDates(): void {
+  const year = new Date().getFullYear();
+  const calendarData = loadCalendarData();
+  const results = calculateHKDeliveryDatesForYear(year, calendarData);
+  updateCalendarData('delivery_hk', results);
+}
+
+// ============================================================
+// 美股交割日计算
+// ============================================================
+
+/**
+ * 计算指定年份的美股交割日信息
+ * @param year 年份
+ * @returns 美股交割日结果数组（不依赖节假日数据）
+ */
+export function calculateUSDeliveryDatesForYear(year: number): DeliveryDateResult[] {
+  const results: DeliveryDateResult[] = [];
+
+  // 月份遍历（0-11，即1月到12月）
+  for (let month = 0; month < 12; month++) {
     // 美股 - 月度期权到期日：每月第三个星期五
     const usThirdFriday = getNthWeekdayOfMonth(year, month, 5, 3);
     results.push({
@@ -238,12 +301,10 @@ export function calculateDeliveryDatesForYear(
 }
 
 /**
- * 计算交割日信息并更新到日历数据
- * 使用当前年份和已加载的日历数据
+ * 计算美股交割日并更新到日历数据
  */
-export function calculateDeliveryDates(): void {
+export function calculateUSDeliveryDates(): void {
   const year = new Date().getFullYear();
-  const calendarData = loadCalendarData();
-  const results = calculateDeliveryDatesForYear(year, calendarData);
-  updateCalendarData('delivery', results);
+  const results = calculateUSDeliveryDatesForYear(year);
+  updateCalendarData('delivery_us', results);
 }

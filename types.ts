@@ -9,16 +9,9 @@ export type CardStatus = 'ok' | 'error' | 'unknown';
 export type ManageItemType = 'fund' | 'index' | 'global_index';
 export type ManageSelectionKey = `${ManageItemType}:${string}`;
 
-// TickerAlert - 基金提示信息
-export interface TickerAlert {
-  type: 'holiday' | 'delivery';  // 信息类型
-  date: string;                   // 生效日期 (yyyy/MM/dd)
-  content: string;                // 信息内容
-}
-
 // CalendarEvent - 日历事件（节假日/交割日）
 export interface CalendarEvent {
-  type: 'holiday_china' | 'holiday_hk' | 'holiday_us' | 'holiday_sg' | 'delivery';  // 事件类型
+  type: 'holiday_china' | 'holiday_hk' | 'holiday_us' | 'holiday_sg' | 'delivery_china' | 'delivery_hk' | 'delivery_us';  // 事件类型
   content: string;                // 简要内容
   description?: string;           // 详细描述
   market?: string;                // 市场名称（如"A股"、"港股"、"美股"）
@@ -59,7 +52,6 @@ export interface Ticker {
   symbol: string;
   name: string;
   market: MarketType;
-  alert_list?: TickerAlert[];     // 提示信息列表
   recommended_strategy?: RecommendedStrategy;  // 推荐交易策略
   profile?: FundProfile;  // 基金基本信息
 }

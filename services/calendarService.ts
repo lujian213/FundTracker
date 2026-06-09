@@ -14,15 +14,18 @@ export type { CalendarData };
 export const HOLIDAY_TYPES = ['holiday_china', 'holiday_hk', 'holiday_us', 'holiday_sg'] as const;
 export type HolidayType = typeof HOLIDAY_TYPES[number];
 
-export const SUPPORTED_CALENDAR_TYPES = [...HOLIDAY_TYPES, 'delivery'] as const;
+export const DELIVERY_TYPES = ['delivery_china', 'delivery_hk', 'delivery_us'] as const;
+export type DeliveryType = typeof DELIVERY_TYPES[number];
+
+export const SUPPORTED_CALENDAR_TYPES = [...HOLIDAY_TYPES, ...DELIVERY_TYPES] as const;
 export type CalendarEventType = typeof SUPPORTED_CALENDAR_TYPES[number];
 
 export function isHolidayType(type: string): type is HolidayType {
   return HOLIDAY_TYPES.includes(type as HolidayType);
 }
 
-export function isDeliveryType(type: string): type is 'delivery' {
-  return type === 'delivery';
+export function isDeliveryType(type: string): type is DeliveryType {
+  return DELIVERY_TYPES.includes(type as DeliveryType);
 }
 
 // ============================================================
@@ -62,7 +65,7 @@ export function getEventsForMonth(year: number, month: number): CalendarData {
 }
 
 export function updateCalendarData(
-  type: 'holiday_china' | 'holiday_hk' | 'holiday_us' | 'holiday_sg' | 'delivery',
+  type: HolidayType | DeliveryType,
   newEvents: Array<{ date: string; content: string; description: string; market?: string }>
 ): void {
   const data = loadCalendarData();

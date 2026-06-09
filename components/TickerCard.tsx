@@ -1,16 +1,12 @@
 import React, { useMemo, useEffect, useState } from 'react';
-import { Ticker, ValuationData, CardStatus, TickerAlert } from '../types';
+import { Ticker, ValuationData, CardStatus } from '../types';
 import { fetchFundHistory as defaultFetchFundHistory } from '../services/fundService';
 import { computeRatingFromHistory } from '../utils/ratingHelper';
 import { getPreviousDayChange } from '../utils/historyHelper';
 import RatingTooltip from './RatingTooltip';
 import ManageSelectButton from './ManageSelectButton';
-import { AlertTooltip } from './AlertTooltip';
 import { getIntraday } from '../services/marketFundService';
 import { buildSparklinePath } from '../utils/sparklineUtils';
-
-// Alert 显示的日期范围（天）：仅当 alert 的生效日期在当前日期后 N 天内时才显示图标
-export const ALERT_VISIBILITY_DAYS = 3;
 
 interface TickerCardProps {
   ticker: Ticker;
@@ -152,24 +148,6 @@ export const TickerCard: React.FC<TickerCardProps> = ({
     }
   }, [history, data]);
 
-  // 计算 N 天内生效的 alerts
-  const visibleAlerts = useMemo(() => {
-    if (!ticker.alert_list || ticker.alert_list.length === 0) return [];
-
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    const daysLater = new Date(today);
-    daysLater.setDate(today.getDate() + ALERT_VISIBILITY_DAYS);
-
-    return ticker.alert_list.filter(alert => {
-      // 支持两种日期格式：yyyy/MM/dd 和 yyyy-MM-dd
-      const dateStr = alert.date.replace(/-/g, '/');
-      const [year, month, day] = dateStr.split('/').map(Number);
-      const alertDate = new Date(year, month - 1, day);
-      return alertDate >= today && alertDate <= daysLater;
-    });
-  }, [ticker.alert_list, ticker.symbol]);
-
   const statusDotClass = status === 'ok'
     ? 'bg-green-500'
     : status === 'error'
@@ -233,9 +211,6 @@ export const TickerCard: React.FC<TickerCardProps> = ({
           <div data-testid="rating-badge-slot" className="min-h-[24px] mr-0 mt-0 flex items-start justify-start shrink-0 whitespace-nowrap pt-0.5 gap-1">
             {ratingComputed && (
               <RatingTooltip ratingInfo={ratingComputed} open={ratingTooltipOpen} onOpen={() => setRatingTooltipOpen(true)} onClose={() => setRatingTooltipOpen(false)} />
-            )}
-            {visibleAlerts.length > 0 && (
-              <AlertTooltip alerts={visibleAlerts} />
             )}
           </div>
         )}

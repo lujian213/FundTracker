@@ -86,9 +86,9 @@ describe('calendarService', () => {
   describe('getEventsForMonth', () => {
     test('returns events for specific month', () => {
       const testData = {
-        '2026-04-04': [{ type: 'holiday' as const, content: '清明节' }],
-        '2026-04-15': [{ type: 'delivery' as const, content: '期权交割日' }],
-        '2026-05-01': [{ type: 'holiday' as const, content: '劳动节' }],
+        '2026-04-04': [{ type: 'holiday_china' as const, content: '清明节' }],
+        '2026-04-15': [{ type: 'delivery_china' as const, content: '期权交割日' }],
+        '2026-05-01': [{ type: 'holiday_china' as const, content: '劳动节' }],
       };
       saveCalendarData(testData);
 
@@ -135,11 +135,11 @@ describe('calendarService', () => {
         { date: '2026-04-15', content: '期权交割日', description: 'ETF期权交割', market: 'A股' },
       ];
 
-      updateCalendarData('delivery', newEvents);
+      updateCalendarData('delivery_china', newEvents);
 
       const result = loadCalendarData();
       expect(result['2026-04-15']).toHaveLength(1);
-      expect(result['2026-04-15'][0].type).toBe('delivery');
+      expect(result['2026-04-15'][0].type).toBe('delivery_china');
     });
 
     test('replaces existing holiday events with new ones', () => {
@@ -147,7 +147,7 @@ describe('calendarService', () => {
       const existingData = {
         '2026-04-04': [
           { type: 'holiday_china' as const, content: '旧节假日', description: '旧' },
-          { type: 'delivery' as const, content: '交割日', description: '交割' },
+          { type: 'delivery_china' as const, content: '交割日', description: '交割' },
         ],
       };
       saveCalendarData(existingData);
@@ -161,7 +161,7 @@ describe('calendarService', () => {
       const result = loadCalendarData();
       // Should keep delivery, replace holiday with new one - so 2 events
       expect(result['2026-04-04']).toHaveLength(2);
-      expect(result['2026-04-04'][0].type).toBe('delivery');
+      expect(result['2026-04-04'][0].type).toBe('delivery_china');
       expect(result['2026-04-04'][1].type).toBe('holiday_china');
       expect(result['2026-04-04'][1].content).toBe('新节假日');
     });
@@ -242,7 +242,7 @@ describe('calendarService', () => {
       const testData = {
         [todayStr]: [
           { type: 'holiday_china' as const, content: 'A股节假日' },
-          { type: 'delivery' as const, content: '交割日' },
+          { type: 'delivery_china' as const, content: '交割日' },
         ],
       };
       saveCalendarData(testData);
@@ -250,7 +250,7 @@ describe('calendarService', () => {
       const result = getUpcomingEvents(3);
       expect(result.length).toBe(2);
       expect(result.some(e => e.type === 'holiday_china')).toBe(true);
-      expect(result.some(e => e.type === 'delivery')).toBe(true);
+      expect(result.some(e => e.type === 'delivery_china')).toBe(true);
     });
   });
 
@@ -284,7 +284,7 @@ describe('calendarService', () => {
       const testData = {
         [todayStr]: [
           { type: 'holiday_china' as const, content: '节假日', description: '放假' },
-          { type: 'delivery' as const, content: '交割日', description: '期权交割' },
+          { type: 'delivery_china' as const, content: '交割日', description: '期权交割' },
         ],
       };
       saveCalendarData(testData);

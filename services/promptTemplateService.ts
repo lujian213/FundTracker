@@ -25,14 +25,11 @@ export const TEMPLATE_IDS = {
   PORTFOLIO_RISK: 'portfolio-risk',
 
   // 后台任务
-  BG_HOLIDAY: 'bg-holiday',
-  BG_DELIVERY: 'bg-delivery',
   BG_STRATEGY: 'bg-strategy',
   BG_CALENDAR_HOLIDAY_CHINA: 'bg-calendar-holiday-china',
   BG_CALENDAR_HOLIDAY_HK: 'bg-calendar-holiday-hk',
   BG_CALENDAR_HOLIDAY_US: 'bg-calendar-holiday-us',
   BG_CALENDAR_HOLIDAY_SG: 'bg-calendar-holiday-sg',
-  BG_CALENDAR_DELIVERY: 'bg-calendar-delivery',
 } as const;
 
 /** 模板TYPE常量（按type查询时使用） */

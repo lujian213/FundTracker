@@ -7,7 +7,11 @@ import {
   getPrevBusinessDayForHK,
   isChinaHoliday,
   isHKHoliday,
-  calculateDeliveryDatesForYear,
+  calculateChinaDeliveryDatesForYear,
+  calculateHKDeliveryDatesForYear,
+  calculateUSDeliveryDatesForYear,
+  getNthLastBusinessDay,
+  getNthLastBusinessDayForHK,
 } from '../../services/deliveryDateService';
 import { saveCalendarData, resetCache } from '../../services/appDataService';
 import { loadCalendarData } from '../../services/calendarService';
@@ -230,13 +234,13 @@ describe('deliveryDateService', () => {
     });
   });
 
-  describe('calculateDeliveryDatesForYear', () => {
+  describe('calculateChinaDeliveryDatesForYear', () => {
     test('calculates correct delivery dates for May 2026 (BUG fix verification)', () => {
       // 空日历数据，无节假日
       saveCalendarData({});
       const calendarData = loadCalendarData();
 
-      const results = calculateDeliveryDatesForYear(2026, calendarData);
+      const results = calculateChinaDeliveryDatesForYear(2026, calendarData);
 
       // 找到5月（month=4）的富时A50交割日
       const a50May = results.find(r =>
@@ -267,7 +271,7 @@ describe('deliveryDateService', () => {
       saveCalendarData({});
       const calendarData = loadCalendarData();
 
-      const results = calculateDeliveryDatesForYear(2026, calendarData);
+      const results = calculateChinaDeliveryDatesForYear(2026, calendarData);
 
       // 找到6月（month=5）的富时A50交割日
       const a50June = results.find(r =>
@@ -287,7 +291,7 @@ describe('deliveryDateService', () => {
       saveCalendarData({});
       const calendarData = loadCalendarData();
 
-      const results = calculateDeliveryDatesForYear(2026, calendarData);
+      const results = calculateChinaDeliveryDatesForYear(2026, calendarData);
 
       // 验证5月第三个周五是15日
       const cffexMay = results.find(r =>
@@ -308,7 +312,7 @@ describe('deliveryDateService', () => {
       saveCalendarData({});
       const calendarData = loadCalendarData();
 
-      const results = calculateDeliveryDatesForYear(2026, calendarData);
+      const results = calculateChinaDeliveryDatesForYear(2026, calendarData);
 
       // 验证5月第四个周三
       // 2026年5月：周三分别是6, 13, 20, 27日
@@ -327,7 +331,7 @@ describe('deliveryDateService', () => {
       });
       const calendarData = loadCalendarData();
 
-      const results = calculateDeliveryDatesForYear(2026, calendarData);
+      const results = calculateChinaDeliveryDatesForYear(2026, calendarData);
 
       // 中金所交割日应该顺延
       const cffexMay = results.find(r =>
@@ -344,48 +348,41 @@ describe('deliveryDateService', () => {
       saveCalendarData({});
       const calendarData = loadCalendarData();
 
-      const results = calculateDeliveryDatesForYear(2026, calendarData);
+      const results = calculateChinaDeliveryDatesForYear(2026, calendarData);
 
       // 每月有:
       // - 1个中金所股指期货/期权交割日
       // - 1个ETF期权交割日
       // - 1个富时A50交割日
-      // - 1个港股交割日
-      // - 1个月度期权到期日
-      // - 三巫日(仅3,6,9,12月有)
-      // 每月基础: 5条 × 12月 = 60条
-      // 三巫日额外: 4条
-      // 总共: 64条
-      expect(results.length).toBe(64);
+      // 每月: 3条 × 12月 = 36条
+      expect(results.length).toBe(36);
     });
 
     test('delivery dates are always business days (not weekends)', () => {
       saveCalendarData({});
       const calendarData = loadCalendarData();
 
-      const results = calculateDeliveryDatesForYear(2026, calendarData);
+      const results = calculateChinaDeliveryDatesForYear(2026, calendarData);
 
       for (const result of results) {
         const [year, month, day] = result.date.split('-').map(Number);
         const dateObj = new Date(year, month - 1, day);
         const dayOfWeek = dateObj.getDay();
 
-        // A股和港股交割日必须是营业日
-        if (result.content.includes('A股') || result.content.includes('港股')) {
-          expect(dayOfWeek).toBeGreaterThanOrEqual(1);
-          expect(dayOfWeek).toBeLessThanOrEqual(5);
-        }
+        // A股交割日必须是营业日
+        expect(dayOfWeek).toBeGreaterThanOrEqual(1);
+        expect(dayOfWeek).toBeLessThanOrEqual(5);
       }
     });
 
-    test('HK delivery dates use HK holidays not China holidays', () => {
+    test('adjusts delivery date based on China holidays only', () => {
       // 设置5月29日为A股节假日，港股正常营业
       saveCalendarData({
         '2026-05-29': [{ type: 'holiday_china', content: 'A股节假日' }],
       });
       const calendarData = loadCalendarData();
 
-      const results = calculateDeliveryDatesForYear(2026, calendarData);
+      const results = calculateChinaDeliveryDatesForYear(2026, calendarData);
 
       // 找到5月的A股富时A50交割日
       const a50May = results.find(r =>
@@ -393,35 +390,68 @@ describe('deliveryDateService', () => {
         r.content.includes('富时中国A50')
       );
 
+      // A股：跳过5/29节假日
+      // 倒数第一个营业日是5/28周四，倒数第二个是5/27周三
+      expect(a50May!.date).toBe('2026-05-27');
+    });
+  });
+
+  describe('calculateHKDeliveryDatesForYear', () => {
+    test('calculates correct delivery dates for May 2026', () => {
+      saveCalendarData({});
+      const calendarData = loadCalendarData();
+
+      const results = calculateHKDeliveryDatesForYear(2026, calendarData);
+
       // 找到5月的港股交割日
       const hkMay = results.find(r =>
         r.date.startsWith('2026-05') &&
         r.content.includes('港股')
       );
 
-      // A股：跳过5/29节假日
-      // 倒数第一个营业日是5/28周四，倒数第二个是5/27周三
-      expect(a50May!.date).toBe('2026-05-27');
+      expect(hkMay).toBeDefined();
 
-      // 港股：5/29是港股营业日
-      // 倒数第一个营业日是5/29周五，倒数第二个是5/28周四
+      // 2026年5月：最后一天是5月31日周日
+      // 港股倒数第二个营业日应该是5月28日周四
       expect(hkMay!.date).toBe('2026-05-28');
     });
 
-    test('HK delivery dates differ from A股 when HK has holiday', () => {
+    test('generates correct number of results for full year', () => {
+      saveCalendarData({});
+      const calendarData = loadCalendarData();
+
+      const results = calculateHKDeliveryDatesForYear(2026, calendarData);
+
+      // 每月有1个港股交割日
+      // 1条 × 12月 = 12条
+      expect(results.length).toBe(12);
+    });
+
+    test('HK delivery dates are always business days', () => {
+      saveCalendarData({});
+      const calendarData = loadCalendarData();
+
+      const results = calculateHKDeliveryDatesForYear(2026, calendarData);
+
+      for (const result of results) {
+        const [year, month, day] = result.date.split('-').map(Number);
+        const dateObj = new Date(year, month - 1, day);
+        const dayOfWeek = dateObj.getDay();
+
+        // 港股交割日必须是营业日
+        expect(dayOfWeek).toBeGreaterThanOrEqual(1);
+        expect(dayOfWeek).toBeLessThanOrEqual(5);
+      }
+    });
+
+    test('HK delivery dates adjust based on HK holidays only', () => {
       // 设置5月29日为港股节假日，A股正常营业
       saveCalendarData({
         '2026-05-29': [{ type: 'holiday_hk', content: '港股节假日' }],
       });
       const calendarData = loadCalendarData();
 
-      const results = calculateDeliveryDatesForYear(2026, calendarData);
-
-      // 找到5月的A股富时A50交割日
-      const a50May = results.find(r =>
-        r.date.startsWith('2026-05') &&
-        r.content.includes('富时中国A50')
-      );
+      const results = calculateHKDeliveryDatesForYear(2026, calendarData);
 
       // 找到5月的港股交割日
       const hkMay = results.find(r =>
@@ -429,13 +459,125 @@ describe('deliveryDateService', () => {
         r.content.includes('港股')
       );
 
-      // A股：5/29是营业日
-      // 倒数第一个营业日是5/29周五，倒数第二个是5/28周四
-      expect(a50May!.date).toBe('2026-05-28');
-
       // 港股：跳过5/29港股节假日
       // 倒数第一个营业日是5/28周四，倒数第二个是5/27周三
       expect(hkMay!.date).toBe('2026-05-27');
+    });
+
+    test('HK delivery dates ignore China holidays', () => {
+      // 设置5月29日为A股节假日，港股正常营业
+      saveCalendarData({
+        '2026-05-29': [{ type: 'holiday_china', content: 'A股节假日' }],
+      });
+      const calendarData = loadCalendarData();
+
+      const results = calculateHKDeliveryDatesForYear(2026, calendarData);
+
+      // 找到5月的港股交割日
+      const hkMay = results.find(r =>
+        r.date.startsWith('2026-05') &&
+        r.content.includes('港股')
+      );
+
+      // 港股：5/29是港股营业日（A股节假日不影响港股）
+      // 倒数第一个营业日是5/29周五，倒数第二个是5/28周四
+      expect(hkMay!.date).toBe('2026-05-28');
+    });
+  });
+
+  describe('calculateUSDeliveryDatesForYear', () => {
+    test('calculates correct delivery dates for May 2026', () => {
+      const results = calculateUSDeliveryDatesForYear(2026);
+
+      // 找到5月的月度期权到期日
+      const usMay = results.find(r =>
+        r.date.startsWith('2026-05') &&
+        r.content.includes('月度期权')
+      );
+
+      expect(usMay).toBeDefined();
+
+      // 2026年5月第三个周五是15日
+      expect(usMay!.date).toBe('2026-05-15');
+    });
+
+    test('generates correct number of results for full year', () => {
+      const results = calculateUSDeliveryDatesForYear(2026);
+
+      // 每月有:
+      // - 1个月度期权到期日
+      // - 三巫日(仅3,6,9,12月有)
+      // 每月基础: 1条 × 12月 = 12条
+      // 三巫日额外: 4条
+      // 总共: 16条
+      expect(results.length).toBe(16);
+    });
+
+    test('calculates triple witching dates correctly', () => {
+      const results = calculateUSDeliveryDatesForYear(2026);
+
+      // 三巫日应该在3,6,9,12月的第三个周五
+      const tripleWitchingDates = results.filter(r =>
+        r.content.includes('三巫日')
+      );
+
+      expect(tripleWitchingDates.length).toBe(4);
+
+      // 2026年：
+      // 3月第三个周五: 3月20日
+      // 6月第三个周五: 6月19日
+      // 9月第三个周五: 9月18日
+      // 12月第三个周五: 12月18日
+      expect(tripleWitchingDates[0].date).toBe('2026-03-20');
+      expect(tripleWitchingDates[1].date).toBe('2026-06-19');
+      expect(tripleWitchingDates[2].date).toBe('2026-09-18');
+      expect(tripleWitchingDates[3].date).toBe('2026-12-18');
+    });
+
+    test('US delivery dates do not depend on holidays', () => {
+      // 即使设置节假日，美股交割日不变
+      saveCalendarData({
+        '2026-05-15': [{ type: 'holiday_us', content: '美股节假日' }],
+      });
+
+      const results = calculateUSDeliveryDatesForYear(2026);
+
+      // 美股月度期权到期日仍然是5月15日
+      const usMay = results.find(r =>
+        r.date.startsWith('2026-05') &&
+        r.content.includes('月度期权')
+      );
+
+      expect(usMay!.date).toBe('2026-05-15');
+    });
+  });
+
+  describe('cross-market delivery date comparison', () => {
+    test('HK and China delivery dates differ when holidays differ', () => {
+      // 设置5月29日为A股节假日但港股正常营业
+      saveCalendarData({
+        '2026-05-29': [{ type: 'holiday_china', content: 'A股节假日' }],
+      });
+      const calendarData = loadCalendarData();
+
+      const chinaResults = calculateChinaDeliveryDatesForYear(2026, calendarData);
+      const hkResults = calculateHKDeliveryDatesForYear(2026, calendarData);
+
+      // 找到5月的交割日
+      const a50May = chinaResults.find(r =>
+        r.date.startsWith('2026-05') &&
+        r.content.includes('富时中国A50')
+      );
+      const hkMay = hkResults.find(r =>
+        r.date.startsWith('2026-05') &&
+        r.content.includes('港股')
+      );
+
+      // A股：跳过5/29，倒数第二个营业日是5/27
+      expect(a50May!.date).toBe('2026-05-27');
+
+      // 港股：不跳过5/29，倒数第二个营业日是5/28
+      expect(hkMay!.date).toBe('2026-05-28');
     });
   });
 });

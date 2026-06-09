@@ -122,14 +122,11 @@ test.describe('Testbed with loaded data', () => {
           'ai-investment-advice-score',
           'ai-investment-advice-refine',
           'portfolio-analysis',
-          'bg-holiday',
-          'bg-delivery',
           'bg-strategy',
           'bg-calendar-holiday-china',
           'bg-calendar-holiday-hk',
           'bg-calendar-holiday-us',
           'bg-calendar-holiday-sg',
-          'bg-calendar-delivery',
         ];
 
         // 预期的 type 类模板
@@ -250,7 +247,7 @@ test.describe('Testbed with loaded data', () => {
       expect(templatesStatus.typeCheckResults.fundCommonQuestion.ids).toContain('fund-oscillation-analysis');
       expect(templatesStatus.typeCheckResults.indexCommonQuestion.ids).toContain('index-trend-prediction');
 
-      // 验证加载的模板总数（预期 21 个启用的模板）
-    expect(templatesStatus.totalLoadedTemplates).toBe(21);
+      // 验证加载的模板总数（预期 18 个启用的模板）
+    expect(templatesStatus.totalLoadedTemplates).toBe(18);
   });
 });
