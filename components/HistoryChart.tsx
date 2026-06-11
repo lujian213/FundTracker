@@ -30,6 +30,9 @@ interface HistoryChartProps {
   maxBarShares?: number;                 // 交易量柱状图最大值（用于Y轴缩放）
   showFundVolume?: boolean;              // 是否显示基金交易量区域
   volumeChartHeight?: number;            // 交易量图表高度，默认 80
+  // 成本价曲线（新增）
+  costPath?: string;                     // 成本价曲线 SVG 路径
+  costPrices?: (number | null | undefined)[]; // 成本价数据（用于悬停显示）
 }
 
 const HistoryChart: React.FC<HistoryChartProps> = ({
@@ -58,6 +61,9 @@ const HistoryChart: React.FC<HistoryChartProps> = ({
   maxBarShares = 1,
   showFundVolume = false,
   volumeChartHeight = 80,
+  // 成本价曲线
+  costPath,
+  costPrices,
 }) => {
   // find index of hovered point for MA lookup
   const hoveredIndex = hoveredPoint ? points.findIndex(p => p.data === hoveredPoint) : -1;
@@ -206,6 +212,11 @@ const HistoryChart: React.FC<HistoryChartProps> = ({
           if (!d || !visibleMAs[n]) return null;
           return <path key={`ma-${k}`} d={d} fill="none" stroke={MA_COLORS[n] || '#2563eb'} strokeWidth={n === 5 ? 2 : 1.5} strokeLinecap="round" />;
         })}
+
+        {/* 成本价曲线 */}
+        {costPath && (
+          <path d={costPath} fill="none" stroke="#22c55e" strokeWidth="1.5" strokeLinecap="round" />
+        )}
 
         <circle cx={points[points.length - 1]?.x} cy={points[points.length - 1]?.y} r="6" fill={stroke} className="animate-pulse" />
 
@@ -392,6 +403,18 @@ const HistoryChart: React.FC<HistoryChartProps> = ({
             })()}
           </g>
         )}
+
+        {/* 成本价显示在 MA 值右边 */}
+        {costPrices && costPrices.length > 0 && costPath && (() => {
+          const keys = maValues ? Object.keys(maValues).map(k => parseInt(k, 10)).filter(n => visibleMAs[n]).sort((a,b) => a - b) : [];
+          const baseX = 70 + keys.length * 120;
+          const v = hoveredIndex >= 0 && hoveredIndex < costPrices.length ? costPrices[hoveredIndex] : null;
+          return (
+            <text x={baseX} y={8} textAnchor="start" className="text-[12px] font-medium" fill="#22c55e">
+              {`成本: ${v !== null && v !== undefined ? v.toFixed(4) : '—'}`}
+            </text>
+          );
+        })()}
 
         {(() => {
           const hpPoint = hoveredPoint ? points.find(p => p.data && (p.data as any).date === (hoveredPoint as any).date) : undefined;
