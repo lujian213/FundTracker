@@ -1,6 +1,6 @@
 // components/CalendarModal.tsx
 import React, { useState, useMemo, useRef } from 'react';
-import { getEventsForYear, getUpcomingEvents, isHolidayType, isNonfarmType } from '../services/calendarService';
+import { getEventsForYear, getUpcomingEvents, isHolidayType, isImportantDataType } from '../services/calendarService';
 import { toLocalDateKey } from '../utils/priceResolver';
 import CalendarEventTooltip, { CalendarEventItem } from './CalendarEventTooltip';
 
@@ -22,7 +22,7 @@ function getFirstDayOfMonth(year: number, month: number): number {
 // 获取事件类型的圆点颜色
 function getEventDotColor(type: string): string {
   if (isHolidayType(type)) return 'text-red-500';
-  if (isNonfarmType(type)) return 'text-green-500';
+  if (isImportantDataType(type)) return 'text-green-500';
   return 'text-amber-500';  // 交割日
 }
 
@@ -265,7 +265,7 @@ export const CalendarModal: React.FC<CalendarModalProps> = ({
           </div>
           <div className="flex items-center gap-1">
             <span className="text-green-500">●</span>
-            <span>非农数据</span>
+            <span>重要数据</span>
           </div>
         </div>
 

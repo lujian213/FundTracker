@@ -1,6 +1,6 @@
 // components/CalendarEventTooltip.tsx
 import React from 'react';
-import { isHolidayType, isNonfarmType } from '../services/calendarService';
+import { isHolidayType, isImportantDataType } from '../services/calendarService';
 
 export interface CalendarEventItem {
   date: string;
@@ -38,7 +38,7 @@ export const CalendarEventTooltip: React.FC<CalendarEventTooltipProps> = ({
   // 分类事件
   const holidayEvents = events.filter(e => isHolidayType(e.type));
   const deliveryEvents = events.filter(e => e.type === 'delivery');
-  const nonfarmEvents = events.filter(e => isNonfarmType(e.type));
+  const importantDataEvents = events.filter(e => isImportantDataType(e.type));
 
   // 获取日期显示（所有事件的日期相同，取第一个）
   const dateStr = events[0]?.date || '';
@@ -77,10 +77,10 @@ export const CalendarEventTooltip: React.FC<CalendarEventTooltipProps> = ({
           ))}
         </div>
       )}
-      {nonfarmEvents.length > 0 && (
+      {importantDataEvents.length > 0 && (
         <div>
-          <div className="text-green-500 font-medium mb-1">非农数据</div>
-          {nonfarmEvents.map((event, idx) => (
+          <div className="text-green-500 font-medium mb-1">重要数据</div>
+          {importantDataEvents.map((event, idx) => (
             <div key={idx} className="text-gray-600 ml-1 mb-1">
               {event.market && <span className="text-gray-400">[{event.market}] </span>}
               {event.description || event.content}

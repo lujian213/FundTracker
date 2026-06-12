@@ -281,8 +281,9 @@ export async function fetchWithProxy(
       const responseTime = Date.now() - startTime;
 
       if (!response.ok) {
+        const errorMsg = `HTTP ${response.status}`;
         scoreManager.record(proxy.name, false, responseTime);
-        throw new Error(`HTTP ${response.status}`);
+        throw new Error(errorMsg);
       }
 
       const content = await response.text();
@@ -376,46 +377,4 @@ export async function checkProxyHealth(): Promise<{ name: string; healthy: boole
   }
 
   return results;
-}
-
-/**
- * @DEBUG 测试代理是否支持 POST API 请求
- * 用于验证 CORS preflight 是否通过
- */
-export async function testProxyPostApi(proxyName: string): Promise<{ success: boolean; error?: string; data?: any }> {
-  const proxy = PROXY_LIST.find(p => p.name === proxyName);
-  if (!proxy) {
-    return { success: false, error: `代理 ${proxyName} 不存在` };
-  }
-
-  // 使用 httpbin.org 测试 POST
-  const testUrl = 'https://httpbin.org/post';
-  const proxyUrl = proxy.buildUrl(testUrl);
-  const testBody = { test: 'hello', timestamp: Date.now() };
-
-  console.log(`[ProxyTest] 测试 ${proxyName} POST: ${proxyUrl}`);
-
-  try {
-    const response = await fetch(proxyUrl, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(testBody),
-    });
-
-    console.log(`[ProxyTest] ${proxyName} 响应状态: ${response.status}`);
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      return { success: false, error: `HTTP ${response.status}: ${errorText}` };
-    }
-
-    const data = await response.json();
-    console.log(`[ProxyTest] ${proxyName} 成功! 响应数据:`, JSON.stringify(data).substring(0, 200));
-    return { success: true, data };
-  } catch (error: any) {
-    console.log(`[ProxyTest] ${proxyName} 失败: ${error.message}`);
-    return { success: false, error: error.message };
-  }
 }

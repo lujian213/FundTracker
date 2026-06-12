@@ -17,10 +17,20 @@ export type HolidayType = typeof HOLIDAY_TYPES[number];
 export const DELIVERY_TYPES = ['delivery_china', 'delivery_hk', 'delivery_us'] as const;
 export type DeliveryType = typeof DELIVERY_TYPES[number];
 
-export const NONFARM_TYPES = ['nonfarm_payrolls_release'] as const;
-export type NonfarmType = typeof NONFARM_TYPES[number];
+export const IMPORTANT_DATA_TYPES = [
+  'important_data_us_cpi',
+  'important_data_us_ppi',
+  'important_data_us_gdp',
+  'important_data_us_pce',
+  'important_data_us_ism_mfg',
+  'important_data_us_ism_svc',
+  'important_data_us_retail',
+  'important_data_us_nonfarm',
+  'important_data_us_fomc'
+] as const;
+export type ImportantDataType = typeof IMPORTANT_DATA_TYPES[number];
 
-export const SUPPORTED_CALENDAR_TYPES = [...HOLIDAY_TYPES, ...DELIVERY_TYPES, ...NONFARM_TYPES] as const;
+export const SUPPORTED_CALENDAR_TYPES = [...HOLIDAY_TYPES, ...DELIVERY_TYPES, ...IMPORTANT_DATA_TYPES] as const;
 export type CalendarEventType = typeof SUPPORTED_CALENDAR_TYPES[number];
 
 export function isHolidayType(type: string): type is HolidayType {
@@ -31,8 +41,8 @@ export function isDeliveryType(type: string): type is DeliveryType {
   return DELIVERY_TYPES.includes(type as DeliveryType);
 }
 
-export function isNonfarmType(type: string): type is NonfarmType {
-  return NONFARM_TYPES.includes(type as NonfarmType);
+export function isImportantDataType(type: string): type is ImportantDataType {
+  return IMPORTANT_DATA_TYPES.includes(type as ImportantDataType);
 }
 
 // ============================================================
@@ -72,7 +82,7 @@ export function getEventsForMonth(year: number, month: number): CalendarData {
 }
 
 export function updateCalendarData(
-  type: HolidayType | DeliveryType | NonfarmType,
+  type: HolidayType | DeliveryType | ImportantDataType,
   newEvents: Array<{ date: string; content: string; description: string; market?: string }>
 ): void {
   const data = loadCalendarData();

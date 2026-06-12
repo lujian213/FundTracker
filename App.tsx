@@ -4,6 +4,7 @@ import { SortableContext, verticalListSortingStrategy, arrayMove } from '@dnd-ki
 import { Ticker, ValuationData, MarketType, MarketIndex, BackupData, CardStatus, ManageItemType, ManageSelectionKey, JobResult, HistoricalPoint, FundInfo, IndexInfo } from './types';
 import { fetchFundData, fetchFundDatas, forceFetchFundHistories, fetchMarketIndices, fetchIndexHistories, maybeTriggerHistoryRefresh, normalizeIndexSymbol } from './services/fundService';
 import { toLocalDateKey } from './utils/priceResolver';
+import { calculateTotalTasks, createProgressCallback, incrementTaskCount } from './utils/taskCounter';
 import * as marketFundService from './services/marketFundService';
 import * as indexService from './services/indexService';
 import * as marketNewsService from './services/marketNewsService';
@@ -51,7 +52,7 @@ import { queryAI, AIResponse } from './services/aiService';
 import { getAIConfig } from './services/aiConfigService';
 import { refreshStrategyRecommendations } from './services/strategyRecommendationService';
 import { refreshFundProfiles, fetchFundProfile } from './services/fundProfileService';
-import { refreshNonfarmPayrolls } from './services/nonfarmPayrollsService';
+import { refreshImportantData } from './services/importantDataService';
 import { fetchWithProxy } from './services/proxyService';
 import { updateCalendarData, getEventsForYear, getUpcomingEvents, loadCalendarData, getFirstEventInWorkdays, HolidayType } from './services/calendarService';
 import { calculateChinaDeliveryDates, calculateHKDeliveryDates, calculateUSDeliveryDates } from './services/deliveryDateService';
@@ -62,8 +63,6 @@ import { loadAllTemplates, TEMPLATE_IDS } from './services/promptTemplateService
 import { getHolidaySource } from './services/calendarHolidaySourceService';
 import { processCalendarHoliday, parseCalendarAIResponse } from './services/calendarHolidayService';
 // 调试面板和日志拦截器 - 仅开发环境使用（构建时会自动移除）
-import DebugPanel from './components/DebugPanel';
-import { initDebugIntercept } from './utils/debugLogger';
 import { isDev } from './utils/env';
 
 const createPlaceholderIndex = (symbol: string): MarketIndex => {
@@ -277,9 +276,6 @@ const AppContent: React.FC = () => {
   const [autoBackupEnabled, setAutoBackupEnabled] = useState<boolean>(() => readBackupConfig().autoBackupEnabled ?? false);
   const [autoBackupStatus, setAutoBackupStatus] = useState<'pending' | 'done' | null>(null);
   const [deepToast, setDeepToast] = useState<{ message: string, visible: boolean } | undefined>(undefined);
-  // DEBUG_START 2026-06-03: 调试面板状态
-  const [showDebugPanel, setShowDebugPanel] = useState<boolean>(false);
-  // DEBUG_END
 
   const manageableItemCount = portfolio.length + indicesConfig.length;
 
@@ -492,14 +488,14 @@ const AppContent: React.FC = () => {
         // 在 refreshAll 场景下跳过，因为 runBatchHistoryUpdate 已在并行执行
         if (!skipHistoryRefresh) {
           try {
-            setBackgroundTasks(prev => prev + 1);
+            incrementTaskCount(setBackgroundTasks, 1);
             maybeTriggerHistoryRefresh(symbol, enhancedData.netWorthDate).finally(() => {
-              setBackgroundTasks(prev => Math.max(0, prev - 1));
+              createProgressCallback(setBackgroundTasks)();
               // 历史数据可能已更新，触发 fundHistories 重新计算
               setHistoryUpdateCount(prev => prev + 1);
             });
           } catch (e) {
-            setBackgroundTasks(prev => Math.max(0, prev - 1));
+            createProgressCallback(setBackgroundTasks)();
             setHistoryUpdateCount(prev => prev + 1);
           }
         }
@@ -684,14 +680,14 @@ const AppContent: React.FC = () => {
     if (isRefreshing) return;
     setIsRefreshing(true);
 
-    // 计算总任务数：基金估值 + 基金历史 + 指数实时 + 指数历史
-    const totalCount = portfolio.length * 2 + indicesConfig.length * 2;
+    // 计算总任务数
+    const totalCount = calculateTotalTasks(portfolio.length, indicesConfig.length);
 
-    // 使用累加式计数，避免覆盖其他任务的计数
-    setBackgroundTasks(prev => prev + totalCount);
+    // 增加任务计数
+    incrementTaskCount(setBackgroundTasks, totalCount);
 
-    // 进度回调：每完成一个子任务减一
-    const onProgress = () => setBackgroundTasks(prev => Math.max(0, prev - 1));
+    // 进度回调
+    const onProgress = createProgressCallback(setBackgroundTasks);
 
     try {
       await Promise.allSettled([
@@ -708,8 +704,8 @@ const AppContent: React.FC = () => {
     if (portfolio.length > 0) {
       const targets = portfolio.filter(p => !marketData[p.symbol]);
       if (targets.length > 0) {
-        setBackgroundTasks(prev => prev + targets.length);
-        const onProgress = () => setBackgroundTasks(prev => Math.max(0, prev - 1));
+        incrementTaskCount(setBackgroundTasks, targets.length);
+        const onProgress = createProgressCallback(setBackgroundTasks);
         runBatchUpdate(targets, onProgress);
       }
     }
@@ -735,27 +731,23 @@ const AppContent: React.FC = () => {
 
     // Register job handlers
     scheduler.registerHandler('fund-valuation-refresh', async () => {
-      setBackgroundTasks(prev => prev + portfolio.length);
-      const onProgress = () => setBackgroundTasks(prev => Math.max(0, prev - 1));
-      return await runBatchUpdate(portfolio, onProgress);
+      incrementTaskCount(setBackgroundTasks, portfolio.length);
+      return await runBatchUpdate(portfolio, createProgressCallback(setBackgroundTasks));
     });
 
     scheduler.registerHandler('fund-history-refresh', async () => {
-      setBackgroundTasks(prev => prev + portfolio.length);
-      const onProgress = () => setBackgroundTasks(prev => Math.max(0, prev - 1));
-      return await runBatchHistoryUpdate(portfolio, onProgress);
+      incrementTaskCount(setBackgroundTasks, portfolio.length);
+      return await runBatchHistoryUpdate(portfolio, createProgressCallback(setBackgroundTasks));
     });
 
     scheduler.registerHandler('market-index-refresh', async () => {
-      setBackgroundTasks(prev => prev + indicesConfig.length);
-      const onProgress = () => setBackgroundTasks(prev => Math.max(0, prev - 1));
-      return await refreshMarketIndicesAsync(true, onProgress);
+      incrementTaskCount(setBackgroundTasks, indicesConfig.length);
+      return await refreshMarketIndicesAsync(true, createProgressCallback(setBackgroundTasks));
     });
 
     scheduler.registerHandler('index-history-refresh', async () => {
-      setBackgroundTasks(prev => prev + indicesConfig.length);
-      const onProgress = () => setBackgroundTasks(prev => Math.max(0, prev - 1));
-      return await refreshIndexHistoryAsync(true, onProgress);
+      incrementTaskCount(setBackgroundTasks, indicesConfig.length);
+      return await refreshIndexHistoryAsync(true, createProgressCallback(setBackgroundTasks));
     });
 
     scheduler.registerHandler('news-refresh', async () => {
@@ -790,9 +782,9 @@ const AppContent: React.FC = () => {
       return await refreshFundProfiles(() => portfolio, setPortfolio);
     });
 
-    // 注册非农数据公布日刷新任务
-    scheduler.registerHandler('nonfarm_payrolls_refresh', async () => {
-      return await refreshNonfarmPayrolls();
+    // 注册重要数据刷新任务（非农数据、CPI等）
+    scheduler.registerHandler('important_data_refresh', async () => {
+      return await refreshImportantData();
     });
 
     // Set context with current portfolio
@@ -1045,16 +1037,7 @@ const AppContent: React.FC = () => {
               <i className="fas fa-cog"></i>
             </button>
             {/* 调试面板按钮 - 只在开发环境显示 */}
-            {isDev && (
-              <button
-                onClick={() => setShowDebugPanel(true)}
-                title="调试面板"
-                aria-label="调试面板"
-                className="p-2 w-10 h-10 rounded-full hover:bg-gray-100 text-gray-400 transition-all"
-              >
-                <i className="fas fa-bug"></i>
-              </button>
-            )}
+            {/* 调试面板按钮和渲染已在调试结束后移除 */}
             {/* 日志按钮 - 仅在开关开启时显示 */}
             {isFeatureEnabled('jobLogEnabled') && (
               <button onClick={() => setShowJobLog(true)} title="后台任务日志" aria-label="后台任务日志" className="p-2 w-10 h-10 rounded-full hover:bg-gray-100 text-gray-400 transition-all">
@@ -1525,8 +1508,7 @@ const AppContent: React.FC = () => {
           }
         }}
       />
-      {/* 调试面板 - 只在开发环境渲染 */}
-      {isDev && <DebugPanel visible={showDebugPanel} onClose={() => setShowDebugPanel(false)} />}
+      {/* 调试面板组件已在调试结束后移除 */}
     </div>
   );
 };
@@ -1534,10 +1516,6 @@ const AppContent: React.FC = () => {
 const App: React.FC = () => {
   // 挂载 Root 到 window（供测试用例访问）
   mountRoot();
-  // 初始化调试日志拦截 - 只在开发环境执行
-  if (isDev) {
-    initDebugIntercept();
-  }
   return (
     <TimerJobErrorProvider>
       <NewsProvider>
