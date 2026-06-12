@@ -687,8 +687,8 @@ const AppContent: React.FC = () => {
     // 计算总任务数：基金估值 + 基金历史 + 指数实时 + 指数历史
     const totalCount = portfolio.length * 2 + indicesConfig.length * 2;
 
-    // 预设置总任务数
-    setBackgroundTasks(totalCount);
+    // 使用累加式计数，避免覆盖其他任务的计数
+    setBackgroundTasks(prev => prev + totalCount);
 
     // 进度回调：每完成一个子任务减一
     const onProgress = () => setBackgroundTasks(prev => Math.max(0, prev - 1));
@@ -708,7 +708,7 @@ const AppContent: React.FC = () => {
     if (portfolio.length > 0) {
       const targets = portfolio.filter(p => !marketData[p.symbol]);
       if (targets.length > 0) {
-        setBackgroundTasks(targets.length);
+        setBackgroundTasks(prev => prev + targets.length);
         const onProgress = () => setBackgroundTasks(prev => Math.max(0, prev - 1));
         runBatchUpdate(targets, onProgress);
       }
@@ -735,26 +735,25 @@ const AppContent: React.FC = () => {
 
     // Register job handlers
     scheduler.registerHandler('fund-valuation-refresh', async () => {
-      // 设置初始任务数
-      setBackgroundTasks(portfolio.length);
+      setBackgroundTasks(prev => prev + portfolio.length);
       const onProgress = () => setBackgroundTasks(prev => Math.max(0, prev - 1));
       return await runBatchUpdate(portfolio, onProgress);
     });
 
     scheduler.registerHandler('fund-history-refresh', async () => {
-      setBackgroundTasks(portfolio.length);
+      setBackgroundTasks(prev => prev + portfolio.length);
       const onProgress = () => setBackgroundTasks(prev => Math.max(0, prev - 1));
       return await runBatchHistoryUpdate(portfolio, onProgress);
     });
 
     scheduler.registerHandler('market-index-refresh', async () => {
-      setBackgroundTasks(indicesConfig.length);
+      setBackgroundTasks(prev => prev + indicesConfig.length);
       const onProgress = () => setBackgroundTasks(prev => Math.max(0, prev - 1));
       return await refreshMarketIndicesAsync(true, onProgress);
     });
 
     scheduler.registerHandler('index-history-refresh', async () => {
-      setBackgroundTasks(indicesConfig.length);
+      setBackgroundTasks(prev => prev + indicesConfig.length);
       const onProgress = () => setBackgroundTasks(prev => Math.max(0, prev - 1));
       return await refreshIndexHistoryAsync(true, onProgress);
     });
