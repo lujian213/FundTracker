@@ -635,13 +635,20 @@ describe('computeTradingDateAndTime', () => {
   });
 
   describe('不在交易时段内', () => {
-    test('单时段 - 当前时间在开盘前，返回上一个收盘日期和时间', () => {
+    test('单时段 - 当前时间在开盘前，应返回上一个交易日收盘时间（需要历史数据辅助判断）', () => {
       // A股上午时段：09:30-11:30
+      // 当前时间：周一 08:30，开盘前
+      // 注意：computeTradingDateAndTime 函数只根据交易时段判断
+      // 开盘前的逻辑：当当前时间早于第一个时段的开盘时间时，
+      // 函数无法判断"上一个交易日"（因为f80只包含当前交易日信息）
+      // 所以返回当前交易时段的收盘时间作为 fallback
       const periods = [createPeriod('2026-05-06', '2026-05-06', 930, 1130)];
       const now = createDate('2026-05-06', '08:30:00'); // 08:30 在开盘前
       const result = computeTradingDateAndTime(periods, now);
+      // 函数返回当前交易时段的收盘时间（这是函数层面的 fallback）
+      // 上层逻辑（fetchSingleIndex）会用历史数据覆盖这个值
       expect(result.tradeDate).toBe('2026-05-06');
-      expect(result.lastUpdated).toBe('11:30:00'); // 收盘时间
+      expect(result.lastUpdated).toBe('11:30:00');
     });
 
     test('单时段 - 当前时间在收盘后，返回收盘日期和时间', () => {
@@ -729,6 +736,23 @@ describe('computeTradingDateAndTime', () => {
       // 应返回上一个交易日收盘时间，而非即将到来的收盘时间
       expect(result.tradeDate).toBe('2026-05-06');
       expect(result.lastUpdated).toBe('04:00:00'); // 上一个交易日收盘时间（5月6日凌晨4点）
+    });
+
+    test('开盘前（A股多时段）- 当前时间早于开盘时间，函数返回最近的收盘时间（需要上层逻辑用历史数据覆盖）', () => {
+      // A股：上午 09:30-11:30，下午 13:00-15:00
+      // 周一早上08:30，开盘前
+      const periods = [
+        createPeriod('2026-05-06', '2026-05-06', 930, 1130),
+        createPeriod('2026-05-06', '2026-05-06', 1300, 1500),
+      ];
+      const now = createDate('2026-05-06', '08:30:00'); // 08:30 在开盘前
+      const result = computeTradingDateAndTime(periods, now);
+      // computeTradingDateAndTime 只能根据 f80 判断，无法获取上一个交易日信息
+      // 当前时间08:30距离最近的收盘时间是11:30（上午收盘），距离更近
+      // 所以返回11:30，这是函数层面的结果（但这是未来的时间）
+      // 上层逻辑（fetchSingleIndex）会判断开盘前状态，从历史数据获取上一个交易日信息并覆盖
+      expect(result.tradeDate).toBe('2026-05-06'); // 函数层面返回当天日期
+      expect(result.lastUpdated).toBe('11:30:00'); // 函数层面返回最近的收盘时间（上午收盘）
     });
   });
 });

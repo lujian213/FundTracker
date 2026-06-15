@@ -1020,10 +1020,13 @@ export async function fetchSingleIndex(symbol: string, ignoreCache: boolean = fa
       // 1. 如果 f124 有效（非0），使用 f124（API 提供的实时更新时间）
       // 2. 如果 f124 无效：
       //    - 当前时间在交易时间段内：tradeDate=当前日期，lastUpdated=当前时间
-      //    - 当前时间不在交易时间段内：tradeDate=上一个交易日日期，lastUpdated=上一个收盘时间
+      //    - 当前时间不在交易时间段内（开盘前）：需要从历史数据获取上一个交易日信息
+      //    - 当前时间不在交易时间段内（收盘后）：tradeDate=收盘日期，lastUpdated=收盘时间
       const pad = (n: number) => n.toString().padStart(2, '0');
       let lastUpdated: string;
       let tradeDate: string | undefined;
+      let isBeforeOpen = false; // 临时标志：是否在开盘前
+      let lastPeriodCloseTime = ''; // 临时变量：最后一个时段的收盘时间
 
       if (item.f124 && item.f124 > 0) {
         const timestamp = new Date(item.f124 * 1000);
@@ -1031,9 +1034,26 @@ export async function fetchSingleIndex(symbol: string, ignoreCache: boolean = fa
         tradeDate = `${timestamp.getFullYear()}-${pad(timestamp.getMonth() + 1)}-${pad(timestamp.getDate())}`;
 
       } else if (tradingPeriods.length > 0) {
+        // 判断当前时间是否在开盘前
+        const now = new Date();
+        const nowTimeNum = now.getHours() * 100 + now.getMinutes();
+        const currentDate = formatDateISO(now);
+        const firstPeriodBegin = tradingPeriods[0].beginHHMM;
+
+        // 如果当前日期等于第一个时段的开盘日期，且当前时间早于开盘时间
+        // 说明是开盘前，computeTradingDateAndTime 会返回当天的收盘时间（未来的时间）
+        // 需要在获取历史数据后，用上一个交易日的信息覆盖
+        isBeforeOpen = currentDate === tradingPeriods[0].beginDate && nowTimeNum < firstPeriodBegin;
+
         const result = computeTradingDateAndTime(tradingPeriods);
         tradeDate = result.tradeDate;
         lastUpdated = result.lastUpdated;
+
+        // 从 tradingPeriods 获取收盘时间（最后一个时段的收盘时间）
+        if (isBeforeOpen && tradingPeriods.length > 0) {
+          const lastPeriodEndHHMM = tradingPeriods[tradingPeriods.length - 1].endHHMM;
+          lastPeriodCloseTime = formatHHMM(lastPeriodEndHHMM);
+        }
 
       } else {
         // 没有 f80 数据，使用 computeTradingDateAndTime 作为 fallback（空数组）
@@ -1055,20 +1075,36 @@ export async function fetchSingleIndex(symbol: string, ignoreCache: boolean = fa
         amount: 0,
         tradingPeriodBegin: tradingPeriodBegin ?? undefined,
       };
+
+      // 存储开盘前标志和收盘时间到临时变量（后续在获取历史数据后处理）
+      (currentInfo as any).__isBeforeOpen = isBeforeOpen;
+      (currentInfo as any).__lastPeriodCloseTime = lastPeriodCloseTime;
     }
   } catch (e) {}
 
-  // 2. 从历史数据获取成交量和成交额（仅当有实时数据时才处理）
+  // 2. 从历史数据获取成交量和成交额，并在开盘前时覆盖 tradeDate 和 lastUpdated
   // 如果API调用失败（currentInfo为null），不写入任何缓存，直接返回null
   if (currentInfo) {
     try {
       const history = await fetchIndexHistory(symbol);
       if (history && history.length > 0) {
         const lastPoint = history[history.length - 1];
+        const lastPointDate = toLocalDateKey(lastPoint.date);
+
+        // 开盘前判断：如果标记了 __isBeforeOpen，且历史数据中存在上一个交易日
+        // 使用历史数据的上一个交易日收盘信息覆盖 tradeDate 和 lastUpdated
+        const isBeforeOpen = (currentInfo as any).__isBeforeOpen;
+        if (isBeforeOpen && lastPointDate !== currentInfo.tradeDate) {
+          // 上一个交易日的收盘信息
+          currentInfo.tradeDate = lastPointDate;
+          // 使用从 tradingPeriods 推导的收盘时间（最后一个时段的收盘时间）
+          // 存储在临时变量 lastPeriodCloseTime 中
+          const closeTime = (currentInfo as any).__lastPeriodCloseTime || '15:00:00';
+          currentInfo.lastUpdated = closeTime;
+        }
 
         // 只有当历史数据最后一条的日期 == 当前交易日时，才使用其 volume/amount
         // 否则当日应该没有历史数据，volume/amount 应该为 0
-        const lastPointDate = toLocalDateKey(lastPoint.date);
         const tradeDateKey = currentInfo.tradeDate || '';
         const useHistoryVolume = lastPointDate === tradeDateKey;
 
@@ -1077,6 +1113,7 @@ export async function fetchSingleIndex(symbol: string, ignoreCache: boolean = fa
           volume: useHistoryVolume ? (lastPoint.volume || 0) : 0,
           amount: useHistoryVolume ? (lastPoint.amount || 0) : 0,
         };
+
         // 更新 indexService
         indexService.updateRealtimeData(normalizedSymbol, info);
         indexService.updateHistory(normalizedSymbol, history);
