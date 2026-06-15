@@ -276,6 +276,7 @@ const AppContent: React.FC = () => {
   const [autoBackupEnabled, setAutoBackupEnabled] = useState<boolean>(() => readBackupConfig().autoBackupEnabled ?? false);
   const [autoBackupStatus, setAutoBackupStatus] = useState<'pending' | 'done' | null>(null);
   const [deepToast, setDeepToast] = useState<{ message: string, visible: boolean } | undefined>(undefined);
+  const [screenshotToast, setScreenshotToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
 
   const manageableItemCount = portfolio.length + indicesConfig.length;
 
@@ -1044,12 +1045,60 @@ const AppContent: React.FC = () => {
                 <i className="fas fa-list-alt"></i>
               </button>
             )}
+            {/* 截屏按钮 */}
+            <button
+              onClick={async () => {
+                try {
+                  // 使用类型断言以支持 Chrome 的实验性 preferCurrentTab 属性
+                  const stream = await navigator.mediaDevices.getDisplayMedia({
+                    video: { displaySurface: 'browser' },
+                    // @ts-expect-error Chrome 实验性属性
+                    preferCurrentTab: true,
+                    audio: false
+                  });
+                  const video = document.createElement('video');
+                  video.srcObject = stream;
+                  await video.play();
+                  const canvas = document.createElement('canvas');
+                  canvas.width = video.videoWidth;
+                  canvas.height = video.videoHeight;
+                  const ctx = canvas.getContext('2d');
+                  ctx?.drawImage(video, 0, 0);
+                  const blob = await new Promise<Blob>((resolve, reject) => {
+                    canvas.toBlob((b) => b ? resolve(b) : reject(new Error('Failed to create blob')), 'image/png');
+                  });
+                  await navigator.clipboard.write([
+                    new ClipboardItem({ 'image/png': blob })
+                  ]);
+                  stream.getTracks().forEach(track => track.stop());
+                  setScreenshotToast({ message: '已复制到剪切板', type: 'success' });
+                  setTimeout(() => setScreenshotToast(null), 3000);
+                } catch (err) {
+                  console.error('截屏失败:', err);
+                  setScreenshotToast({ message: '截屏失败', type: 'error' });
+                  setTimeout(() => setScreenshotToast(null), 3000);
+                }
+              }}
+              title="截屏"
+              aria-label="截屏"
+              className="p-2 w-10 h-10 rounded-full hover:bg-gray-100 text-gray-400 transition-all"
+            >
+              <i className="fas fa-camera"></i>
+            </button>
             {/* 小型 toast 通知：在深度刷新开始/完成时短暂显示 */}
             {/** toast 位于 header 右上，短暂显示 */}
             {/** deepToast: { message: string, visible: boolean } */}
             {typeof deepToast !== 'undefined' && deepToast.visible && (
               <div className="absolute right-12 top-2 z-40">
                 <div className="bg-black text-white text-xs px-3 py-1 rounded-md shadow-md">{deepToast.message}</div>
+              </div>
+            )}
+            {/* 截屏 Toast */}
+            {screenshotToast && (
+              <div className="absolute right-12 top-2 z-40 animate-fade-in">
+                <div className={`text-xs px-3 py-1 rounded-md shadow-md ${screenshotToast.type === 'success' ? 'bg-green-600 text-white' : 'bg-red-600 text-white'}`}>
+                  {screenshotToast.message}
+                </div>
               </div>
             )}
           </div>

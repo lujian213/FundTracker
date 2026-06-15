@@ -448,12 +448,21 @@ test.describe('testBedWithData', () => {
     expect(fundTitleAttr).toBeTruthy();
 
     // ══════════════════════════════════════════════════════════════════════════════
-    // 9. 验证主界面工具栏按钮
+    // 9. 验证主界面右上角工具栏按钮
     // ══════════════════════════════════════════════════════════════════════════════
     // 工具栏按钮都有 title 属性（hovertip）
+    // 固定显示按钮：刷新全部、日历、系统配置、截屏（4个）
+    // 条件显示按钮：日志（jobLogEnabled 开启时显示）
     const toolbarButtons = page.locator('header button[title]');
     const toolbarCount = await toolbarButtons.count();
+    // 至少有4个固定按钮，可能还有日志按钮
     expect(toolbarCount).toBeGreaterThanOrEqual(4);
+
+    // 验证截屏按钮存在
+    const screenshotBtn = page.locator('header button[aria-label="截屏"]');
+    await expect(screenshotBtn).toBeVisible();
+    const screenshotTitle = await screenshotBtn.getAttribute('title');
+    expect(screenshotTitle).toBe('截屏');
 
     console.log(`主界面验证完成: 大盘看点 ${domesticIndexCount} 个, 全球市场 ${globalIndexCount} 个, 基金卡片 ${fundCardCount} 个`);
   });
