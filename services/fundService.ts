@@ -979,6 +979,76 @@ export function computeTradingDateAndTime(
   };
 }
 
+/**
+ * 开盘前数据覆盖逻辑
+ * 当开盘前时，API 返回的 f169（涨跌额）和 f170（涨跌幅）都是 0
+ * 应该从历史数据获取上一个交易日的涨跌幅信息
+ *
+ * @param currentInfo 当前从 API 获取的指数信息
+ * @param history 历史数据数组
+ * @param closeTime 收盘时间（HH:mm:ss 格式）
+ * @returns 修改后的指数信息，如果不满足开盘前条件则返回原始信息
+ */
+export function applyBeforeOpenDataOverride(
+  currentInfo: IndexInfo,
+  history: HistoricalPoint[],
+  closeTime: string
+): IndexInfo {
+  // 检查是否标记为开盘前（通过 __isBeforeOpen 临时变量）
+  const isBeforeOpen = (currentInfo as any).__isBeforeOpen;
+  if (!isBeforeOpen) return currentInfo;
+
+  if (!history || history.length === 0) return currentInfo;
+
+  // 确定使用哪条历史数据
+  // 注意：历史数据最后一条可能是当天的集合竞价数据（如恒科在集合竞价时就有当天的指数值）
+  // 所以需要验证日期，确保使用的是上一个交易日的完整收盘数据
+  const lastPoint = history[history.length - 1];
+  const lastPointDate = toLocalDateKey(lastPoint.date);
+
+  let targetPoint: HistoricalPoint;
+  let targetDate: string;
+  let prevPoint: HistoricalPoint | undefined;
+
+  if (lastPointDate === currentInfo.tradeDate) {
+    // 历史数据最后一条是当天的（集合竞价数据），使用倒数第二条
+    if (history.length < 2) return currentInfo; // 只有一条且是当天的，无法获取上一个交易日数据
+    targetPoint = history[history.length - 2];
+    targetDate = toLocalDateKey(targetPoint.date);
+    prevPoint = history.length >= 3 ? history[history.length - 3] : undefined;
+  } else {
+    // 历史数据最后一条是上一个交易日的，直接使用
+    targetPoint = lastPoint;
+    targetDate = lastPointDate;
+    prevPoint = history.length >= 2 ? history[history.length - 2] : undefined;
+  }
+
+  // 创建新的信息对象，覆盖开盘前的数据
+  const result: IndexInfo = {
+    ...currentInfo,
+    tradeDate: targetDate,
+    lastUpdated: closeTime,
+    current: targetPoint.value,
+    changePercent: targetPoint.equityReturn || 0,
+  };
+
+  // 前收盘价计算
+  // 优先从历史数据获取 prevPoint（更精确）
+  // 如果 prevPoint 不存在，使用 changePercent 反推计算（fallback）
+  if (prevPoint) {
+    result.previousClose = prevPoint.value;
+  } else {
+    // Fallback: 通过 changePercent 反推计算
+    // 公式: previousClose = current / (1 + changePercent/100)
+    // 注意: changePercent = 0 时计算也有效（previousClose = current, change = 0）
+    result.previousClose = result.current / (1 + result.changePercent / 100);
+  }
+  // 涨跌额计算：统一在 previousClose 确定后计算
+  result.change = result.current - result.previousClose;
+
+  return result;
+}
+
 export async function fetchSingleIndex(symbol: string, ignoreCache: boolean = false): Promise<MarketIndex | null> {
 
   // 0. 检查缓存
@@ -1082,7 +1152,7 @@ export async function fetchSingleIndex(symbol: string, ignoreCache: boolean = fa
     }
   } catch (e) {}
 
-  // 2. 从历史数据获取成交量和成交额，并在开盘前时覆盖 tradeDate 和 lastUpdated
+  // 2. 从历史数据获取成交量和成交额，并在开盘前时覆盖实时数据
   // 如果API调用失败（currentInfo为null），不写入任何缓存，直接返回null
   if (currentInfo) {
     try {
@@ -1091,17 +1161,9 @@ export async function fetchSingleIndex(symbol: string, ignoreCache: boolean = fa
         const lastPoint = history[history.length - 1];
         const lastPointDate = toLocalDateKey(lastPoint.date);
 
-        // 开盘前判断：如果标记了 __isBeforeOpen，且历史数据中存在上一个交易日
-        // 使用历史数据的上一个交易日收盘信息覆盖 tradeDate 和 lastUpdated
-        const isBeforeOpen = (currentInfo as any).__isBeforeOpen;
-        if (isBeforeOpen && lastPointDate !== currentInfo.tradeDate) {
-          // 上一个交易日的收盘信息
-          currentInfo.tradeDate = lastPointDate;
-          // 使用从 tradingPeriods 推导的收盘时间（最后一个时段的收盘时间）
-          // 存储在临时变量 lastPeriodCloseTime 中
-          const closeTime = (currentInfo as any).__lastPeriodCloseTime || '15:00:00';
-          currentInfo.lastUpdated = closeTime;
-        }
+        // 开盘前数据覆盖：使用历史数据的上一个交易日信息
+        const closeTime = (currentInfo as any).__lastPeriodCloseTime || '15:00:00';
+        currentInfo = applyBeforeOpenDataOverride(currentInfo, history, closeTime);
 
         // 只有当历史数据最后一条的日期 == 当前交易日时，才使用其 volume/amount
         // 否则当日应该没有历史数据，volume/amount 应该为 0

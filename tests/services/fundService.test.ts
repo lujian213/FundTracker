@@ -11,9 +11,10 @@ import {
   mergeHistoryWithTencentData,
   computeTradingDateAndTime,
   TradingPeriod,
-  parseF80TradingPeriods
+  parseF80TradingPeriods,
+  applyBeforeOpenDataOverride
 } from '../../services/fundService';
-import { ValuationData, HistoricalPoint } from '../../types';
+import { ValuationData, HistoricalPoint, IndexInfo } from '../../types';
 
 describe('padSymbol', () => {
   test.each([
@@ -754,5 +755,203 @@ describe('computeTradingDateAndTime', () => {
       expect(result.tradeDate).toBe('2026-05-06'); // 函数层面返回当天日期
       expect(result.lastUpdated).toBe('11:30:00'); // 函数层面返回最近的收盘时间（上午收盘）
     });
+  });
+});
+
+describe('applyBeforeOpenDataOverride', () => {
+  // 辅助函数：创建带有 __isBeforeOpen 标记的 IndexInfo
+  const createBeforeOpenIndexInfo = (partial: Partial<IndexInfo>): IndexInfo => {
+    const info: IndexInfo = {
+      symbol: partial.symbol || '0.399001',
+      name: partial.name || '深证成指',
+      current: partial.current ?? 0,
+      change: partial.change ?? 0,
+      changePercent: partial.changePercent ?? 0,
+      lastUpdated: partial.lastUpdated || '15:00:00',
+      tradeDate: partial.tradeDate || '2026-06-17',
+      previousClose: partial.previousClose,
+    };
+    (info as any).__isBeforeOpen = true;
+    return info;
+  };
+
+  // 辅助函数：创建历史数据
+  const createHistory = (points: Array<{ date: string; value: number; equityReturn: number }>): HistoricalPoint[] => {
+    return points.map(p => ({
+      date: new Date(p.date).getTime(),
+      value: p.value,
+      equityReturn: p.equityReturn,
+    }));
+  };
+
+  test('开盘前时，从历史数据获取上一个交易日的涨跌幅信息', () => {
+    const currentInfo = createBeforeOpenIndexInfo({
+      tradeDate: '2026-06-17', // 当天（开盘前）
+      current: 0, // API 返回的当前值为 0
+      change: 0, // API 返回的涨跌额为 0
+      changePercent: 0, // API 返回的涨跌幅为 0
+    });
+
+    const history = createHistory([
+      { date: '2026-06-13', value: 10000, equityReturn: 0.5 }, // 前两个交易日
+      { date: '2026-06-16', value: 10100, equityReturn: 1.0 }, // 上一个交易日
+    ]);
+
+    const result = applyBeforeOpenDataOverride(currentInfo, history, '15:00:00');
+
+    expect(result.tradeDate).toBe('2026-06-16'); // 使用上一个交易日的日期
+    expect(result.lastUpdated).toBe('15:00:00'); // 使用收盘时间
+    expect(result.current).toBe(10100); // 使用上一个交易日的收盘价
+    expect(result.changePercent).toBe(1.0); // 使用上一个交易日的涨跌幅
+    expect(result.previousClose).toBe(10000); // 使用前两个交易日的收盘价作为前收盘价
+    expect(result.change).toBe(10100 - 10000); // 涨跌额 = 当前价 - 前收盘价
+  });
+
+  test('只有一条历史数据时，使用 changePercent 反推计算 previousClose 和 change', () => {
+    // 只有上一交易日的一条历史数据，没有 prevPoint
+    const currentInfo = createBeforeOpenIndexInfo({
+      tradeDate: '2026-06-17',
+      current: 0,
+      change: 0,
+      changePercent: 0,
+    });
+
+    const history = createHistory([
+      { date: '2026-06-16', value: 10100, equityReturn: 1.0 }, // 上一个交易日，涨跌幅 1%
+    ]);
+
+    const result = applyBeforeOpenDataOverride(currentInfo, history, '15:00:00');
+
+    // 应正确计算所有字段
+    expect(result.tradeDate).toBe('2026-06-16');
+    expect(result.current).toBe(10100);
+    expect(result.changePercent).toBe(1.0);
+    // Fallback 计算: previousClose = 10100 / 1.01 = 10000
+    expect(result.previousClose).toBeCloseTo(10000, 2);
+    // change = 10100 - 10000 = 100
+    expect(result.change).toBeCloseTo(100, 2);
+  });
+
+  test('只有一条历史数据且 changePercent 为 0 时，也能正确计算', () => {
+    // 涨跌幅为 0 时，计算也有效
+    const currentInfo = createBeforeOpenIndexInfo({
+      tradeDate: '2026-06-17',
+      current: 0,
+      change: 0,
+      changePercent: 0,
+    });
+
+    const history = createHistory([
+      { date: '2026-06-16', value: 10100, equityReturn: 0 }, // 涨跌幅为 0
+    ]);
+
+    const result = applyBeforeOpenDataOverride(currentInfo, history, '15:00:00');
+
+    expect(result.tradeDate).toBe('2026-06-16');
+    expect(result.current).toBe(10100);
+    expect(result.changePercent).toBe(0);
+    // changePercent = 0 时，previousClose = current / 1 = current
+    expect(result.previousClose).toBeCloseTo(10100, 2);
+    // change = current - previousClose = 0
+    expect(result.change).toBeCloseTo(0, 2);
+  });
+
+  test('不是开盘前时（无 __isBeforeOpen 标记），不覆盖数据', () => {
+    const currentInfo: IndexInfo = {
+      symbol: '0.399001',
+      name: '深证成指',
+      current: 10200,
+      change: 100,
+      changePercent: 0.98,
+      lastUpdated: '10:30:00',
+      tradeDate: '2026-06-17',
+    };
+
+    const history = createHistory([
+      { date: '2026-06-16', value: 10100, equityReturn: 1.0 },
+    ]);
+
+    const result = applyBeforeOpenDataOverride(currentInfo, history, '15:00:00');
+
+    // 不是开盘前，应该返回原始数据
+    expect(result).toEqual(currentInfo);
+  });
+
+  test('历史数据最后一条的日期与当前交易日相同时，使用倒数第二条', () => {
+    // 场景：历史数据最后一条是当天的集合竞价数据（如恒科）
+    const currentInfo = createBeforeOpenIndexInfo({
+      tradeDate: '2026-06-16', // 与历史数据最后一条日期相同（当天）
+      current: 0,
+      change: 0,
+      changePercent: 0,
+    });
+
+    const history = createHistory([
+      { date: '2026-06-13', value: 10000, equityReturn: 0.5 }, // 前两个交易日
+      { date: '2026-06-16', value: 10150, equityReturn: 0.5 }, // 上一个交易日
+      { date: '2026-06-16', value: 10200, equityReturn: 0.5 }, // 当天集合竞价数据（lastPoint）
+    ]);
+
+    const result = applyBeforeOpenDataOverride(currentInfo, history, '15:00:00');
+
+    // 应使用倒数第二条（上一个交易日的完整收盘数据）
+    expect(result.tradeDate).toBe('2026-06-16'); // 上一个交易日日期
+    expect(result.current).toBe(10150); // 上一个交易日收盘价
+    expect(result.changePercent).toBe(0.5); // 上一个交易日涨跌幅
+    expect(result.previousClose).toBe(10000); // 前两个交易日收盘价
+    expect(result.change).toBe(10150 - 10000);
+  });
+
+  test('历史数据最后一条是当天且只有一条时，返回原始数据（无法获取上一个交易日）', () => {
+    const currentInfo = createBeforeOpenIndexInfo({
+      tradeDate: '2026-06-16',
+      current: 0,
+      change: 0,
+      changePercent: 0,
+    });
+
+    const history = createHistory([
+      { date: '2026-06-16', value: 10200, equityReturn: 0.5 }, // 只有当天数据
+    ]);
+
+    const result = applyBeforeOpenDataOverride(currentInfo, history, '15:00:00');
+
+    // 只有一条且是当天的，无法获取上一个交易日数据，返回原始数据
+    expect(result).toEqual(currentInfo);
+  });
+
+  test('历史数据为空时，不覆盖数据', () => {
+    const currentInfo = createBeforeOpenIndexInfo({
+      tradeDate: '2026-06-17',
+      current: 0,
+      change: 0,
+      changePercent: 0,
+    });
+
+    const result = applyBeforeOpenDataOverride(currentInfo, [], '15:00:00');
+
+    expect(result).toEqual(currentInfo);
+  });
+
+  test('equityReturn 为 0 时也能正确处理', () => {
+    const currentInfo = createBeforeOpenIndexInfo({
+      tradeDate: '2026-06-17',
+      current: 0,
+      change: 0,
+      changePercent: 0,
+    });
+
+    const history = createHistory([
+      { date: '2026-06-13', value: 10100, equityReturn: 0 },
+      { date: '2026-06-16', value: 10100, equityReturn: 0 }, // 涨跌幅为 0
+    ]);
+
+    const result = applyBeforeOpenDataOverride(currentInfo, history, '15:00:00');
+
+    expect(result.tradeDate).toBe('2026-06-16');
+    expect(result.current).toBe(10100);
+    expect(result.changePercent).toBe(0); // equityReturn 为 0 时使用默认值 0
+    expect(result.previousClose).toBe(10100);
+    expect(result.change).toBe(0); // 涨跌额 = 0
   });
 });
