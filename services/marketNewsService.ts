@@ -8,6 +8,7 @@
 
 import { JobResult } from '../types';
 import { FastNewsItem, FastNewsApiResponse } from '../types/fastNewsTypes';
+import { fetchWithProxy } from './proxyService';
 
 export interface NewsItem {
   id: string;
@@ -169,19 +170,34 @@ export async function fetchFastNews(pageSize: number = 20): Promise<FastNewsItem
   const url = `https://np-weblist.eastmoney.com/comm/web/getFastNewsList?client=web&biz=web_724&fastColumn=102&pageSize=${pageSize}&sortEnd=0&req_trace=${timestamp}`;
 
   try {
-    const response = await fetch(url, {
-      mode: 'cors',
+    // 使用代理服务解决 CORS 问题
+    const result = await fetchWithProxy(url, {
+      preferFormat: 'raw',  // 需要原始 JSON，不需要 markdown 转换
+      timeout: 10000,
     });
 
-    if (!response.ok) {
-      console.error(`fetchFastNews API error: HTTP ${response.status}`);
-      return [];
+    // 根据代理格式提取 JSON 内容
+    let jsonContent: string;
+    if (result.format === 'markdown') {
+      // r.jina.ai 等 markdown 代理会添加头部，需要提取实际 JSON
+      // 格式: "Title: ...\n\nURL Source: ...\n\nMarkdown Content:\n{JSON数据}"
+      const markdownMarker = 'Markdown Content:';
+      const markerIndex = result.content.indexOf(markdownMarker);
+      if (markerIndex !== -1) {
+        jsonContent = result.content.substring(markerIndex + markdownMarker.length).trim();
+      } else {
+        // 找不到标记，尝试直接解析（可能是纯 JSON）
+        jsonContent = result.content;
+      }
+    } else {
+      // raw 格式直接使用
+      jsonContent = result.content;
     }
 
-    const data: FastNewsApiResponse = await response.json();
+    const data: FastNewsApiResponse = JSON.parse(jsonContent);
 
     if (data.code !== '1' || !data.data?.fastNewsList) {
-      console.error('fetchFastNews API returned invalid data');
+      console.error('fetchFastNews API returned invalid data', data);
       return [];
     }
 

@@ -1,10 +1,21 @@
 // tests/services/marketNewsService.test.ts
 import * as marketNewsService from '../../services/marketNewsService';
 import { fetchFastNews } from '../../services/marketNewsService';
+import { fetchWithProxy } from '../../services/proxyService';
 
 // Mock global fetch
 const mockFetch = jest.fn();
 global.fetch = mockFetch;
+
+// Mock fetchWithProxy
+jest.mock('../../services/proxyService', () => ({
+  fetchWithProxy: jest.fn(),
+  PROXY_LIST: [],
+  orderProxiesByPreference: jest.fn(),
+  getProxyScoresSummary: jest.fn(),
+  resetProxyScores: jest.fn(),
+  checkProxyHealth: jest.fn(),
+}));
 
 describe('marketNewsService', () => {
   beforeEach(() => {
@@ -155,6 +166,12 @@ describe('marketNewsService', () => {
   });
 
   describe('fetchFastNews', () => {
+    const mockedFetchWithProxy = fetchWithProxy as jest.MockedFunction<typeof fetchWithProxy>;
+
+    beforeEach(() => {
+      mockedFetchWithProxy.mockReset();
+    });
+
     it('should fetch fast news from API', async () => {
       const mockResponse = {
         code: '1',
@@ -181,9 +198,10 @@ describe('marketNewsService', () => {
         },
       };
 
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        json: async () => mockResponse,
+      mockedFetchWithProxy.mockResolvedValueOnce({
+        content: JSON.stringify(mockResponse),
+        format: 'raw',
+        proxyName: 'test-proxy',
       });
 
       const result = await fetchFastNews(20);
@@ -195,20 +213,124 @@ describe('marketNewsService', () => {
     });
 
     it('should return empty array on API error', async () => {
-      mockFetch.mockResolvedValueOnce({
-        ok: false,
-        status: 500,
+      mockedFetchWithProxy.mockRejectedValueOnce(new Error('所有代理均失败'));
+
+      const result = await fetchFastNews(20);
+      expect(result).toEqual([]);
+    });
+
+    it('should return empty array on invalid JSON response', async () => {
+      mockedFetchWithProxy.mockResolvedValueOnce({
+        content: 'invalid json',
+        format: 'raw',
+        proxyName: 'test-proxy',
       });
 
       const result = await fetchFastNews(20);
       expect(result).toEqual([]);
     });
 
-    it('should return empty array on network error', async () => {
-      mockFetch.mockRejectedValueOnce(new Error('Network error'));
+    it('should return empty array on API returning error code', async () => {
+      const mockResponse = {
+        code: '0',
+        message: 'error',
+        data: null,
+      };
+
+      mockedFetchWithProxy.mockResolvedValueOnce({
+        content: JSON.stringify(mockResponse),
+        format: 'raw',
+        proxyName: 'test-proxy',
+      });
 
       const result = await fetchFastNews(20);
       expect(result).toEqual([]);
+    });
+
+    it('should handle markdown format response from r.jina.ai', async () => {
+      const mockJsonData = {
+        code: '1',
+        message: 'success',
+        data: {
+          sortEnd: '123456',
+          index: 1,
+          total: 100,
+          size: 20,
+          fastNewsList: [
+            {
+              code: '202606173774268029',
+              title: '测试新闻标题',
+              summary: '测试摘要',
+              showTime: '2026-06-17 11:11:50',
+              titleColor: 0,
+              stockList: [],
+              image: [],
+              share: 0,
+              pinglun_Num: 0,
+              realSort: '1781665910068029',
+            },
+          ],
+        },
+      };
+
+      // r.jina.ai 返回的 markdown 格式内容
+      const markdownContent = `Title:
+
+URL Source: https://np-weblist.eastmoney.com/api/test
+
+Markdown Content:
+${JSON.stringify(mockJsonData)}`;
+
+      mockedFetchWithProxy.mockResolvedValueOnce({
+        content: markdownContent,
+        format: 'markdown',
+        proxyName: 'r.jina.ai',
+      });
+
+      const result = await fetchFastNews(20);
+
+      expect(result).toHaveLength(1);
+      expect(result[0].code).toBe('202606173774268029');
+      expect(result[0].title).toBe('测试新闻标题');
+    });
+
+    it('should handle markdown response without marker (fallback to raw parse)', async () => {
+      const mockJsonData = {
+        code: '1',
+        message: 'success',
+        data: {
+          sortEnd: '123456',
+          index: 1,
+          total: 100,
+          size: 20,
+          fastNewsList: [
+            {
+              code: '202606173774268029',
+              title: '测试标题',
+              summary: '摘要',
+              showTime: '2026-06-17 11:11:50',
+              titleColor: 0,
+              stockList: [],
+              image: [],
+              share: 0,
+              pinglun_Num: 0,
+              realSort: '1781665910068029',
+            },
+          ],
+        },
+      };
+
+      // 没有 Markdown Content: 标记的响应
+      mockedFetchWithProxy.mockResolvedValueOnce({
+        content: JSON.stringify(mockJsonData),
+        format: 'markdown',
+        proxyName: 'test-proxy',
+      });
+
+      const result = await fetchFastNews(20);
+
+      expect(result).toHaveLength(1);
+      expect(result[0].code).toBe('202606173774268029');
     });
   });
 });
