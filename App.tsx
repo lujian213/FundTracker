@@ -1561,12 +1561,18 @@ const AppContent: React.FC = () => {
       />
       {/* 调试面板组件已在调试结束后移除 */}
 
-      {/* 快讯侧边栏触发区域 */}
+      {/* 快讯侧边栏触发区域 - 带视觉提示 */}
       <div
-        className="fixed right-0 top-0 bottom-0 w-[15px] z-[9997] cursor-pointer"
+        className="fixed right-0 top-1/2 -translate-y-1/2 z-[9997] flex items-center cursor-pointer group"
         onMouseEnter={() => setIsNewsSidebarVisible(true)}
         aria-label="打开财经快讯侧边栏"
-      />
+      >
+        {/* 触发条 */}
+        <div className="flex flex-col items-center bg-gradient-to-b from-blue-400 to-blue-600 rounded-l-lg py-3 px-2 shadow-lg group-hover:from-blue-500 group-hover:to-blue-700 transition-all duration-200">
+          <i className="fas fa-bolt text-white text-xs mb-1" />
+          <i className="fas fa-newspaper text-white text-sm" />
+        </div>
+      </div>
 
       {/* 快讯侧边栏 */}
       <NewsSidebar
