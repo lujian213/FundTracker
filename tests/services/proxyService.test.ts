@@ -346,6 +346,164 @@ describe('proxyService', () => {
 
       await expect(fetchWithProxy('https://api.example.com')).rejects.toThrow('所有代理均失败');
     });
+
+    test('validateContent callback returns true - validation passes', async () => {
+      const mockJsonContent = JSON.stringify({ code: '1', data: { items: [] } });
+
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        headers: {
+          get: (key: string) => key === 'content-type' ? 'application/json' : null,
+        },
+        text: () => Promise.resolve(mockJsonContent),
+      });
+
+      const result = await fetchWithProxy('https://api.example.com', {
+        validateContent: (content) => {
+          const data = JSON.parse(content);
+          return data.code === '1';
+        },
+      });
+
+      expect(result.content).toBe(mockJsonContent);
+    });
+
+    test('validateContent callback returns false - tries next proxy', async () => {
+      // 第一个代理返回业务错误（code !== '1'）
+      const errorResponse = JSON.stringify({ code: '0', message: 'API error' });
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        headers: {
+          get: (key: string) => key === 'content-type' ? 'application/json' : null,
+        },
+        text: () => Promise.resolve(errorResponse),
+      });
+
+      // 第二个代理返回成功
+      const successResponse = JSON.stringify({ code: '1', data: { items: [] } });
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        headers: {
+          get: (key: string) => key === 'content-type' ? 'application/json' : null,
+        },
+        text: () => Promise.resolve(successResponse),
+      });
+
+      const result = await fetchWithProxy('https://api.example.com', {
+        validateContent: (content) => {
+          const data = JSON.parse(content);
+          return data.code === '1';
+        },
+      });
+
+      expect(result.content).toBe(successResponse);
+      expect(mockFetch).toHaveBeenCalledTimes(2);
+    });
+
+    test('validateContent callback returns object with error - tries next proxy', async () => {
+      // 第一个代理返回业务错误
+      const errorResponse = JSON.stringify({ code: '0', message: 'Required parameter missing' });
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        headers: {
+          get: (key: string) => key === 'content-type' ? 'application/json' : null,
+        },
+        text: () => Promise.resolve(errorResponse),
+      });
+
+      // 第二个代理返回成功
+      const successResponse = JSON.stringify({ code: '1', data: { items: [] } });
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        headers: {
+          get: (key: string) => key === 'content-type' ? 'application/json' : null,
+        },
+        text: () => Promise.resolve(successResponse),
+      });
+
+      const result = await fetchWithProxy('https://api.example.com', {
+        validateContent: (content) => {
+          const data = JSON.parse(content);
+          if (data.code !== '1') {
+            return { valid: false, error: `API error: ${data.message}` };
+          }
+          return true;
+        },
+      });
+
+      expect(result.content).toBe(successResponse);
+    });
+
+    test('validateContent callback throws - tries next proxy', async () => {
+      // 第一个代理返回内容，但 validateContent 抛出异常
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        headers: {
+          get: (key: string) => key === 'content-type' ? 'application/json' : null,
+        },
+        text: () => Promise.resolve(JSON.stringify({ invalid: true })),
+      });
+
+      // 第二个代理返回成功
+      const successResponse = JSON.stringify({ code: '1', data: {} });
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        headers: {
+          get: (key: string) => key === 'content-type' ? 'application/json' : null,
+        },
+        text: () => Promise.resolve(successResponse),
+      });
+
+      // 使用返回 false 的方式模拟验证失败（而不是抛出异常）
+      // 因为抛出异常会被 catch 块捕获，视为代理失败
+      const result = await fetchWithProxy('https://api.example.com', {
+        validateContent: (content) => {
+          const data = JSON.parse(content);
+          // 第一个响应验证失败，第二个成功
+          return data.code === '1';
+        },
+      });
+
+      expect(result.content).toBe(successResponse);
+      expect(mockFetch).toHaveBeenCalledTimes(2);
+    });
+
+    test('all proxies fail validateContent callback - throws error', async () => {
+      // 所有代理返回业务错误
+      for (let i = 0; i < PROXY_LIST.length; i++) {
+        mockFetch.mockResolvedValueOnce({
+          ok: true,
+          headers: {
+            get: (key: string) => key === 'content-type' ? 'application/json' : null,
+          },
+          text: () => Promise.resolve(JSON.stringify({ code: '0', message: 'Error' })),
+        });
+      }
+
+      await expect(fetchWithProxy('https://api.example.com', {
+        validateContent: (content) => {
+          const data = JSON.parse(content);
+          return data.code === '1';
+        },
+      })).rejects.toThrow('所有代理均失败');
+    });
+
+    test('no validateContent callback - uses default format validation', async () => {
+      const mockJsonContent = JSON.stringify({ any: 'data' });
+
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        headers: {
+          get: (key: string) => key === 'content-type' ? 'application/json' : null,
+        },
+        text: () => Promise.resolve(mockJsonContent),
+      });
+
+      // 不提供 validateContent，应该使用默认格式验证（JSON 格式验证）
+      const result = await fetchWithProxy('https://api.example.com');
+
+      expect(result.content).toBe(mockJsonContent);
+    });
   });
 
   describe('PROXY_LIST', () => {

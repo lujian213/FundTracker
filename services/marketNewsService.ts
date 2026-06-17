@@ -174,6 +174,33 @@ export async function fetchFastNews(pageSize: number = 20): Promise<FastNewsItem
     const result = await fetchWithProxy(url, {
       preferFormat: 'raw',  // 需要原始 JSON，不需要 markdown 转换
       timeout: 10000,
+      // 业务验证：检查 API 返回的 code 是否为 '1'
+      validateContent: (content, format) => {
+        try {
+          // 对于 markdown 格式，需要先提取 JSON 部分
+          let jsonContent: string;
+          if (format === 'markdown') {
+            const markdownMarker = 'Markdown Content:';
+            const markerIndex = content.indexOf(markdownMarker);
+            if (markerIndex !== -1) {
+              jsonContent = content.substring(markerIndex + markdownMarker.length).trim();
+            } else {
+              jsonContent = content;
+            }
+          } else {
+            jsonContent = content;
+          }
+
+          const data = JSON.parse(jsonContent);
+          // 东方财富财经快讯 API 成功标志：code === '1'
+          if (data.code !== '1') {
+            return { valid: false, error: `API返回错误: ${data.message || '未知错误'}` };
+          }
+          return true;
+        } catch (e) {
+          return { valid: false, error: 'JSON解析失败' };
+        }
+      },
     });
 
     // 根据代理格式提取 JSON 内容

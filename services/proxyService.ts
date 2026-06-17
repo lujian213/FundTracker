@@ -176,6 +176,14 @@ export interface FetchWithProxyOptions {
   body?: string;          // POST/PUT 的请求体（JSON 字符串）
   timeout?: number;       // 超时时间（毫秒），默认 8000
   preferFormat?: 'raw' | 'markdown';  // 代理选择倾向，默认按评分排序
+  /**
+   * 业务内容验证回调（可选）
+   * 调用方可以提供自定义验证逻辑，判断返回内容是否符合业务预期
+   * @param content 代理返回的内容
+   * @param format 内容格式
+   * @returns true 表示验证通过，false 或 { valid: false, error: '...' } 表示验证失败
+   */
+  validateContent?: (content: string, format: 'raw' | 'markdown') => boolean | { valid: boolean; error?: string };
 }
 
 export interface FetchResult {
@@ -232,7 +240,7 @@ function validateContentByContentType(
 /**
  * 通过代理发送请求
  * @param targetUrl 目标 URL
- * @param options 可选参数，包括 HTTP 方法、headers、body、格式偏好
+ * @param options 可选参数，包括 HTTP 方法、headers、body、格式偏好、自定义验证回调
  * @returns FetchResult 包含内容、格式和成功的代理名称
  * @throws Error 当所有代理都失败时抛出异常
  */
@@ -245,6 +253,7 @@ export async function fetchWithProxy(
   const body = options?.body;
   const timeout = options?.timeout || PROXY_TIMEOUT_MS;
   const preferFormat = options?.preferFormat;
+  const customValidate = options?.validateContent;
 
   const errors: { proxy: string; error: Error }[] = [];
 
@@ -289,13 +298,25 @@ export async function fetchWithProxy(
       const content = await response.text();
       const totalTime = Date.now() - startTime;
 
-      // 基于 content-type 验证内容
+      // 基于格式验证内容（基本验证）
       const contentType = response.headers.get('content-type');
-      const validation = validateContentByContentType(content, contentType, proxy.format);
+      const formatValidation = validateContentByContentType(content, contentType, proxy.format);
 
-      if (!validation.valid) {
+      if (!formatValidation.valid) {
         scoreManager.record(proxy.name, false, totalTime);
-        throw new Error(validation.error || '内容验证失败');
+        throw new Error(formatValidation.error || '内容格式验证失败');
+      }
+
+      // 业务验证（如果提供了自定义验证回调）
+      if (customValidate) {
+        const customResult = customValidate(content, proxy.format);
+        const isCustomValid = typeof customResult === 'boolean' ? customResult : customResult.valid;
+        const customError = typeof customResult === 'boolean' ? undefined : customResult.error;
+
+        if (!isCustomValid) {
+          scoreManager.record(proxy.name, false, totalTime);
+          throw new Error(customError || '业务验证失败');
+        }
       }
 
       scoreManager.record(proxy.name, true, totalTime);
