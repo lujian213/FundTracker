@@ -5946,4 +5946,128 @@ test.describe('testBedWithData', () => {
 
     console.log('交易策略参数配置测试完成');
   });
+
+  // ══════════════════════════════════════════════════════════════════════════════
+  // 12. 快讯侧边栏测试
+  // ══════════════════════════════════════════════════════════════════════════════
+  test('快讯侧边栏测试', async () => {
+    const page = sharedPage!;
+
+    // 侧边栏应处于隐藏状态
+    const sidebar = page.locator('div[class*="translate-x-full"][class*="w-[420px]"]');
+    await expect(sidebar).toBeVisible();
+
+    // 验证主界面有滚动条（侧边栏隐藏时）
+    const hasScrollbar = await page.evaluate(() => {
+      return document.body.scrollHeight > window.innerHeight;
+    });
+
+    // ══════════════════════════════════════════════════════════════════════════════
+    // 1. 触发侧边栏滑出
+    // ══════════════════════════════════════════════════════════════════════════════
+    // 将鼠标移动到页面右侧边缘（触发区域15px）
+    const viewportWidth = page.viewportSize()?.width || 1280;
+    await page.mouse.move(viewportWidth - 5, 300);
+
+    // 等待侧边栏滑出动画完成（约300ms）
+    await page.waitForTimeout(500);
+
+    // 验证侧边栏已展开（不再有 translate-x-full）
+    const expandedSidebar = page.locator('div[class*="fixed"][class*="right-0"][class*="w-[420px]"]').filter({
+      has: page.locator('h3:has-text("财经快讯")')
+    });
+    await expect(expandedSidebar).toBeVisible();
+
+    // 验证侧边栏标题显示
+    await expect(expandedSidebar.locator('h3:has-text("财经快讯 · 全球直播")')).toBeVisible();
+
+    console.log('侧边栏滑出验证完成');
+
+    // ══════════════════════════════════════════════════════════════════════════════
+    // 2. 验证滚动条状态
+    // ══════════════════════════════════════════════════════════════════════════════
+    // 侧边栏展开时，主界面滚动条应隐藏
+    const bodyOverflow = await page.evaluate(() => {
+      return document.body.style.overflow;
+    });
+    expect(bodyOverflow).toBe('hidden');
+
+    console.log('滚动条隐藏验证完成');
+
+    // ══════════════════════════════════════════════════════════════════════════════
+    // 3. 验证延迟关闭（鼠标移出后300ms收起）
+    // ══════════════════════════════════════════════════════════════════════════════
+    // 将鼠标移出侧边栏区域（移到左侧）
+    await page.mouse.move(100, 300);
+
+    // 等待延迟关闭时间（300ms + 缓冲）
+    await page.waitForTimeout(400);
+
+    // 验证侧边栏已收起
+    const collapsedSidebar = page.locator('div[class*="translate-x-full"][class*="w-[420px]"]');
+    await expect(collapsedSidebar).toBeVisible();
+
+    console.log('延迟关闭验证完成');
+
+    // ══════════════════════════════════════════════════════════════════════════════
+    // 4. 验证滚动条恢复
+    // ══════════════════════════════════════════════════════════════════════════════
+    const restoredOverflow = await page.evaluate(() => {
+      return document.body.style.overflow;
+    });
+    expect(restoredOverflow).toBe('');
+
+    console.log('滚动条恢复验证完成');
+
+    // ══════════════════════════════════════════════════════════════════════════════
+    // 5. 验证鼠标重新进入取消关闭
+    // ══════════════════════════════════════════════════════════════════════════════
+    // 再次触发侧边栏滑出
+    await page.mouse.move(viewportWidth - 5, 300);
+    await page.waitForTimeout(500);
+
+    // 将鼠标移出，然后快速移回（在300ms内）
+    await page.mouse.move(100, 300);
+    await page.waitForTimeout(100); // 只等待100ms
+    await page.mouse.move(viewportWidth - 100, 300); // 移回侧边栏区域
+
+    // 等待足够时间确认侧边栏没有关闭
+    await page.waitForTimeout(500);
+
+    // 验证侧边栏仍然展开
+    await expect(expandedSidebar).toBeVisible();
+
+    console.log('取消关闭验证完成');
+
+    // ══════════════════════════════════════════════════════════════════════════════
+    // 6. 验证侧边栏内容可滚动
+    // ══════════════════════════════════════════════════════════════════════════════
+    // 再次触发侧边栏滑出
+    await page.mouse.move(viewportWidth - 5, 300);
+    await page.waitForTimeout(500);
+
+    // 验证侧边栏展开
+    await expect(expandedSidebar).toBeVisible();
+
+    // 验证侧边栏内部滚动容器存在
+    const scrollContainer = expandedSidebar.locator('div.overflow-y-auto');
+    await expect(scrollContainer).toBeVisible();
+
+    console.log('侧边栏滚动容器验证完成');
+
+    // ══════════════════════════════════════════════════════════════════════════════
+    // 7. 最终关闭侧边栏
+    // ══════════════════════════════════════════════════════════════════════════════
+    await page.mouse.move(100, 300);
+    await page.waitForTimeout(400);
+
+    // 验证侧边栏已收起
+    await expect(collapsedSidebar).toBeVisible();
+
+    // 验证主界面恢复正常滚动行为
+    const finalOverflow = await page.evaluate(() => document.body.style.overflow);
+    expect(finalOverflow).toBe('');
+
+    console.log('快讯侧边栏测试完成');
+  });
 });

@@ -1,0 +1,160 @@
+// components/NewsSidebar.tsx
+
+import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { FastNewsItem } from '../types/fastNewsTypes';
+import { fetchFastNews } from '../services/marketNewsService';
+import NewsCard from './NewsCard';
+
+interface NewsSidebarProps {
+  isVisible: boolean;
+  onClose: () => void;
+}
+
+/**
+ * 财经快讯侧边栏组件
+ */
+const NewsSidebar: React.FC<NewsSidebarProps> = ({ isVisible, onClose }) => {
+  const [news, setNews] = useState<FastNewsItem[]>([]);
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const closeTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const refreshIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  // 获取快讯数据
+  const loadNews = useCallback(async () => {
+    setIsLoading(true);
+    setError(null);
+
+    try {
+      const result = await fetchFastNews(20);
+      if (result.length === 0) {
+        setError('暂无快讯');
+      } else {
+        setNews(result);
+      }
+    } catch (e) {
+      setError('获取快讯失败');
+    } finally {
+      setIsLoading(false);
+    }
+  }, []);
+
+  // 侧边栏打开时加载快讯并启动自动刷新
+  useEffect(() => {
+    if (isVisible) {
+      loadNews();
+
+      // 启动自动刷新(30秒)
+      refreshIntervalRef.current = setInterval(loadNews, 30000);
+    } else {
+      // 清除自动刷新定时器
+      if (refreshIntervalRef.current) {
+        clearInterval(refreshIntervalRef.current);
+        refreshIntervalRef.current = null;
+      }
+    }
+
+    return () => {
+      if (refreshIntervalRef.current) {
+        clearInterval(refreshIntervalRef.current);
+      }
+    };
+  }, [isVisible, loadNews]);
+
+  // 侧边栏显示时隐藏窗口滚动条,消失时恢复
+  useEffect(() => {
+    if (isVisible) {
+      document.body.style.overflow = 'hidden';
+    } else {
+      document.body.style.overflow = '';
+    }
+
+    return () => {
+      document.body.style.overflow = '';
+    };
+  }, [isVisible]);
+
+  // 处理鼠标离开,延迟 300ms 后关闭
+  const handleMouseLeave = useCallback(() => {
+    if (closeTimeoutRef.current) {
+      clearTimeout(closeTimeoutRef.current);
+    }
+    closeTimeoutRef.current = setTimeout(() => {
+      onClose();
+    }, 300);
+  }, [onClose]);
+
+  // 处理鼠标进入,取消关闭
+  const handleMouseEnter = useCallback(() => {
+    if (closeTimeoutRef.current) {
+      clearTimeout(closeTimeoutRef.current);
+      closeTimeoutRef.current = null;
+    }
+  }, []);
+
+  // 手动刷新
+  const handleRefresh = useCallback(() => {
+    loadNews();
+  }, [loadNews]);
+
+  // 点击快讯卡片
+  const handleNewsClick = useCallback((item: FastNewsItem) => {
+    window.open(item.url, '_blank', 'noopener,noreferrer');
+  }, []);
+
+  return (
+    <div
+      className={`fixed right-0 top-0 bottom-0 w-[420px] bg-gray-50 border-l border-gray-200 shadow-xl z-[9998] transition-transform duration-300 ease-out flex flex-col ${
+        isVisible ? 'translate-x-0' : 'translate-x-full'
+      }`}
+      onMouseLeave={handleMouseLeave}
+      onMouseEnter={handleMouseEnter}
+      onWheel={(e) => e.stopPropagation()}
+    >
+      {/* 标题栏 */}
+      <div className="flex items-center justify-between px-4 py-3 bg-white border-b border-gray-200">
+        <div>
+          <h3 className="text-sm font-bold text-gray-800">财经快讯 · 全球直播</h3>
+          <p className="text-[10px] text-gray-500">{news.length} 条快讯</p>
+        </div>
+        <button
+          onClick={handleRefresh}
+          disabled={isLoading}
+          className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-full transition-colors disabled:opacity-50"
+          title="刷新快讯"
+          aria-label="刷新快讯"
+        >
+          <i className={`fas fa-sync-alt ${isLoading ? 'animate-spin' : ''}`} />
+        </button>
+      </div>
+
+      {/* 快讯列表 */}
+      <div className="flex-1 overflow-y-auto p-3 space-y-2">
+        {isLoading && news.length === 0 ? (
+          <div className="flex items-center justify-center h-32">
+            <div className="flex items-center space-x-2 text-gray-500">
+              <div className="h-2 w-2 bg-blue-500 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
+              <div className="h-2 w-2 bg-blue-500 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
+              <div className="h-2 w-2 bg-blue-500 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
+            </div>
+          </div>
+        ) : error ? (
+          <div className="flex items-center justify-center h-32 text-gray-500 text-sm">
+            {error}
+          </div>
+        ) : (
+          news.map((item) => (
+            <NewsCard
+              key={item.code}
+              news={item}
+              onClick={() => handleNewsClick(item)}
+            />
+          ))
+        )}
+      </div>
+    </div>
+  );
+};
+
+export default NewsSidebar;

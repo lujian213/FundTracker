@@ -64,6 +64,7 @@ import { getHolidaySource } from './services/calendarHolidaySourceService';
 import { processCalendarHoliday, parseCalendarAIResponse } from './services/calendarHolidayService';
 // 调试面板和日志拦截器 - 仅开发环境使用（构建时会自动移除）
 import { isDev } from './utils/env';
+import NewsSidebar from './components/NewsSidebar';
 
 const createPlaceholderIndex = (symbol: string): MarketIndex => {
   const normalized = normalizeIndexSymbol(symbol);
@@ -277,6 +278,7 @@ const AppContent: React.FC = () => {
   const [autoBackupStatus, setAutoBackupStatus] = useState<'pending' | 'done' | null>(null);
   const [deepToast, setDeepToast] = useState<{ message: string, visible: boolean } | undefined>(undefined);
   const [screenshotToast, setScreenshotToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
+  const [isNewsSidebarVisible, setIsNewsSidebarVisible] = useState<boolean>(false);
 
   const manageableItemCount = portfolio.length + indicesConfig.length;
 
@@ -1558,6 +1560,19 @@ const AppContent: React.FC = () => {
         }}
       />
       {/* 调试面板组件已在调试结束后移除 */}
+
+      {/* 快讯侧边栏触发区域 */}
+      <div
+        className="fixed right-0 top-0 bottom-0 w-[15px] z-[9997] cursor-pointer"
+        onMouseEnter={() => setIsNewsSidebarVisible(true)}
+        aria-label="打开财经快讯侧边栏"
+      />
+
+      {/* 快讯侧边栏 */}
+      <NewsSidebar
+        isVisible={isNewsSidebarVisible}
+        onClose={() => setIsNewsSidebarVisible(false)}
+      />
     </div>
   );
 };

@@ -1,5 +1,6 @@
 // tests/services/marketNewsService.test.ts
 import * as marketNewsService from '../../services/marketNewsService';
+import { fetchFastNews } from '../../services/marketNewsService';
 
 // Mock global fetch
 const mockFetch = jest.fn();
@@ -150,6 +151,64 @@ describe('marketNewsService', () => {
       const result = await marketNewsService.fetchMarketNews();
       expect(result.success).toBe(true);
       expect(result.data).toHaveLength(2);
+    });
+  });
+
+  describe('fetchFastNews', () => {
+    it('should fetch fast news from API', async () => {
+      const mockResponse = {
+        code: '1',
+        message: 'success',
+        data: {
+          sortEnd: '123456',
+          index: 1,
+          total: 100,
+          size: 20,
+          fastNewsList: [
+            {
+              code: '202606173774268029',
+              title: '吴清：适时发布规范发展资本市场人工智能的指导意见',
+              summary: '证监会主席表示...',
+              showTime: '2026-06-17 11:11:50',
+              titleColor: 3,
+              stockList: [],
+              image: [],
+              share: 0,
+              pinglun_Num: 0,
+              realSort: '1781665910068029',
+            },
+          ],
+        },
+      };
+
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => mockResponse,
+      });
+
+      const result = await fetchFastNews(20);
+
+      expect(result).toHaveLength(1);
+      expect(result[0].code).toBe('202606173774268029');
+      expect(result[0].title).toBe('吴清：适时发布规范发展资本市场人工智能的指导意见');
+      expect(result[0].titleColor).toBe(3);
+    });
+
+    it('should return empty array on API error', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: false,
+        status: 500,
+      });
+
+      const result = await fetchFastNews(20);
+      expect(result).toEqual([]);
+    });
+
+    it('should return empty array on network error', async () => {
+      mockFetch.mockRejectedValueOnce(new Error('Network error'));
+
+      const result = await fetchFastNews(20);
+      expect(result).toEqual([]);
     });
   });
 });

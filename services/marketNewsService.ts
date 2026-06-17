@@ -7,6 +7,7 @@
  */
 
 import { JobResult } from '../types';
+import { FastNewsItem, FastNewsApiResponse } from '../types/fastNewsTypes';
 
 export interface NewsItem {
   id: string;
@@ -154,5 +155,46 @@ export async function fetchMarketNews(): Promise<JobResult<NewsItem[]>> {
   } catch (e) {
     // 所有 API 都失败
     return { success: false, message: (e as Error).message || '未知错误' };
+  }
+}
+
+/**
+ * 获取财经快讯（全球直播分类）
+ *
+ * @param pageSize 获取数量，默认 20
+ * @returns 快讯列表
+ */
+export async function fetchFastNews(pageSize: number = 20): Promise<FastNewsItem[]> {
+  const timestamp = Date.now();
+  const url = `https://np-weblist.eastmoney.com/comm/web/getFastNewsList?client=web&biz=web_724&fastColumn=102&pageSize=${pageSize}&sortEnd=0&req_trace=${timestamp}`;
+
+  try {
+    const response = await fetch(url, {
+      mode: 'cors',
+    });
+
+    if (!response.ok) {
+      console.error(`fetchFastNews API error: HTTP ${response.status}`);
+      return [];
+    }
+
+    const data: FastNewsApiResponse = await response.json();
+
+    if (data.code !== '1' || !data.data?.fastNewsList) {
+      console.error('fetchFastNews API returned invalid data');
+      return [];
+    }
+
+    return data.data.fastNewsList.map(item => ({
+      code: item.code,
+      title: item.title,
+      summary: item.summary,
+      showTime: item.showTime,
+      titleColor: item.titleColor,
+      url: `https://finance.eastmoney.com/a/${item.code}.html`,
+    }));
+  } catch (error) {
+    console.error('fetchFastNews error:', error);
+    return [];
   }
 }
