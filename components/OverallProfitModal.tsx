@@ -6,7 +6,7 @@ import { toLocalDateKey } from '../utils/priceResolver';
 import { OVERALL_PROFIT_DATE_PRESETS, getOverallProfitPresetRange, OverallProfitDatePresetKey } from '../utils/overallProfitDatePresets';
 import { formatMoney, formatMoneyWithSeparators } from '../utils/format';
 import { formatDateDisplay } from '../utils/dateFormat';
-import { buildLinearPath, CHART_DIMENSIONS, mergeChartPoints, ChartPointWithData } from '../utils/chartUtils';
+import { buildLinearPath, CHART_DIMENSIONS, mergeChartPoints, ChartPointWithData, buildDisplayIndexMap } from '../utils/chartUtils';
 import { MoneyCell } from './MoneyCell';
 
 interface Props {
@@ -139,13 +139,9 @@ const OverallProfitModal: React.FC<Props> = ({ symbols, onClose, onSelectFund })
     }));
 
     // 合并点用于显示（保持视觉清晰）
-    const mergedPts = mergeChartPoints(originalPts);
-
-    // 重新计算合并点的 X 坐标（基于合并后的数量）
-    const displayPts = mergedPts.map((p, i) => ({
-      ...p,
-      x: getX(i, mergedPts.length)
-    }));
+    // 注意：合并后的点保留原始X坐标，不重新计算
+    // 这样确保显示的点位置与hover检测区域一致
+    const displayPts = mergeChartPoints(originalPts);
 
     const path = buildLinearPath(displayPts, { chartHeight: h, paddingBottom: padBottom });
     const areaPath = buildLinearPath(displayPts, { closePath: true, chartHeight: h, paddingBottom: padBottom });
@@ -161,11 +157,15 @@ const OverallProfitModal: React.FC<Props> = ({ symbols, onClose, onSelectFund })
       yTicks.push({ y: getY(v), label: (v >= 0 ? '+' : '') + v, isZero: v === 0 });
     }
 
+    // 建立原始点到显示点的映射：用于hover时找到最近的显示点
+    const originalToDisplayMap = buildDisplayIndexMap(originalPts, displayPts);
+
     return {
       path,
       areaPath,
       points: displayPts,        // 合并后的点，用于显示折线和圆点
       originalPoints: originalPts, // 原始点，用于 hover 检测
+      originalToDisplayMap,       // 原始索引到显示索引的映射
       xTicks,
       yTicks,
       padLeft,
@@ -175,13 +175,38 @@ const OverallProfitModal: React.FC<Props> = ({ symbols, onClose, onSelectFund })
       width: w,
       height: h,
       zeroY,
-      mergedCount: mergedPts.length,
+      mergedCount: displayPts.length,
       originalCount: originalPts.length
     };
   }, [chartTimeline]);
 
-  const handlePointClick = useCallback((idx: number) => {
+  const handlePointClick = useCallback((idx: number, chartData?: any) => {
     if (!chartTimeline || chartTimeline.length === 0) return;
+
+    // 使用映射后的显示点数据（如果提供了映射）
+    if (chartData && chartData.originalToDisplayMap) {
+      const displayIdx = chartData.originalToDisplayMap.get(idx);
+      if (displayIdx !== undefined && chartData.points[displayIdx]) {
+        const displayPoint = chartData.points[displayIdx];
+        // 根据显示点的日期在chartTimeline中找到对应的数据
+        const timelineIdx = chartTimeline.findIndex(p => p.date === displayPoint.data.date);
+        if (timelineIdx >= 0) {
+          const current = chartTimeline[timelineIdx];
+          const prevDate = timelineIdx > 0
+            ? chartTimeline[timelineIdx - 1].date
+            : (() => {
+                const d = new Date(current.date);
+                d.setDate(d.getDate() - 1);
+                return toLocalDateKey(d);
+              })();
+          setFromDate(prevDate);
+          setToDate(current.date);
+          return;
+        }
+      }
+    }
+
+    // 兜底逻辑：直接使用原始索引（当映射不可用时）
     const current = chartTimeline[idx];
     if (!current) return;
     const prevDate = idx > 0
@@ -734,13 +759,20 @@ const OverallProfitModal: React.FC<Props> = ({ symbols, onClose, onSelectFund })
                       height={Math.max(1, (chart.height ?? 200) - 40)}
                       fill="transparent"
                       onMouseEnter={() => setHoverIndex(i)}
-                      onClick={() => handlePointClick(i)}
+                      onClick={() => handlePointClick(i, chart)}
                       className="cursor-crosshair"
                       data-testid={`overall-profit-point-${i}`}
                     />
                   ))}
                 </svg>
                 {hoverIndex !== null && chart.originalPoints[hoverIndex] && (() => {
+                  // 获取映射后的显示点索引和数据显示点数据用于tooltip显示
+                  const displayIdx = chart.originalToDisplayMap?.get(hoverIndex);
+                  const displayPoint = displayIdx !== undefined ? chart.points[displayIdx] : null;
+
+                  // 如果没有找到显示点，使用原始点数据
+                  const tooltipData = displayPoint ? displayPoint.data : chart.originalPoints[hoverIndex].data;
+
                   // tooltip定位：优先放在点的一侧，避免遮挡点和超出边界
                   const containerRect = chartWrapRef.current?.getBoundingClientRect();
                   const svgRect = chartSvgRef.current?.getBoundingClientRect();
@@ -751,8 +783,9 @@ const OverallProfitModal: React.FC<Props> = ({ symbols, onClose, onSelectFund })
                   // SVG坐标转换为像素坐标
                   const scaleX = svgRect.width / vbW;
                   const scaleY = svgRect.height / vbH;
-                  const ptX = chart.originalPoints[hoverIndex].x * scaleX;
-                  const ptY = chart.originalPoints[hoverIndex].y * scaleY;
+                  // 使用显示点的X坐标来定位tooltip，确保与显示圆点对齐
+                  const ptX = displayPoint ? displayPoint.x * scaleX : chart.originalPoints[hoverIndex].x * scaleX;
+                  const ptY = displayPoint ? displayPoint.y * scaleY : chart.originalPoints[hoverIndex].y * scaleY;
 
                   // tooltip尺寸（固定宽度避免换行）
                   const tooltipWidth = 160;
@@ -776,15 +809,15 @@ const OverallProfitModal: React.FC<Props> = ({ symbols, onClose, onSelectFund })
                       className="absolute z-20 bg-white/95 backdrop-blur-sm px-3 py-2 rounded-lg shadow-lg border border-gray-100 pointer-events-none whitespace-nowrap"
                       style={{ left, top, width: tooltipWidth }}
                     >
-                      <div className="text-xs text-gray-400 font-mono">{formatDateDisplay(chart.originalPoints[hoverIndex].data.date)}</div>
+                      <div className="text-xs text-gray-400 font-mono">{formatDateDisplay(tooltipData.date)}</div>
                       <div className="text-xs font-mono mt-1">
                         <span className="text-gray-400">当日</span>
-                        <span className={`ml-2 font-medium ${chart.originalPoints[hoverIndex].data.dailyProfit > 0 ? 'text-red-600' : chart.originalPoints[hoverIndex].data.dailyProfit < 0 ? 'text-green-600' : 'text-gray-700'}`}>{chart.originalPoints[hoverIndex].data.dailyProfit === 0 ? '-' : (chart.originalPoints[hoverIndex].data.dailyProfit > 0 ? '+' : '') + formatMoneyWithSeparators(chart.originalPoints[hoverIndex].data.dailyProfit)}</span>
+                        <span className={`ml-2 font-medium ${tooltipData.dailyProfit > 0 ? 'text-red-600' : tooltipData.dailyProfit < 0 ? 'text-green-600' : 'text-gray-700'}`}>{tooltipData.dailyProfit === 0 ? '-' : (tooltipData.dailyProfit > 0 ? '+' : '') + formatMoneyWithSeparators(tooltipData.dailyProfit)}</span>
                       </div>
                       <div className="text-xs font-mono">
                         <span className="text-gray-400">累计</span>
-                        <span className={`ml-2 font-medium ${chart.originalPoints[hoverIndex].data.cumulativeProfit > 0 ? 'text-red-600' : chart.originalPoints[hoverIndex].data.cumulativeProfit < 0 ? 'text-green-600' : 'text-gray-700'}`}>
-                          {chart.originalPoints[hoverIndex].data.cumulativeProfit === 0 ? '-' : (chart.originalPoints[hoverIndex].data.cumulativeProfit > 0 ? '+' : '') + formatMoneyWithSeparators(chart.originalPoints[hoverIndex].data.cumulativeProfit)}
+                        <span className={`ml-2 font-medium ${tooltipData.cumulativeProfit > 0 ? 'text-red-600' : tooltipData.cumulativeProfit < 0 ? 'text-green-600' : 'text-gray-700'}`}>
+                          {tooltipData.cumulativeProfit === 0 ? '-' : (tooltipData.cumulativeProfit > 0 ? '+' : '') + formatMoneyWithSeparators(tooltipData.cumulativeProfit)}
                         </span>
                       </div>
                     </div>

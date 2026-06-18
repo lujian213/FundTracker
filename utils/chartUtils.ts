@@ -40,11 +40,66 @@ export const CHART_DIMENSIONS = {
 export const MAX_VISIBLE_POINTS = 80;
 
 /**
+ * Number of most recent points to always preserve (not diluted)
+ */
+export const RECENT_POINTS_TO_KEEP = 10;
+
+/**
+ * Build a mapping from original point indices to display point indices
+ * Used when original points are merged for display
+ *
+ * Performance: O(n + m) using date lookup map instead of O(n*m) findIndex
+ */
+export function buildDisplayIndexMap(
+  originalPoints: ChartPointWithData[],
+  displayPoints: ChartPointWithData[]
+): Map<number, number> {
+  const mapping = new Map<number, number>();
+
+  // Build date-to-index lookup map for O(1) access (O(m) setup)
+  const dateToDisplayIdx = new Map<string, number>();
+  for (let i = 0; i < displayPoints.length; i++) {
+    dateToDisplayIdx.set(displayPoints[i].data.date, i);
+  }
+
+  // Build mapping (O(n) for main loop)
+  for (let origIdx = 0; origIdx < originalPoints.length; origIdx++) {
+    const origPoint = originalPoints[origIdx];
+
+    // O(1) date lookup
+    const displayIdx = dateToDisplayIdx.get(origPoint.data.date);
+
+    if (displayIdx !== undefined) {
+      // Point exists in display: direct mapping
+      mapping.set(origIdx, displayIdx);
+    } else {
+      // Point merged: find nearest by X coordinate (O(m) worst case)
+      // Could be optimized with binary search if displayPoints are sorted by x
+      let nearestIdx = 0;
+      let minDistance = Math.abs(displayPoints[0].x - origPoint.x);
+
+      for (let idx = 1; idx < displayPoints.length; idx++) {
+        const distance = Math.abs(displayPoints[idx].x - origPoint.x);
+        if (distance < minDistance) {
+          minDistance = distance;
+          nearestIdx = idx;
+        }
+      }
+
+      mapping.set(origIdx, nearestIdx);
+    }
+  }
+
+  return mapping;
+}
+
+/**
  * Find indices of key points that should always be preserved
  * - First point (start)
  * - Last point (current)
  * - Maximum cumulative profit point
  * - Minimum cumulative profit point
+ * - Most recent N points (RECENT_POINTS_TO_KEEP)
  */
 export function findKeyPointIndices(points: ChartPointWithData[]): Set<number> {
   const indices = new Set<number>();
@@ -75,6 +130,12 @@ export function findKeyPointIndices(points: ChartPointWithData[]): Set<number> {
 
   indices.add(maxIndex);
   indices.add(minIndex);
+
+  // Keep most recent N points (always preserve latest data)
+  const startIdx = Math.max(0, points.length - RECENT_POINTS_TO_KEEP);
+  for (let i = startIdx; i < points.length; i++) {
+    indices.add(i);
+  }
 
   return indices;
 }

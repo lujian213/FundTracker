@@ -34,7 +34,8 @@ describe('chartUtils', () => {
       expect(indices.has(9)).toBe(true);   // last
       expect(indices.has(7)).toBe(true);   // max (800)
       expect(indices.has(5)).toBe(true);   // min (-100)
-      expect(indices.size).toBe(4);
+      // With RECENT_POINTS_TO_KEEP = 10, all 10 points are preserved (dataset size = 10)
+      expect(indices.size).toBe(10); // All points preserved as recent points
     });
 
     test('handles single point', () => {
@@ -56,8 +57,9 @@ describe('chartUtils', () => {
 
       expect(indices.has(0)).toBe(true);
       expect(indices.has(4)).toBe(true);
-      // max and min are both at index 0
-      expect(indices.size).toBe(2);
+      // All points should be preserved because dataset size (5) < RECENT_POINTS_TO_KEEP (10)
+      // Plus max and min points (which are also covered by recent points)
+      expect(indices.size).toBe(5); // All 5 points are preserved
     });
   });
 
