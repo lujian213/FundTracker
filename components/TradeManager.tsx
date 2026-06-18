@@ -6,6 +6,7 @@ import { formatDateDisplay } from '../utils/dateFormat';
 import useTrades from '../hooks/useTrades';
 import { getMatcher, MatchedRecord } from '../utils/tradeMatcher';
 import { SymbolBadge } from './SymbolBadge';
+import { FeeInput } from './FeeInput';
 
 type TradeType = 'buy' | 'sell';
 type ViewMode = 'normal' | 'fifo' | 'lifo';
@@ -501,7 +502,15 @@ export const TradeManager: React.FC<{
           </div>
           <div>
             <label className="text-xs text-gray-500">手续费</label>
-            <input type="number" step="0.01" value={fee} onChange={e => setFee(e.target.value)} className="w-full px-2 py-1 border rounded h-8 text-sm text-right" />
+            <FeeInput
+              symbol={symbol}
+              type={type}
+              price={displayPrice}
+              total={type === 'buy' ? Number(total) : undefined}
+              shares={type === 'sell' ? Number(shares) : undefined}
+              value={Number(fee)}
+              onChange={(newFee) => setFee(String(newFee))}
+            />
           </div>
           <div>
             {type === 'buy' ? (

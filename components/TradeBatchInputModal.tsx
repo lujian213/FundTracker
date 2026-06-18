@@ -9,6 +9,7 @@ import { getHistory } from '../services/marketFundService';
 import { ConfirmDialog } from './ConfirmDialog';
 import { loadComboTradesFromStorage } from '../utils/comboTradeService';
 import * as marketFundService from '../services/marketFundService';
+import { FeeInput } from './FeeInput';
 
 interface Props {
   onClose: () => void;
@@ -593,8 +594,8 @@ const TradeBatchInputModal: React.FC<Props> = ({ onClose, onSaved, portfolio = [
                     <col style={{ width: '12%' }} />
                     <col style={{ width: '13%' }} />
                     <col style={{ width: '15%' }} />
-                    <col style={{ width: '13%' }} />
-                    <col style={{ width: '17%' }} />
+                    <col style={{ width: '15%' }} />
+                    <col style={{ width: '15%' }} />
                     <col style={{ width: '10%' }} />
                   </colgroup>
                   <thead className="sticky top-0 z-10 bg-gray-50">
@@ -670,13 +671,15 @@ const TradeBatchInputModal: React.FC<Props> = ({ onClose, onSaved, portfolio = [
                               />
                             </td>
                             <td className="px-3 py-2">
-                              <input
-                                type="number"
-                                step="0.01"
-                                min="0"
-                                value={row.fee === undefined ? '' : row.fee}
-                                onChange={(e) => updateRow(groupIndex, row.id, 'fee', e.target.value)}
-                                className="w-full text-right text-xs border border-gray-200 rounded px-2 py-1 [-moz-appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                              <FeeInput
+                                symbol={group.symbol}
+                                type={row.type}
+                                price={row.price}
+                                total={row.type === 'buy' ? row.total : undefined}
+                                shares={row.type === 'sell' ? row.shares : undefined}
+                                value={row.fee}
+                                onChange={(newFee) => updateRow(groupIndex, row.id, 'fee', newFee)}
+                                compact={true}
                               />
                             </td>
                             <td className="px-3 py-2">

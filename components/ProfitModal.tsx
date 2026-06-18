@@ -197,13 +197,9 @@ const ProfitModal: React.FC<ProfitModalProps> = ({ symbol, fundName, currentPric
     }));
 
     // 合并点用于显示（保持视觉清晰）
-    const mergedPts = mergeChartPoints(originalPts);
-
-    // 重新计算合并点的 X 坐标（基于合并后的数量）
-    const displayPts = mergedPts.map((p, i) => ({
-      ...p,
-      x: getX(i, mergedPts.length)
-    }));
+    // 注意：合并后的点保留原始X坐标，不重新计算
+    // 这样确保显示的点位置与hover检测区域一致
+    const displayPts = mergeChartPoints(originalPts);
 
     const path = buildLinearPath(displayPts, { chartHeight: h, paddingBottom: padBottom });
     const areaPath = buildLinearPath(displayPts, { closePath: true, chartHeight: h, paddingBottom: padBottom });
@@ -233,7 +229,7 @@ const ProfitModal: React.FC<ProfitModalProps> = ({ symbol, fundName, currentPric
       width: w,
       height: h,
       zeroY,
-      mergedCount: mergedPts.length,
+      mergedCount: displayPts.length,
       originalCount: originalPts.length
     };
   }, [displayedTimeline]);
