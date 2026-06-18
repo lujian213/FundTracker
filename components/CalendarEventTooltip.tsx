@@ -1,6 +1,6 @@
 // components/CalendarEventTooltip.tsx
 import React from 'react';
-import { isHolidayType, isImportantDataType } from '../services/calendarService';
+import { isHolidayType, isImportantDataType, isDeliveryType } from '../services/calendarService';
 
 export interface CalendarEventItem {
   date: string;
@@ -37,7 +37,7 @@ export const CalendarEventTooltip: React.FC<CalendarEventTooltipProps> = ({
 
   // 分类事件
   const holidayEvents = events.filter(e => isHolidayType(e.type));
-  const deliveryEvents = events.filter(e => e.type === 'delivery');
+  const deliveryEvents = events.filter(e => isDeliveryType(e.type));
   const importantDataEvents = events.filter(e => isImportantDataType(e.type));
 
   // 获取日期显示（所有事件的日期相同，取第一个）
