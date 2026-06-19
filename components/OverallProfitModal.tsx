@@ -8,6 +8,10 @@ import { formatMoney, formatMoneyWithSeparators } from '../utils/format';
 import { formatDateDisplay } from '../utils/dateFormat';
 import { buildLinearPath, CHART_DIMENSIONS, mergeChartPoints, ChartPointWithData, buildDisplayIndexMap } from '../utils/chartUtils';
 import { MoneyCell } from './MoneyCell';
+import DayCalendar from './DayCalendar';
+import WeekCalendar from './WeekCalendar';
+import MonthCalendar from './MonthCalendar';
+import YearCalendar from './YearCalendar';
 
 interface Props {
   symbols?: string[];
@@ -16,7 +20,7 @@ interface Props {
 }
 
 type ViewMode = 'chart' | 'calendar';
-type CalendarMode = 'day' | 'month' | 'year';
+type CalendarMode = 'day' | 'week' | 'month' | 'year';
 
 const OverallProfitModal: React.FC<Props> = ({ symbols, onClose, onSelectFund }) => {
   const [loading, setLoading] = useState(true);
@@ -277,21 +281,22 @@ const OverallProfitModal: React.FC<Props> = ({ symbols, onClose, onSelectFund })
     setToDate(toDateStr);
   }, []);
 
-  // 年历格子组件：减少两种布局的冗余
-  const YearCell = ({ year, profit, onClick }: { year: number; profit: number; onClick: () => void }) => (
-    <div
-      onClick={onClick}
-      className={`text-center py-2 rounded border cursor-pointer ${
-        profit > 0 ? 'bg-red-50 border-red-100' : profit < 0 ? 'bg-green-50 border-green-100' : 'bg-white border-gray-200'
-      } hover:bg-opacity-80`}
-    >
-      <div className="text-[10px] text-gray-600 font-medium">{year}年</div>
-      <div className={`text-[10px] font-mono ${profit > 0 ? 'text-red-600' : profit < 0 ? 'text-green-600' : 'text-gray-700'}`}>
-        {profit === 0 ? '-' : (profit > 0 ? '+' : '') + formatMoneyWithSeparators(profit)}
-      </div>
-    </div>
-  );
+  // 周历格子点击：fromDate = 选中周开始的前一天，toDate = 选中周结束日期（如果超过当天则用当天）
+  const handleWeekClick = useCallback((weekStart: string, weekEnd: string) => {
+    // 日期1 = 周开始日期的前一天
+    const prevDate = new Date(weekStart);
+    prevDate.setDate(prevDate.getDate() - 1);
+    const fromDateStr = toLocalDateKey(prevDate);
 
+    // 日期2 = 周结束日期（如果超过当天则选用当天）
+    const todayStr = toLocalDateKey(new Date());
+    const toDateStr = weekEnd > todayStr ? todayStr : weekEnd;
+
+    setFromDate(fromDateStr);
+    setToDate(toDateStr);
+  }, []);
+
+  
   const [tableRows, setTableRows] = useState<OverallFundRow[]>([]);
   const [tableError, setTableError] = useState<string | null>(null);
   // 表格列排序：三列共用一个排序状态，点击某列时该列启用排序
@@ -844,6 +849,19 @@ const OverallProfitModal: React.FC<Props> = ({ symbols, onClose, onSelectFund })
                     </button>
                     <button
                       type="button"
+                      onClick={() => setCalendarMode('week')}
+                      className={`w-10 h-10 rounded-lg flex items-center justify-center transition-colors ${
+                        calendarMode === 'week'
+                          ? 'bg-blue-100 text-blue-700 border border-blue-200'
+                          : 'bg-gray-50 text-gray-500 border border-gray-200 hover:bg-gray-100'
+                      }`}
+                      aria-label="周历视图"
+                      title="周"
+                    >
+                      <span className="text-sm font-medium">周</span>
+                    </button>
+                    <button
+                      type="button"
                       onClick={() => setCalendarMode('month')}
                       className={`w-10 h-10 rounded-lg flex items-center justify-center transition-colors ${
                         calendarMode === 'month'
@@ -872,162 +890,50 @@ const OverallProfitModal: React.FC<Props> = ({ symbols, onClose, onSelectFund })
                   {/* 右侧：日历/月历/年历显示区域 - 自适应宽度 */}
                   <div className="flex-1 min-w-0">
                 {calendarMode === 'day' && (
-                  <div className="flex flex-col">
-                    <div className="flex items-center justify-between mb-0.5 px-2">
-                      <button
-                        type="button"
-                        onClick={handlePrevMonth}
-                        disabled={!canGoPrevMonth}
-                        className={`w-6 h-6 flex items-center justify-center rounded transition-colors ${
-                          canGoPrevMonth
-                            ? 'text-gray-600 hover:bg-gray-200'
-                            : 'text-gray-300 cursor-not-allowed'
-                        }`}
-                        aria-label="上一月"
-                      >
-                        <i className="fas fa-chevron-left text-xs" />
-                      </button>
-                      <span className="text-sm font-medium text-gray-700">
-                        {calendarYear}年{calendarMonth}月
-                      </span>
-                      <button
-                        type="button"
-                        onClick={handleNextMonth}
-                        disabled={!canGoNextMonth}
-                        className={`w-6 h-6 flex items-center justify-center rounded transition-colors ${
-                          canGoNextMonth
-                            ? 'text-gray-600 hover:bg-gray-200'
-                            : 'text-gray-300 cursor-not-allowed'
-                        }`}
-                        aria-label="下一月"
-                      >
-                        <i className="fas fa-chevron-right text-xs" />
-                      </button>
-                    </div>
-                    <div className="grid grid-cols-7 gap-0.5 mb-0.5">
-                      {['日', '一', '二', '三', '四', '五', '六'].map(day => (
-                        <div key={day} className="text-center text-[10px] text-gray-400 font-medium">
-                          {day}
-                        </div>
-                      ))}
-                    </div>
-                    <div className="grid grid-cols-7 gap-0.5">
-                      {calendarDays.map((day, i) => (
-                        <div
-                          key={i}
-                          onClick={() => day.date > 0 && day.isInRange && handleDayClick(day.date)}
-                          className={`text-center py-0.5 rounded border ${
-                            day.date === 0
-                              ? 'border-transparent'
-                              : `${day.isInRange ? 'cursor-pointer' : ''} ${day.isInRange
-                                ? `${day.profit > 0 ? 'bg-red-50 border-red-100' : day.profit < 0 ? 'bg-green-50 border-green-100' : 'bg-white border-gray-200'} hover:bg-opacity-80`
-                                : 'bg-gray-100 border-gray-200'}`
-                          }`}
-                        >
-                          {day.date > 0 && (
-                            <>
-                              <div className="text-[10px] text-gray-600">{day.date}</div>
-                              <div className={`text-[10px] font-mono ${
-                                day.profit > 0 ? 'text-red-600' : day.profit < 0 ? 'text-green-600' : 'text-gray-700'
-                              }`}>
-                                {day.profit === 0 ? '-' : (day.profit > 0 ? '+' : '') + formatMoneyWithSeparators(day.profit)}
-                              </div>
-                            </>
-                          )}
-                        </div>
-                      ))}
-                    </div>
-                  </div>
+                  <DayCalendar
+                    calendarYear={calendarYear}
+                    calendarMonth={calendarMonth}
+                    calendarDays={calendarDays}
+                    canGoPrevMonth={canGoPrevMonth}
+                    canGoNextMonth={canGoNextMonth}
+                    onPrevMonth={handlePrevMonth}
+                    onNextMonth={handleNextMonth}
+                    onDayClick={handleDayClick}
+                  />
                 )}
                 {calendarMode === 'month' && (
-                  <div className="flex flex-col">
-                    <div className="flex items-center justify-between mb-2 px-2">
-                      <button
-                        type="button"
-                        onClick={handlePrevYear}
-                        disabled={!canGoPrevYear}
-                        className={`w-6 h-6 flex items-center justify-center rounded transition-colors ${
-                          canGoPrevYear
-                            ? 'text-gray-600 hover:bg-gray-200'
-                            : 'text-gray-300 cursor-not-allowed'
-                        }`}
-                        aria-label="上一年"
-                      >
-                        <i className="fas fa-chevron-left text-xs" />
-                      </button>
-                      <span className="text-sm font-medium text-gray-700">
-                        {calendarYear}年
-                      </span>
-                      <button
-                        type="button"
-                        onClick={handleNextYear}
-                        disabled={!canGoNextYear}
-                        className={`w-6 h-6 flex items-center justify-center rounded transition-colors ${
-                          canGoNextYear
-                            ? 'text-gray-600 hover:bg-gray-200'
-                            : 'text-gray-300 cursor-not-allowed'
-                        }`}
-                        aria-label="下一年"
-                      >
-                        <i className="fas fa-chevron-right text-xs" />
-                      </button>
-                    </div>
-                    <div className="grid grid-cols-4 gap-2">
-                      {monthlyProfits.map(mp => (
-                        <div
-                          key={mp.month}
-                          onClick={() => mp.isInRange && handleMonthClick(mp.month)}
-                          className={`text-center py-2 rounded border ${mp.isInRange ? 'cursor-pointer' : ''} ${
-                            mp.isInRange
-                              ? `${mp.profit > 0 ? 'bg-red-50 border-red-100' : mp.profit < 0 ? 'bg-green-50 border-green-100' : 'bg-white border-gray-200'} hover:bg-opacity-80`
-                              : 'bg-gray-100 border-gray-200'
-                          }`}
-                        >
-                          <div className="text-[10px] text-gray-600 font-medium">{mp.month}月</div>
-                          <div className={`text-[10px] font-mono ${
-                            mp.profit > 0 ? 'text-red-600' : mp.profit < 0 ? 'text-green-600' : 'text-gray-700'
-                          }`}>
-                            {mp.profit === 0 ? '-' : (mp.profit > 0 ? '+' : '') + formatMoneyWithSeparators(mp.profit)}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
+                  <MonthCalendar
+                    calendarYear={calendarYear}
+                    monthlyProfits={monthlyProfits}
+                    canGoPrevYear={canGoPrevYear}
+                    canGoNextYear={canGoNextYear}
+                    onPrevYear={handlePrevYear}
+                    onNextYear={handleNextYear}
+                    onMonthClick={handleMonthClick}
+                  />
+                )}
+                {calendarMode === 'week' && (
+                  <WeekCalendar
+                    calendarYear={calendarYear}
+                    calendarMonth={calendarMonth}
+                    calendarProfitMap={calendarProfitMap}
+                    chartFromDate={chartFromDate}
+                    chartEndDate={chartEndDate}
+                    canGoPrevMonth={canGoPrevMonth}
+                    canGoNextMonth={canGoNextMonth}
+                    onPrevMonth={handlePrevMonth}
+                    onNextMonth={handleNextMonth}
+                    onWeekClick={handleWeekClick}
+                  />
                 )}
                 {calendarMode === 'year' && (
-                  <div className="flex flex-col">
-                    {/* 年历顶部：期间累计信息 */}
-                    <div className="text-center text-xs mb-2 py-1 border-b border-gray-200">
-                      {chartFromDate && chartEndDate ? (
-                        <>
-                          <span className="text-gray-500">期间累计</span>
-                          <span className="text-gray-400 mx-1">（{formatDateDisplay(chartFromDate)} ~ {formatDateDisplay(chartEndDate)}）</span>
-                          <span className={`font-medium ${
-                            chartPeriodTotal === 0 ? 'text-gray-700' : chartPeriodTotal > 0 ? 'text-red-600' : 'text-green-600'
-                          }`}>
-                            {chartPeriodTotal === 0 ? '-' : (chartPeriodTotal > 0 ? '+' : '') + formatMoneyWithSeparators(chartPeriodTotal)}
-                          </span>
-                        </>
-                      ) : (
-                        <span className="text-gray-400">暂无数据</span>
-                      )}
-                    </div>
-                    {yearlyProfits.length >= 4 ? (
-                      <div className="grid grid-cols-4 gap-2">
-                        {yearlyProfits.map(yp => (
-                          <YearCell key={yp.year} year={yp.year} profit={yp.profit} onClick={() => handleYearClick(yp.year)} />
-                        ))}
-                      </div>
-                    ) : (
-                      <div className="flex justify-center gap-2">
-                        {yearlyProfits.map(yp => (
-                          <div key={yp.year} className="w-1/4">
-                            <YearCell year={yp.year} profit={yp.profit} onClick={() => handleYearClick(yp.year)} />
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
+                  <YearCalendar
+                    yearlyProfits={yearlyProfits}
+                    chartFromDate={chartFromDate}
+                    chartEndDate={chartEndDate}
+                    chartPeriodTotal={chartPeriodTotal}
+                    onYearClick={handleYearClick}
+                  />
                 )}
                   </div>
                 </div>

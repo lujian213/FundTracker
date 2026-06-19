@@ -77,4 +77,20 @@ export function formatDateTimeDisplay(date: Date): string {
   return `${formatDateDisplay(date)} ${formatTime(date)}`;
 }
 
-export default { formatDateDisplay, formatDateISO, formatTime, formatDateTimeDisplay };
+/**
+ * 格式化日期为 MM-DD（简洁格式，用于日历格子显示）
+ * @param date Date 对象或 yyyy-MM-dd 格式的字符串
+ */
+export function formatDateShort(date: Date | string): string {
+  let d: Date;
+  if (typeof date === 'string') {
+    d = new Date(date);
+  } else {
+    d = date;
+  }
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${m}-${day}`;
+}
+
+export default { formatDateDisplay, formatDateISO, formatTime, formatDateTimeDisplay, formatDateShort };
