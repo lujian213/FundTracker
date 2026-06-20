@@ -21,7 +21,7 @@ import FundAISidePanel from './FundAISidePanel';
 import { queryAI, AIResponse } from '../services/aiService';
 import { formatMoneyWithSeparators, fmtNav, fmtNumber, formatPercent } from '../utils/format';
 import { getAIConfig, AIConfiguration } from '../services/aiConfigService';
-import { prepareChartData } from '../utils/chartDataHelper';
+import { smartPrepareChartData } from '../utils/chartDataHelper';
 import { computePositionSharesByDate, prepareVolumeBars, computeCostPricesByDate } from '../utils/tradeVolumeHelper';
 import { isFeatureEnabled } from '../services/systemConfigService';
 import InitialPriceAdjustModal from './InitialPriceAdjustModal';
@@ -342,25 +342,74 @@ export const FundDetailsModal: React.FC<FundDetailsModalProps> = ({ data, onClos
     return history;
     }, [history, valuationData.currentPrice, valuationData.changePercentage, valuationData.realtimeDate, valuationData.netWorthDate]);
 
-  const { path, area, points, viewBox, yLabels, xLabels, maPaths, maValues, costPath, costPrices, costPriceMap } = useMemo(() => {
-    // 使用公共函数准备数据（包含MA计算和截取）
-    const { displayData, maValues: computedMaValues } = prepareChartData(chartData, {
+  // 收集交易日期（用于历史趋势图）
+  const tradeDates = useMemo(() => {
+    const dates = new Set<string>();
+    // 交易记录
+    for (const t of tradeList) {
+      dates.add(toLocalDateKey(t.date));
+    }
+    // 建仓日期
+    if (startDate) {
+      dates.add(startDate);
+    }
+    return Array.from(dates);
+  }, [tradeList, startDate]);
+
+  // 历史趋势图数据准备（净值曲线、MA、成本价）
+  const trendChartData = useMemo(() => {
+    if (!chartData || chartData.length === 0) {
+      return {
+        path: '',
+        area: '',
+        points: [],
+        viewBox: '0 0 100 100',
+        yLabels: [],
+        xLabels: [],
+        maPaths: {} as Record<number, string>,
+        maValues: {} as Record<number, (number | null)[]>,
+        costPath: '',
+        costPrices: [] as (number | null | undefined)[],
+        costPriceMap: new Map<string, number | null>(),
+        displayData: [],
+        earlyDataStats: { totalPoints: 0, keptPoints: 0, tradePoints: 0, turningPoints: 0 }
+      };
+    }
+
+    // 使用智能数据准备函数
+    const { displayData, maValues: computedMaValues, earlyDataStats } = smartPrepareChartData(chartData, {
       displayCount: 90,
-      maLookback: 25,
-      maWindows: MA_WINDOWS
+      preserveDates: tradeDates,
+      maWindows: MA_WINDOWS,
+      turningThreshold: 0.01
     });
 
-    if (displayData.length < 2) return { path: '', area: '', points: [], viewBox: '0 0 100 100', yLabels: [], xLabels: [], maPaths: {} as Record<number, string>, maValues: {} as Record<number, (number | null)[]>, costPath: '', costPrices: [], costPriceMap: new Map() };
+    if (displayData.length < 2) {
+      return {
+        path: '',
+        area: '',
+        points: [],
+        viewBox: '0 0 100 100',
+        yLabels: [],
+        xLabels: [],
+        maPaths: {} as Record<number, string>,
+        maValues: {} as Record<number, (number | null)[]>,
+        costPath: '',
+        costPrices: [] as (number | null | undefined)[],
+        costPriceMap: new Map<string, number | null>(),
+        displayData: [],
+        earlyDataStats
+      };
+    }
 
     const width = 1000;
-    const height = chartHeight; // use shared chart height
+    const height = chartHeight;
     const paddingLeft = 60;
     const paddingRight = 30;
-    // remove top/bottom padding to eliminate extra whitespace
-    const paddingTop = 0; // align with HistoryChart PADDING_TOP to avoid label clipping
+    const paddingTop = 0;
     const paddingBottom = 0;
 
-    // 计算成本价序列 - 从 marketFundService 获取持仓配置，确保和 computeAvgCostPrice 一致
+    // 计算成本价序列
     const position = marketFundService.getPosition(data.symbol);
     const posInitialPosition = position?.initialPosition || 0;
     const posInitialPrice = position?.initialPrice || null;
@@ -369,13 +418,11 @@ export const FundDetailsModal: React.FC<FundDetailsModalProps> = ({ data, onClos
     const costPriceMap = computeCostPricesByDate(posInitialPosition, posInitialPrice, posStartDate, tradeList, dates);
     const costPrices = dates.map(d => costPriceMap.get(d));
 
-    // 计算Y轴范围：同时考虑净值和成本价
+    // 计算Y轴范围
     const values = displayData.map(p => p.value);
     const validCostPrices = costPrices.filter(c => c !== null && c !== undefined) as number[];
-    // 直接计算 min/max，避免创建临时数组
     const rawMin = Math.min(Math.min(...values), validCostPrices.length > 0 ? Math.min(...validCostPrices) : Infinity);
     const rawMax = Math.max(Math.max(...values), validCostPrices.length > 0 ? Math.max(...validCostPrices) : -Infinity);
-    // use a modest margin to avoid overly flat charts
     const margin = (rawMax - rawMin) * 0.1 || 0.01;
     const min = rawMin - margin;
     const max = rawMax + margin;
@@ -409,13 +456,11 @@ export const FundDetailsModal: React.FC<FundDetailsModalProps> = ({ data, onClos
       return { x: getX(idx), text: `${d.getMonth() + 1}/${d.getDate()}` };
     });
 
-    // 使用公共函数计算好的MA值
+    // MA 路径
     const maValues = computedMaValues;
     const maPaths: Record<number, string> = {};
-
     for (const w of MA_WINDOWS) {
       const sma = maValues[w];
-      // build path for this SMA
       const smaPts = sma.map((v, i) => v !== null ? { x: getX(i), y: getY(v as number) } : null);
       const firstIdx = smaPts.findIndex(p => p !== null);
       if (firstIdx !== -1) {
@@ -430,7 +475,7 @@ export const FundDetailsModal: React.FC<FundDetailsModalProps> = ({ data, onClos
       }
     }
 
-    // 构建成本价路径
+    // 成本价路径
     let costPath = '';
     const costPts = costPrices.map((v, i) => v !== null && v !== undefined ? { x: getX(i), y: getY(v as number) } : null);
     const costFirstIdx = costPts.findIndex(p => p !== null);
@@ -442,17 +487,37 @@ export const FundDetailsModal: React.FC<FundDetailsModalProps> = ({ data, onClos
       }
     }
 
-    return { path: pathData, area: areaData, points: svgPoints, viewBox: `0 0 ${width} ${height}`, yLabels, xLabels, maPaths, maValues, costPath, costPrices, costPriceMap };
-  }, [chartData, initialPosition, initialPrice, startDate, tradeList]);
+    return {
+      path: pathData,
+      area: areaData,
+      points: svgPoints,
+      viewBox: `0 0 ${width} ${height}`,
+      yLabels,
+      xLabels,
+      maPaths,
+      maValues,
+      costPath,
+      costPrices,
+      costPriceMap,
+      displayData,
+      earlyDataStats
+    };
+  }, [chartData, tradeDates, data.symbol, tradeList]);
 
-  // 准备基金交易量数据（新增）
-  const { fundVolumeBars, positionTrendData, positionTrendPath, maxBarShares } = useMemo(() => {
-    if (!chartData || chartData.length === 0 || !points || points.length === 0) {
-      return { fundVolumeBars: [], positionTrendData: [], positionTrendPath: '' };
+  // 历史趋势图的交易量数据和标记
+  const volumeChartData = useMemo(() => {
+    if (!chartData || chartData.length === 0 || !trendChartData.points || trendChartData.points.length === 0) {
+      return {
+        fundVolumeBars: [],
+        positionTrendData: [],
+        positionTrendPath: '',
+        maxBarShares: 1,
+        markers: []
+      };
     }
 
-    // 使用 tradeList（来自 useTrades hook）代替直接调用 getTradesForSymbol
     const trades = tradeList;
+    const { points, displayData } = trendChartData;
 
     // 读取初始仓位配置和建仓日期
     let initialShares = 0;
@@ -467,7 +532,7 @@ export const FundDetailsModal: React.FC<FundDetailsModalProps> = ({ data, onClos
       // ignore
     }
 
-    // 构建日期列表（从 points 获取）
+    // 构建日期列表
     const dates = points.map(p => toLocalDateKey(p.data.date));
 
     // 构建日期到 X 坐标的映射
@@ -489,7 +554,7 @@ export const FundDetailsModal: React.FC<FundDetailsModalProps> = ({ data, onClos
 
     // 交易量区域坐标
     const volumeChartHeight = 80;
-    const chartTop = chartHeight - 20; // 上移20px
+    const chartTop = chartHeight - 20;
     const chartBottom = chartHeight + volumeChartHeight - 20;
     const rangeHeight = chartBottom - chartTop;
 
@@ -500,36 +565,24 @@ export const FundDetailsModal: React.FC<FundDetailsModalProps> = ({ data, onClos
     if (validShares.length > 0) {
       minPosition = Math.min(...validShares);
       maxPosition = Math.max(...validShares);
-      // 增加10%边距
       const margin = (maxPosition - minPosition) * 0.1 || maxPosition * 0.1;
       minPosition = Math.max(0, minPosition - margin);
       maxPosition = maxPosition + margin;
     }
 
-    // 持仓趋势线 Y 坐标计算（独立Y轴）
     const getPositionY = (shares: number) => {
       if (maxPosition === minPosition) return chartBottom;
-      // 份额越大，Y 越小（向上）
       return chartBottom - ((shares - minPosition) / (maxPosition - minPosition)) * rangeHeight;
     };
 
-    // 构建持仓趋势路径（建仓日前不显示）
     let positionTrendPath = '';
     let pathStarted = false;
     for (let i = 0; i < positionTrendData.length; i++) {
       const pt = positionTrendData[i];
       const x = dateToX.get(pt.date);
       if (x === undefined) continue;
-
-      // 如果有建仓日期，在建仓日期之前不绘制
-      if (positionStartDate && pt.date < positionStartDate) {
-        continue;
-      }
-
-      // 如果持仓为0，不绘制（可能是建仓前的数据）
-      if (pt.shares <= 0 && !pathStarted) {
-        continue;
-      }
+      if (positionStartDate && pt.date < positionStartDate) continue;
+      if (pt.shares <= 0 && !pathStarted) continue;
 
       const y = getPositionY(pt.shares);
       if (!pathStarted) {
@@ -540,8 +593,19 @@ export const FundDetailsModal: React.FC<FundDetailsModalProps> = ({ data, onClos
       }
     }
 
-    return { fundVolumeBars, positionTrendData, positionTrendPath, maxBarShares };
-  }, [chartData, points, data.symbol, initialPosition, tradeList]);
+    // 计算交易标记
+    const tradeMarkers = aggregateTradesByDate(trades, chartData, points);
+    const positionStartMarkers = generatePositionStartMarker(data.symbol, chartData, points);
+    const markers = [...tradeMarkers, ...positionStartMarkers];
+
+    return {
+      fundVolumeBars,
+      positionTrendData,
+      positionTrendPath,
+      maxBarShares,
+      markers
+    };
+  }, [chartData, trendChartData, data.symbol, tradeList]);
 
     // Risk analysis based on history + today's valuation through the shared isolated model
   const ratingInfo = useMemo(() => {
@@ -853,19 +917,6 @@ export const FundDetailsModal: React.FC<FundDetailsModalProps> = ({ data, onClos
       profit: number | null;
       avgCostPrice: number | null;
     } | null>(null);
-
-    // Aggregate trades into markers using a pure util (improves testability)
-    const markers = useMemo(() => {
-      try {
-        const tradeMarkers = aggregateTradesByDate(tradeList, chartData, points);
-        const positionStartMarkers = generatePositionStartMarker(data.symbol, chartData, points);
-        return [...tradeMarkers, ...positionStartMarkers];
-      } catch (e) {
-        console.error(`[FundDetailsModal] Error aggregating trades:`, e);
-        return [];
-      }
-    }, [tradeList, chartData, points, data.symbol]);
-
 
     // Compute holdings and profit using initialPosition and trades per requirements, but only when fullCapacity configured (>0)
     // If fullCapacity is 0 (not configured), we treat these values as not-applicable (null) so they don't appear in other aggregations.
@@ -1297,31 +1348,29 @@ export const FundDetailsModal: React.FC<FundDetailsModalProps> = ({ data, onClos
                         </button>
                       </div>
                       <HistoryChart
-                         viewBox={viewBox}
-                         path={path}
-                         area={area}
-                         points={points}
-                         yLabels={yLabels}
-                         xLabels={xLabels}
-                         maPaths={maPaths}
-                         maValues={maValues}
+                         viewBox={trendChartData.viewBox}
+                         path={trendChartData.path}
+                         area={trendChartData.area}
+                         points={trendChartData.points}
+                         yLabels={trendChartData.yLabels}
+                         xLabels={trendChartData.xLabels}
+                         maPaths={trendChartData.maPaths}
+                         maValues={trendChartData.maValues}
                          visibleMAs={visibleMAs}
                          hoveredPoint={hoveredPoint}
                          setHoveredPoint={setHoveredPoint}
-                        markers={markers}
+                        markers={volumeChartData.markers}
                         onMarkerHover={(m) => setHoveredTrade(m)}
                          height={chartHeight}
                          stroke="#ef4444"
-                         // 新增 props
-                         fundVolumeBars={fundVolumeBars}
-                         positionTrendData={positionTrendData}
-                         positionTrendPath={positionTrendPath}
-                         maxBarShares={maxBarShares}
+                         fundVolumeBars={volumeChartData.fundVolumeBars}
+                         positionTrendData={volumeChartData.positionTrendData}
+                         positionTrendPath={volumeChartData.positionTrendPath}
+                         maxBarShares={volumeChartData.maxBarShares}
                          showFundVolume={true}
                          volumeChartHeight={80}
-                         // 成本价曲线
-                         costPath={costPath}
-                         costPrices={costPrices}
+                         costPath={trendChartData.costPath}
+                         costPrices={trendChartData.costPrices}
                        />
                      </div>
                     {/* 占位区域，保持与日内趋势图高度一致 */}
@@ -1329,7 +1378,7 @@ export const FundDetailsModal: React.FC<FundDetailsModalProps> = ({ data, onClos
                       <span className="text-xs text-transparent">均线：</span>
                     </div>
 
-                    {/* Preallocated reserved info area under MA toggles to avoid layout jump when hover changes */}
+                    {/* 信息区域 */}
                     <div className="h-12 bg-white flex items-center justify-start px-4 border-t">
                       {(() => {
                         const hp = hoveredPoint as any;
@@ -1339,17 +1388,16 @@ export const FundDetailsModal: React.FC<FundDetailsModalProps> = ({ data, onClos
                         let changeClass = 'text-gray-700';
                         let costPriceLabel = '—';
 
-                        // 确定 targetDataPoint：悬停点或最后一个数据点
                         let targetDataPoint: HistoricalPoint | null = null;
                         let prevValue: number | null = null;
 
-                        if (hp && chartData && chartData.length > 0) {
-                          const idx = chartData.findIndex((p: any) => p.date === hp.date);
-                          targetDataPoint = (idx >= 0) ? chartData[idx] : chartData[chartData.length - 1];
-                          prevValue = (idx > 0) ? chartData[idx - 1].value : null;
-                        } else if (chartData && chartData.length > 0) {
-                          targetDataPoint = chartData[chartData.length - 1];
-                          prevValue = chartData.length > 1 ? chartData[chartData.length - 2].value : null;
+                        if (hp && trendChartData.displayData && trendChartData.displayData.length > 0) {
+                          const idx = trendChartData.displayData.findIndex((p: any) => p.date === hp.date);
+                          targetDataPoint = (idx >= 0) ? trendChartData.displayData[idx] : trendChartData.displayData[trendChartData.displayData.length - 1];
+                          prevValue = (idx > 0) ? trendChartData.displayData[idx - 1].value : null;
+                        } else if (trendChartData.displayData && trendChartData.displayData.length > 0) {
+                          targetDataPoint = trendChartData.displayData[trendChartData.displayData.length - 1];
+                          prevValue = trendChartData.displayData.length > 1 ? trendChartData.displayData[trendChartData.displayData.length - 2].value : null;
                         }
 
                         if (targetDataPoint) {
@@ -1357,7 +1405,6 @@ export const FundDetailsModal: React.FC<FundDetailsModalProps> = ({ data, onClos
                           dateLabel = toLocalDateKey(d);
                           valueLabel = targetDataPoint.value.toFixed(4);
 
-                          // 计算涨跌
                           if (prevValue !== null) {
                             const abs = targetDataPoint.value - prevValue;
                             const pct = prevValue !== 0 ? (abs / prevValue * 100) : 0;
@@ -1365,9 +1412,8 @@ export const FundDetailsModal: React.FC<FundDetailsModalProps> = ({ data, onClos
                             changeClass = pct >= 0 ? 'text-red-600' : 'text-green-600';
                           }
 
-                          // 统一计算成本价
                           const targetDate = toLocalDateKey(targetDataPoint.date);
-                          const targetCostPrice = costPriceMap.get(targetDate);
+                          const targetCostPrice = trendChartData.costPriceMap.get(targetDate);
                           if (targetCostPrice != null) {
                             costPriceLabel = targetCostPrice.toFixed(4);
                           }
