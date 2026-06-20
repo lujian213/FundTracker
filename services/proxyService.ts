@@ -275,7 +275,7 @@ export async function fetchWithProxy(
         signal: controller.signal,
       };
 
-      // 添加 headers（如果有）
+      // 添加 headers（如果有自定义 headers）
       if (customHeaders) {
         fetchOptions.headers = customHeaders;
       }

@@ -67,17 +67,19 @@ export abstract class ImportantDataSourceBase {
 
   // 基类实现 - 获取数据
   async fetchData(): Promise<{ content: string | ArrayBuffer; format: 'raw' | 'markdown' | 'pdf'; success: boolean; error?: string }> {
+    const sourceUrl = this.getSourceUrl();
     try {
       // 根据 useProxy 配置决定是否使用代理
       if (this.config.useProxy) {
         // 使用代理获取数据（fetchWithProxy 成功返回结果，失败抛出异常）
-        const result = await fetchWithProxy(this.getSourceUrl());
+        const result = await fetchWithProxy(sourceUrl);
         return { content: result.content, format: result.format, success: true };
       } else {
         // 直接访问（支持 CORS）
-        const response = await fetch(this.getSourceUrl());
+        const response = await fetch(sourceUrl);
         if (!response.ok) {
           const error = `HTTP ${response.status}`;
+          console.error(`[${this.config.eventName}] 数据获取失败 - URL: ${sourceUrl}, 错误: ${error}`);
           return { content: '', format: 'raw', success: false, error };
         }
 
@@ -96,6 +98,7 @@ export abstract class ImportantDataSourceBase {
       }
     } catch (e) {
       const error = (e as Error).message;
+      console.error(`[${this.config.eventName}] 数据获取失败 - URL: ${sourceUrl}, 错误: ${error}`);
       return { content: '', format: 'raw', success: false, error };
     }
   }
@@ -135,16 +138,22 @@ export abstract class ImportantDataSourceBase {
 
   // 基类实现 - 刷新流程
   async refresh(): Promise<{ success: boolean; count: number; error?: string }> {
+    const sourceUrl = this.getSourceUrl();
     const { content, format, success, error } = await this.fetchData();
     if (!success) return { success: false, count: 0, error };
 
     try {
       const events = this.parseData(content, format);
-      if (events.length === 0) return { success: false, count: 0, error: '未解析到任何数据' };
+      if (events.length === 0) {
+        console.error(`[${this.config.eventName}] 数据解析失败 - URL: ${sourceUrl}, 错误: 未解析到任何数据`);
+        return { success: false, count: 0, error: '未解析到任何数据' };
+      }
       this.updateCalendar(events);
       return { success: true, count: events.length };
     } catch (e) {
-      return { success: false, count: 0, error: (e as Error).message };
+      const errorMsg = (e as Error).message;
+      console.error(`[${this.config.eventName}] 数据解析失败 - URL: ${sourceUrl}, 错误: ${errorMsg}`);
+      return { success: false, count: 0, error: errorMsg };
     }
   }
 
