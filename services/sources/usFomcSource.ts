@@ -1,4 +1,4 @@
-// services/sources/usChicagoFedFomcSource.ts
+// services/sources/usFomcSource.ts
 
 import {
   ImportantDataSourceBase,
@@ -126,16 +126,6 @@ export class ChicagoFedFomcSource extends ImportantDataSourceBase {
   }
 
   /**
-   * 格式化日期
-   */
-  private formatDate(date: Date): string {
-    const year = date.getFullYear();
-    const month = String(date.getMonth() + 1).padStart(2, '0');
-    const day = String(date.getDate()).padStart(2, '0');
-    return `${year}-${month}-${day}`;
-  }
-
-  /**
    * 计算 FOMC 发布的北京时间
    * FOMC 发布时间：美东时间下午 14:00
    * 夏令时：次日02:00
@@ -143,56 +133,6 @@ export class ChicagoFedFomcSource extends ImportantDataSourceBase {
    */
   private calculateFomcBeijingTime(date: Date): string {
     return this.isDaylightSavingTime(date) ? '02:00' : '03:00';
-  }
-
-  /**
-   * 判断是否为美国夏令时
-   * 夏令时：3月第二个周日 2:00 AM ~ 11月第一个周日 2:00 AM
-   */
-  private isDaylightSavingTime(date: Date): boolean {
-    const year = date.getFullYear();
-    const month = date.getMonth();
-
-    // 快速判断：4-10 月肯定是夏令时
-    if (month >= 3 && month <= 9) {
-      if (month > 3 && month < 10) {
-        return true;
-      }
-    }
-
-    // 11-2 月肯定不是夏令时
-    if (month >= 10 || month <= 1) {
-      if (month > 10 || month < 2) {
-        return false;
-      }
-    }
-
-    // 需要精确计算边界日期
-    const secondSundayInMarch = this.getNthWeekdayOfMonth(year, 2, 0, 2);
-    secondSundayInMarch.setHours(2, 0, 0, 0);
-
-    const firstSundayInNovember = this.getNthWeekdayOfMonth(year, 10, 0, 1);
-    firstSundayInNovember.setHours(2, 0, 0, 0);
-
-    return date >= secondSundayInMarch && date < firstSundayInNovember;
-  }
-
-  /**
-   * 获取某月的第 n 个星期几
-   */
-  private getNthWeekdayOfMonth(year: number, month: number, weekday: number, n: number): Date {
-    const date = new Date(year, month, 1);
-    let count = 0;
-
-    while (count < n) {
-      if (date.getDay() === weekday) {
-        count++;
-        if (count === n) break;
-      }
-      date.setDate(date.getDate() + 1);
-    }
-
-    return date;
   }
 
   /**

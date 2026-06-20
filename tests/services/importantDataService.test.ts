@@ -24,7 +24,7 @@ describe('importantDataService', () => {
   });
 
   describe('getDataSourceList', () => {
-    it('应返回9个数据类型（多个类型由 WhitehousePdfSource 覆盖）', () => {
+    it('应返回9个数据类型', () => {
       const list = importantDataService.getDataSourceList();
       expect(list.length).toBe(9);
     });

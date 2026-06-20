@@ -1,19 +1,19 @@
-// tests/services/sources/usBlsPpiSource.test.ts
+// tests/services/sources/usEmploymentSource.test.ts
 
-import { UsBlsPpiSource } from '../../../services/sources/usBlsPpiSource';
+import { UsBlsEmploymentSource } from '../../../services/sources/usEmploymentSource';
 import { ImportantDataEventInfo } from '../../../services/importantDataSourceBase';
 
-describe('UsBlsPpiSource', () => {
-  let source: UsBlsPpiSource;
+describe('UsBlsEmploymentSource', () => {
+  let source: UsBlsEmploymentSource;
 
   beforeEach(() => {
-    source = new UsBlsPpiSource();
+    source = new UsBlsEmploymentSource();
   });
 
   describe('getSourceUrl', () => {
-    it('应返回正确的 BLS PPI 日程页面 URL', () => {
+    it('应返回正确的 BLS Employment Situation 日程页面 URL', () => {
       const url = source.getSourceUrl();
-      expect(url).toBe('https://www.bls.gov/schedule/news_release/ppi.htm');
+      expect(url).toBe('https://www.bls.gov/schedule/news_release/empsit.htm');
     });
   });
 
@@ -25,25 +25,25 @@ describe('UsBlsPpiSource', () => {
 | Subscribe | Release Calendar | ...
 | --- | --- | --- |
 
-## Schedule of Releases for the Producer Price Index
+## Schedule of Releases for the Employment Situation
 
 | Reference Month | Release Date | Release Time |
 | --- | --- | --- |
-| December ${currentYear - 1} | Jan. 15, ${currentYear} | 08:30 AM |
-| January ${currentYear} | Feb. 13, ${currentYear} | 08:30 AM |
-| February ${currentYear} | Mar. 12, ${currentYear} | 08:30 AM |
+| December ${currentYear - 1} | Jan. 10, ${currentYear} | 08:30 AM |
+| January ${currentYear} | Feb. 7, ${currentYear} | 08:30 AM |
+| February ${currentYear} | Mar. 7, ${currentYear} | 08:30 AM |
 `;
 
       const events = source.parseMarkdown(markdown);
 
       expect(events).toHaveLength(3);
       expect(events[0]).toEqual({
-        date: `${currentYear}-01-15`,
+        date: `${currentYear}-01-10`,
         releaseTime: '21:30', // 1 月是冬令时
         reportPeriod: `${currentYear - 1}年12月`
       });
       expect(events[1]).toEqual({
-        date: `${currentYear}-02-13`,
+        date: `${currentYear}-02-07`,
         releaseTime: '21:30', // 2 月是冬令时
         reportPeriod: `${currentYear}年1月`
       });
@@ -52,13 +52,13 @@ describe('UsBlsPpiSource', () => {
     it('应正确计算夏令时和冬令时的北京时间', () => {
       const currentYear = new Date().getFullYear();
       const markdown = `
-## Schedule of Releases for the Producer Price Index
+## Schedule of Releases for the Employment Situation
 
 | Reference Month | Release Date | Release Time |
 | --- | --- | --- |
-| January ${currentYear} | Feb. 13, ${currentYear} | 08:30 AM |
-| July ${currentYear} | Aug. 12, ${currentYear} | 08:30 AM |
-| November ${currentYear} | Dec. 10, ${currentYear} | 08:30 AM |
+| January ${currentYear} | Feb. 7, ${currentYear} | 08:30 AM |
+| July ${currentYear} | Aug. 4, ${currentYear} | 08:30 AM |
+| November ${currentYear} | Dec. 6, ${currentYear} | 08:30 AM |
 `;
 
       const events = source.parseMarkdown(markdown);
@@ -75,19 +75,19 @@ describe('UsBlsPpiSource', () => {
     it('应过滤掉非当前年份的事件', () => {
       const currentYear = new Date().getFullYear();
       const markdown = `
-## Schedule of Releases for the Producer Price Index
+## Schedule of Releases for the Employment Situation
 
 | Reference Month | Release Date | Release Time |
 | --- | --- | --- |
-| November ${currentYear - 1} | Dec. 15, ${currentYear - 1} | 08:30 AM |
-| January ${currentYear} | Feb. 13, ${currentYear} | 08:30 AM |
-| March ${currentYear + 1} | Apr. 10, ${currentYear + 1} | 08:30 AM |
+| November ${currentYear - 1} | Dec. 6, ${currentYear - 1} | 08:30 AM |
+| January ${currentYear} | Feb. 7, ${currentYear} | 08:30 AM |
+| March ${currentYear + 1} | Apr. 4, ${currentYear + 1} | 08:30 AM |
 `;
 
       const events = source.parseMarkdown(markdown);
 
       expect(events).toHaveLength(1);
-      expect(events[0].date).toBe(`${currentYear}-02-13`);
+      expect(events[0].date).toBe(`${currentYear}-02-07`);
     });
 
     it('应跳过导航菜单等无关表格（定位到Schedule of Releases后才开始解析）', () => {
@@ -97,11 +97,11 @@ describe('UsBlsPpiSource', () => {
 | --- | --- |
 | Link 1 | Link 2 |
 
-## Schedule of Releases for the Producer Price Index
+## Schedule of Releases for the Employment Situation
 
 | Reference Month | Release Date | Release Time |
 | --- | --- | --- |
-| January ${currentYear} | Feb. 13, ${currentYear} | 08:30 AM |
+| January ${currentYear} | Feb. 7, ${currentYear} | 08:30 AM |
 `;
 
       const events = source.parseMarkdown(markdown);
@@ -120,7 +120,7 @@ describe('UsBlsPpiSource', () => {
       const markdown = `
 | Reference Month | Release Date | Release Time |
 | --- | --- | --- |
-| January 2026 | Feb. 13, 2026 | 08:30 AM |
+| January 2026 | Feb. 7, 2026 | 08:30 AM |
 `;
       expect(source.parseMarkdown(markdown)).toEqual([]);
     });
@@ -128,19 +128,19 @@ describe('UsBlsPpiSource', () => {
     it('应处理月份缩写和点号', () => {
       const currentYear = new Date().getFullYear();
       const markdown = `
-## Schedule of Releases for the Producer Price Index
+## Schedule of Releases for the Employment Situation
 
 | Reference Month | Release Date | Release Time |
 | --- | --- | --- |
-| January ${currentYear} | Feb. 13, ${currentYear} | 08:30 AM |
-| September ${currentYear} | Oct. 14, ${currentYear} | 08:30 AM |
+| January ${currentYear} | Feb. 7, ${currentYear} | 08:30 AM |
+| September ${currentYear} | Oct. 4, ${currentYear} | 08:30 AM |
 `;
 
       const events = source.parseMarkdown(markdown);
 
       expect(events).toHaveLength(2);
-      expect(events[0].date).toBe(`${currentYear}-02-13`);
-      expect(events[1].date).toBe(`${currentYear}-10-14`);
+      expect(events[0].date).toBe(`${currentYear}-02-07`);
+      expect(events[1].date).toBe(`${currentYear}-10-04`);
     });
   });
 
@@ -152,12 +152,12 @@ describe('UsBlsPpiSource', () => {
 <table>
   <tr>
     <td>January ${currentYear}</td>
-    <td>February 13, ${currentYear}</td>
+    <td>February 7, ${currentYear}</td>
     <td>8:30 A.M.</td>
   </tr>
   <tr>
     <td>February ${currentYear}</td>
-    <td>March 12, ${currentYear}</td>
+    <td>March 7, ${currentYear}</td>
     <td>8:30 A.M.</td>
   </tr>
 </table>
@@ -166,8 +166,8 @@ describe('UsBlsPpiSource', () => {
       const events = source.parseHtml(html);
 
       expect(events).toHaveLength(2);
-      expect(events[0].date).toBe(`${currentYear}-02-13`);
-      expect(events[1].date).toBe(`${currentYear}-03-12`);
+      expect(events[0].date).toBe(`${currentYear}-02-07`);
+      expect(events[1].date).toBe(`${currentYear}-03-07`);
     });
 
     it('应对空内容返回空数组', () => {
@@ -179,14 +179,14 @@ describe('UsBlsPpiSource', () => {
   describe('继承自基类的辅助方法', () => {
     it('generateDescription应正确生成描述', () => {
       const eventInfo: ImportantDataEventInfo = {
-        date: '2026-02-13',
+        date: '2026-02-07',
         releaseTime: '21:30',
         reportPeriod: '2026年1月'
       };
 
       const desc = source.generateDescription(eventInfo);
 
-      expect(desc).toBe('PPI数据公布，北京时间 21:30，报告期：2026年1月');
+      expect(desc).toBe('非农数据公布，北京时间 21:30，报告期：2026年1月');
     });
   });
 });

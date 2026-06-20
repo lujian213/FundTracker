@@ -3,15 +3,15 @@
 import { JobResult } from '../types';
 import { ImportantDataType } from './calendarService';
 import { ImportantDataSourceBase } from './importantDataSourceBase';
-import { UsBeaGdpSource } from './sources/usBeaGdpSource';
-import { UsBeaPceSource } from './sources/usBeaPceSource';
+import { UsBeaGdpSource } from './sources/usGdpSource';
+import { UsBeaPceSource } from './sources/usPceSource';
 import { UsIsmMfgSource } from './sources/usIsmMfgSource';
 import { UsIsmSvcSource } from './sources/usIsmSvcSource';
-import { ChicagoFedFomcSource } from './sources/usChicagoFedFomcSource';
-import { UsBlsCpiSource } from './sources/usBlsCpiSource';
-import { UsBlsPpiSource } from './sources/usBlsPpiSource';
-import { UsBlsEmploymentSource } from './sources/usBlsEmploymentSource';
-import { CensusRetailSalesSource } from './sources/usCensusRetailSalesSource';
+import { ChicagoFedFomcSource } from './sources/usFomcSource';
+import { UsBlsCpiSource } from './sources/usCpiSource';
+import { UsBlsPpiSource } from './sources/usPpiSource';
+import { UsBlsEmploymentSource } from './sources/usEmploymentSource';
+import { CensusRetailSalesSource } from './sources/usRetailSalesSource';
 
 /**
  * 美股重要数据源列表
@@ -125,7 +125,6 @@ export class ImportantDataService {
       const result = await source.refresh();
 
       // 返回该 source 对应的所有类型的结果
-      // 对于多类型数据源（如 WhitehousePdfSource），一个成功结果覆盖多个类型
       return eventTypes.map(eventType => ({
         eventType,
         eventName: this.getEventName(eventType),

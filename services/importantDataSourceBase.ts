@@ -22,6 +22,7 @@ export interface ImportantDataSourceConfig {
   eventName: string;
   market: string;
   useProxy?: boolean;  // 是否需要使用代理，默认 false（直接访问）
+  preferProxyFormat?: 'raw' | 'markdown';  // 代理格式偏好，默认按评分排序
 }
 
 // 中文月份名称
@@ -71,8 +72,10 @@ export abstract class ImportantDataSourceBase {
     try {
       // 根据 useProxy 配置决定是否使用代理
       if (this.config.useProxy) {
-        // 使用代理获取数据（fetchWithProxy 成功返回结果，失败抛出异常）
-        const result = await fetchWithProxy(sourceUrl);
+        // 使用代理获取数据，传递 preferFormat 参数
+        const result = await fetchWithProxy(sourceUrl, {
+          preferFormat: this.config.preferProxyFormat
+        });
         return { content: result.content, format: result.format, success: true };
       } else {
         // 直接访问（支持 CORS）
@@ -183,6 +186,22 @@ export abstract class ImportantDataSourceBase {
       'Sep': 8, 'Oct': 9, 'Nov': 10, 'Dec': 11
     };
     return MONTH_MAP[name] ?? -1;
+  }
+
+  // 辅助方法 - 格式化日期为 YYYY-MM-DD
+  protected formatDate(date: Date): string {
+    return formatDateISO(date);
+  }
+
+  // 辅助方法 - 判断是否为夏令时
+  protected isDaylightSavingTime(date: Date): boolean {
+    return isDaylightSavingTime(date);
+  }
+
+  // 辅助方法 - 计算 ISM PMI 发布时间（10:00 AM ET）
+  // 北京时间：夏令时 22:00，冬令时 23:00
+  protected calculateIsmReleaseTime(date: Date): string {
+    return isDaylightSavingTime(date) ? '22:00' : '23:00';
   }
 }
 

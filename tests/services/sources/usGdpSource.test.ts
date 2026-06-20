@@ -1,6 +1,6 @@
-// tests/services/sources/usBeaGdpSource.test.ts
+// tests/services/sources/usGdpSource.test.ts
 
-import { UsBeaGdpSource } from '../../../services/sources/usBeaGdpSource';
+import { UsBeaGdpSource } from '../../../services/sources/usGdpSource';
 import { ImportantDataEventInfo } from '../../../services/importantDataSourceBase';
 
 describe('UsBeaGdpSource', () => {

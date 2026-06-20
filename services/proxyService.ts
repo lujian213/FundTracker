@@ -232,6 +232,11 @@ function validateContentByContentType(
     if (!isValidHtml) {
       return { valid: false, error: '返回内容不是有效的 HTML 格式' };
     }
+
+    // 检测 CAPTCHA 验证页面（ISM 网站等有反爬保护）
+    if (/captcha_form|recaptcha\/api\.js/.test(content)) {
+      return { valid: false, error: '返回内容为 CAPTCHA 验证页面' };
+    }
   }
 
   return { valid: true };

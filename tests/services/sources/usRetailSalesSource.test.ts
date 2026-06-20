@@ -1,6 +1,6 @@
-// tests/services/sources/usCensusRetailSalesSource.test.ts
+// tests/services/sources/usRetailSalesSource.test.ts
 
-import { CensusRetailSalesSource } from '../../../services/sources/usCensusRetailSalesSource';
+import { CensusRetailSalesSource } from '../../../services/sources/usRetailSalesSource';
 import { ImportantDataEventInfo } from '../../../services/importantDataSourceBase';
 
 describe('CensusRetailSalesSource', () => {

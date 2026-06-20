@@ -23,7 +23,8 @@ export class UsIsmSvcSource extends ImportantDataSourceBase {
       eventType: 'important_data_us_ism_svc',
       eventName: 'ISM服务业PMI公布',
       market: '美股',
-      useProxy: true  // ISM 需要代理访问
+      useProxy: true,  // ISM 需要代理访问
+      preferProxyFormat: 'raw'  // 优先使用 raw 格式代理，因为 r.jina.ai 无法正确解析 ISM 网站
     };
     super(config);
   }
@@ -73,23 +74,15 @@ export class UsIsmSvcSource extends ImportantDataSourceBase {
     const currentYear = this.getCurrentYear();
 
     // 匹配表格行：月份 | 制造业日期 | 服务业日期
-    // 模式：<tr><td>Month Year</td><td>day</td><td>day</td></tr>
-    // 注意：页面可能有多个表格，需要找到包含 Services PMI 的表格
-    const rowPattern = /<tr[^>]*>\s*<td[^>]*>([^<]+)<\/td>\s*<td[^>]*>([^<]+)<\/td>\s*<td[^>]*>([^<]*)<\/td>\s*<\/tr>/gi;
+    // 实际页面结构：<tr><th scope="row">Month Year</th><td>day</td><td>day</td></tr>
+    const rowPattern = /<tr[^>]*>\s*<th[^>]*>([^<]+)<\/th>\s*<td[^>]*>([^<]+)<\/td>\s*<td[^>]*>([^<]*)<\/td>\s*<\/tr>/gi;
 
     let match;
     while ((match = rowPattern.exec(html)) !== null) {
       const monthYearStr = match[1].trim();
       const svcDayStr = match[3].trim(); // 第三列是 Services PMI
 
-      // 跳过表头或非数据行
-      if (monthYearStr.toLowerCase().includes('month') ||
-          monthYearStr.toLowerCase().includes('supply chain') ||
-          svcDayStr.toLowerCase().includes('services')) {
-        continue;
-      }
-
-      // 解析月份和年份（如 "January 2026"）
+      // 跳过非数据行并解析月份年份（如 "January 2026"）
       const monthYearMatch = monthYearStr.match(/^(\w+)\s+(\d{4})$/i);
       if (!monthYearMatch) continue;
 
@@ -146,77 +139,6 @@ export class UsIsmSvcSource extends ImportantDataSourceBase {
     }
 
     return `${reportYear}年${this.getMonthNameCN(reportMonth)}`;
-  }
-
-  /**
-   * 计算 ISM 发布的北京时间
-   * ISM 发布时间：美国东部时间上午 10:00
-   * 北京时间：夏令时 22:00，冬令时 23:00
-   */
-  private calculateIsmReleaseTime(date: Date): string {
-    return this.isDaylightSavingTime(date) ? '22:00' : '23:00';
-  }
-
-  /**
-   * 判断是否为美国夏令时
-   * 夏令时：3 月第二个周日 2:00 AM ~ 11 月第一个周日 2:00 AM
-   */
-  private isDaylightSavingTime(date: Date): boolean {
-    const year = date.getFullYear();
-    const month = date.getMonth();
-
-    // 快速判断：4-10 月肯定是夏令时
-    if (month >= 3 && month <= 9) {
-      // 3 月和 10 月需要详细判断
-      if (month > 3 && month < 10) {
-        return true;
-      }
-    }
-
-    // 11-2 月肯定不是夏令时
-    if (month >= 10 || month <= 1) {
-      if (month > 10 || month < 2) {
-        return false;
-      }
-    }
-
-    // 需要精确计算边界日期
-    // 这里复用基类的方法（但基类方法不是 public，所以重新实现）
-    const secondSundayInMarch = this.getNthWeekdayOfMonth(year, 2, 0, 2);
-    secondSundayInMarch.setHours(2, 0, 0, 0);
-
-    const firstSundayInNovember = this.getNthWeekdayOfMonth(year, 10, 0, 1);
-    firstSundayInNovember.setHours(2, 0, 0, 0);
-
-    return date >= secondSundayInMarch && date < firstSundayInNovember;
-  }
-
-  /**
-   * 获取某月的第 n 个星期几
-   */
-  private getNthWeekdayOfMonth(year: number, month: number, weekday: number, n: number): Date {
-    const date = new Date(year, month, 1);
-    let count = 0;
-
-    while (count < n) {
-      if (date.getDay() === weekday) {
-        count++;
-        if (count === n) break;
-      }
-      date.setDate(date.getDate() + 1);
-    }
-
-    return date;
-  }
-
-  /**
-   * 格式化日期为 YYYY-MM-DD 格式
-   */
-  private formatDate(date: Date): string {
-    const year = date.getFullYear();
-    const month = String(date.getMonth() + 1).padStart(2, '0');
-    const day = String(date.getDate()).padStart(2, '0');
-    return `${year}-${month}-${day}`;
   }
 
   /**

@@ -1,6 +1,6 @@
-// tests/services/sources/usBeaPceSource.test.ts
+// tests/services/sources/usPceSource.test.ts
 
-import { UsBeaPceSource } from '../../../services/sources/usBeaPceSource';
+import { UsBeaPceSource } from '../../../services/sources/usPceSource';
 import { ImportantDataEventInfo } from '../../../services/importantDataSourceBase';
 
 describe('UsBeaPceSource', () => {
