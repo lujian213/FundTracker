@@ -527,19 +527,18 @@ describe('proxyService', () => {
       }
     });
 
-    test('law-ai proxy does not encode target URL', () => {
+    test('law-ai proxy encodes target URL', () => {
       const lawAiProxy = PROXY_LIST.find(p => p.name === 'law-ai');
       expect(lawAiProxy).toBeDefined();
 
       const targetUrl = 'https://example.com/path?query=value&foo=bar';
       const proxyUrl = lawAiProxy!.buildUrl(targetUrl);
 
-      // law-ai 代理不接受编码后的 URL
+      // law-ai 代理需要编码后的 URL
       expect(proxyUrl).toContain('target=');
-      // URL 不应该被编码
-      expect(proxyUrl).toContain('https://example.com');
-      expect(proxyUrl).not.toContain('%3A');
-      expect(proxyUrl).not.toContain('%2F');
+      // URL 应该被编码
+      expect(proxyUrl).toContain('https%3A%2F%2Fexample.com'); // : 和 / 被编码
+      expect(proxyUrl).toContain('%26'); // & 被编码
     });
 
     test('txtify proxy is included', () => {
