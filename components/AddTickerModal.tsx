@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { MarketType } from '../types';
 import AlertModal from './AlertModal';
+import { convertIndexCode, INDEX_NAME_MAP } from '../src/utils/indexUrlHelper';
 
 interface AddTickerModalProps {
   onClose: () => void;
@@ -46,35 +47,8 @@ export const AddTickerModal: React.FC<AddTickerModalProps> = ({ onClose, onAdd, 
         setAlertInfo({ isOpen: true, message: "请输入有效的基金代码（4-6位数字）" });
       }
     } else {
-      // Index tab
-      const codes = parts.map(c => {
-        let code = c;
-        if (!code.includes('.')) {
-          const indexDict: Record<string, string> = {
-            // 国内指数
-            '000001': '1.000001',
-            '399001': '0.399001',
-            '399006': '0.399006',
-            '000300': '1.000300',
-            '000688': '1.000688',
-            '000852': '1.000852',
-            // 全球指数
-            'NDX': '100.NDX',
-            'NDX100': '100.NDX100',
-            'IXIC': '100.IXIC',
-            'SPX': '100.SPX',
-            'DJI': '100.DJI',
-            'GC00Y': '101.GC00Y',
-            'CL00Y': '102.CL00Y',
-            'N225': '100.N225',
-            'HSI': '100.HSI'
-          };
-          const upper = code.toUpperCase();
-          if (indexDict[upper]) return indexDict[upper];
-          if (indexDict[code]) return indexDict[code];
-        }
-        return code;
-      });
+      // Index tab - 使用统一的代码转换函数
+      const codes = parts.map(c => convertIndexCode(c));
 
       // 验证指数代码格式：必须是 "数字.数字" 或 "数字.字母" 格式
       const validIndexPattern = /^\d+\.\d+$|^\d+\.[A-Za-z]+$/;
@@ -116,13 +90,13 @@ export const AddTickerModal: React.FC<AddTickerModalProps> = ({ onClose, onAdd, 
     ],
     index: [
       // 国内指数
-      { name: '上证指数', code: '1.000001' },
-      { name: '深证成指', code: '0.399001' },
-      { name: '创业板指', code: '0.399006' },
-      { name: '恒生指数', code: '100.HSI' },
+      { name: INDEX_NAME_MAP['1.000001'] || '上证指数', code: '1.000001' },
+      { name: INDEX_NAME_MAP['0.399001'] || '深证成指', code: '0.399001' },
+      { name: INDEX_NAME_MAP['0.399006'] || '创业板指', code: '0.399006' },
+      { name: INDEX_NAME_MAP['100.HSI'] || '恒生指数', code: '100.HSI' },
       // 全球指数
-      { name: '纳斯达克', code: '100.NDX' },
-      { name: '标普500', code: '100.SPX' },
+      { name: INDEX_NAME_MAP['100.NDX'] || '纳斯达克100', code: '100.NDX' },
+      { name: INDEX_NAME_MAP['100.SPX'] || '标普500', code: '100.SPX' },
     ]
   };
 

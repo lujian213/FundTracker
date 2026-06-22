@@ -11,6 +11,7 @@ import { formatDateDisplay } from '../utils/dateFormat';
 import { prepareChartData } from '../utils/chartDataHelper';
 import { formatVolume, formatAmount } from '../utils/format';
 import IndexAISidePanel from './IndexAISidePanel';
+import { getIndexDetailUrl } from '../src/utils/indexUrlHelper';
 
 interface IndexDetailsModalProps {
   data: MarketIndex;
@@ -422,6 +423,18 @@ export const IndexDetailsModal: React.FC<IndexDetailsModalProps> = ({ data, onCl
               <div className="p-2 bg-gray-50 rounded-lg">
                 <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">行情更新时间</p>
                 <p className="text-xs font-bold text-gray-700">{data.info.lastUpdated}</p>
+              </div>
+
+              {/* 外部链接 - 在东方财富查看详细页 */}
+              <div className="mt-2">
+                <a
+                  href={getIndexDetailUrl(data.info.symbol)}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="block py-3 text-center text-xs font-bold text-gray-400 border border-gray-100 rounded-2xl hover:bg-gray-50 transition-colors"
+                >
+                  在东方财富查看详细页 <i className="fas fa-external-link-alt ml-1"></i>
+                </a>
               </div>
             </div>
           )}

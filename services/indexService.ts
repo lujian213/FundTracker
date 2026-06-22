@@ -13,6 +13,14 @@ import { floorToMinute, isSameLocalDay, filterTodayIntraday, dedupeByMinute, ext
 import { compressConsecutiveSameValues } from '../utils/intradayCompression';
 import { toLocalDateKey } from '../utils/priceResolver';
 import { compressToStorage, decompressFromStorage, truncateHistory, truncateArray, MAX_HISTORY_POINTS } from '../utils/storageCompression';
+// 引入统一的指数市场判断和URL生成函数
+import {
+  isDomesticIndex,
+  isGlobalIndex,
+  getIndexMarketType,
+  getIndexName,
+  INDEX_NAME_MAP
+} from '../src/utils/indexUrlHelper';
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // 内存缓存
@@ -23,39 +31,18 @@ const indices = new Map<string, MarketIndex>();
 
 // 默认指数配置（统一列表）
 export const DEFAULT_INDICES: MarketIndex[] = [
-  { info: { symbol: '1.000001', name: '上证指数', current: 0, change: 0, changePercent: 0, lastUpdated: '' }, intraday: [], history: [] },
-  { info: { symbol: '0.399001', name: '深证成指', current: 0, change: 0, changePercent: 0, lastUpdated: '' }, intraday: [], history: [] },
-  { info: { symbol: '0.399006', name: '创业板指', current: 0, change: 0, changePercent: 0, lastUpdated: '' }, intraday: [], history: [] },
-  { info: { symbol: '100.HSI', name: '恒生指数', current: 0, change: 0, changePercent: 0, lastUpdated: '' }, intraday: [], history: [] },
-  { info: { symbol: '100.NDX', name: '纳斯达克100', current: 0, change: 0, changePercent: 0, lastUpdated: '' }, intraday: [], history: [] },
-  { info: { symbol: '100.SPX', name: '标普500', current: 0, change: 0, changePercent: 0, lastUpdated: '' }, intraday: [], history: [] },
+  { info: { symbol: '1.000001', name: INDEX_NAME_MAP['1.000001'] || '上证指数', current: 0, change: 0, changePercent: 0, lastUpdated: '' }, intraday: [], history: [] },
+  { info: { symbol: '0.399001', name: INDEX_NAME_MAP['0.399001'] || '深证成指', current: 0, change: 0, changePercent: 0, lastUpdated: '' }, intraday: [], history: [] },
+  { info: { symbol: '0.399006', name: INDEX_NAME_MAP['0.399006'] || '创业板指', current: 0, change: 0, changePercent: 0, lastUpdated: '' }, intraday: [], history: [] },
+  { info: { symbol: '100.HSI', name: INDEX_NAME_MAP['100.HSI'] || '恒生指数', current: 0, change: 0, changePercent: 0, lastUpdated: '' }, intraday: [], history: [] },
+  { info: { symbol: '100.NDX', name: INDEX_NAME_MAP['100.NDX'] || '纳斯达克100', current: 0, change: 0, changePercent: 0, lastUpdated: '' }, intraday: [], history: [] },
+  { info: { symbol: '100.SPX', name: INDEX_NAME_MAP['100.SPX'] || '标普500', current: 0, change: 0, changePercent: 0, lastUpdated: '' }, intraday: [], history: [] },
 ];
 
 export const DEFAULT_INDEX_SYMBOLS = DEFAULT_INDICES.map(m => m.info.symbol);
 
-// 判断是否为国内指数（A股 + 港股）
-export const isDomesticIndex = (symbol: string): boolean => {
-  // A股指数：1.xxxxxx 或 0.xxxxxx
-  if (symbol.startsWith('1.') || symbol.startsWith('0.')) return true;
-  // 港股指数：恒生指数 HSI、恒生科技指数 HSTECH
-  if (symbol === '100.HSI' || symbol === '124.HSTECH') return true;
-  return false;
-};
-
-// 判断是否为全球指数（美股 + 商品期货等）
-export const isGlobalIndex = (symbol: string): boolean => !isDomesticIndex(symbol);
-
-// 指数名称映射（用于迁移时填充名称）
-export const INDEX_NAME_MAP: Record<string, string> = {
-  '1.000001': '上证指数',
-  '0.399001': '深证成指',
-  '0.399006': '创业板指',
-  '0.399005': '中小板指',
-  '100.NDX': '纳斯达克100',
-  '100.SPX': '标普500',
-  '100.HSI': '恒生指数',
-  '124.HSTECH': '恒生科技',
-};
+// 重新导出从 indexUrlHelper 导入的函数，以保持向后兼容
+export { isDomesticIndex, isGlobalIndex, getIndexMarketType, getIndexName, INDEX_NAME_MAP };
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // 初始化

@@ -1,4 +1,4 @@
-# Historical Volume Feature
+# Index Historical Volume Feature
 
 在系统中增加指数的历史交易量和交易值的信息。并能在历史数据界面展示出来。
 
