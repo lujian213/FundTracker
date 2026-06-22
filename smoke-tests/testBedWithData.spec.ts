@@ -6070,4 +6070,99 @@ test.describe('testBedWithData', () => {
 
     console.log('快讯侧边栏测试完成');
   });
+
+  // ══════════════════════════════════════════════════════════════════════════════
+  // 13. 板块热力图测试
+  // ══════════════════════════════════════════════════════════════════════════════
+  test('板块热力图测试', async () => {
+    const page = sharedPage!;
+
+    // ══════════════════════════════════════════════════════════════════════════════
+    // 1. 点击主界面上的"板块"按钮（位于持仓按钮旁边），弹出"板块热力图"窗口
+    // ══════════════════════════════════════════════════════════════════════════════
+    const sectorButton = page.locator('button:has-text("板块")');
+    await expect(sectorButton).toBeVisible();
+    await sectorButton.click();
+
+    // 等待懒加载和Modal打开
+    await page.waitForTimeout(500);
+
+    // 验证窗口标题为"板块热力图"
+    const modalTitle = page.locator('h2:has-text("板块热力图")');
+    await expect(modalTitle).toBeVisible({ timeout: 3000 });
+
+    // 验证窗口有关闭按钮
+    const closeButton = modalTitle.locator('..').locator('button[aria-label="关闭"]');
+    await expect(closeButton).toBeVisible();
+
+    console.log('板块热力图窗口打开验证完成');
+
+    // ══════════════════════════════════════════════════════════════════════════════
+    // 2. 验证窗口内有两个切换按钮："概念板块"和"行业板块"，默认选中"概念板块"
+    // ══════════════════════════════════════════════════════════════════════════════
+    const conceptButton = page.locator('button:has-text("概念板块")');
+    const industryButton = page.locator('button:has-text("行业板块")');
+
+    await expect(conceptButton).toBeVisible();
+    await expect(industryButton).toBeVisible();
+
+    // 验证默认选中"概念板块"（蓝色背景）
+    await expect(conceptButton).toHaveClass(/bg-blue-600/);
+    await expect(conceptButton).toHaveClass(/text-white/);
+
+    // 验证"行业板块"未选中（灰色背景）
+    await expect(industryButton).toHaveClass(/bg-gray-100/);
+    await expect(industryButton).toHaveClass(/text-gray-600/);
+
+    console.log('切换按钮默认状态验证完成');
+
+    // ══════════════════════════════════════════════════════════════════════════════
+    // 3. 点击"行业板块"切换按钮，验证按钮样式变化
+    // ══════════════════════════════════════════════════════════════════════════════
+    await industryButton.click();
+
+    // 等待React状态更新
+    await page.waitForTimeout(200);
+
+    // 验证"行业板块"按钮变为选中状态（蓝色背景白色文字）
+    await expect(industryButton).toHaveClass(/bg-blue-600/);
+    await expect(industryButton).toHaveClass(/text-white/);
+
+    // 验证"概念板块"按钮变为未选中状态（灰色背景深色文字）
+    await expect(conceptButton).toHaveClass(/bg-gray-100/);
+    await expect(conceptButton).toHaveClass(/text-gray-600/);
+
+    console.log('行业板块切换验证完成');
+
+    // ══════════════════════════════════════════════════════════════════════════════
+    // 4. 点击"概念板块"切换按钮，验证切换回概念板块
+    // ══════════════════════════════════════════════════════════════════════════════
+    await conceptButton.click();
+
+    // 等待React状态更新
+    await page.waitForTimeout(200);
+
+    // 验证"概念板块"按钮恢复选中状态
+    await expect(conceptButton).toHaveClass(/bg-blue-600/);
+    await expect(conceptButton).toHaveClass(/text-white/);
+
+    // 验证"行业板块"按钮恢复未选中状态
+    await expect(industryButton).toHaveClass(/bg-gray-100/);
+    await expect(industryButton).toHaveClass(/text-gray-600/);
+
+    console.log('概念板块切换验证完成');
+
+    // ══════════════════════════════════════════════════════════════════════════════
+    // 5. 点击窗口关闭按钮，验证窗口正常关闭
+    // ══════════════════════════════════════════════════════════════════════════════
+    await closeButton.click();
+
+    // 等待Modal关闭
+    await page.waitForTimeout(200);
+
+    // 验证窗口已关闭（标题不可见）
+    await expect(modalTitle).not.toBeVisible();
+
+    console.log('板块热力图测试完成');
+  });
 });

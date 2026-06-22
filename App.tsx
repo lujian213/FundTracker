@@ -65,6 +65,9 @@ import { processCalendarHoliday, parseCalendarAIResponse } from './services/cale
 // 调试面板和日志拦截器 - 仅开发环境使用（构建时会自动移除）
 import { isDev } from './utils/env';
 import NewsSidebar from './components/NewsSidebar';
+// 动态导入热力图组件（懒加载ECharts）
+import { lazy } from 'react';
+const SectorHeatmapModal = lazy(() => import('./components/SectorHeatmapModal'));
 
 const createPlaceholderIndex = (symbol: string): MarketIndex => {
   const normalized = normalizeIndexSymbol(symbol);
@@ -279,6 +282,7 @@ const AppContent: React.FC = () => {
   const [deepToast, setDeepToast] = useState<{ message: string, visible: boolean } | undefined>(undefined);
   const [screenshotToast, setScreenshotToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
   const [isNewsSidebarVisible, setIsNewsSidebarVisible] = useState<boolean>(false);
+  const [showSectorHeatmap, setShowSectorHeatmap] = useState<boolean>(false);
 
   const manageableItemCount = portfolio.length + indicesConfig.length;
 
@@ -1137,6 +1141,7 @@ const AppContent: React.FC = () => {
                     <button onClick={() => setShowPositions(true)} className="px-4 py-1.5 rounded-full bg-blue-600 shadow-md text-[11px] font-bold text-white hover:bg-blue-700 transition-all">持仓</button>
                     <button onClick={() => setShowOverallProfit(true)} className="px-4 py-1.5 rounded-full bg-blue-600 shadow-md text-[11px] font-bold text-white hover:bg-blue-700 transition-all">盈利</button>
                     <button onClick={() => setShowTransactions(true)} className="px-4 py-1.5 rounded-full bg-blue-600 shadow-md text-[11px] font-bold text-white hover:bg-blue-700 transition-all">交易</button>
+                    <button onClick={() => setShowSectorHeatmap(true)} className="px-4 py-1.5 rounded-full bg-blue-600 shadow-md text-[11px] font-bold text-white hover:bg-blue-700 transition-all">板块</button>
                     <button onClick={() => setIsInvestmentNoticeModalOpen(true)} className="px-4 py-1.5 rounded-full bg-blue-600 shadow-md text-[11px] font-bold text-white hover:bg-blue-700 transition-all">投顾</button>
                     <button onClick={() => setIsInvestmentDraftModalOpen(true)} className="px-4 py-1.5 rounded-full bg-blue-600 shadow-md text-[11px] font-bold text-white hover:bg-blue-700 transition-all">草稿</button>
                     <button disabled={manageableItemCount === 0} onClick={enterSelectionMode} className={`px-4 py-1.5 rounded-full shadow-md text-[11px] font-bold text-white transition-all ${manageableItemCount === 0 ? 'bg-blue-300 cursor-not-allowed opacity-60' : 'bg-blue-600 hover:bg-blue-700'}`}>管理</button>
@@ -1348,6 +1353,11 @@ const AppContent: React.FC = () => {
       {showOverallProfit && <OverallProfitModal onClose={() => setShowOverallProfit(false)} onSelectFund={(sym) => { setShowOverallProfit(false); setViewingFund({ symbol: sym, fromDraft: false }); }} />}
       {showPositions && <PositionsModal portfolio={portfolio} marketData={marketData} onClose={() => setShowPositions(false)} onSelectFund={(sym) => { setShowPositions(false); setViewingFund({ symbol: sym, fromDraft: false }); }} />}
       {showTransactions && <TransactionsModal portfolio={portfolio} marketData={marketData} onClose={() => setShowTransactions(false)} onSelectFund={(sym) => { setShowTransactions(false); setViewingFund({ symbol: sym, fromDraft: false }); }} />}
+      {showSectorHeatmap && (
+        <React.Suspense fallback={<div className="fixed inset-0 flex items-center justify-center bg-black/40 z-[150]"><div className="bg-white rounded-lg p-6 text-gray-600">正在加载板块热力图...</div></div>}>
+          <SectorHeatmapModal isOpen={showSectorHeatmap} onClose={() => setShowSectorHeatmap(false)} />
+        </React.Suspense>
+      )}
       {isInvestmentNoticeModalOpen && <InvestmentNoticeModal portfolio={portfolio} onClose={() => setIsInvestmentNoticeModalOpen(false)} onSelectFund={(sym) => {
         setIsInvestmentNoticeModalOpen(false);
         // Check if sym contains query parameters for virtual trade

@@ -75,6 +75,9 @@ export function formatVolume(volume: number): string {
  */
 export function formatAmount(amount: number): string {
   if (!Number.isFinite(amount) || amount <= 0) return '—';
+  if (amount >= 1000000000000) {
+    return (amount / 1000000000000).toFixed(2) + '万亿';
+  }
   if (amount >= 100000000) {
     return (amount / 100000000).toFixed(2) + '亿';
   }

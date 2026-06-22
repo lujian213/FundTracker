@@ -20,13 +20,21 @@ export default defineConfig({
   build: {
     outDir: 'dist',
     sourcemap: false,
-    chunkSizeWarningLimit: 600,
+    chunkSizeWarningLimit: 1500,  // 提高阈值以允许 ECharts 大文件
     rollupOptions: {
       output: {
         manualChunks(id) {
-          // React 核心
-          if (id.includes('react/') || id.includes('react-dom/') || id.includes('scheduler')) {
+          // ECharts 图表库（单独打包）
+          if (id.includes('echarts') || id.includes('zrender')) {
+            return 'echarts';
+          }
+          // React 核心（精简版本）
+          if (id.includes('react/') || id.includes('react-dom/')) {
             return 'react-vendor';
+          }
+          // Scheduler（React的调度器，单独打包）
+          if (id.includes('scheduler')) {
+            return 'scheduler';
           }
           // Markdown 渲染及其依赖
           if (id.includes('react-markdown') || id.includes('remark-gfm') ||

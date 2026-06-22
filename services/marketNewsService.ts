@@ -49,8 +49,9 @@ export function resetCache(): void {
 
 /**
  * fetch 方式 - 用于获取 JSON 数据
+ * 导出以便其他服务复用
  */
-async function fetchJson<T>(url: string, timeout: number = 10000): Promise<T> {
+export async function fetchJson<T>(url: string, timeout: number = 10000): Promise<T> {
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), timeout);
 
