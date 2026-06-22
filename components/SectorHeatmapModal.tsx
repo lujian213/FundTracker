@@ -115,18 +115,18 @@ export default function SectorHeatmapModal({
           </button>
         </div>
 
-        {/* 内容区 */}
-        <div className="relative" style={{ minHeight: '400px' }}>
+        {/* 内容区 - 固定高度480px避免切换抖动 */}
+        <div className="relative" style={{ height: '480px' }}>
           {/* 加载状态 */}
           {loading && (
-            <div className="flex items-center justify-center h-64 text-gray-500">
+            <div className="flex items-center justify-center h-full text-gray-500">
               <div className="text-lg">正在加载板块数据...</div>
             </div>
           )}
 
           {/* 错误状态 */}
           {error && !loading && (
-            <div className="flex flex-col items-center justify-center h-64 gap-4">
+            <div className="flex flex-col items-center justify-center h-full gap-4">
               <div className="text-lg text-red-500">
                 ❌ {error}
               </div>
@@ -139,7 +139,7 @@ export default function SectorHeatmapModal({
             </div>
           )}
 
-          {/* 盭力图 */}
+          {/* 热力图 */}
           {!loading && !error && sectors && (
             <SectorHeatmap
               topGainers={topGainers}
