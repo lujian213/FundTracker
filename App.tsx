@@ -599,17 +599,22 @@ const AppContent: React.FC = () => {
     }
   }, []);
 
-  const refreshMarketIndicesAsync = useCallback(async (ignoreCache: boolean = false, onProgress?: () => void): Promise<JobResult<MarketIndex[]>> => {
+  const refreshMarketIndicesAsync = useCallback(async (ignoreCache: boolean = false, onProgress?: () => void, additionalSymbols?: string[]): Promise<JobResult<MarketIndex[]>> => {
     const errors: string[] = [];
 
+    // 合并当前配置和新添加的符号（解决 state 更新时序问题）
+    const effectiveConfig = additionalSymbols
+      ? [...indicesConfig, ...additionalSymbols.filter(s => !indicesConfig.includes(normalizeIndexSymbol(s)))]
+      : indicesConfig;
+
     // 使用统一的指数配置
-    if (indicesConfig.length === 0) {
+    if (effectiveConfig.length === 0) {
       setMarketIndices([]);
       return { success: true, data: [] };
     }
 
     // 统一获取所有指数数据，传入进度回调
-    const result = await fetchMarketIndices(indicesConfig, ignoreCache, onProgress);
+    const result = await fetchMarketIndices(effectiveConfig, ignoreCache, onProgress);
     const data = result.data || [];
 
     if (!result.success && result.message) {
@@ -635,10 +640,10 @@ const AppContent: React.FC = () => {
     });
 
     // 更新状态
-    setMarketIndices(prev => mergeIndicesForDisplay(indicesConfig, data, prev));
+    setMarketIndices(prev => mergeIndicesForDisplay(effectiveConfig, data, prev));
     setIndexStatuses(prev => {
       const next = { ...prev };
-      indicesConfig.forEach(sym => {
+      effectiveConfig.forEach(sym => {
         const normalized = normalizeIndexSymbol(sym);
         next[normalized] = fetchedMap.has(normalized) ? 'ok' : 'error';
       });
@@ -1320,8 +1325,8 @@ const AppContent: React.FC = () => {
               // 立即为新指数创建 placeholder 并添加到 marketIndices
               const placeholders = newSymbols.map(s => createPlaceholderIndex(s));
               setMarketIndices(prev => [...prev, ...placeholders]);
-              // 触发数据获取（网络请求可能失败，但 placeholder 已显示）
-              refreshMarketIndicesAsync(true);
+              // 触发数据获取，传入新添加的符号以解决 state 更新时序问题
+              refreshMarketIndicesAsync(true, undefined, newSymbols);
             }
           } else {
             const existing = new Set(portfolio.map(p => p.symbol));

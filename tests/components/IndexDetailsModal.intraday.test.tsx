@@ -9,8 +9,8 @@ jest.mock('../../services/fundService', () => ({ fetchIndexHistory: jest.fn().mo
 describe('IndexDetailsModal intraday tab', () => {
   const data: MarketIndex = {
     info: {
-      symbol: 'IDX001',
-      name: 'Test Index',
+      symbol: '1.000001',
+      name: '上证指数',
       current: 1234.5,
       change: 10,
       changePercent: 0.8,
