@@ -157,7 +157,7 @@ function localTimestamp(d: Date): string {
 }
 
 /** Format a local Date as "yyyy-MM-dd" */
-function localDateStr(d: Date): string {
+export function localDateStr(d: Date): string {
   const pad = (n: number) => String(n).padStart(2, '0');
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 }

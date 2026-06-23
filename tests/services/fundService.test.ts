@@ -755,6 +755,21 @@ describe('computeTradingDateAndTime', () => {
       expect(result.tradeDate).toBe('2026-05-06'); // 函数层面返回当天日期
       expect(result.lastUpdated).toBe('11:30:00'); // 函数层面返回最近的收盘时间（上午收盘）
     });
+
+    // 新增测试：验证用户报告的问题场景
+    test('美股跨日时段 - 使用前一天的f80数据，当前时间在交易时段内（23:59）', () => {
+      // 场景：开盘前获取了数据，f80指向前一天的交易时段
+      // f80: [{"b":202606212130,"e":202606220400}]（前一天21:30开盘，当天04:00收盘）
+      const periods = [createPeriod('2026-06-21', '2026-06-22', 2130, 400)];
+      const now = createDate('2026-06-22', '23:59:00'); // 当天23:59，应该在新时段内，但f80是旧数据
+      const result = computeTradingDateAndTime(periods, now);
+      // 时间23:59 >= 21:30，所以在时段内（跨日时段判断：>= 开盘 或 <= 收盘）
+      // matchedPeriod = periods[0]
+      // 日期判断：currentDate(2026-06-22) == endDate(2026-06-22)，所以是交易日
+      // 应返回当前日期和时间
+      expect(result.tradeDate).toBe('2026-06-22');
+      expect(result.lastUpdated).toBe('23:59:00');
+    });
   });
 });
 

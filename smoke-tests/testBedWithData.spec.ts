@@ -1262,6 +1262,122 @@ test.describe('testBedWithData', () => {
 
     console.log('持仓总金额趋势窗口已关闭');
 
+    // ════════════════════════════════════════════════════════════════════════════════
+    // 【新增】验证四个按钮存在
+    // ════════════════════════════════════════════════════════════════════════════════
+    const trendButton2 = page.locator('button[aria-label="查看持仓总金额趋势"]');
+    const exportButton = page.locator('button[aria-label="导出持仓文件"]');
+    const compareButton = page.locator('button[aria-label="持仓对比"]');
+    const aiButton = page.locator('button[aria-label="AI分析投资组合"]');
+
+    await expect(trendButton2).toBeVisible();
+    await expect(exportButton).toBeVisible();
+    await expect(compareButton).toBeVisible();
+    await expect(aiButton).toBeVisible();
+    console.log('四个按钮验证完成: 趋势、导出、对比、AI分析');
+
+    // ════════════════════════════════════════════════════════════════════════════════
+    // 【新增】测试导出功能
+    // ════════════════════════════════════════════════════════════════════════════════
+    const downloadPromise = page.waitForEvent('download');
+    await exportButton.click();
+    const download = await downloadPromise;
+
+    // 验证文件名格式
+    const filename = download.suggestedFilename();
+    expect(filename).toMatch(/fund_position_\d{4}-\d{2}-\d{2}.json/);
+    console.log(`导出文件验证完成: ${filename}`);
+
+    // 验证导出文件内容
+    const downloadPath = await download.path();
+    if (downloadPath) {
+      const content = fs.readFileSync(downloadPath, 'utf-8');
+      const data = JSON.parse(content);
+
+      expect(data.exportDate).toBeDefined();
+      expect(data.positions).toBeDefined();
+      expect(Array.isArray(data.positions)).toBe(true);
+      expect(data.positions.length).toBe(21);
+
+      // 验证每个position的字段
+      for (const pos of data.positions) {
+        expect(pos.symbol).toBeDefined();
+        expect(pos.name).toBeDefined();
+        expect(typeof pos.shares).toBe('number');
+        expect(typeof pos.price).toBe('number');
+      }
+
+      console.log('导出文件内容验证完成: 21个position, 所有字段正确');
+    }
+
+    // ════════════════════════════════════════════════════════════════════════════════
+    // 【新增】测试对比功能
+    // ════════════════════════════════════════════════════════════════════════════════
+    const fileChooserPromise = page.waitForEvent('filechooser');
+    await compareButton.click();
+    const fileChooser = await fileChooserPromise;
+
+    // 使用刚才导出的文件
+    if (downloadPath) {
+      await fileChooser.setFiles(downloadPath);
+    }
+
+    // 等待对比结果窗口弹出
+    const compareModal = page.locator('h3:has-text("持仓对比")');
+    await expect(compareModal).toBeVisible({ timeout: 5000 });
+    console.log('对比结果窗口验证完成: 窗口已弹出');
+
+    // ════════════════════════════════════════════════════════════════════════════════
+    // 【新增】验证对比表格结构
+    // ════════════════════════════════════════════════════════════════════════════════
+    // 找到对比窗口的容器
+    const compareModalContainer = compareModal.locator('xpath=..').locator('xpath=..');
+
+    // 验证表头有8列（只查找对比窗口内的表格）
+    const compareTableHeaders = compareModalContainer.locator('table thead th');
+    expect(await compareTableHeaders.count()).toBe(8);
+    console.log('对比表格验证完成: 8列表头');
+
+    // 验证有21行数据
+    const compareRows = compareModalContainer.locator('table tbody tr');
+    expect(await compareRows.count()).toBe(21);
+    console.log('对比表格验证完成: 21行数据');
+
+    // ════════════════════════════════════════════════════════════════════════════════
+    // 【新增】验证差异为0（同一文件对比）
+    // ════════════════════════════════════════════════════════════════════════════════
+    // 第一行的份额差异和价值差异应该为0（显示为"-"）
+    const firstRowSharesDiff = compareModalContainer.locator('table tbody tr:first-child td:nth-child(6)');
+    const firstRowValueDiff = compareModalContainer.locator('table tbody tr:first-child td:nth-child(7)');
+
+    // 由于是同一个文件对比，差异为0，显示为"-"
+    expect(await firstRowSharesDiff.textContent()).toBe('-');
+    expect(await firstRowValueDiff.textContent()).toBe('-');
+    console.log('差异验证完成: 同文件对比，差异为0');
+
+    // ════════════════════════════════════════════════════════════════════════════════
+    // 【新增】验证总计行
+    // ════════════════════════════════════════════════════════════════════════════════
+    const tfoot = compareModalContainer.locator('table tfoot');
+    await expect(tfoot).toBeVisible();
+
+    // 验证总计行显示
+    const totalRow = tfoot.locator('tr');
+    expect(await totalRow.locator('td:first-child').textContent()).toContain('总计：21条记录');
+
+    // 验证比例总计为100%（同一文件对比）
+    const totalRatioCell = totalRow.locator('td:nth-child(8)');
+    expect(await totalRatioCell.textContent()).toBe('100.00%');
+    console.log('总计行验证完成: 比例100%');
+
+    // ════════════════════════════════════════════════════════════════════════════════
+    // 【新增】关闭对比结果窗口
+    // ════════════════════════════════════════════════════════════════════════════════
+    const compareCloseButton = page.locator('button[aria-label="关闭对比窗口"]');
+    await compareCloseButton.click();
+    await expect(compareModal).not.toBeVisible();
+    console.log('对比结果窗口关闭完成');
+
     // ══════════════════════════════════════════════════════════════════════════════
     // 6. 关闭"基金持仓"窗口
     // ══════════════════════════════════════════════════════════════════════════════

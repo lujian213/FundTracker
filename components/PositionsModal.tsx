@@ -1,4 +1,4 @@
-import React, { useMemo, useState, memo } from 'react';
+import React, { useMemo, useState, memo, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { Ticker, ValuationData } from '../types';
 import { computePositions, PositionEntry, computeAvgCostPrice } from '../utils/positionHelper';
@@ -7,6 +7,9 @@ import usePositionTrend from '../hooks/usePositionTrend';
 import AIPortfolioAnalysisModal from './AIPortfolioAnalysisModal';
 import { PortfolioItem } from '../services/aiPortfolioService';
 import { readAll as readAllTrades } from '../hooks/useTrades';
+import { PositionCompareResult, PositionExportData } from '../types/positionExportTypes';
+import { exportPositions, importPositions, computeCompareResult } from '../utils/positionExportService';
+import PositionCompareModal from './PositionCompareModal';
 
 interface Props {
   portfolio: Ticker[];
@@ -87,6 +90,10 @@ const PositionsModal: React.FC<Props> = ({ portfolio, marketData, onClose, onSel
   const [hoveredSymbol, setHoveredSymbol] = useState<string | null>(null);
   const [showTrend, setShowTrend] = useState(false);
   const [showAIPanel, setShowAIPanel] = useState(false);
+  const [showCompareModal, setShowCompareModal] = useState(false);
+  const [compareResult, setCompareResult] = useState<PositionCompareResult | null>(null);
+  const [importError, setImportError] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const { entries, totalMarketValue } = useMemo(
     () => computePositions(portfolio, marketData),
@@ -133,6 +140,38 @@ const PositionsModal: React.FC<Props> = ({ portfolio, marketData, onClose, onSel
   }, [entries]);
 
   const hoveredEntry = entries.find((e) => e.symbol === hoveredSymbol) ?? null;
+
+  const handleFileImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    // Clear previous error
+    setImportError(null);
+
+    // Import and validate
+    const { data, error } = await importPositions(file);
+
+    if (error) {
+      setImportError(error.message);
+      // Clear file input
+      if (fileInputRef.current) fileInputRef.current.value = '';
+      return;
+    }
+
+    if (!data) {
+      setImportError('导入文件读取失败，请重试。');
+      if (fileInputRef.current) fileInputRef.current.value = '';
+      return;
+    }
+
+    // Compute comparison
+    const result = computeCompareResult(portfolio, marketData, data);
+    setCompareResult(result);
+    setShowCompareModal(true);
+
+    // Clear file input
+    if (fileInputRef.current) fileInputRef.current.value = '';
+  };
 
   const content = (
     <div className="fixed inset-0 z-[130] flex items-center justify-center p-4">
@@ -186,6 +225,34 @@ const PositionsModal: React.FC<Props> = ({ portfolio, marketData, onClose, onSel
             >
               <i className="fas fa-robot text-xs" />
             </button>
+            {/* Export button */}
+            <button
+              type="button"
+              onClick={() => exportPositions(portfolio, marketData)}
+              aria-label="导出持仓文件"
+              title="导出持仓文件"
+              className="ml-2 inline-flex items-center justify-center w-7 h-7 rounded-full bg-green-50 text-green-500 hover:bg-green-100"
+            >
+              <i className="fas fa-download text-xs" />
+            </button>
+            {/* Compare button */}
+            <button
+              type="button"
+              onClick={() => fileInputRef.current?.click()}
+              aria-label="持仓对比"
+              title="持仓对比"
+              className="ml-2 inline-flex items-center justify-center w-7 h-7 rounded-full bg-purple-50 text-purple-500 hover:bg-purple-100"
+            >
+              <i className="fas fa-exchange-alt text-xs" />
+            </button>
+            {/* Hidden file input */}
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept=".json"
+              className="hidden"
+              onChange={handleFileImport}
+            />
           </div>
 
           {/* Pie chart + legend — fixed height, legend scrolls */}
@@ -352,6 +419,25 @@ const PositionsModal: React.FC<Props> = ({ portfolio, marketData, onClose, onSel
             isVisible={showAIPanel}
             onClose={() => setShowAIPanel(false)}
             portfolioData={portfolioDataForAI}
+          />
+        )}
+        {/* Error toast */}
+        {importError && (
+          <div className="fixed bottom-4 right-4 bg-red-50 border border-red-200 rounded-lg p-3 shadow-lg z-[200]">
+            <p className="text-sm text-red-700">{importError}</p>
+            <button
+              onClick={() => setImportError(null)}
+              className="ml-2 text-red-500 hover:text-red-700"
+            >
+              <i className="fas fa-times" />
+            </button>
+          </div>
+        )}
+        {/* Compare modal */}
+        {showCompareModal && compareResult && (
+          <PositionCompareModal
+            compareResult={compareResult}
+            onClose={() => setShowCompareModal(false)}
           />
         )}
       </div>
