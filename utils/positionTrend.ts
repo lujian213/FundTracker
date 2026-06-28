@@ -2,7 +2,8 @@ import { HistoricalPoint } from '../types';
 
 export interface PositionTrendPoint {
   date: string; // YYYY-MM-DD
-  value: number; // total market value in 元
+  value: number; // 持仓总金额 in 元
+  netInvestment?: number; // 累计净投入总额 in 元
 }
 
 export type PositionTrendSeries = PositionTrendPoint[];
@@ -10,10 +11,10 @@ export type PositionTrendSeries = PositionTrendPoint[];
 export interface Trade {
   id?: string;
   date: string; // YYYY-MM-DD
-  type: 'buy' | 'sell';
+  type: 'buy' | 'sell' | 'initial'; // 增加 'initial' 类型
   shares: number;
   price?: number;
-  fee?: number;
+  fee?: number; // 手续费
 }
 
 export interface ValuationPoint {
@@ -73,7 +74,10 @@ function buildSharesTimeline(dates: string[], initial: number, trades: Trade[]):
   for (let i = 0; i < dates.length; i++) {
     const d = dates[i];
     while (idx < sorted.length && sorted[idx].date <= d) {
-      cumulative += (sorted[idx].type === 'buy' ? sorted[idx].shares : -sorted[idx].shares);
+      // initial 类型已经通过 initial 参数处理，这里跳过避免重复计算
+      if (sorted[idx].type !== 'initial') {
+        cumulative += (sorted[idx].type === 'buy' ? sorted[idx].shares : -sorted[idx].shares);
+      }
       idx++;
     }
     res[i] = cumulative;
@@ -98,6 +102,72 @@ function buildPriceTimeline(dates: string[], valuations: ValuationPoint[]): (num
   return res;
 }
 
+// compute cumulative net investment per date across all symbols
+function buildNetInvestmentTimeline(
+  dates: string[],
+  trades: Record<string, Trade[]>
+): number[] {
+  // 为每个符号构建按日期排序的交易列表
+  const sortedTradesMap: Record<string, Trade[]> = {};
+  for (const sym of Object.keys(trades)) {
+    sortedTradesMap[sym] = (trades[sym] || [])
+      .slice()
+      .sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
+  }
+
+  const res: number[] = new Array(dates.length).fill(0);
+  const tradeIndices: Record<string, number> = {};
+
+  // 初始化每个符号的交易索引
+  for (const sym of Object.keys(sortedTradesMap)) {
+    tradeIndices[sym] = 0;
+  }
+
+  // 对每个日期，累加截止到该日期的所有交易额
+  for (let i = 0; i < dates.length; i++) {
+    const d = dates[i];
+
+    // 复制前一天的累计值
+    if (i > 0) {
+      res[i] = res[i - 1];
+    }
+
+    // 遍历所有符号的交易
+    for (const sym of Object.keys(sortedTradesMap)) {
+      const tradeList = sortedTradesMap[sym];
+      let idx = tradeIndices[sym] || 0;
+
+      // 处理该日期及之前的所有交易
+      while (idx < tradeList.length && tradeList[idx].date <= d) {
+        const trade = tradeList[idx];
+        const isSell = trade.type === 'sell';
+        const shares = trade.shares || 0;
+        const price = trade.price || 0;
+        const fee = trade.fee || 0;
+
+        // 计算交易额：买入/建仓为 数量*价格+手续费，卖出为 数量*价格-手续费
+        const tradeAmount = isSell
+          ? price * shares - fee
+          : price * shares + fee;
+
+        // 累加交易额：买入/建仓为正，卖出为负
+        if (isSell) {
+          res[i] -= tradeAmount;
+        } else {
+          res[i] += tradeAmount;
+        }
+
+        idx++;
+      }
+
+      // 更新交易索引
+      tradeIndices[sym] = idx;
+    }
+  }
+
+  return res;
+}
+
 export function computePositionTrend(input: PositionTrendInput): PositionTrendSeries {
   const { symbols, initialPositions, trades, valuationHistory, startDate, endDate } = input;
   const dates = buildDateArray(startDate, endDate);
@@ -114,6 +184,9 @@ export function computePositionTrend(input: PositionTrendInput): PositionTrendSe
     perSymbolPrices[sym] = buildPriceTimeline(dates, vlist);
   }
 
+  // 计算净投入时间线
+  const netInvestmentTimeline = buildNetInvestmentTimeline(dates, trades);
+
   const series: PositionTrendSeries = dates.map((d, i) => {
     let total = 0;
     for (const sym of symbols) {
@@ -123,7 +196,7 @@ export function computePositionTrend(input: PositionTrendInput): PositionTrendSe
         total += shares * price;
       }
     }
-    return { date: d, value: total };
+    return { date: d, value: total, netInvestment: netInvestmentTimeline[i] };
   });
 
   return series;

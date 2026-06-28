@@ -1153,12 +1153,20 @@ test.describe('testBedWithData', () => {
     await expect(trendModal).toBeVisible();
 
     // ══════════════════════════════════════════════════════════════════════════════
-    // 4. 验证折线图能够正常显示
+    // 4. 验证折线图能够正常显示两条折线
     // ══════════════════════════════════════════════════════════════════════════════
     // 趋势图通过 portal 渲染，查找包含标题的区域
     const trendDialogContent = page.locator('text=持仓总金额趋势').locator('..').locator('..');
     const chartSvg = trendDialogContent.locator('svg');
     await expect(chartSvg.first()).toBeVisible({ timeout: 10000 });
+
+    // 验证图例存在：持仓总金额（红色）和净投入总额（绿色）
+    // 图例区域在图表上方，查找包含两个图例的div容器
+    const legendContainer = trendDialogContent.locator('div').filter({ hasText: /^持仓总金额$/ }).first();
+    await expect(legendContainer).toBeVisible();
+    const legend2Container = trendDialogContent.locator('div').filter({ hasText: /^净投入总额$/ }).first();
+    await expect(legend2Container).toBeVisible();
+    console.log('图例验证完成: 持仓总金额和净投入总额');
 
     // 检查图表数据（直接从趋势图容器内查找）
     const chartInfo = await page.evaluate(() => {
@@ -1170,14 +1178,18 @@ test.describe('testBedWithData', () => {
         XPathResult.FIRST_ORDERED_NODE_TYPE,
         null
       ).singleNodeValue as HTMLElement | null;
-      if (!trendTitle) return { hasChart: false, dataPointCount: 0 };
+      if (!trendTitle) return { hasChart: false, dataPointCount: 0, hasTwoLines: false };
 
       // 找到包含 SVG 的容器
       const container = trendTitle.closest('div[class*="rounded"]') || (trendTitle.parentElement?.parentElement as HTMLElement | null);
-      if (!container) return { hasChart: false, dataPointCount: 0 };
+      if (!container) return { hasChart: false, dataPointCount: 0, hasTwoLines: false };
 
-      const svg = container.querySelector('svg');
-      if (!svg) return { hasChart: false, dataPointCount: 0 };
+      const svgs = container.querySelectorAll('svg');
+      // 第一个 SVG 是主图表（HistoryChart），第二个 SVG 是第二条折线叠加层
+      const hasTwoLines = svgs.length >= 2;
+
+      const svg = svgs[0];
+      if (!svg) return { hasChart: false, dataPointCount: 0, hasTwoLines: false };
 
       // 检查是否有折线路径
       const linePath = svg.querySelector('path[d][fill="none"][stroke]');
@@ -1191,68 +1203,88 @@ test.describe('testBedWithData', () => {
       const hoverRects = svg.querySelectorAll('rect[fill="transparent"]');
       const dataPointCount = hoverRects.length;
 
-      return { hasChart: true, hasLine, hasArea, dataPointCount };
+      return { hasChart: true, hasLine, hasArea, dataPointCount, hasTwoLines };
     });
 
     console.log(`图表信息: ${JSON.stringify(chartInfo)}`);
 
-    // 验证有数据
+    // 验证有数据和两条折线
     expect(chartInfo.dataPointCount).toBeGreaterThan(0);
     expect(chartInfo.hasLine).toBe(true);
     expect(chartInfo.hasArea).toBe(true);
+    expect(chartInfo.hasTwoLines).toBe(true);
 
     // ══════════════════════════════════════════════════════════════════════════════
-    // 4.1 测试hover效果和日期显示
+    // 4.1 测试hover效果和数据显示
     // ══════════════════════════════════════════════════════════════════════════════
-    const chartBounds = await chartSvg.boundingBox();
+    // 只获取第一个SVG（主图表）的bounding box
+    const firstChartSvg = chartSvg.first();
+    const chartBounds = await firstChartSvg.boundingBox();
     if (chartBounds) {
-      // 获取底部日期显示区域
-      const bottomDateArea = trendDialogContent.locator('div[aria-live="polite"]');
+      // 获取底部信息显示区域
+      const bottomInfoArea = trendDialogContent.locator('div[aria-live="polite"]');
 
       // 计算图表区域的实际像素位置
-      // viewBox 是 1000x280，padding left=80, right=30
       const viewBoxWidth = 1000;
       const padLeft = 80;
       const padRight = 30;
       const chartAreaWidth = viewBoxWidth - padLeft - padRight;
-
-      // 将 viewBox 坐标转换为页面坐标
       const scale = chartBounds.width / viewBoxWidth;
 
-      // Hover 第一个数据点（viewBox x=80）
+      // Hover 第一个数据点
       const firstPointX = chartBounds.x + padLeft * scale;
       const hoverY = chartBounds.y + chartBounds.height * 0.3;
       await page.mouse.move(firstPointX, hoverY);
       await page.waitForTimeout(150);
 
-      // 验证 hover 效果：底部日期显示区域应该有内容
-      const firstDate = await bottomDateArea.locator('div').first().textContent();
-      console.log(`第一个数据点日期: ${firstDate}`);
-      expect(firstDate).toBeTruthy();
+      // 验证底部显示四个字段：日期、持仓、净投、盈利
+      const infoDivs = bottomInfoArea.locator('div');
+      const divCount = await infoDivs.count();
+      expect(divCount).toBe(4);
 
-      // Hover 最后一个数据点（viewBox x=970）
+      // 获取各字段的值
+      const dateText = await infoDivs.nth(0).textContent();
+      const positionText = await infoDivs.nth(1).textContent();
+      const netInvestText = await infoDivs.nth(2).textContent();
+      const profitText = await infoDivs.nth(3).textContent();
+
+      console.log(`第一个数据点信息:\n  日期: ${dateText}\n  持仓: ${positionText}\n  净投: ${netInvestText}\n  盈利: ${profitText}`);
+
+      // 验证日期字段包含日期
+      expect(dateText).toContain('日期');
+
+      // 验证持仓字段包含持仓和数值（千分位格式）
+      expect(positionText).toContain('持仓');
+      expect(positionText).toMatch(/\d{1,3}(,\d{3})*\.\d{2}/); // 千分位格式
+
+      // 验证净投入字段包含净投和数值（千分位格式）
+      expect(netInvestText).toContain('净投');
+      expect(netInvestText).toMatch(/\d{1,3}(,\d{3})*\.\d{2}/); // 千分位格式
+
+      // 验证盈利字段包含盈利或亏损，以及数值（千分位格式）
+      expect(profitText).toMatch(/盈利|亏损/);
+      expect(profitText).toMatch(/-?\d{1,3}(,\d{3})*\.\d{2}/); // 千分位格式（可能为负数）
+
+      // Hover 最后一个数据点
       const lastPointX = chartBounds.x + (padLeft + chartAreaWidth) * scale;
       await page.mouse.move(lastPointX, hoverY);
       await page.waitForTimeout(150);
 
-      // 获取最后一个数据点的日期
-      const lastDate = await bottomDateArea.locator('div').first().textContent();
-      console.log(`最后一个数据点日期: ${lastDate}`);
-
       // 验证结束日期为 mock 的日期
-      expect(lastDate).toContain(mockDateDisplay);
+      const lastDateText = await infoDivs.nth(0).textContent();
+      expect(lastDateText).toContain(mockDateDisplay);
+      console.log(`最后一个数据点日期: ${lastDateText}`);
 
       // Hover 图表中间
       const middleX = chartBounds.x + chartBounds.width * 0.5;
       await page.mouse.move(middleX, hoverY);
       await page.waitForTimeout(150);
 
-      // 获取中间数据点的日期
-      const middleDate = await bottomDateArea.locator('div').first().textContent();
-      console.log(`中间数据点日期: ${middleDate}`);
+      const middleDateText = await infoDivs.nth(0).textContent();
+      console.log(`中间数据点日期: ${middleDateText}`);
     }
 
-    console.log('折线图hover效果验证完成');
+    console.log('折线图hover效果和数据显示验证完成');
 
     // ══════════════════════════════════════════════════════════════════════════════
     // 5. 关闭"持仓总金额趋势"窗口

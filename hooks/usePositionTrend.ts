@@ -23,11 +23,12 @@ export default function usePositionTrend(params: UsePositionTrendParams = {}) {
   const portfolioSymbols = useMemo(() => {
     if (Array.isArray(symbols) && symbols.length > 0) return symbols;
     try {
-      // 从 marketFundService 获取所有有 position 的基金
+      // 从 marketFundService 获取所有有持仓的基金
       const allSymbols = marketFundService.getAllFundSymbols();
       const syms: string[] = [];
       for (const sym of allSymbols) {
         const pos = marketFundService.getPosition(sym);
+        // 如果有持仓信息且满仓金额 > 0，则包含该基金
         if (pos && pos.fullCapacity > 0) {
           syms.push(sym);
         }
@@ -92,7 +93,14 @@ export default function usePositionTrend(params: UsePositionTrendParams = {}) {
         // trades
         try {
           const arr = getTradesForSymbol(s) || [];
-          tradesMap[s] = arr.map(t => ({ id: t.id, date: t.date, type: t.type as any, shares: t.shares, price: t.price }));
+          tradesMap[s] = arr.map(t => ({
+            id: t.id,
+            date: t.date,
+            type: t.type as any,
+            shares: t.shares,
+            price: t.price,
+            fee: t.fee || 0
+          }));
         } catch (e) { tradesMap[s] = []; }
 
         // valuations -> map history points to {date, price}
@@ -132,6 +140,30 @@ export default function usePositionTrend(params: UsePositionTrendParams = {}) {
         try {
           const pos = marketFundService.getPosition(s);
           initialPositions[s] = pos?.initialPosition || 0;
+
+          // 如果有建仓记录，将其添加到 tradesMap 中（用于净投入计算）
+          // buildSharesTimeline 会跳过 initial 类型，避免重复计算持仓份额
+          // 为了和持仓计算保持一致（假设建仓日期之前仓位已存在），将 initial trade 的日期设为图表起始日期
+          if (pos && pos.initialPosition > 0 && pos.initialPrice) {
+            const initialTrade = {
+              id: '__initial__',
+              date: computedRange.startDate, // 使用图表起始日期，而非基金建仓日期
+              type: 'initial' as const,
+              shares: pos.initialPosition,
+              price: pos.initialPrice,
+              fee: 0
+            };
+            tradesMap[s] = [...(tradesMap[s] || []), initialTrade];
+
+            // 同时将图表起始日期的估值添加到 valuationMap，使用建仓价格
+            // 这样起始日期就有估值数据，持仓总金额不会为 0
+            const arr = valuationMap[s] || [];
+            // 检查是否已经有该日期的估值，如果没有则添加
+            if (!arr.find(v => v.date === computedRange.startDate)) {
+              arr.push({ date: computedRange.startDate, price: pos.initialPrice });
+              valuationMap[s] = arr;
+            }
+          }
         } catch (e) { initialPositions[s] = 0; }
       }
 
@@ -145,6 +177,7 @@ export default function usePositionTrend(params: UsePositionTrendParams = {}) {
       };
 
       const fullSeries = computePositionTrend(input);
+
       if (!useFull && fullSeries.length > maxPoints) {
         const sampled = downsampleLTTB(fullSeries, maxPoints);
         setFullResolutionAvailable(true);
