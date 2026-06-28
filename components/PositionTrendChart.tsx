@@ -27,13 +27,16 @@ const formatCurrency = (v: number) => {
 };
 
 // Helper: compress adjacent equal values — keep the first date of each run
+// Compare both value and netInvestment to preserve points where either differs
 function compressAdjacentEquals(series: PositionTrendSeries): PositionTrendSeries {
   if (!series || series.length === 0) return [];
   const out: PositionTrendSeries = [];
   let prev: PositionTrendPoint | null = null;
   for (const p of series) {
-    if (prev && Math.abs(p.value - prev.value) < 1e-9) {
-      // same as previous -> skip (keep single point)
+    const prevNet = prev?.netInvestment || 0;
+    const currNet = p.netInvestment || 0;
+    // Skip only if BOTH value and netInvestment are equal to previous
+    if (prev && Math.abs(p.value - prev.value) < 1e-9 && Math.abs(currNet - prevNet) < 1e-9) {
       continue;
     }
     out.push(p);
@@ -59,7 +62,19 @@ function calculateAlignedAxisScale(
   const overallMax = Math.max(max, netMax);
   const overallMin = Math.min(min, netMin);
 
+  // Handle edge case where all values are the same
   const span = overallMax - overallMin;
+  if (span < 1e-9) {
+    // All values are identical, create symmetric axis around the value
+    const center = overallMax;
+    const step = minStep;
+    return {
+      alignedMin: Math.floor((center - step * 2) / step) * step,
+      alignedMax: Math.ceil((center + step * 2) / step) * step,
+      step
+    };
+  }
+
   const rawStep = span / 4;
   const magnitude = Math.pow(10, Math.floor(Math.log10(rawStep)));
   const normalizedStep = rawStep / magnitude;
@@ -75,8 +90,14 @@ function calculateAlignedAxisScale(
   step = Math.max(step, minStep);
 
   // Align min and max to step intervals
+  // Important: ensure alignedMax >= overallMax and alignedMin <= overallMin
   const alignedMin = Math.floor(overallMin / step) * step;
-  const alignedMax = Math.ceil(overallMax / step) * step;
+  // Use Math.ceil but verify it's >= overallMax; if exactly divisible, add one step
+  let alignedMax = Math.ceil(overallMax / step) * step;
+  // Safety check: ensure alignedMax covers all data points
+  if (alignedMax < overallMax) {
+    alignedMax += step;
+  }
 
   return { alignedMin, alignedMax, step };
 }
@@ -119,11 +140,12 @@ export default function PositionTrendChart({ data, loading, height = 320 }: Posi
     };
   }, [hoveredPoint, compressed]);
 
-  // Map series to points with actual x positions computed from index and chart width 1000 with padding left 80 right 30
+  // Map series to points with actual x positions computed from index and chart width 1000 with padding
   const points = useMemo(() => {
     if (!compressed || compressed.length === 0) return [] as any[];
     const vbW = 1000;
-    const padLeft = 80;
+    // Must match HistoryChart's internal padding constants
+    const padLeft = 110;
     const padRight = 30;
     const chartW = vbW - padLeft - padRight;
     const total = compressed.length;
@@ -136,13 +158,15 @@ export default function PositionTrendChart({ data, loading, height = 320 }: Posi
     });
   }, [compressed]);
 
+  // viewBox height: chart area (280) + extra space for x-axis labels (20)
+  const vbH = 300;
+
   const yLabels = useMemo(() => {
     if (!chartValues) return [] as any[];
     const { alignedMin, alignedMax, step } = calculateAlignedAxisScale(chartValues.vals, chartValues.netVals);
 
-    // compute y positions to match HistoryChart's internal coordinates (height 280 with PADDING_TOP=20, PADDING_BOTTOM=0)
-    const vbH = 280;
-    const chartH = vbH - 20 - 0; // 260
+    // Y-axis labels: positioned within chart area (Y=20 to Y=280), not extended viewBox
+    const chartH = 260; // fixed chart height for Y-axis (280 - 20 padding)
     const numTicks = Math.round((alignedMax - alignedMin) / step) + 1;
 
     return Array.from({ length: Math.min(numTicks, 10) }, (_, i) => {
@@ -157,7 +181,8 @@ export default function PositionTrendChart({ data, loading, height = 320 }: Posi
     if (!compressed || compressed.length === 0) return [] as any[];
     const total = compressed.length;
     const step = Math.max(1, Math.floor(total / 6));
-    const padLeft = 80;
+    // Must match HistoryChart's internal padding constants
+    const padLeft = 110;
     const padRight = 30;
     const vbW = 1000;
     const chartW = vbW - padLeft - padRight;
@@ -173,13 +198,15 @@ export default function PositionTrendChart({ data, loading, height = 320 }: Posi
   const { path, area, pointsWithY, path2, points2WithY } = useMemo(() => {
     if (!compressed || compressed.length === 0 || !chartValues) return { path: '', area: '', pointsWithY: [] as any[], path2: '', points2WithY: [] as any[] };
     const vbW = 1000;
-    const vbH = 280;
-    const padLeft = 80;
+    // Must match HistoryChart's internal padding constants
+    const padLeft = 110;
     const padRight = 30;
     const padTop = 20;
     const padBottom = 0;
     const chartW = vbW - padLeft - padRight;
-    const chartH = vbH - padTop - padBottom;
+    // Chart height fixed at 260 (280 chart area - 20 top padding)
+    // This ensures lines are positioned correctly relative to Y-axis labels
+    const chartH = 260;
 
     const { alignedMin, alignedMax, step } = calculateAlignedAxisScale(chartValues.vals, chartValues.netVals);
     const span = Math.max(1e-6, alignedMax - alignedMin);
@@ -231,9 +258,11 @@ export default function PositionTrendChart({ data, loading, height = 320 }: Posi
         </div>
       </div>
 
-      <div style={{ height, position: 'relative' }}>
+      {/* 图表区域 - 包含图表(Y=20到Y=280)和x轴标签区域(Y=280到Y=300) */}
+      <div style={{ height: vbH, position: 'relative' }}>
         <HistoryChart
-          viewBox={`0 0 1000 280`}
+          viewBox={`0 0 1000 ${vbH}`}
+          height={vbH}
           path={path}
           area={area}
           points={pointsWithY}
@@ -246,8 +275,8 @@ export default function PositionTrendChart({ data, loading, height = 320 }: Posi
         {/* 第二条折线：净投入总额 */}
         {path2 && (
           <svg
-            viewBox={`0 0 1000 280`}
-            style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', pointerEvents: 'none' }}
+            viewBox={`0 0 1000 ${vbH}`}
+            style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: vbH, pointerEvents: 'none' }}
           >
             <path
               d={path2}

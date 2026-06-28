@@ -195,7 +195,8 @@ const HistoryChart: React.FC<HistoryChartProps> = ({
 
               {xLabels.map((label, i) => {
               // 当显示成交量时，x轴标签应在成交量图表下方
-              const xLabelY = showVolume ? totalHeight - 4 : chartY + chartH + 16;
+              // 否则放在图表底部，确保在 viewBox 范围内
+              const xLabelY = showVolume ? totalHeight - 4 : vbH - 4;
               return (
                 <text key={`x-${i}`} x={label.x} y={xLabelY} textAnchor="middle" className="text-[14px] fill-gray-400 font-medium">{label.text}</text>
               );
