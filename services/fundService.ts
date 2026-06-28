@@ -1882,13 +1882,13 @@ function parseKlines(klines: string[], previousClose?: number): KlinePoint[] {
     const volume = parseFloat(parts[5]) || 0;
     const amount = parseFloat(parts[6]) || 0;
 
-    let timestamp = Date.now();
+    let timestamp: number;
     const timeStr = parts[0];
     if (timeStr) {
       const parsed = Date.parse(timeStr.replace(' ', 'T'));
-      if (!Number.isNaN(parsed)) {
-        timestamp = parsed;
-      }
+      timestamp = Number.isNaN(parsed) ? Date.now() : parsed;
+    } else {
+      timestamp = Date.now();
     }
 
     let changePercent = 0;

@@ -19,7 +19,7 @@ const IntradayChart: React.FC<IntradayChartProps> = ({ points, width = 1000, hei
     if (!points || points.length === 0) return { pts: [], min: 0, max: 0 };
 
     // Sort by timestamp
-    const pts = [...points].map(p => ({
+    const pts = points.map(p => ({
       timestamp: Number(p.timestamp),
       value: Number(p.value),
       equityReturn: Number(p.equityReturn),

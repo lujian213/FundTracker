@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { MarketIndex, HistoricalPoint, VolumeData, KlinePoint, HistoryKlinePeriod, HISTORY_KLINE_PERIOD_CONFIG } from '../types';
 import { fetchIndexHistory, fetchIndexIntradayKline } from '../services/fundService';
 import * as indexService from '../services/indexService';
@@ -91,7 +91,7 @@ export const IndexDetailsModal: React.FC<IndexDetailsModalProps> = ({ data, onCl
   }, [data.info.symbol, data.info.lastUpdated, data.intraday]);
 
   // 处理历史趋势图周期切换
-  const handleHistoryPeriodChange = async (period: HistoryKlinePeriod) => {
+  const handleHistoryPeriodChange = useCallback(async (period: HistoryKlinePeriod) => {
     setHistoryPeriod(period);
     if (period === 'realtime') {
       // 日K：使用现有 history 数据
@@ -146,7 +146,7 @@ export const IndexDetailsModal: React.FC<IndexDetailsModalProps> = ({ data, onCl
     } finally {
       setHistoryKlineLoading(false);
     }
-  };
+  }, [data.info.symbol, data.info.previousClose]);
 
   // 根据周期选择，将K线数据转换为 HistoricalPoint 格式
   const klineChartData = useMemo(() => {
@@ -223,15 +223,15 @@ export const IndexDetailsModal: React.FC<IndexDetailsModalProps> = ({ data, onCl
     const sourceData = chartData || [];
     if (sourceData.length < 2) return { path: '', area: '', points: [], viewBox: '0 0 100 100', yLabels: [], xLabels: [], maPaths: {} as Record<number, string>, maValues: {} as Record<number, (number | null)[]>, volumeData: [] };
 
-    // 日K模式：使用公共函数准备数据（包含MA计算和截取为90个点）
-    // 分钟K模式：使用全部数据（不截取，不计算MA），显示API返回的数据量
-    const { displayData, maValues: computedMaValues } = isMinuteK
-      ? { displayData: sourceData, maValues: {} as Record<number, (number | null)[]> }
-      : prepareChartData(sourceData, {
-        displayCount: 90,
-        maLookback: 25,
-        maWindows: MA_WINDOWS
-      });
+    // 日K模式：截取为90个点显示
+    // 分钟K模式：使用全部数据显示（API返回约80个点）
+    // 两种模式都计算MA均线
+    const displayCount = isMinuteK ? sourceData.length : 90;
+    const { displayData, maValues: computedMaValues } = prepareChartData(sourceData, {
+      displayCount,
+      maLookback: 25,
+      maWindows: MA_WINDOWS
+    });
 
     if (displayData.length < 2) return { path: '', area: '', points: [], viewBox: '0 0 100 100', yLabels: [], xLabels: [], maPaths: {} as Record<number, string>, maValues: {} as Record<number, (number | null)[]>, volumeData: [] };
 
@@ -388,7 +388,7 @@ export const IndexDetailsModal: React.FC<IndexDetailsModalProps> = ({ data, onCl
                 {/* 固定高度的图表容器，确保tab切换时高度不变 */}
                 <div className="relative" style={{ height: chartHeight + 12 }}>
                   {/* 均线切换按钮 - 右上角绝对定位（历史趋势图 + 日K模式） */}
-                  {activeTab === 'history' && historyPeriod === 'realtime' && (
+                  {activeTab === 'history' && (
                     <div className="absolute top-1 right-2 z-10 flex items-center space-x-1">
                       {MA_WINDOWS.map(n => {
                         const color = MA_COLORS[n] || '#2563eb';
@@ -461,14 +461,13 @@ export const IndexDetailsModal: React.FC<IndexDetailsModalProps> = ({ data, onCl
                   {(() => {
                     if (activeTab === 'intraday') {
                       const hp = hoveredIntradayPoint as any;
-                      const fmtTime = (ts: number) => { try { return new Date(ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }); } catch { return new Date(ts).toLocaleString(); } };
                       let timeLabel = '—';
                       let valueLabel = '—';
                       let changeText = '—';
                       let changeClass = 'text-gray-700';
                       if (hp) {
-                        timeLabel = hp.timestamp ? fmtTime(hp.timestamp) : '—';
-                        valueLabel = typeof hp.value === 'number' ? hp.value.toFixed(4) : '—';
+                        timeLabel = hp.timestamp ? formatTime(new Date(hp.timestamp)) : '—';
+                        valueLabel = typeof hp.value === 'number' ? hp.value.toFixed(2) : '—';
                         const pct = hp.equityReturn;
                         if (typeof pct === 'number') {
                           const prev = pct === -100 ? 0 : hp.value / (1 + pct / 100);
@@ -478,8 +477,8 @@ export const IndexDetailsModal: React.FC<IndexDetailsModalProps> = ({ data, onCl
                         }
                       } else if (intradayPoints && intradayPoints.length > 0) {
                         const last = intradayPoints[intradayPoints.length - 1];
-                        timeLabel = last.timestamp ? fmtTime(last.timestamp) : '—';
-                        valueLabel = typeof last.value === 'number' ? last.value.toFixed(4) : '—';
+                        timeLabel = last.timestamp ? formatTime(new Date(last.timestamp)) : '—';
+                        valueLabel = typeof last.value === 'number' ? last.value.toFixed(2) : '—';
                         // 计算较上一日的变化
                         const pct = last.equityReturn;
                         if (typeof pct === 'number' && typeof last.value === 'number') {
@@ -508,7 +507,7 @@ export const IndexDetailsModal: React.FC<IndexDetailsModalProps> = ({ data, onCl
                         dateLabel = isMinuteK
                           ? `${shortDate} ${formatTime(d)}`
                           : formatDateDisplay(d);
-                        valueLabel = v.toFixed(4);
+                        valueLabel = v.toFixed(2);
                         // 最新点直接使用 data 中的值，历史点使用 equityReturn 计算
                         if (isLastPoint) {
                           // 最新点：以窗口显示的实时数据为准
@@ -551,7 +550,7 @@ export const IndexDetailsModal: React.FC<IndexDetailsModalProps> = ({ data, onCl
                         dateLabel = isMinuteK
                           ? `${shortDate} ${formatTime(lastDate)}`
                           : formatDateDisplay(lastDate);
-                        valueLabel = last.data.value.toFixed(4);
+                        valueLabel = last.data.value.toFixed(2);
                         // 最新点：以窗口显示的实时数据为准
                         const changePct = data.info.changePercent;
                         const changeAbs = data.info.change;

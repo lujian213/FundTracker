@@ -396,7 +396,7 @@ const HistoryChart: React.FC<HistoryChartProps> = ({
                 const v = hoveredIndex >= 0 && hoveredIndex < arr.length ? arr[hoveredIndex] : null;
                 return (
                   <text key={`ma-val-${n}`} x={baseX + idx * gap} y={8} textAnchor="start" className="text-[12px] font-medium" fill={MA_COLORS[n] || '#2563eb'}>
-                    {`MA${n}: ${v !== null && v !== undefined ? (v as number).toFixed(4) : '—'}`}
+                    {`MA${n}: ${v !== null && v !== undefined ? (v as number).toFixed(2) : '—'}`}
                   </text>
                 );
               });
