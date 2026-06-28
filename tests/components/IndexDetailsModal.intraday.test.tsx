@@ -4,7 +4,9 @@ import { IndexDetailsModal } from '../../components/IndexDetailsModal';
 import * as indexService from '../../services/indexService';
 import { MarketIndex } from '../../types';
 
-jest.mock('../../services/fundService', () => ({ fetchIndexHistory: jest.fn().mockResolvedValue([]) }));
+jest.mock('../../services/fundService', () => ({
+  fetchIndexHistory: jest.fn().mockResolvedValue([{ date: Date.now() - 86400000, value: 3100, equityReturn: 0 }])
+}));
 
 describe('IndexDetailsModal intraday tab', () => {
   const data: MarketIndex = {

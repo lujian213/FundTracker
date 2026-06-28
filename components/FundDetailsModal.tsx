@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { createPortal } from 'react-dom';
-import { ValuationData, HistoricalPoint, IntradayPoint, TradeRecord, RecommendedStrategy, FundProfile } from '../types';
+import { ValuationData, HistoricalPoint, IntradayPoint, KlinePoint, TradeRecord, RecommendedStrategy, FundProfile } from '../types';
 import { fetchFundHistory as defaultFetchFundHistory } from '../services/fundService';
 import * as marketFundService from '../services/marketFundService';
 import { MA_COLORS } from '../utils/movingAverage';
@@ -45,7 +45,7 @@ export const FundDetailsModal: React.FC<FundDetailsModalProps> = ({ data, onClos
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<'intraday' | 'history'>(initialTab);
   const [intradayPoints, setIntradayPoints] = useState<any[]>([]);
-  const [hoveredIntradayPoint, setHoveredIntradayPoint] = useState<IntradayPoint | null>(null);
+  const [hoveredIntradayPoint, setHoveredIntradayPoint] = useState<IntradayPoint | KlinePoint | null>(null);
   const [hoveredPoint, setHoveredPoint] = useState<HistoricalPoint | null>(null);
   const [hoveredTrade, setHoveredTrade] = useState<any | null>(null);
   const [visibleMAs, setVisibleMAs] = useState<Record<number, boolean>>(() => Object.fromEntries(DEFAULT_VISIBLE_MAS.map(n => [n, true])));

@@ -2806,6 +2806,23 @@ test.describe('testBedWithData', () => {
     await expect(page.locator('button:has-text("历史趋势图")')).toHaveClass(/bg-white border/, { timeout: 2000 });
     await expect(chartContainer).toBeVisible({ timeout: 5000 });
 
+    // 【新增】周期选择下拉框验证（历史趋势图）- 只验证UI，不测试网络功能
+    // 验证周期选择下拉框存在且默认选中"日K"
+    const periodSelect = page.locator('#index-details-modal select');
+    await expect(periodSelect).toBeVisible();
+    await expect(periodSelect).toHaveValue('realtime');
+
+    // 验证下拉框选项包含所有周期
+    const options = await periodSelect.locator('option').allTextContents();
+    expect(options).toContain('日K');
+    expect(options).toContain('5分钟');
+    expect(options).toContain('15分钟');
+    expect(options).toContain('30分钟');
+    expect(options).toContain('60分钟');
+
+    // 验证日K模式下均线按钮显示
+    await expect(page.locator('#index-details-modal button:has-text("MA5")')).toBeVisible();
+
     // 批量获取历史图表信息
     const historyInfo = await page.evaluate(() => {
       const modal = document.querySelector('#index-details-modal');

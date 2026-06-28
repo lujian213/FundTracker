@@ -425,3 +425,35 @@ export interface ComboTrade {
   name: string;                        // 组合名称
   records: ComboTradeRecord[];        // 组合内的基金记录（只保存 amount > 0）
 }
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// 历史K线周期类型
+// ═══════════════════════════════════════════════════════════════════════════════
+
+/** 历史K线周期类型 */
+export type HistoryKlinePeriod = 'realtime' | '5min' | '15min' | '30min' | '60min';
+
+/** 周期配置 */
+export const HISTORY_KLINE_PERIOD_CONFIG: Record<HistoryKlinePeriod, {
+  label: string;      // 显示名称
+  klt: number | null; // 东方财富API参数，null表示用累积数据
+  lmt: number;        // API请求条数限制（API最大支持约80个点）
+}> = {
+  'realtime': { label: '日K', klt: null, lmt: 0 },
+  '5min':     { label: '5分钟', klt: 5, lmt: 80 },   // 约80个点（API最大支持）
+  '15min':    { label: '15分钟', klt: 15, lmt: 80 }, // 约80个点
+  '30min':    { label: '30分钟', klt: 30, lmt: 80 }, // 约80个点
+  '60min':    { label: '60分钟', klt: 60, lmt: 80 }, // 约80个点
+};
+
+/** K线数据点（来自东方财富API） */
+export interface KlinePoint {
+  timestamp: number;    // 时间戳（毫秒）
+  open: number;         // 开盘价
+  close: number;        // 收盘价
+  high: number;         // 最高价
+  low: number;          // 最低价
+  volume: number;       // 成交量
+  amount: number;       // 成交额
+  changePercent: number; // 涨跌幅（百分比，基于昨日收盘）
+}

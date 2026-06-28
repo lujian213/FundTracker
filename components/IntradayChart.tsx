@@ -1,5 +1,6 @@
 import React, { useMemo, useState, useEffect } from 'react';
 import { IntradayPoint } from '../types';
+import { formatTime } from '../utils/dateFormat';
 
 interface IntradayChartProps {
   points: IntradayPoint[];
@@ -11,19 +12,21 @@ interface IntradayChartProps {
   valueDecimalPlaces?: number;  // tooltip中value显示的小数位数，默认4
 }
 
-const formatTime = (ts: number) => {
-  try { return new Date(ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }); } catch { return new Date(ts).toLocaleString(); }
-};
-
 const IntradayChart: React.FC<IntradayChartProps> = ({ points, width = 1000, height = 250, stroke = '#ef4444', fill, onHover, valueDecimalPlaces = 4 }) => {
   const [hoverIdx, setHoverIdx] = useState<number | null>(null);
 
   const data = useMemo(() => {
     if (!points || points.length === 0) return { pts: [], min: 0, max: 0 };
-    // normalize and sort ascending by timestamp
-    const pts = [...points].map(p => ({ timestamp: Number(p.timestamp), value: Number(p.value), equityReturn: Number(p.equityReturn) })).sort((a, b) => a.timestamp - b.timestamp);
-    // compress consecutive identical values keeping earliest timestamp to avoid long flat horizontal lines
-    const compressed: IntradayPoint[] = [];
+
+    // Sort by timestamp
+    const pts = [...points].map(p => ({
+      timestamp: Number(p.timestamp),
+      value: Number(p.value),
+      equityReturn: Number(p.equityReturn),
+    })).sort((a, b) => a.timestamp - b.timestamp);
+
+    // Compress consecutive identical values keeping earliest timestamp to avoid long flat horizontal lines
+    const compressed: { timestamp: number; value: number; equityReturn: number }[] = [];
     for (const p of pts) {
       const last = compressed[compressed.length - 1];
       if (last && Object.is(last.value, p.value)) {
@@ -32,6 +35,7 @@ const IntradayChart: React.FC<IntradayChartProps> = ({ points, width = 1000, hei
       }
       compressed.push(p);
     }
+
     // For intraday trend chart we plot equityReturn (%) on the y-axis
     const pctValues = pts.map(p => Number.isFinite(p.equityReturn) ? p.equityReturn : 0);
     let min = Math.min(...pctValues);
@@ -44,6 +48,7 @@ const IntradayChart: React.FC<IntradayChartProps> = ({ points, width = 1000, hei
       min = min - 1;
       max = max + 1;
     }
+
     return { pts: compressed, min, max };
   }, [points]);
 
@@ -60,7 +65,7 @@ const IntradayChart: React.FC<IntradayChartProps> = ({ points, width = 1000, hei
     return <div className="h-40 flex items-center justify-center text-xs text-gray-400">暂无日内数据</div>;
   }
 
-  const paddingLeft = 60; // align with history chart left padding
+  const paddingLeft = 60;
   const paddingRight = 20;
   const paddingTop = 20;
   const paddingBottom = 30;
@@ -246,7 +251,7 @@ const IntradayChart: React.FC<IntradayChartProps> = ({ points, width = 1000, hei
               const chartTop = paddingTop;
               const chartBottom = paddingTop + innerH;
               // compute label time and clamp x to avoid clipping at edges
-              const labelText = formatTime(pt.data.timestamp);
+              const labelText = formatTime(new Date(pt.data.timestamp));
               const EST_CHAR_WIDTH = 8; // conservative per-char width
               const halfWidth = Math.ceil((labelText.length * EST_CHAR_WIDTH) / 2) + 6;
               const labelX = Math.max(halfWidth, Math.min(width - halfWidth, pt.x));
@@ -301,4 +306,3 @@ const IntradayChart: React.FC<IntradayChartProps> = ({ points, width = 1000, hei
 };
 
 export default IntradayChart;
-

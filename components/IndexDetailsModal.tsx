@@ -1,17 +1,34 @@
-import React, { useState, useEffect, useMemo } from 'react';
-import { MarketIndex, HistoricalPoint, VolumeData } from '../types';
-import { fetchIndexHistory } from '../services/fundService';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
+import { MarketIndex, HistoricalPoint, VolumeData, KlinePoint, HistoryKlinePeriod, HISTORY_KLINE_PERIOD_CONFIG } from '../types';
+import { fetchIndexHistory, fetchIndexIntradayKline } from '../services/fundService';
 import * as indexService from '../services/indexService';
 import IntradayChart from './IntradayChart';
 import HistoryChart from './HistoryChart';
 import { MA_COLORS } from '../utils/movingAverage';
 import { DEFAULT_VISIBLE_MAS, MA_WINDOWS } from '../utils/maConfig';
 import { toLocalDateKey } from '../utils/priceResolver';
-import { formatDateDisplay } from '../utils/dateFormat';
-import { prepareChartData } from '../utils/chartDataHelper';
+import { formatDateDisplay, formatDateShort, formatTime } from '../utils/dateFormat';
 import { formatVolume, formatAmount } from '../utils/format';
+import { prepareChartData } from '../utils/chartDataHelper';
 import IndexAISidePanel from './IndexAISidePanel';
 import { getIndexDetailUrl } from '../src/utils/indexUrlHelper';
+
+// 分钟K线数据内存缓存（不持久化）
+// key: `${symbol}-${period}`, value: KlinePoint[]
+const KLINE_CACHE_MAX_SIZE = 20; // 最大缓存条数
+const klineCache = new Map<string, KlinePoint[]>();
+
+// 带淘汰策略的缓存设置（超出限制时删除最旧的条目）
+function setKlineCache(key: string, value: KlinePoint[]) {
+  if (klineCache.size >= KLINE_CACHE_MAX_SIZE) {
+    // 删除最早的条目（Map按插入顺序迭代）
+    const oldestKey = klineCache.keys().next().value;
+    if (oldestKey) {
+      klineCache.delete(oldestKey);
+    }
+  }
+  klineCache.set(key, value);
+}
 
 interface IndexDetailsModalProps {
   data: MarketIndex;
@@ -27,6 +44,11 @@ export const IndexDetailsModal: React.FC<IndexDetailsModalProps> = ({ data, onCl
   const [visibleMAs, setVisibleMAs] = useState<Record<number, boolean>>(() => Object.fromEntries(DEFAULT_VISIBLE_MAS.map(n => [n, true])));
   const [hoveredIntradayPoint, setHoveredIntradayPoint] = useState<any | null>(null);
   const [showAI, setShowAI] = useState(false);
+  // 历史趋势图周期选择（日K、5分钟、15分钟、30分钟、60分钟）
+  const [historyPeriod, setHistoryPeriod] = useState<HistoryKlinePeriod>('realtime'); // 'realtime' 表示日K
+  const [historyKlineData, setHistoryKlineData] = useState<KlinePoint[]>([]);
+  const [historyKlineLoading, setHistoryKlineLoading] = useState(false);
+  const [historyKlineError, setHistoryKlineError] = useState<string | null>(null);
   // shared chart height to match FundDetailsModal
   // IntradayChart has paddingBottom=30, HistoryChart has paddingBottom=0 but x labels outside viewBox
   // Use consistent total height for both tabs
@@ -68,8 +90,87 @@ export const IndexDetailsModal: React.FC<IndexDetailsModalProps> = ({ data, onCl
     } catch (e) { setIntradayPoints([]); }
   }, [data.info.symbol, data.info.lastUpdated, data.intraday]);
 
-  // 合并当前点到历史数据
+  // 处理历史趋势图周期切换
+  const handleHistoryPeriodChange = async (period: HistoryKlinePeriod) => {
+    setHistoryPeriod(period);
+    if (period === 'realtime') {
+      // 日K：使用现有 history 数据
+      setHistoryKlineData([]);
+      setHistoryKlineError(null);
+      return;
+    }
+
+    // 分钟K：先检查缓存
+    const cacheKey = `${data.info.symbol}-${period}`;
+    const cachedData = klineCache.get(cacheKey);
+
+    // 设置加载状态（即使有缓存也要显示，但数据会立即显示）
+    setHistoryKlineLoading(true);
+    setHistoryKlineError(null);
+
+    if (cachedData && cachedData.length > 0) {
+      // 有缓存数据，直接显示，但仍会发起请求更新数据
+      setHistoryKlineData(cachedData);
+    } else {
+      // 无缓存数据，显示空白
+      setHistoryKlineData([]);
+    }
+
+    // 获取K线数据（无论是否有缓存，都发起请求以更新数据）
+    const config = HISTORY_KLINE_PERIOD_CONFIG[period];
+    try {
+      const previousClose = data.info.previousClose;
+      const fetchedData = await fetchIndexIntradayKline(
+        data.info.symbol,
+        config.klt!,
+        config.lmt,
+        previousClose
+      );
+
+      // 成功获取数据，更新显示和缓存
+      if (fetchedData.length > 0) {
+        setHistoryKlineData(fetchedData);
+        setKlineCache(cacheKey, fetchedData);
+        setHistoryKlineError(null);
+      } else {
+        // API 返回空数据，显示"暂无K线数据"（仅在没有缓存时显示）
+        if (!cachedData || cachedData.length === 0) {
+          setHistoryKlineError('暂无K线数据');
+        }
+      }
+    } catch (e) {
+      // 获取失败，不替换现有数据和缓存，显示错误信息（仅在没有缓存时显示）
+      if (!cachedData || cachedData.length === 0) {
+        setHistoryKlineError('获取K线数据失败');
+      }
+    } finally {
+      setHistoryKlineLoading(false);
+    }
+  };
+
+  // 根据周期选择，将K线数据转换为 HistoricalPoint 格式
+  const klineChartData = useMemo(() => {
+    if (historyPeriod === 'realtime' || historyKlineData.length === 0) return null;
+
+    // 将 KlinePoint 转换为 HistoricalPoint 格式
+    return historyKlineData.map(k => ({
+      date: k.timestamp,
+      value: k.close,
+      equityReturn: k.changePercent,
+      volume: k.volume,
+      amount: k.amount
+    }));
+  }, [historyPeriod, historyKlineData]);
+
+  // 合并当前点到历史数据（仅日K模式）
   const chartData = useMemo(() => {
+    // 分钟K模式：使用转换后的K线数据
+    if (historyPeriod !== 'realtime') {
+      // 如果没有K线数据，返回空数组（不要 fallback 到日K数据）
+      return klineChartData || [];
+    }
+
+    // 日K模式：使用 history 数据
     if (!history || history.length === 0) return history;
 
     // 检查是否有有效的交易日期和当前值
@@ -113,15 +214,24 @@ export const IndexDetailsModal: React.FC<IndexDetailsModalProps> = ({ data, onCl
       amount: shouldUseRealtimeVolume ? data.info.amount : lastHist.amount
     };
     return updated;
-  }, [history, data.info.tradeDate, data.info.current, data.info.changePercent, data.info.volume, data.info.amount]);
+  }, [historyPeriod, klineChartData, history, data.info.tradeDate, data.info.current, data.info.changePercent, data.info.volume, data.info.amount]);
+
+  // 是否为分钟K模式
+  const isMinuteK = historyPeriod !== 'realtime';
 
   const { path, area, points, viewBox, yLabels, xLabels, maPaths, maValues, volumeData } = useMemo(() => {
-    // 使用公共函数准备数据（包含MA计算和截取）
-    const { displayData, maValues: computedMaValues } = prepareChartData(chartData || [], {
-      displayCount: 90,
-      maLookback: 25,
-      maWindows: MA_WINDOWS
-    });
+    const sourceData = chartData || [];
+    if (sourceData.length < 2) return { path: '', area: '', points: [], viewBox: '0 0 100 100', yLabels: [], xLabels: [], maPaths: {} as Record<number, string>, maValues: {} as Record<number, (number | null)[]>, volumeData: [] };
+
+    // 日K模式：使用公共函数准备数据（包含MA计算和截取为90个点）
+    // 分钟K模式：使用全部数据（不截取，不计算MA），显示API返回的数据量
+    const { displayData, maValues: computedMaValues } = isMinuteK
+      ? { displayData: sourceData, maValues: {} as Record<number, (number | null)[]> }
+      : prepareChartData(sourceData, {
+        displayCount: 90,
+        maLookback: 25,
+        maWindows: MA_WINDOWS
+      });
 
     if (displayData.length < 2) return { path: '', area: '', points: [], viewBox: '0 0 100 100', yLabels: [], xLabels: [], maPaths: {} as Record<number, string>, maValues: {} as Record<number, (number | null)[]>, volumeData: [] };
 
@@ -165,7 +275,11 @@ export const IndexDetailsModal: React.FC<IndexDetailsModalProps> = ({ data, onCl
     const xLabelIndices = [0, Math.floor(displayData.length / 2), displayData.length - 1];
     const xLabels = xLabelIndices.map(idx => {
       const d = new Date(displayData[idx].date);
-      return { text: `${d.getMonth() + 1}/${d.getDate()}`, x: getX(idx) };
+      // 分钟K模式：显示 时:分 格式；日K模式：显示 月/日 格式
+      const text = isMinuteK
+        ? `${d.getHours()}:${String(d.getMinutes()).padStart(2, '0')}`
+        : `${d.getMonth() + 1}/${d.getDate()}`;
+      return { text, x: getX(idx) };
     });
 
     // 使用公共函数计算好的MA值
@@ -173,6 +287,10 @@ export const IndexDetailsModal: React.FC<IndexDetailsModalProps> = ({ data, onCl
     const maPaths: Record<number, string> = {};
     for (const w of MA_WINDOWS) {
       const sma = maValues[w];
+      if (!sma || !Array.isArray(sma)) {
+        maPaths[w] = '';
+        continue;
+      }
       const smaPts = sma.map((v, i) => v !== null ? { x: getX(i), y: getY(v as number) } : null);
       const firstIdx = smaPts.findIndex(p => p !== null);
       if (firstIdx !== -1) {
@@ -202,7 +320,7 @@ export const IndexDetailsModal: React.FC<IndexDetailsModalProps> = ({ data, onCl
     });
 
     return { path: pathData, area: areaData, points: svgPoints, viewBox: `0 0 ${width} ${height}`, yLabels, xLabels, maPaths, maValues, volumeData };
-  }, [history]);
+  }, [chartData, isMinuteK]);
 
   return (
     <div id="index-details-modal" className="fixed inset-0 z-[110] flex items-center justify-center p-4">
@@ -248,14 +366,29 @@ export const IndexDetailsModal: React.FC<IndexDetailsModalProps> = ({ data, onCl
           ) : (
             <div className="space-y-1">
               <div className="relative bg-gray-50 rounded-lg p-1">
-                <div className="mb-1 flex items-center space-x-2">
-                  <button onClick={() => setActiveTab('intraday')} className={`px-3 py-1 rounded text-sm ${activeTab === 'intraday' ? 'bg-white border' : 'bg-transparent text-gray-500'}`}>日内趋势图</button>
-                  <button onClick={() => setActiveTab('history')} className={`px-3 py-1 rounded text-sm ${activeTab === 'history' ? 'bg-white border' : 'bg-transparent text-gray-500'}`}>历史趋势图</button>
+                <div className="mb-1 flex items-center justify-between">
+                  <div className="flex items-center space-x-2">
+                    <button onClick={() => setActiveTab('intraday')} className={`px-3 py-1 rounded text-sm ${activeTab === 'intraday' ? 'bg-white border' : 'bg-transparent text-gray-500'}`}>日内趋势图</button>
+                    <button onClick={() => setActiveTab('history')} className={`px-3 py-1 rounded text-sm ${activeTab === 'history' ? 'bg-white border' : 'bg-transparent text-gray-500'}`}>历史趋势图</button>
+                  </div>
+                  {/* 周期选择下拉框 - 历史趋势图时显示，与tab按钮水平齐平 */}
+                  {activeTab === 'history' && (
+                    <select
+                      role="combobox"
+                      value={historyPeriod}
+                      onChange={(e) => handleHistoryPeriodChange(e.target.value as HistoryKlinePeriod)}
+                      className="px-2 py-1 rounded text-sm border bg-white"
+                    >
+                      {Object.entries(HISTORY_KLINE_PERIOD_CONFIG).map(([key, config]) => (
+                        <option key={key} value={key}>{key === 'realtime' ? '日K' : config.label}</option>
+                      ))}
+                    </select>
+                  )}
                 </div>
                 {/* 固定高度的图表容器，确保tab切换时高度不变 */}
                 <div className="relative" style={{ height: chartHeight + 12 }}>
-                  {/* 均线切换按钮 - 右上角绝对定位 */}
-                  {activeTab === 'history' && (
+                  {/* 均线切换按钮 - 右上角绝对定位（历史趋势图 + 日K模式） */}
+                  {activeTab === 'history' && historyPeriod === 'realtime' && (
                     <div className="absolute top-1 right-2 z-10 flex items-center space-x-1">
                       {MA_WINDOWS.map(n => {
                         const color = MA_COLORS[n] || '#2563eb';
@@ -283,25 +416,44 @@ export const IndexDetailsModal: React.FC<IndexDetailsModalProps> = ({ data, onCl
                     </div>
                   )}
                   {activeTab === 'intraday' ? (
-                    <IntradayChart points={intradayPoints} width={1000} height={chartHeight} stroke="#2563eb" onHover={p => setHoveredIntradayPoint(p)} valueDecimalPlaces={2} />
+                    <IntradayChart
+                      points={intradayPoints}
+                      width={1000}
+                      height={chartHeight}
+                      stroke="#2563eb"
+                      onHover={p => setHoveredIntradayPoint(p)}
+                      valueDecimalPlaces={2}
+                    />
                   ) : (
-                    <HistoryChart
-                       viewBox={viewBox}
-                       path={path}
-                       area={area}
-                       points={points}
-                       yLabels={yLabels}
-                       xLabels={xLabels}
-                       maPaths={maPaths}
-                       maValues={maValues}
-                       visibleMAs={visibleMAs}
-                       hoveredPoint={hoveredPoint}
-                       setHoveredPoint={setHoveredPoint}
-                       stroke="#2563eb"
-                       height={chartHeight}
-                       volumeData={volumeData}
-                       volumeHeight={volumeHeight}
-                     />
+                    <>
+                      {historyKlineLoading && (
+                        <div className="absolute top-0 left-0 right-0 text-center text-xs text-gray-500 py-1 bg-gray-100/80 z-10">
+                          加载中...
+                        </div>
+                      )}
+                      {historyKlineError && (
+                        <div className="absolute top-0 left-0 right-0 text-center text-xs text-red-500 py-1 bg-red-50/80 z-10">
+                          {historyKlineError}
+                        </div>
+                      )}
+                      <HistoryChart
+                         viewBox={viewBox}
+                         path={path}
+                         area={area}
+                         points={points}
+                         yLabels={yLabels}
+                         xLabels={xLabels}
+                         maPaths={maPaths}
+                         maValues={maValues}
+                         visibleMAs={visibleMAs}
+                         hoveredPoint={hoveredPoint}
+                         setHoveredPoint={setHoveredPoint}
+                         stroke="#2563eb"
+                         height={chartHeight}
+                         volumeData={volumeData}
+                         volumeHeight={volumeHeight}
+                       />
+                    </>
                   )}
                 </div>
                 {/* 固定高度的信息栏 */}
@@ -337,7 +489,7 @@ export const IndexDetailsModal: React.FC<IndexDetailsModalProps> = ({ data, onCl
                           changeClass = pct >= 0 ? 'text-red-600' : 'text-green-600';
                         }
                       }
-                      return (<><div className="w-36 mr-6"><div className="text-[10px] text-gray-400">时间</div><div className="text-sm font-medium text-gray-800">{timeLabel}</div></div><div className="w-44 mr-6"><div className="text-[10px] text-gray-400">净值</div><div className="text-sm font-medium text-gray-800">{valueLabel}</div></div><div className="w-48"><div className="text-[10px] text-gray-400">较上一日</div><div className={`text-sm font-medium ${changeClass}`}>{changeText}</div></div></>);
+                      return (<><div className="w-36 mr-4"><div className="text-[10px] text-gray-400">时间</div><div className="text-sm font-medium text-gray-800">{timeLabel}</div></div><div className="w-40 mr-4"><div className="text-[10px] text-gray-400">净值</div><div className="text-sm font-medium text-gray-800">{valueLabel}</div></div><div className="w-44"><div className="text-[10px] text-gray-400">较上一日</div><div className={`text-sm font-medium ${changeClass}`}>{changeText}</div></div></>);
                     } else {
                       const hp = hoveredPoint as any;
                       let dateLabel = '—';
@@ -351,7 +503,11 @@ export const IndexDetailsModal: React.FC<IndexDetailsModalProps> = ({ data, onCl
                         const isLastPoint = idx === points.length - 1 || idx === -1;
                         const v = (idx >= 0) ? points[idx].data.value : (points[points.length - 1].data.value);
                         const d = (idx >= 0) ? new Date(points[idx].data.date) : new Date(points[points.length - 1].data.date);
-                        dateLabel = formatDateDisplay(d);
+                        // 分钟K模式：显示"月/日 时:分"格式（使用公用方法）；日K模式：显示日期格式
+                        const shortDate = formatDateShort(d).replace('-', '/'); // MM-DD -> MM/DD
+                        dateLabel = isMinuteK
+                          ? `${shortDate} ${formatTime(d)}`
+                          : formatDateDisplay(d);
                         valueLabel = v.toFixed(4);
                         // 最新点直接使用 data 中的值，历史点使用 equityReturn 计算
                         if (isLastPoint) {
@@ -389,7 +545,12 @@ export const IndexDetailsModal: React.FC<IndexDetailsModalProps> = ({ data, onCl
                         }
                       } else if (points && points.length > 0) {
                         const last = points[points.length - 1];
-                        dateLabel = formatDateDisplay(new Date(last.data.date));
+                        const lastDate = new Date(last.data.date);
+                        // 分钟K模式：显示"月/日 时:分"格式（使用公用方法）；日K模式：显示日期格式
+                        const shortDate = formatDateShort(lastDate).replace('-', '/');
+                        dateLabel = isMinuteK
+                          ? `${shortDate} ${formatTime(lastDate)}`
+                          : formatDateDisplay(lastDate);
                         valueLabel = last.data.value.toFixed(4);
                         // 最新点：以窗口显示的实时数据为准
                         const changePct = data.info.changePercent;

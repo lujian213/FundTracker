@@ -1,4 +1,4 @@
-import { ValuationData, MarketIndex, IndexInfo, HistoricalPoint, OverallProfitSummary, OverallFundRow, ProfitPoint, JobResult } from "../types";
+import { ValuationData, MarketIndex, IndexInfo, HistoricalPoint, OverallProfitSummary, OverallFundRow, ProfitPoint, JobResult, KlinePoint } from "../types";
 import { computeProfitTimeline } from '../utils/profitCalculator';
 import { toLocalDateKey, resolvePreferredPrice, ResolvedPrice } from '../utils/priceResolver';
 import { getTradesForSymbol } from '../hooks/useTrades';
@@ -6,6 +6,7 @@ import { extractTradingPeriodBeginTimestamp } from '../utils/dateTimeUtils';
 import { formatDateISO, formatTimeISO, formatHHMM } from '../utils/dateFormat';
 import * as marketFundService from './marketFundService';
 import * as indexService from './indexService';
+import { fetchWithProxy } from './proxyService';
 
 /**
  * 准备用于盈亏计算的历史数据
@@ -169,6 +170,14 @@ export const _deps = {
   fetchFundHistory: (symbol: string) => fetchFundHistory(symbol),
   fetchFundData:    (symbol: string) => fetchFundData(symbol),
   forceFetchFundHistory: (symbol: string) => forceFetchFundHistory(symbol),
+};
+
+/**
+ * JSONP dependency seam for testing.
+ * Tests can replace this to mock the jsonp function.
+ */
+export const _jsonp = {
+  call: <T>(url: string, callbackParam: string = 'cb', fundCode?: string, retryCount: number = 3): Promise<T> => jsonp(url, callbackParam, fundCode, retryCount),
 };
 
 // Module-level in-memory history cache (kept for backward-compat; cacheService is now the
@@ -460,7 +469,7 @@ async function loadHistoryFromPingzhongDataWithRetry(code: string, maxRetries = 
   return [];
 }
 
-function jsonp<T>(url: string, callbackParam: string = 'cb', fundCode?: string, retryCount: number = 3): Promise<T> {
+export function jsonp<T>(url: string, callbackParam: string = 'cb', fundCode?: string, retryCount: number = 3): Promise<T> {
   return new Promise<T>((resolve, reject) => {
     let attempts = 0;
 
@@ -477,7 +486,7 @@ function jsonp<T>(url: string, callbackParam: string = 'cb', fundCode?: string, 
       // 天天基金 API 不需要 cb 参数，使用默认的 jsonpgz 回调
       const finalUrl = isFundGz ? url : `${url}${separator}${callbackParam}=${callbackName}`;
 
-      const timeoutLimit = 8000;
+      const timeoutLimit = 15000; // K线数据可能需要更长响应时间
       const timeoutId = setTimeout(() => {
         cleanup();
         // 超时时清理注册表条目，防止后续响应匹配到过期请求
@@ -1477,10 +1486,9 @@ export async function fetchIndexHistory(symbol: string, ignoreCache: boolean = f
    if (secid === 'HSI') secid = '100.HSI';
    // fields2: date(f51), close price(f53), change percent(f59), volume(f56), amount(f57)
    // request last 365 points instead of 90 (expanded window)
-   // 恢复使用 JSONP
    const url = `https://push2his.eastmoney.com/api/qt/stock/kline/get?secid=${secid}&fields1=f1,f2,f3,f4,f5,f6&fields2=f51,f53,f56,f57,f59&klt=101&fqt=1&end=20500101&lmt=365`;
    try {
-   // 使用 JSONP（队列控制在外层 fetchIndexHistories/fetchMarketIndices 中进行）
+     // 使用 JSONP（队列控制在外层 fetchIndexHistories/fetchMarketIndices 中进行）
      const response: any = await jsonp(url, 'cb');
      if (response?.data?.klines) {
       // Map raw klines into partial points and normalize (ensure timestamps in ms, sort, dedupe)
@@ -1855,5 +1863,104 @@ export async function maybeTriggerHistoryRefresh(symbol: string, netWorthDate?: 
   } catch (e) {
     // swallow errors to avoid breaking callers
   }
+}
+
+/**
+ * 解析 K线数据（提取到外部避免每次调用创建闭包）
+ * @param klines K线原始数据数组（逗号分隔的字符串）
+ * @param previousClose 昨日收盘价，用于计算涨跌幅
+ * @returns KlinePoint 数组
+ */
+function parseKlines(klines: string[], previousClose?: number): KlinePoint[] {
+  return klines.map((line: string) => {
+    const parts = line.split(',');
+
+    const open = parseFloat(parts[1]) || 0;
+    const close = parseFloat(parts[2]) || 0;
+    const high = parseFloat(parts[3]) || 0;
+    const low = parseFloat(parts[4]) || 0;
+    const volume = parseFloat(parts[5]) || 0;
+    const amount = parseFloat(parts[6]) || 0;
+
+    let timestamp = Date.now();
+    const timeStr = parts[0];
+    if (timeStr) {
+      const parsed = Date.parse(timeStr.replace(' ', 'T'));
+      if (!Number.isNaN(parsed)) {
+        timestamp = parsed;
+      }
+    }
+
+    let changePercent = 0;
+    if (previousClose && previousClose > 0) {
+      changePercent = (close - previousClose) / previousClose * 100;
+    }
+
+    return {
+      timestamp,
+      open,
+      close,
+      high,
+      low,
+      volume,
+      amount,
+      changePercent,
+    };
+  });
+}
+
+/**
+ * 获取指数分时K线数据（使用fetch方式，因为JSONP可能被限制）
+ * @param symbol 指数代码，格式如 '1.000001'
+ * @param klt K线周期：5/15/30/60
+ * @param lmt 返回条数限制
+ * @param previousClose 昨日收盘价，用于计算涨跌幅
+ * @returns KlinePoint 数组
+ */
+export async function fetchIndexIntradayKline(
+  symbol: string,
+  klt: number,
+  lmt: number,
+  previousClose?: number
+): Promise<KlinePoint[]> {
+  const fields1 = 'f1,f2,f3,f4,f5,f6';
+  const fields2 = 'f51,f52,f53,f54,f55,f56,f57,f58,f59';
+  const url = `https://push2his.eastmoney.com/api/qt/stock/kline/get?secid=${symbol}&fields1=${fields1}&fields2=${fields2}&klt=${klt}&fqt=1&end=20500101&lmt=${lmt}`;
+
+  // 方式1: JSONP（主要方式）
+  try {
+    const response: any = await jsonp(url, 'cb');
+    if (response?.data?.klines && response.data.klines.length > 0) {
+      return parseKlines(response.data.klines, previousClose);
+    }
+  } catch (jsonpError) {
+    // JSONP 失败，尝试代理服务作为 fallback
+    try {
+      const result = await fetchWithProxy(url, {
+        preferFormat: 'raw',
+        timeout: 10000,
+      });
+
+      let data: any;
+      const text = result.content;
+      if (text.startsWith('(') || text.includes('(')) {
+        const jsonMatch = text.match(/\{.*\}/);
+        if (jsonMatch) {
+          data = JSON.parse(jsonMatch[0]);
+        }
+      } else {
+        data = JSON.parse(text);
+      }
+
+      if (data?.data?.klines && data.data.klines.length > 0) {
+        return parseKlines(data.data.klines, previousClose);
+      }
+    } catch (proxyError) {
+      // 两种方式都失败
+      console.error('fetchIndexIntradayKline: JSONP and proxy both failed');
+    }
+  }
+
+  return [];
 }
 

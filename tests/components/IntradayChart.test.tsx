@@ -11,8 +11,8 @@ describe('IntradayChart', () => {
 
   test('renders svg and tooltip on hover', () => {
     const pts: IntradayPoint[] = [
-      { timestamp: 1678320000000, value: 1.0, equityReturn: 0 },
-      { timestamp: 1678320060000, value: 1.1, equityReturn: 1.0 },
+      { timestamp: Date.now() - 60000, value: 1.0, equityReturn: 0 },
+      { timestamp: Date.now(), value: 1.1, equityReturn: 1.0 },
     ];
     const { container } = render(<IntradayChart points={pts} width={600} height={200} />);
     const svg = container.querySelector('svg');
@@ -27,4 +27,3 @@ describe('IntradayChart', () => {
     expect(container.textContent).toMatch(/1.1000/);
   });
 });
-
