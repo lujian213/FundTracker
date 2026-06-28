@@ -1929,7 +1929,7 @@ export async function fetchIndexIntradayKline(
 
   // 方式1: JSONP（主要方式）
   try {
-    const response: any = await jsonp(url, 'cb');
+    const response: any = await _jsonp.call(url, 'cb');
     if (response?.data?.klines && response.data.klines.length > 0) {
       return parseKlines(response.data.klines, previousClose);
     }

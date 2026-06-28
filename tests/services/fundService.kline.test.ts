@@ -1,14 +1,14 @@
 import { fetchIndexIntradayKline, _jsonp } from '../../services/fundService';
 
 describe('fetchIndexIntradayKline', () => {
-  let origJsonpCall: typeof _jsonp.call;
+  let jsonpCallSpy: jest.SpyInstance;
 
   beforeEach(() => {
-    origJsonpCall = _jsonp.call;
+    jsonpCallSpy = jest.spyOn(_jsonp, 'call');
   });
 
   afterEach(() => {
-    _jsonp.call = origJsonpCall;
+    jsonpCallSpy.mockRestore();
   });
 
   it('should call correct API URL with parameters', async () => {
@@ -20,12 +20,12 @@ describe('fetchIndexIntradayKline', () => {
         ],
       },
     };
-    _jsonp.call = jest.fn().mockResolvedValue(mockResponse);
+    jsonpCallSpy.mockResolvedValue(mockResponse);
 
     await fetchIndexIntradayKline('1.000001', 5, 48);
 
-    expect(_jsonp.call).toHaveBeenCalled();
-    const calledUrl = (_jsonp.call as jest.Mock).mock.calls[0][0];
+    expect(jsonpCallSpy).toHaveBeenCalled();
+    const calledUrl = jsonpCallSpy.mock.calls[0][0];
     expect(calledUrl).toContain('push2his.eastmoney.com');
     expect(calledUrl).toContain('secid=1.000001');
     expect(calledUrl).toContain('klt=5');
@@ -40,7 +40,7 @@ describe('fetchIndexIntradayKline', () => {
         ],
       },
     };
-    _jsonp.call = jest.fn().mockResolvedValue(mockResponse);
+    jsonpCallSpy.mockResolvedValue(mockResponse);
 
     const result = await fetchIndexIntradayKline('1.000001', 5, 48);
 
@@ -61,7 +61,7 @@ describe('fetchIndexIntradayKline', () => {
         ],
       },
     };
-    _jsonp.call = jest.fn().mockResolvedValue(mockResponse);
+    jsonpCallSpy.mockResolvedValue(mockResponse);
 
     // previousClose = 3100, close = 3150.50
     // changePercent = (3150.50 - 3100) / 3100 * 100 = 1.629...
@@ -71,13 +71,13 @@ describe('fetchIndexIntradayKline', () => {
   });
 
   it('should return empty array when API returns no data', async () => {
-    _jsonp.call = jest.fn().mockResolvedValue({ data: { klines: null } });
+    jsonpCallSpy.mockResolvedValue({ data: { klines: null } });
     const result = await fetchIndexIntradayKline('1.000001', 5, 48);
     expect(result).toEqual([]);
   });
 
   it('should handle API error gracefully', async () => {
-    _jsonp.call = jest.fn().mockRejectedValue(new Error('Network error'));
+    jsonpCallSpy.mockRejectedValue(new Error('Network error'));
     const result = await fetchIndexIntradayKline('1.000001', 5, 48);
     expect(result).toEqual([]);
   });

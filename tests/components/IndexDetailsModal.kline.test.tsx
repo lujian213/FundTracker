@@ -102,7 +102,7 @@ describe('IndexDetailsModal kline period selector (history tab)', () => {
     expect(mockFetchIndexIntradayKline).not.toHaveBeenCalled();
   });
 
-  it('should show MA buttons only in realtime (日K) mode', async () => {
+  it('should show MA buttons in both realtime (日K) and minute K modes', async () => {
     render(<IndexDetailsModal data={mockIndexData} onClose={() => {}} />);
     fireEvent.click(screen.getByText('历史趋势图'));
     await waitFor(() => {
@@ -114,12 +114,7 @@ describe('IndexDetailsModal kline period selector (history tab)', () => {
     const select = screen.getByRole('combobox');
     fireEvent.change(select, { target: { value: '5min' } });
     await waitFor(() => {
-      expect(screen.queryByText('MA5')).toBeFalsy();
-    });
-
-    // 切换回日K，均线按钮应该重新显示
-    fireEvent.change(select, { target: { value: 'realtime' } });
-    await waitFor(() => {
+      // 分钟K模式下均线按钮也应该显示（需求变更）
       expect(screen.getByText('MA5')).toBeTruthy();
     });
   });
