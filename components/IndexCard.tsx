@@ -24,7 +24,7 @@ const IndexCard: React.FC<IndexCardProps> = ({
   isDragging = false,
   onSelect,
   onClick,
-  selectionKey
+  selectionKey,
 }) => {
   const isPlaceholder = idx.info.lastUpdated === '等待更新';
   const statusDotClass = status === 'ok' ? 'bg-green-500' : status === 'error' ? 'bg-red-500' : 'bg-gray-400';

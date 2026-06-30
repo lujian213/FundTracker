@@ -4,17 +4,30 @@ import React from 'react';
 import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
 import '@testing-library/jest-dom';
 import NewsSidebar from '../../components/NewsSidebar';
-import { fetchFastNews } from '../../services/marketNewsService';
+import { getFastNews } from '../../services/marketNewsService';
+import { getTimerJobScheduler } from '../../services/timerJobScheduler';
 
-// Mock fetchFastNews
+// Mock marketNewsService
 jest.mock('../../services/marketNewsService');
 
-const mockFetchFastNews = fetchFastNews as jest.MockedFunction<typeof fetchFastNews>;
+// Mock timerJobScheduler
+jest.mock('../../services/timerJobScheduler');
+
+const mockGetFastNews = getFastNews as jest.MockedFunction<typeof getFastNews>;
+const mockGetTimerJobScheduler = getTimerJobScheduler as jest.MockedFunction<typeof getTimerJobScheduler>;
 
 describe('NewsSidebar', () => {
+  const mockTriggerJob = jest.fn();
+
   beforeEach(() => {
     jest.useFakeTimers();
-    mockFetchFastNews.mockClear();
+    mockGetFastNews.mockClear();
+    mockTriggerJob.mockClear();
+    mockGetTimerJobScheduler.mockReturnValue({
+      _triggerJob: mockTriggerJob,
+    } as any);
+    // 默认返回空数组
+    mockGetFastNews.mockReturnValue([]);
   });
 
   afterEach(() => {
@@ -33,7 +46,7 @@ describe('NewsSidebar', () => {
   ];
 
   it('should be hidden when not visible', () => {
-    mockFetchFastNews.mockResolvedValue([]);
+    mockGetFastNews.mockReturnValue([]);
     render(<NewsSidebar isVisible={false} onClose={() => {}} />);
 
     // The sidebar is hidden but still in DOM with translate-x-full class
@@ -41,8 +54,8 @@ describe('NewsSidebar', () => {
     expect(sidebar).toHaveClass('translate-x-full');
   });
 
-  it('should fetch and display news when visible', async () => {
-    mockFetchFastNews.mockResolvedValue(mockNews);
+  it('should display cached news when visible', async () => {
+    mockGetFastNews.mockReturnValue(mockNews);
 
     await act(async () => {
       render(<NewsSidebar isVisible={true} onClose={() => {}} />);
@@ -53,9 +66,48 @@ describe('NewsSidebar', () => {
     });
   });
 
+  it('should show loading state when cache is empty', async () => {
+    mockGetFastNews.mockReturnValue([]);
+
+    await act(async () => {
+      render(<NewsSidebar isVisible={true} onClose={() => {}} />);
+    });
+
+    // 当缓存为空时，isLoading=true，显示加载动画
+    await waitFor(() => {
+      expect(screen.getByText(/财经快讯/)).toBeInTheDocument();
+      // 验证刷新按钮有 animate-spin 类（表示正在加载）
+      const refreshButton = screen.getByLabelText('刷新快讯');
+      expect(refreshButton.querySelector('i')).toHaveClass('animate-spin');
+    });
+  });
+
+  it('should update news on fast-news-cache-updated event', async () => {
+    mockGetFastNews.mockReturnValue([]);
+
+    await act(async () => {
+      render(<NewsSidebar isVisible={true} onClose={() => {}} />);
+    });
+
+    // Initially shows loading
+    const refreshButton = screen.getByLabelText('刷新快讯');
+    expect(refreshButton.querySelector('i')).toHaveClass('animate-spin');
+
+    // Update cache and dispatch event
+    mockGetFastNews.mockReturnValue(mockNews);
+    await act(async () => {
+      window.dispatchEvent(new CustomEvent('fast-news-cache-updated'));
+    });
+
+    // Should show news now
+    await waitFor(() => {
+      expect(screen.getByText('测试快讯标题')).toBeInTheDocument();
+    });
+  });
+
   it('should call onClose after mouseleave delay', async () => {
     const onClose = jest.fn();
-    mockFetchFastNews.mockResolvedValue(mockNews);
+    mockGetFastNews.mockReturnValue(mockNews);
 
     await act(async () => {
       render(<NewsSidebar isVisible={true} onClose={onClose} />);
@@ -75,7 +127,7 @@ describe('NewsSidebar', () => {
 
   it('should cancel close on mouseenter', async () => {
     const onClose = jest.fn();
-    mockFetchFastNews.mockResolvedValue(mockNews);
+    mockGetFastNews.mockReturnValue(mockNews);
 
     await act(async () => {
       render(<NewsSidebar isVisible={true} onClose={onClose} />);
@@ -101,45 +153,28 @@ describe('NewsSidebar', () => {
     expect(onClose).not.toHaveBeenCalled();
   });
 
-  it('should auto-refresh every 30 seconds when visible', async () => {
-    mockFetchFastNews.mockResolvedValue(mockNews);
+  it('should trigger background job on refresh button click', async () => {
+    mockGetFastNews.mockReturnValue(mockNews);
 
     await act(async () => {
       render(<NewsSidebar isVisible={true} onClose={() => {}} />);
     });
 
-    expect(mockFetchFastNews).toHaveBeenCalledTimes(1);
+    const refreshButton = screen.getByLabelText('刷新快讯');
+    fireEvent.click(refreshButton);
 
-    // Wait 30 seconds
-    act(() => {
-      jest.advanceTimersByTime(30000);
+    expect(mockTriggerJob).toHaveBeenCalledWith('fast-news-refresh');
+  });
+
+  it('should display news count', async () => {
+    mockGetFastNews.mockReturnValue(mockNews);
+
+    await act(async () => {
+      render(<NewsSidebar isVisible={true} onClose={() => {}} />);
     });
 
     await waitFor(() => {
-      expect(mockFetchFastNews).toHaveBeenCalledTimes(2);
+      expect(screen.getByText('1 条快讯')).toBeInTheDocument();
     });
-  });
-
-  it('should stop auto-refresh when hidden', async () => {
-    mockFetchFastNews.mockResolvedValue(mockNews);
-
-    const { rerender } = await act(async () => {
-      return render(<NewsSidebar isVisible={true} onClose={() => {}} />);
-    });
-
-    expect(mockFetchFastNews).toHaveBeenCalledTimes(1);
-
-    // Hide sidebar
-    await act(async () => {
-      rerender(<NewsSidebar isVisible={false} onClose={() => {}} />);
-    });
-
-    // Wait 30 seconds
-    act(() => {
-      jest.advanceTimersByTime(30000);
-    });
-
-    // Should not have called again
-    expect(mockFetchFastNews).toHaveBeenCalledTimes(1);
   });
 });

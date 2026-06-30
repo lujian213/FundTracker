@@ -242,3 +242,51 @@ export async function fetchFastNews(pageSize: number = 20): Promise<FastNewsItem
     return [];
   }
 }
+
+// ============================================
+// 快讯缓存（与市场热点缓存分开）
+// ============================================
+
+// 财经快讯独立缓存（与市场热点缓存分开）
+let fastNewsCache: FastNewsItem[] = [];
+let lastImportantNewsCodes: Set<string> = new Set(); // 记录上次的重要快讯code
+
+/**
+ * 获取快讯缓存
+ */
+export function getFastNews(): FastNewsItem[] {
+  return fastNewsCache;
+}
+
+/**
+ * 设置快讯缓存
+ * 同时触发事件通知 UI 更新
+ */
+export function setFastNews(items: FastNewsItem[]): void {
+  fastNewsCache = items;
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent('fast-news-cache-updated'));
+  }
+}
+
+/**
+ * 获取上次重要快讯的code集合
+ */
+export function getLastImportantNewsCodes(): Set<string> {
+  return lastImportantNewsCodes;
+}
+
+/**
+ * 设置上次重要快讯的code集合
+ */
+export function setLastImportantNewsCodes(codes: Set<string>): void {
+  lastImportantNewsCodes = codes;
+}
+
+/**
+ * 重置快讯缓存（测试用）
+ */
+export function resetFastNewsCache(): void {
+  fastNewsCache = [];
+  lastImportantNewsCodes = new Set();
+}

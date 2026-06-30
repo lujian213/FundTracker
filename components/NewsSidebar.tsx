@@ -2,7 +2,8 @@
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { FastNewsItem } from '../types/fastNewsTypes';
-import { fetchFastNews } from '../services/marketNewsService';
+import { getFastNews } from '../services/marketNewsService';
+import { getTimerJobScheduler } from '../services/timerJobScheduler';
 import NewsCard from './NewsCard';
 
 interface NewsSidebarProps {
@@ -15,52 +16,31 @@ interface NewsSidebarProps {
  */
 const NewsSidebar: React.FC<NewsSidebarProps> = ({ isVisible, onClose }) => {
   const [news, setNews] = useState<FastNewsItem[]>([]);
-  const [isLoading, setIsLoading] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   const closeTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const refreshIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  // 获取快讯数据
-  const loadNews = useCallback(async () => {
-    setIsLoading(true);
-    setError(null);
-
-    try {
-      const result = await fetchFastNews(20);
-      if (result.length === 0) {
-        setError('暂无快讯');
-      } else {
-        setNews(result);
-      }
-    } catch (e) {
-      setError('获取快讯失败');
-    } finally {
-      setIsLoading(false);
-    }
-  }, []);
-
-  // 侧边栏打开时加载快讯并启动自动刷新
+  // 监听缓存更新事件
   useEffect(() => {
-    if (isVisible) {
-      loadNews();
-
-      // 启动自动刷新(30秒)
-      refreshIntervalRef.current = setInterval(loadNews, 30000);
-    } else {
-      // 清除自动刷新定时器
-      if (refreshIntervalRef.current) {
-        clearInterval(refreshIntervalRef.current);
-        refreshIntervalRef.current = null;
-      }
-    }
-
-    return () => {
-      if (refreshIntervalRef.current) {
-        clearInterval(refreshIntervalRef.current);
+    const handleCacheUpdate = () => {
+      const cached = getFastNews();
+      if (cached.length > 0) {
+        setNews(cached);
+        setError(null);
+        setIsLoading(false);
+      } else {
+        setError('快讯正在加载中...');
+        setIsLoading(true);
       }
     };
-  }, [isVisible, loadNews]);
+
+    // 初始读取缓存
+    handleCacheUpdate();
+
+    window.addEventListener('fast-news-cache-updated', handleCacheUpdate);
+    return () => window.removeEventListener('fast-news-cache-updated', handleCacheUpdate);
+  }, []);
 
   // 侧边栏显示时隐藏窗口滚动条,消失时恢复
   useEffect(() => {
@@ -93,10 +73,12 @@ const NewsSidebar: React.FC<NewsSidebarProps> = ({ isVisible, onClose }) => {
     }
   }, []);
 
-  // 手动刷新
+  // 手动刷新按钮：触发后台任务立即执行
   const handleRefresh = useCallback(() => {
-    loadNews();
-  }, [loadNews]);
+    const scheduler = getTimerJobScheduler();
+    scheduler._triggerJob?.('fast-news-refresh');
+    setIsLoading(true);
+  }, []);
 
   // 点击快讯卡片
   const handleNewsClick = useCallback((item: FastNewsItem) => {

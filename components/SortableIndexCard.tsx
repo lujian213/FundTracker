@@ -30,7 +30,7 @@ const SortableIndexCard: React.FC<SortableIndexCardProps> = ({
   isSelected = false,
   onSelect,
   onClick,
-  selectionKey
+  selectionKey,
 }) => {
   const {
     attributes,

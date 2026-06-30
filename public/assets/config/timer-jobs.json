@@ -87,6 +87,13 @@
       "cron": "0 0 * * *",
       "enabled": true,
       "initialDelay": 9000
+    },
+    {
+      "id": "fast-news-refresh",
+      "name": "财经快讯刷新",
+      "cron": "*/3 * * * *",
+      "enabled": true,
+      "initialDelay": 5000
     }
   ]
 }

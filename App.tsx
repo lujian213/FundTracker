@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { DndContext, DragEndEvent } from '@dnd-kit/core';
 import { SortableContext, verticalListSortingStrategy, arrayMove } from '@dnd-kit/sortable';
 import { Ticker, ValuationData, MarketType, MarketIndex, BackupData, CardStatus, ManageItemType, ManageSelectionKey, JobResult, HistoricalPoint, FundInfo, IndexInfo } from './types';
+import { FastNewsItem } from './types/fastNewsTypes';
 import { fetchFundData, fetchFundDatas, forceFetchFundHistories, fetchMarketIndices, fetchIndexHistories, maybeTriggerHistoryRefresh, normalizeIndexSymbol } from './services/fundService';
 import { toLocalDateKey } from './utils/priceResolver';
 import { calculateTotalTasks, createProgressCallback, incrementTaskCount } from './utils/taskCounter';
@@ -65,6 +66,7 @@ import { processCalendarHoliday, parseCalendarAIResponse } from './services/cale
 // 调试面板和日志拦截器 - 仅开发环境使用（构建时会自动移除）
 import { isDev } from './utils/env';
 import NewsSidebar from './components/NewsSidebar';
+import ImportantNewsNotifier from './components/ImportantNewsNotifier';
 // 动态导入热力图组件（懒加载ECharts）
 import { lazy } from 'react';
 const SectorHeatmapModal = lazy(() => import('./components/SectorHeatmapModal'));
@@ -148,6 +150,40 @@ const mergeIndicesForDisplay = (
 };
 
 const createManageSelectionKey = (type: ManageItemType, value: string): ManageSelectionKey => `${type}:${value}`;
+
+/**
+ * 检测新的重要快讯
+ * 使用双重验证：code ID + 时间戳
+ */
+function detectNewImportantNews(
+  currentNews: FastNewsItem[],
+  previousNews: FastNewsItem[]
+): FastNewsItem[] {
+  // 获取当前重要快讯（titleColor=3）
+  const currentImportant = currentNews.filter(n => n.titleColor === 3);
+
+  // 获取上次重要快讯的code集合
+  const lastCodes = marketNewsService.getLastImportantNewsCodes();
+
+  // 检测新的重要快讯：双重验证（code + 时间）
+  const newImportant = currentImportant.filter(n => {
+    // 条件1：code不在上次集合中
+    const isNewCode = !lastCodes.has(n.code);
+
+    // 条件2：时间比上次最新快讯时间更晚
+    // 如果上次快讯为空，则所有重要快讯都是新的
+    const isNewTime = previousNews.length === 0 ||
+      n.showTime > previousNews[0]?.showTime;
+
+    return isNewCode && isNewTime;
+  });
+
+  // 更新上次重要快讯的code集合
+  const newCodes = new Set(currentImportant.map(n => n.code));
+  marketNewsService.setLastImportantNewsCodes(newCodes);
+
+  return newImportant;
+}
 
 /**
  * 刷新 Calendar 节假日信息（统一处理各市场）
@@ -734,11 +770,18 @@ const AppContent: React.FC = () => {
 
     // Register error callback
     scheduler.onError((jobId, jobName, error) => {
-      // 不输出失败日志，由上层统一处理
-      addError({
-        jobName,
-        message: error.message || 'Unknown error',
-      });
+      console.error(`[TimerJob] ${jobName} (${jobId}) failed:`, error);
+
+      if (jobId === 'fast-news-refresh') {
+        // 快讯刷新失败仅记录日志，不显示错误提示
+        console.warn(`[${jobName}] 快讯获取失败，保留原有缓存`);
+      } else {
+        // 其他任务失败显示在 TimerJobErrorContext
+        addError({
+          jobName,
+          message: error.message || 'Unknown error',
+        });
+      }
     });
 
     // Register job handlers
@@ -797,6 +840,38 @@ const AppContent: React.FC = () => {
     // 注册重要数据刷新任务（非农数据、CPI等）
     scheduler.registerHandler('important_data_refresh', async () => {
       return await refreshImportantData();
+    });
+
+    // 注册财经快讯刷新任务处理器
+    scheduler.registerHandler('fast-news-refresh', async () => {
+      const result = await marketNewsService.fetchFastNews(20);
+
+      if (result.length > 0) {
+        const prevCache = marketNewsService.getFastNews();
+        const newImportantNews = detectNewImportantNews(result, prevCache);
+
+        // 更新缓存（只有成功时才更新）
+        marketNewsService.setFastNews(result);
+
+        // 如果有新的重要快讯，触发通知事件
+        if (newImportantNews.length > 0) {
+          window.dispatchEvent(new CustomEvent('important-news-detected', {
+            detail: { news: newImportantNews }
+          }));
+        }
+
+        // 返回成功状态，记录到任务日志
+        return {
+          success: true,
+          message: `获取${result.length}条快讯，其中${newImportantNews.length}条重要快讯`
+        };
+      }
+
+      // 失败时不更新缓存，保留原有数据
+      return {
+        success: false,
+        message: '获取快讯失败或API返回空数据'
+      };
     });
 
     // Set context with current portfolio
@@ -1138,7 +1213,7 @@ const AppContent: React.FC = () => {
                     我的自选基金
                   </h2>
                   <div className="flex items-center space-x-2 shrink-0">
-                    <button onClick={() => setShowPositions(true)} className="px-4 py-1.5 rounded-full bg-blue-600 shadow-md text-[11px] font-bold text-white hover:bg-blue-700 transition-all">持仓</button>
+                    <button id="positions-button" onClick={() => setShowPositions(true)} className="px-4 py-1.5 rounded-full bg-blue-600 shadow-md text-[11px] font-bold text-white hover:bg-blue-700 transition-all">持仓</button>
                     <button onClick={() => setShowOverallProfit(true)} className="px-4 py-1.5 rounded-full bg-blue-600 shadow-md text-[11px] font-bold text-white hover:bg-blue-700 transition-all">盈利</button>
                     <button onClick={() => setShowTransactions(true)} className="px-4 py-1.5 rounded-full bg-blue-600 shadow-md text-[11px] font-bold text-white hover:bg-blue-700 transition-all">交易</button>
                     <button onClick={() => setShowSectorHeatmap(true)} className="px-4 py-1.5 rounded-full bg-blue-600 shadow-md text-[11px] font-bold text-white hover:bg-blue-700 transition-all">板块</button>
@@ -1188,37 +1263,37 @@ const AppContent: React.FC = () => {
               strategy={verticalListSortingStrategy}
             >
               <div className="flex lg:flex-col overflow-x-auto lg:overflow-visible gap-1.5 pb-2 no-scrollbar">
-                {(pendingIndexOrder?.domestic ?? displayDomesticIndices.map(i => i.info.symbol)).map(symbol => {
-                  const idx = domesticIndexMap.get(symbol) ?? indexService.getMarketIndex(symbol);
-                  if (!idx) return null;
-                  const selectionKey = createManageSelectionKey('index', normalizeIndexSymbol(idx.info.symbol));
+                {(pendingIndexOrder?.domestic ?? displayDomesticIndices.map(i => i.info.symbol)).map((symbol) => {
+                  const indexData = domesticIndexMap.get(symbol) ?? indexService.getMarketIndex(symbol);
+                  if (!indexData) return null;
+                  const selectionKey = createManageSelectionKey('index', normalizeIndexSymbol(indexData.info.symbol));
                   const isSelected = selectedItems.has(selectionKey);
-                  const status = indexStatuses[normalizeIndexSymbol(idx.info.symbol)] ?? 'unknown';
+                  const status = indexStatuses[normalizeIndexSymbol(indexData.info.symbol)] ?? 'unknown';
 
                   if (isSelectionMode) {
                     return (
                       <SortableIndexCard
-                        key={idx.info.symbol}
-                        idx={idx}
+                        key={indexData.info.symbol}
+                        idx={indexData}
                         type="index"
                         status={status}
                         isSelectionMode={true}
                         isSelected={isSelected}
                         onSelect={toggleSelection}
-                        onClick={() => setViewingIndexSymbol(normalizeIndexSymbol(idx.info.symbol))}
+                        onClick={() => setViewingIndexSymbol(normalizeIndexSymbol(indexData.info.symbol))}
                         selectionKey={selectionKey}
                       />
                     );
                   }
                   return (
                     <IndexCard
-                      key={idx.info.symbol}
-                      idx={idx}
+                      key={indexData.info.symbol}
+                      idx={indexData}
                       type="index"
                       status={status}
                       isSelectionMode={false}
                       isSelected={false}
-                      onClick={() => setViewingIndexSymbol(normalizeIndexSymbol(idx.info.symbol))}
+                      onClick={() => setViewingIndexSymbol(normalizeIndexSymbol(indexData.info.symbol))}
                       selectionKey={selectionKey}
                     />
                   );
@@ -1250,44 +1325,44 @@ const AppContent: React.FC = () => {
         </main>
 
         {/* 全球指数区域 */}
-        <aside className="space-y-1.5">
+        <aside id="global-indices-area" className="space-y-1.5">
           <DndContext onDragEnd={handleIndexDragEnd}>
             <SortableContext
               items={pendingIndexOrder?.global ?? displayGlobalIndices.map(i => i.info.symbol)}
               strategy={verticalListSortingStrategy}
             >
               <div className="flex lg:flex-col overflow-x-auto lg:overflow-visible gap-1.5 pb-2 no-scrollbar">
-                {(pendingIndexOrder?.global ?? displayGlobalIndices.map(i => i.info.symbol)).map(symbol => {
-                  const idx = globalIndexMap.get(symbol) ?? indexService.getMarketIndex(symbol);
-                  if (!idx) return null;
-                  const selectionKey = createManageSelectionKey('global_index', normalizeIndexSymbol(idx.info.symbol));
+                {(pendingIndexOrder?.global ?? displayGlobalIndices.map(i => i.info.symbol)).map((symbol) => {
+                  const indexData = globalIndexMap.get(symbol) ?? indexService.getMarketIndex(symbol);
+                  if (!indexData) return null;
+                  const selectionKey = createManageSelectionKey('global_index', normalizeIndexSymbol(indexData.info.symbol));
                   const isSelected = selectedItems.has(selectionKey);
-                  const status = indexStatuses[normalizeIndexSymbol(idx.info.symbol)] ?? 'unknown';
+                  const status = indexStatuses[normalizeIndexSymbol(indexData.info.symbol)] ?? 'unknown';
 
                   if (isSelectionMode) {
                     return (
                       <SortableIndexCard
-                        key={idx.info.symbol}
-                        idx={idx}
+                        key={indexData.info.symbol}
+                        idx={indexData}
                         type="global_index"
                         status={status}
                         isSelectionMode={true}
                         isSelected={isSelected}
                         onSelect={toggleSelection}
-                        onClick={() => setViewingIndexSymbol(normalizeIndexSymbol(idx.info.symbol))}
+                        onClick={() => setViewingIndexSymbol(normalizeIndexSymbol(indexData.info.symbol))}
                         selectionKey={selectionKey}
                       />
                     );
                   }
                   return (
                     <IndexCard
-                      key={idx.info.symbol}
-                      idx={idx}
+                      key={indexData.info.symbol}
+                      idx={indexData}
                       type="global_index"
                       status={status}
                       isSelectionMode={false}
                       isSelected={false}
-                      onClick={() => setViewingIndexSymbol(normalizeIndexSymbol(idx.info.symbol))}
+                      onClick={() => setViewingIndexSymbol(normalizeIndexSymbol(indexData.info.symbol))}
                       selectionKey={selectionKey}
                     />
                   );
@@ -1594,6 +1669,9 @@ const AppContent: React.FC = () => {
         isVisible={isNewsSidebarVisible}
         onClose={() => setIsNewsSidebarVisible(false)}
       />
+
+      {/* 重要快讯通知组件 */}
+      <ImportantNewsNotifier />
     </div>
   );
 };
