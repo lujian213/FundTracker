@@ -12,6 +12,50 @@ import { fetchWithProxy } from './proxyService';
 const EASTMONEY_URL = 'https://fund.eastmoney.com/{symbol}.html';
 const SEARCH_API_URL = 'https://fundsuggest.eastmoney.com/FundSearch/api/FundSearchAPI.ashx?m=1&key={symbol}';
 
+/**
+ * 从东方财富股票链接提取股票代码和市场信息
+ * 支持多种链接格式：
+ * 1. https://quote.eastmoney.com/unify/r/1.600519 (带股票名称)
+ * 2. https://quote.eastmoney.com/sh600519.html
+ * 3. https://quote.eastmoney.com/concept/sz300750.html
+ * @param url 股票链接
+ * @returns { code: 股票代码(6位), market: 市场代码(0/1/2) } 或 null
+ */
+function extractStockCodeFromUrl(url: string): { code: string; market: string } | null {
+  // 格式1: /unify/r/1.600519 或 /unify/r/0.000333
+  // 市场代码: 1=沪市, 0=深市, 2=北交所
+  const unifyMatch = url.match(/\/unify\/r\/([012])\.(\d{6})/i);
+  if (unifyMatch) {
+    return { market: unifyMatch[1], code: unifyMatch[2] };
+  }
+
+  // 格式2: /sh600519.html 或 /sz000333.html 或 /bj430047.html
+  // 格式3: /concept/sz300750.html 或类似格式
+  const directMatch = url.match(/\/(?:sh|sz|bj)(\d{6})\.html/i);
+  if (directMatch) {
+    // 从 URL 中提取市场前缀
+    const marketPrefixMatch = url.match(/\/(sh|sz|bj)\d{6}/i);
+    if (marketPrefixMatch) {
+      const marketPrefix = marketPrefixMatch[1].toLowerCase();
+      const marketCode = marketPrefix === 'sh' ? '1' : marketPrefix === 'sz' ? '0' : '2';
+      return { market: marketCode, code: directMatch[1] };
+    }
+  }
+
+  return null;
+}
+
+/**
+ * 构建正确的东方财富股票链接
+ * @param market 市场代码 (0=深市, 1=沪市, 2=北交所)
+ * @param code 股票代码 (6位数字)
+ * @returns 正确的股票链接
+ */
+function buildStockUrl(market: string, code: string): string {
+  const prefix = market === '1' ? 'sh' : market === '0' ? 'sz' : 'bj';
+  return `https://quote.eastmoney.com/${prefix}${code}.html`;
+}
+
 // ============================================================
 // HTML 解析函数
 // ============================================================
@@ -37,6 +81,12 @@ export function parseStockPositionsFromHtml(doc: Document): StockPosition[] {
     const stock_name = nameLink?.getAttribute('title')?.trim();
     if (!stock_name) continue;
 
+    // 提取股票链接和代码，重新构建正确的链接
+    const rawUrl = nameLink?.getAttribute('href') || '';
+    const stockInfo = rawUrl ? extractStockCodeFromUrl(rawUrl) : null;
+    const stock_code = stockInfo?.code || undefined;
+    const stock_url = stockInfo ? buildStockUrl(stockInfo.market, stockInfo.code) : undefined;
+
     // 持仓占比：带有 alignRight bold 类的 td
     const percentCell = row.querySelector('td.alignRight.bold');
     const percentText = percentCell?.textContent?.trim();
@@ -46,7 +96,7 @@ export function parseStockPositionsFromHtml(doc: Document): StockPosition[] {
     const percentage = parseFloat(percentText.replace('%', ''));
     if (isNaN(percentage)) continue;
 
-    positions.push({ stock_name, percentage });
+    positions.push({ stock_name, percentage, stock_code, stock_url });
   }
 
   return positions;
@@ -148,11 +198,21 @@ export function parseStockPositionsFromMarkdown(markdown: string): StockPosition
         // 格式1: 宁德时代
         // 格式2: [宁德时代](url "宁德时代")
         let stockName = cells[0];
+        let stock_url: string | undefined = undefined;
+        let stock_code: string | undefined = undefined;
 
-        // 提取 Markdown 链接中的文本
-        const linkMatch = stockName.match(/\[([^\]]+)\]/);
-        if (linkMatch) {
-          stockName = linkMatch[1];
+        // 提取 Markdown 链接中的文本和 URL，重新构建正确的链接
+        // 匹配格式: [股票名称](url "tooltip")
+        const fullLinkMatch = stockName.match(/\[([^\]]+)\]\(([^)]+)\)/);
+        if (fullLinkMatch) {
+          stockName = fullLinkMatch[1];
+          const rawUrl = fullLinkMatch[2];
+          // 从原始链接提取股票信息，构建正确的链接
+          const stockInfo = extractStockCodeFromUrl(rawUrl);
+          if (stockInfo) {
+            stock_code = stockInfo.code;
+            stock_url = buildStockUrl(stockInfo.market, stockInfo.code);
+          }
         }
 
         // 跳过"暂无数据"这类占位文本
@@ -175,7 +235,7 @@ export function parseStockPositionsFromMarkdown(markdown: string): StockPosition
         if (percentMatch) {
           const percentage = parseFloat(percentMatch[1]);
           if (!isNaN(percentage) && percentage > 0 && percentage <= 100) {
-            positions.push({ stock_name: stockName, percentage });
+            positions.push({ stock_name: stockName, percentage, stock_code, stock_url });
           }
         }
       }

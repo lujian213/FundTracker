@@ -38,6 +38,8 @@ export interface RecommendedStrategy {
 export interface StockPosition {
   stock_name: string;      // 股票名称
   percentage: number;      // 持仓占比 (如 9.45 表示 9.45%)
+  stock_code?: string;     // 股票代码（6位数字，如 "600519"）
+  stock_url?: string;      // 股票详情页链接
 }
 
 // StageIncrease - 阶段盈亏

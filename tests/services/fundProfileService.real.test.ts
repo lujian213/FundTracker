@@ -100,9 +100,9 @@ describe('fundProfileService - real data tests', () => {
         const positions = parseStockPositionsFromMarkdown(normalMarkdownWithStocks);
 
         expect(positions).toHaveLength(3);
-        expect(positions[0]).toEqual({ stock_name: '宁德时代', percentage: 9.45 });
-        expect(positions[1]).toEqual({ stock_name: '中际旭创', percentage: 6.06 });
-        expect(positions[2]).toEqual({ stock_name: '贵州茅台', percentage: 5.00 });
+        expect(positions[0]).toEqual({ stock_name: '宁德时代', percentage: 9.45, stock_code: '300750', stock_url: 'https://quote.eastmoney.com/sz300750.html' });
+        expect(positions[1]).toEqual({ stock_name: '中际旭创', percentage: 6.06, stock_code: '300308', stock_url: 'https://quote.eastmoney.com/sz300308.html' });
+        expect(positions[2]).toEqual({ stock_name: '贵州茅台', percentage: 5.00, stock_code: '600519', stock_url: 'https://quote.eastmoney.com/sh600519.html' });
       });
 
       test('should ignore rows with URL in percentage column', () => {

@@ -3163,11 +3163,18 @@ test.describe('testBedWithData', () => {
     const fundTypeLabel = page.locator('span:has-text("混合型-偏股")');
     await expect(fundTypeLabel).toBeVisible();
 
-    // 验证板块信息显示（左侧，包含PCB和F5G）
-    const pcbSector = page.locator('span:has-text("PCB")');
+    // 验证板块信息显示（左侧，包含PCB和F5G），板块标签为可点击链接
+    const pcbSector = page.locator('a:has-text("PCB")');
     await expect(pcbSector).toBeVisible();
-    const f5gSector = page.locator('span:has-text("F5G")');
+    const f5gSector = page.locator('a:has-text("F5G")');
     await expect(f5gSector).toBeVisible();
+
+    // 验证板块链接格式正确（指向东方财富搜索页面，使用板块名称）
+    const pcbHref = await pcbSector.getAttribute('href');
+    expect(pcbHref).toContain('so.eastmoney.com/web/s?keyword=PCB');
+
+    const f5gHref = await f5gSector.getAttribute('href');
+    expect(f5gHref).toContain('so.eastmoney.com/web/s?keyword=F5G');
 
     // ══════════════════════════════════════════════════════════════════════════════
     // 7. 验证股票持仓表格和阶段盈亏
@@ -3176,6 +3183,16 @@ test.describe('testBedWithData', () => {
     const stockRows = page.locator('table tbody tr');
     const stockCount = await stockRows.count();
     expect(stockCount).toBe(10);
+
+    // 验证股票链接（如果存在）
+    // 注意：mock 数据可能没有股票链接，只有在实际获取后才会有
+    const firstStockLink = stockRows.first().locator('a[href]');
+    const hasStockLink = await firstStockLink.count() > 0;
+    if (hasStockLink) {
+      // 验证股票链接格式正确（指向东方财富股票页面）
+      const stockHref = await firstStockLink.getAttribute('href');
+      expect(stockHref).toMatch(/quote\.eastmoney\.com\/(?:sh|sz|bj)\d{6}\.html/);
+    }
 
     // 验证阶段盈亏字段有值（查找包含"近"字样的元素）
     const stageGainSection = page.locator('h4:has-text("阶段盈亏")');

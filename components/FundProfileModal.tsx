@@ -26,7 +26,18 @@ const StockPositionsTable: React.FC<{ data: FundProfile['stock_positions']; comp
       <tbody>
         {data.map((pos, idx) => (
           <tr key={idx} className="border-b border-gray-100">
-            <td className={`${paddingClass} text-gray-800`}>{pos.stock_name}</td>
+            <td className={`${paddingClass} text-gray-800`}>
+              {pos.stock_url ? (
+                <a
+                  href={pos.stock_url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="hover:text-blue-600 hover:underline"
+                >
+                  {pos.stock_name}
+                </a>
+              ) : pos.stock_name}
+            </td>
             <td className={`${paddingClass} text-right text-gray-800`}>{formatPercent(pos.percentage)}</td>
           </tr>
         ))}
@@ -94,12 +105,15 @@ const FundProfileModal: React.FC<FundProfileModalProps> = ({ profile, fundName, 
                     </h4>
                     <div className="flex flex-wrap gap-1.5">
                       {profile.sectors.map((sector, idx) => (
-                        <span
+                        <a
                           key={idx}
-                          className="px-2 py-1 bg-purple-50 text-purple-700 rounded text-xs font-medium"
+                          href={`https://so.eastmoney.com/web/s?keyword=${encodeURIComponent(sector.name)}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="px-2 py-1 bg-purple-50 text-purple-700 rounded text-xs font-medium hover:bg-purple-100 hover:underline"
                         >
                           {sector.name}
-                        </span>
+                        </a>
                       ))}
                     </div>
                   </div>
@@ -143,7 +157,7 @@ const FundProfileModal: React.FC<FundProfileModalProps> = ({ profile, fundName, 
                       stage.increase_percentage > 0 ? 'text-red-600' :
                       stage.increase_percentage < 0 ? 'text-green-600' : 'text-gray-600'
                     }`}>
-                      {stage.increase_percentage > 0 ? '+' : ''}{formatPercent(stage.increase_percentage)}
+                      {formatPercent(stage.increase_percentage)}
                     </div>
                   </div>
                 ))}

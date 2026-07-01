@@ -56,8 +56,8 @@ describe('fundProfileService', () => {
       const result = parseStockPositions(doc);
 
       expect(result).toHaveLength(2);
-      expect(result[0]).toEqual({ stock_name: '宁德时代', percentage: 9.45 });
-      expect(result[1]).toEqual({ stock_name: '中际旭创', percentage: 6.06 });
+      expect(result[0]).toEqual({ stock_name: '宁德时代', percentage: 9.45, stock_url: undefined, stock_code: undefined });
+      expect(result[1]).toEqual({ stock_name: '中际旭创', percentage: 6.06, stock_url: undefined, stock_code: undefined });
     });
 
     test('returns empty array when table not found', () => {
