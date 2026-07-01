@@ -1,6 +1,7 @@
 import React from 'react';
 import { createPortal } from 'react-dom';
 import { FundProfile } from '../types';
+import { formatPercent } from '../utils/format';
 
 const SUBMODAL_Z_INDEX = 150;
 
@@ -10,7 +11,36 @@ interface FundProfileModalProps {
   onClose: () => void;
 }
 
+// 股票持仓表格子组件
+const StockPositionsTable: React.FC<{ data: FundProfile['stock_positions']; compact?: boolean }> = ({ data, compact = false }) => {
+  const paddingClass = compact ? 'py-1.5' : 'py-2';
+
+  return data.length > 0 ? (
+    <table className="text-sm w-64">
+      <thead>
+        <tr className="border-b border-gray-200">
+          <th className={`text-left ${paddingClass} text-gray-500 font-medium`}>股票名称</th>
+          <th className={`text-right ${paddingClass} text-gray-500 font-medium w-16`}>持仓占比</th>
+        </tr>
+      </thead>
+      <tbody>
+        {data.map((pos, idx) => (
+          <tr key={idx} className="border-b border-gray-100">
+            <td className={`${paddingClass} text-gray-800`}>{pos.stock_name}</td>
+            <td className={`${paddingClass} text-right text-gray-800`}>{formatPercent(pos.percentage)}</td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  ) : (
+    <p className="text-sm text-gray-400">暂无持仓数据</p>
+  );
+};
+
 const FundProfileModal: React.FC<FundProfileModalProps> = ({ profile, fundName, onClose }) => {
+  // 判断是否有左边内容（类型或板块）
+  const hasLeftContent = profile.fund_type || (profile.sectors && profile.sectors.length > 0);
+
   return createPortal(
     <div
       className="fixed inset-0 flex items-center justify-center p-4"
@@ -37,35 +67,66 @@ const FundProfileModal: React.FC<FundProfileModalProps> = ({ profile, fundName, 
 
         {/* Content */}
         <div className="p-5 overflow-y-auto" style={{ maxHeight: 'calc(80vh - 60px)' }}>
-          {/* 股票持仓 */}
-          <div className="mb-6">
-            <h4 className="font-semibold text-gray-700 mb-3 flex items-center">
-              <i className="fas fa-chart-pie text-blue-500 mr-2 text-sm" />
-              股票持仓
-            </h4>
-            {profile.stock_positions.length > 0 ? (
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="border-b border-gray-200">
-                      <th className="text-left py-2 text-gray-500 font-medium">股票名称</th>
-                      <th className="text-right py-2 text-gray-500 font-medium">持仓占比</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {profile.stock_positions.map((pos, idx) => (
-                      <tr key={idx} className="border-b border-gray-100">
-                        <td className="py-2 text-gray-800">{pos.stock_name}</td>
-                        <td className="py-2 text-right text-gray-800">{pos.percentage.toFixed(2)}%</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+          {/* 上部区域：左右布局 */}
+          {hasLeftContent && (
+            <div className="flex gap-6 mb-6">
+              {/* 左边：类型和板块信息 */}
+              <div className="flex-shrink-0 w-1/3">
+                {/* 基金类型 */}
+                {profile.fund_type && (
+                  <div className="mb-4">
+                    <h4 className="font-semibold text-gray-700 mb-2 flex items-center text-sm">
+                      <i className="fas fa-tag text-blue-500 mr-1.5 text-xs" />
+                      基金类型
+                    </h4>
+                    <span className="inline-flex items-center px-3 py-1 bg-blue-50 text-blue-600 rounded-full text-sm font-medium">
+                      {profile.fund_type}
+                    </span>
+                  </div>
+                )}
+
+                {/* 板块信息 */}
+                {profile.sectors && profile.sectors.length > 0 && (
+                  <div>
+                    <h4 className="font-semibold text-gray-700 mb-2 flex items-center text-sm">
+                      <i className="fas fa-layer-group text-purple-500 mr-1.5 text-xs" />
+                      板块信息
+                    </h4>
+                    <div className="flex flex-wrap gap-1.5">
+                      {profile.sectors.map((sector, idx) => (
+                        <span
+                          key={idx}
+                          className="px-2 py-1 bg-purple-50 text-purple-700 rounded text-xs font-medium"
+                        >
+                          {sector.name}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
-            ) : (
-              <p className="text-sm text-gray-400">暂无持仓数据</p>
-            )}
-          </div>
+
+              {/* 右边：股票持仓 */}
+              <div className="flex-grow">
+                <h4 className="font-semibold text-gray-700 mb-3 flex items-center text-sm">
+                  <i className="fas fa-chart-pie text-blue-500 mr-1.5 text-xs" />
+                  股票持仓
+                </h4>
+                <StockPositionsTable data={profile.stock_positions} compact />
+              </div>
+            </div>
+          )}
+
+          {/* 如果没有左边内容，单独显示股票持仓 */}
+          {!hasLeftContent && (
+            <div className="mb-6">
+              <h4 className="font-semibold text-gray-700 mb-3 flex items-center">
+                <i className="fas fa-chart-pie text-blue-500 mr-2 text-sm" />
+                股票持仓
+              </h4>
+              <StockPositionsTable data={profile.stock_positions} />
+            </div>
+          )}
 
           {/* 阶段盈亏 */}
           <div>
@@ -82,7 +143,7 @@ const FundProfileModal: React.FC<FundProfileModalProps> = ({ profile, fundName, 
                       stage.increase_percentage > 0 ? 'text-red-600' :
                       stage.increase_percentage < 0 ? 'text-green-600' : 'text-gray-600'
                     }`}>
-                      {stage.increase_percentage > 0 ? '+' : ''}{stage.increase_percentage.toFixed(2)}%
+                      {stage.increase_percentage > 0 ? '+' : ''}{formatPercent(stage.increase_percentage)}
                     </div>
                   </div>
                 ))}

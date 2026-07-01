@@ -686,15 +686,9 @@ describe('fundProfileService', () => {
       jest.clearAllMocks();
     });
 
-    test('returns profile when fetch succeeds with valid data', async () => {
-      const mockProfile: FundProfile = {
-        stock_positions: [{ stock_name: '宁德时代', percentage: 9.45 }],
-        stage_increase: [{ stage: '近1周', increase_percentage: 1.5 }],
-        fetched_at: '2026-06-05T10:00:00.000Z',
-      };
-
-      // Mock markdown 格式返回
-      fetchWithProxy.mockResolvedValue({
+    test('returns profile with fund_type and sectors when both APIs succeed', async () => {
+      // Mock HTML页面返回（第一次调用）
+      fetchWithProxy.mockResolvedValueOnce({
         content: `
 | 股票名称 | 持仓占比 |
 | --- | --- |
@@ -707,27 +701,76 @@ describe('fundProfileService', () => {
         format: 'markdown',
       });
 
-      const result = await fetchFundProfile('000001');
+      // Mock 搜索API返回（第二次调用）
+      fetchWithProxy.mockResolvedValueOnce({
+        content: JSON.stringify({
+          ErrCode: 0,
+          ErrMsg: 'success',
+          Datas: [{
+            FundBaseInfo: {
+              FTYPE: '混合型-偏股',
+            },
+            ZTJJInfo: [
+              { TTYPE: 'BK000644', TTYPENAME: 'PCB' },
+              { TTYPE: 'BK000652', TTYPENAME: 'F5G' },
+            ],
+          }],
+        }),
+        format: 'raw',
+      });
+
+      const result = await fetchFundProfile('022364');
 
       expect(result).not.toBeNull();
       expect(result?.stock_positions).toHaveLength(1);
       expect(result?.stock_positions[0].stock_name).toBe('宁德时代');
-      expect(result?.stock_positions[0].percentage).toBe(9.45);
+      expect(result?.fund_type).toBe('混合型-偏股');
+      expect(result?.sectors).toHaveLength(2);
+      expect(result?.sectors?.[0]).toEqual({ code: 'BK000644', name: 'PCB' });
+      expect(result?.sectors?.[1]).toEqual({ code: 'BK000652', name: 'F5G' });
     });
 
-    test('returns null when fetch fails', async () => {
-      fetchWithProxy.mockRejectedValue(new Error('Network error'));
+    test('returns profile without fund_type and sectors when search API fails', async () => {
+      // Mock HTML页面返回成功（第一次调用）
+      fetchWithProxy.mockResolvedValueOnce({
+        content: `
+| 股票名称 | 持仓占比 |
+| --- | --- |
+| [宁德时代](url "宁德时代") | 9.45% |
+        `,
+        format: 'markdown',
+      });
+
+      // Mock 搜索API返回失败（第二次调用）
+      fetchWithProxy.mockRejectedValueOnce(new Error('Search API failed'));
 
       const result = await fetchFundProfile('000001');
 
-      expect(result).toBeNull();
+      expect(result).not.toBeNull();
+      expect(result?.stock_positions).toHaveLength(1);
+      expect(result?.fund_type).toBeUndefined();
+      expect(result?.sectors).toEqual([]);
     });
 
-    test('returns profile with empty arrays when no data available', async () => {
-      // Mock 返回空数据
-      fetchWithProxy.mockResolvedValue({
-        content: '暂无数据',
-        format: 'markdown',
+    test('returns profile with partial data when HTML fails but search API succeeds', async () => {
+      // Mock HTML页面返回失败（第一次调用）
+      fetchWithProxy.mockRejectedValueOnce(new Error('HTML fetch error'));
+
+      // Mock 搜索API返回成功（第二次调用）
+      fetchWithProxy.mockResolvedValueOnce({
+        content: JSON.stringify({
+          ErrCode: 0,
+          ErrMsg: 'success',
+          Datas: [{
+            FundBaseInfo: {
+              FTYPE: '股票型',
+            },
+            ZTJJInfo: [
+              { TTYPE: 'BK000074', TTYPENAME: '食品饮料' },
+            ],
+          }],
+        }),
+        format: 'raw',
       });
 
       const result = await fetchFundProfile('000001');
@@ -735,7 +778,66 @@ describe('fundProfileService', () => {
       expect(result).not.toBeNull();
       expect(result?.stock_positions).toEqual([]);
       expect(result?.stage_increase).toEqual([]);
-      expect(result?.fetched_at).toBeDefined();
+      expect(result?.fund_type).toBe('股票型');
+      expect(result?.sectors).toHaveLength(1);
+      expect(result?.sectors?.[0]).toEqual({ code: 'BK000074', name: '食品饮料' });
+    });
+
+    test('returns null when both APIs fail', async () => {
+      fetchWithProxy.mockRejectedValueOnce(new Error('HTML fetch error'));
+      fetchWithProxy.mockRejectedValueOnce(new Error('Search API failed'));
+
+      const result = await fetchFundProfile('000001');
+
+      expect(result).toBeNull();
+    });
+
+    test('handles search API with invalid ErrCode', async () => {
+      fetchWithProxy.mockResolvedValueOnce({
+        content: '| 股票名称 | 持仓占比 |\n| [股票A](url) | 5.00% |',
+        format: 'markdown',
+      });
+
+      fetchWithProxy.mockResolvedValueOnce({
+        content: JSON.stringify({
+          ErrCode: 1,
+          ErrMsg: 'error',
+          Datas: [],
+        }),
+        format: 'raw',
+      });
+
+      const result = await fetchFundProfile('000001');
+
+      expect(result).not.toBeNull();
+      expect(result?.fund_type).toBeUndefined();
+      expect(result?.sectors).toEqual([]);
+    });
+
+    test('handles search API without ZTJJInfo', async () => {
+      fetchWithProxy.mockResolvedValueOnce({
+        content: '| 股票名称 | 持仓占比 |\n| [股票A](url) | 5.00% |',
+        format: 'markdown',
+      });
+
+      fetchWithProxy.mockResolvedValueOnce({
+        content: JSON.stringify({
+          ErrCode: 0,
+          ErrMsg: 'success',
+          Datas: [{
+            FundBaseInfo: {
+              FTYPE: '债券型',
+            },
+          }],
+        }),
+        format: 'raw',
+      });
+
+      const result = await fetchFundProfile('000001');
+
+      expect(result).not.toBeNull();
+      expect(result?.fund_type).toBe('债券型');
+      expect(result?.sectors).toEqual([]);
     });
   });
 });

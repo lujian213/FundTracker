@@ -5,11 +5,12 @@
  * 支持多种代理格式：HTML 和 Markdown
  */
 
-import { Ticker, FundProfile, StockPosition, StageIncrease, JobResult, MarketType } from '../types';
+import { Ticker, FundProfile, StockPosition, StageIncrease, JobResult, MarketType, FundSector } from '../types';
 import * as marketFundService from './marketFundService';
 import { fetchWithProxy } from './proxyService';
 
 const EASTMONEY_URL = 'https://fund.eastmoney.com/{symbol}.html';
+const SEARCH_API_URL = 'https://fundsuggest.eastmoney.com/FundSearch/api/FundSearchAPI.ashx?m=1&key={symbol}';
 
 // ============================================================
 // HTML 解析函数
@@ -285,14 +286,78 @@ export function parseFundProfileFromContent(content: string, format: 'html' | 'm
   }
 }
 
+// ============================================================
+// 搜索 API 获取基金类型和板块信息
+// ============================================================
+
+interface SearchApiResponse {
+  ErrCode: number;
+  ErrMsg: string;
+  Datas: Array<{
+    FundBaseInfo?: {
+      FTYPE?: string;  // 基金类型（如"混合型-偏股"）
+    };
+    ZTJJInfo?: Array<{
+      TTYPE: string;    // 板块代码
+      TTYPENAME: string; // 板块名称
+    }>;
+  }>;
+}
+
+/**
+ * 从搜索API获取基金类型和板块信息
+ * 使用代理服务解决CORS问题
+ * @returns { fund_type: string | undefined, sectors: FundSector[] }
+ */
+async function fetchFundTypeAndSectors(symbol: string): Promise<{ fund_type?: string; sectors: FundSector[] }> {
+  const url = SEARCH_API_URL.replace('{symbol}', symbol);
+
+  try {
+    // 使用代理服务调用搜索API（使用 raw 格式，因为返回的是JSON）
+    const { content } = await fetchWithProxy(url, {
+      preferFormat: 'raw',
+      timeout: 5000,  // 搜索API响应较快
+    });
+
+    const data: SearchApiResponse = JSON.parse(content);
+
+    if (data.ErrCode !== 0 || !data.Datas || data.Datas.length === 0) {
+      console.warn(`[FundProfile] 搜索API返回数据无效`);
+      return { sectors: [] };
+    }
+
+    const fundData = data.Datas[0];
+    const result: { fund_type?: string; sectors: FundSector[] } = { sectors: [] };
+
+    // 提取基金类型
+    if (fundData.FundBaseInfo?.FTYPE) {
+      result.fund_type = fundData.FundBaseInfo.FTYPE;
+    }
+
+    // 提取板块信息
+    if (fundData.ZTJJInfo && fundData.ZTJJInfo.length > 0) {
+      result.sectors = fundData.ZTJJInfo.map(item => ({
+        code: item.TTYPE,
+        name: item.TTYPENAME,
+      }));
+    }
+
+    return result;
+  } catch (e) {
+    console.warn(`[FundProfile] 获取基金类型和板块信息失败:`, e);
+    return { sectors: [] };
+  }
+}
+
 /**
  * 通过代理获取网页内容并解析
  * 使用统一的代理服务
  */
 async function fetchViaProxy(url: string): Promise<FundProfile | null> {
   try {
-    // 优先使用 markdown 格式（r.jina.ai），表格解析更方便
-    const { content, format } = await fetchWithProxy(url, { preferFormat: 'markdown' });
+    // 不指定格式偏好，让代理按评分公平竞争
+    // r.jina.ai 返回 markdown，其他代理返回 raw/html
+    const { content, format } = await fetchWithProxy(url);
 
     // 根据返回格式选择解析方式
     // raw 格式当作 HTML 处理，markdown 格式当作 Markdown 处理
@@ -318,12 +383,48 @@ async function fetchViaProxy(url: string): Promise<FundProfile | null> {
 export async function fetchFundProfile(symbol: string): Promise<FundProfile | null> {
   const url = EASTMONEY_URL.replace('{symbol}', symbol);
 
-  try {
-    return await fetchViaProxy(url);
-  } catch (e) {
-    console.error(`[FundProfile] Error fetching ${symbol}:`, e);
-    return null;
+  // 并行执行两个API请求：HTML解析和搜索API
+  const [profileResult, typeAndSectorsResult] = await Promise.allSettled([
+    fetchViaProxy(url),
+    fetchFundTypeAndSectors(symbol),
+  ]);
+
+  // 处理HTML解析结果
+  const profile = profileResult.status === 'fulfilled' ? profileResult.value : null;
+  if (profileResult.status === 'rejected') {
+    console.warn(`[FundProfile] HTML解析失败，尝试从搜索API获取部分数据`);
   }
+
+  // 处理搜索API结果
+  const { fund_type, sectors } = typeAndSectorsResult.status === 'fulfilled'
+    ? typeAndSectorsResult.value
+    : { fund_type: undefined, sectors: [] };
+  if (typeAndSectorsResult.status === 'rejected') {
+    console.warn(`[FundProfile] 搜索API获取失败`);
+  }
+
+  // 合并信息
+  if (profile) {
+    if (fund_type) {
+      profile.fund_type = fund_type;
+    }
+    profile.sectors = sectors;
+    return profile;
+  }
+
+  // HTML解析失败，但搜索API成功，返回部分数据
+  if (fund_type || sectors.length > 0) {
+    return {
+      stock_positions: [],
+      stage_increase: [],
+      fund_type,
+      sectors,
+      fetched_at: new Date().toISOString(),
+    };
+  }
+
+  // 两个API都失败，返回 null
+  return null;
 }
 
 /**

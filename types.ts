@@ -46,10 +46,18 @@ export interface StageIncrease {
   increase_percentage: number;  // 盈亏百分比
 }
 
+// FundSector - 基金板块信息
+export interface FundSector {
+  code: string;   // 板块代码（如"BK000644"）
+  name: string;   // 板块名称（如"PCB"、"食品饮料"）
+}
+
 // FundProfile - 基金基本信息
 export interface FundProfile {
   stock_positions: StockPosition[];    // 股票持仓列表
   stage_increase: StageIncrease[];     // 阶段盈亏列表
+  fund_type?: string;                  // 基金类型（如"混合型-偏股"）
+  sectors?: FundSector[];              // 板块信息列表
   fetched_at: string;                  // 系统抓取时间 (ISO 格式)
 }
 

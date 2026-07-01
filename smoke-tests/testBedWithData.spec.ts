@@ -3157,7 +3157,20 @@ test.describe('testBedWithData', () => {
     await expect(fundDetailModal).toBeVisible({ timeout: 5000 });
 
     // ══════════════════════════════════════════════════════════════════════════════
-    // 6. 验证股票持仓10条数据，阶段盈亏有值
+    // 6. 验证基金类型和板块信息
+    // ══════════════════════════════════════════════════════════════════════════════
+    // 验证基金类型显示（左侧）
+    const fundTypeLabel = page.locator('span:has-text("混合型-偏股")');
+    await expect(fundTypeLabel).toBeVisible();
+
+    // 验证板块信息显示（左侧，包含PCB和F5G）
+    const pcbSector = page.locator('span:has-text("PCB")');
+    await expect(pcbSector).toBeVisible();
+    const f5gSector = page.locator('span:has-text("F5G")');
+    await expect(f5gSector).toBeVisible();
+
+    // ══════════════════════════════════════════════════════════════════════════════
+    // 7. 验证股票持仓表格和阶段盈亏
     // ══════════════════════════════════════════════════════════════════════════════
     // 获取股票持仓表格行数
     const stockRows = page.locator('table tbody tr');
