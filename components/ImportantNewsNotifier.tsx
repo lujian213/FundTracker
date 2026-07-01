@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
 import { FastNewsItem } from '../types/fastNewsTypes';
+import NewsAIAnalysisModal from './NewsAIAnalysisModal';
 
 interface NotificationItem {
   id: string;
@@ -17,6 +18,7 @@ const ImportantNewsNotifier: React.FC = () => {
   const [queue, setQueue] = useState<NotificationItem[]>([]); // 待显示队列
   const [currentNotification, setCurrentNotification] = useState<NotificationItem | null>(null); // 当前显示的通知
   const [notificationTop, setNotificationTop] = useState(150); // 默认150px
+  const [aiModalNews, setAiModalNews] = useState<FastNewsItem | null>(null); // AI分析模态框新闻（null表示关闭）
 
   // 监听重要快讯检测事件 - 只负责push到队列
   useEffect(() => {
@@ -90,6 +92,12 @@ const ImportantNewsNotifier: React.FC = () => {
     window.open(news.url, '_blank', 'noopener,noreferrer');
   }, []);
 
+  // 点击AI分析按钮
+  const handleAIAnalysis = useCallback((e: React.MouseEvent, news: FastNewsItem) => {
+    e.stopPropagation(); // 阻止触发handleClick
+    setAiModalNews(news);
+  }, []);
+
   if (!currentNotification) return null;
 
   const positionStyle = {
@@ -117,6 +125,14 @@ const ImportantNewsNotifier: React.FC = () => {
           <span className="ml-2 text-[10px] text-gray-500 font-mono">
             {currentNotification.news.showTime}
           </span>
+          {/* AI分析按钮 */}
+          <button
+            onClick={(e) => handleAIAnalysis(e, currentNotification.news)}
+            aria-label="AI分析"
+            className="ml-2 text-[10px] text-gray-400 hover:text-blue-500 transition-colors cursor-pointer"
+          >
+            <i className="fas fa-robot" />
+          </button>
           {/* 队列计数 */}
           {queue.length > 0 && (
             <span className="ml-auto px-1.5 py-0.5 bg-gray-100 text-gray-600 text-[10px] rounded">
@@ -135,6 +151,15 @@ const ImportantNewsNotifier: React.FC = () => {
           {currentNotification.news.summary}
         </div>
       </div>
+
+      {/* AI分析模态框 */}
+      {aiModalNews && (
+        <NewsAIAnalysisModal
+          isVisible={true}
+          onClose={() => setAiModalNews(null)}
+          news={aiModalNews}
+        />
+      )}
     </div>
   );
 };

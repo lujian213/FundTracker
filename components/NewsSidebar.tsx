@@ -5,6 +5,7 @@ import { FastNewsItem } from '../types/fastNewsTypes';
 import { getFastNews } from '../services/marketNewsService';
 import { getTimerJobScheduler } from '../services/timerJobScheduler';
 import NewsCard from './NewsCard';
+import NewsAIAnalysisModal from './NewsAIAnalysisModal';
 
 interface NewsSidebarProps {
   isVisible: boolean;
@@ -18,6 +19,9 @@ const NewsSidebar: React.FC<NewsSidebarProps> = ({ isVisible, onClose }) => {
   const [news, setNews] = useState<FastNewsItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  // AI分析模态框状态（null表示关闭）
+  const [aiModalNews, setAiModalNews] = useState<FastNewsItem | null>(null);
 
   const closeTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -85,15 +89,21 @@ const NewsSidebar: React.FC<NewsSidebarProps> = ({ isVisible, onClose }) => {
     window.open(item.url, '_blank', 'noopener,noreferrer');
   }, []);
 
+  // 打开AI分析模态框
+  const handleAIAnalysis = useCallback((item: FastNewsItem) => {
+    setAiModalNews(item);
+  }, []);
+
   return (
-    <div
-      className={`fixed right-0 top-0 bottom-0 w-[420px] bg-gray-50 border-l border-gray-200 shadow-xl z-[9998] transition-transform duration-300 ease-out flex flex-col ${
-        isVisible ? 'translate-x-0' : 'translate-x-full'
-      }`}
-      onMouseLeave={handleMouseLeave}
-      onMouseEnter={handleMouseEnter}
-      onWheel={(e) => e.stopPropagation()}
-    >
+    <>
+      <div
+        className={`fixed right-0 top-0 bottom-0 w-[420px] bg-gray-50 border-l border-gray-200 shadow-xl z-[9998] transition-transform duration-300 ease-out flex flex-col ${
+          isVisible ? 'translate-x-0' : 'translate-x-full'
+        }`}
+        onMouseLeave={handleMouseLeave}
+        onMouseEnter={handleMouseEnter}
+        onWheel={(e) => e.stopPropagation()}
+      >
       {/* 标题栏 */}
       <div className="flex items-center justify-between px-4 py-3 bg-white border-b border-gray-200">
         <div>
@@ -131,12 +141,23 @@ const NewsSidebar: React.FC<NewsSidebarProps> = ({ isVisible, onClose }) => {
               key={item.code}
               news={item}
               onClick={() => handleNewsClick(item)}
+              onAIAnalysis={handleAIAnalysis}
             />
           ))
         )}
       </div>
     </div>
-  );
+
+    {/* AI分析模态框 */}
+    {aiModalNews && (
+      <NewsAIAnalysisModal
+        isVisible={true}
+        onClose={() => setAiModalNews(null)}
+        news={aiModalNews}
+      />
+    )}
+  </>
+);
 };
 
 export default NewsSidebar;

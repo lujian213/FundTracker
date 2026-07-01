@@ -424,13 +424,14 @@ describe('promptTemplateService - template loading', () => {
         .mockImplementationOnce(() => Promise.resolve({ ok: true, json: () => Promise.resolve({ templates: [] }) }))
         .mockImplementationOnce(() => Promise.resolve({ ok: true, json: () => Promise.resolve({ templates: [] }) }))
         .mockImplementationOnce(() => Promise.resolve({ ok: true, json: () => Promise.resolve({ templates: [] }) }))
+        .mockImplementationOnce(() => Promise.resolve({ ok: true, json: () => Promise.resolve({ templates: [] }) }))
         .mockImplementationOnce(() => Promise.resolve({ ok: true, json: () => Promise.resolve({ templates: [] }) }));
 
       await loadAllTemplates();
       await loadAllTemplates(); // 第二次调用应该被忽略
 
-      // 验证只加载了一次（fetch 调用次数应该等于配置文件数量 7）
-      expect(mockFetch).toHaveBeenCalledTimes(7);
+      // 验证只加载了一次（fetch 调用次数应该等于配置文件数量 8）
+      expect(mockFetch).toHaveBeenCalledTimes(8);
     });
   });
 

@@ -30,6 +30,9 @@ export const TEMPLATE_IDS = {
   BG_CALENDAR_HOLIDAY_HK: 'bg-calendar-holiday-hk',
   BG_CALENDAR_HOLIDAY_US: 'bg-calendar-holiday-us',
   BG_CALENDAR_HOLIDAY_SG: 'bg-calendar-holiday-sg',
+
+  // 快讯分析（新增）
+  NEWS_IMPACT_ANALYSIS: 'news-impact-analysis',
 } as const;
 
 /** 模板TYPE常量（按type查询时使用） */
@@ -67,6 +70,7 @@ export async function loadAllTemplates(): Promise<void> {
     './assets/config/ai-investment-draft-templates.json',
     './assets/config/ai-portfolio-analysis-templates.json',
     './assets/config/background-job-prompts.json',
+    './assets/config/ai-news-analysis-templates.json',  // 快讯分析模板（新增）
   ];
 
   await Promise.all(configFiles.map(path => loadConfigFile(path)));
