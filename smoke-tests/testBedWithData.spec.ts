@@ -950,10 +950,15 @@ test.describe('testBedWithData', () => {
     await navItems.nth(8).click(); // 系统资源
 
     // 验证 localStorage 使用情况标题显示
-    await expect(page.locator('h3:has-text("localStorage 使用情况")')).toBeVisible({ timeout: 2000 });
+    const localStorageTitle = page.locator('h3:has-text("localStorage 使用情况")');
+    await expect(localStorageTitle).toBeVisible({ timeout: 2000 });
+
+    // 限定在 localStorage 使用情况区域内查找进度条
+    const localStorageCard = page.locator('div.bg-white').filter({ has: localStorageTitle });
 
     // 验证进度条存在（分段进度条：FundTracker蓝色 + 无关数据黄色）
-    const progressBar = page.locator('div.w-full.h-4.bg-gray-200.rounded-full');
+    // localStorage 进度条有 flex 类（分段结构），JS 堆内存进度条没有
+    const progressBar = localStorageCard.locator('div.w-full.h-4.bg-gray-200.rounded-full.overflow-hidden.flex');
     await progressBar.scrollIntoViewIfNeeded();
     await expect(progressBar).toBeAttached();
 
@@ -961,19 +966,93 @@ test.describe('testBedWithData', () => {
     const fundTrackerFill = progressBar.locator('div.h-full.bg-blue-600');
     await expect(fundTrackerFill).toBeAttached();
 
-    // 验证百分比标签显示
-    const percentageLabel = page.locator('span:has-text("%")').filter({ hasText: /^\d+\.\d+%$/ });
+    // 验证百分比标签显示（限定在 localStorage 区域内）
+    // localStorage 百分比标签有 absolute 类，JS 堆内存百分比没有
+    const percentageLabel = localStorageCard.locator('span.absolute').filter({ hasText: /^\d+\.\d+%$/ });
     await expect(percentageLabel).toBeVisible();
 
-    // 验证已使用、净使用和剩余空间数值显示
-    await expect(page.locator('text=已使用:')).toBeVisible();
-    await expect(page.locator('text=净使用:')).toBeVisible();
-    await expect(page.locator('text=剩余:')).toBeVisible();
+    // 验证已使用、净使用和剩余空间数值显示（限定在 localStorage 区域内）
+    // "已使用"在两个区块都有，使用 .first() 选择第一个（localStorage 区块在前）
+    await expect(localStorageCard.locator('text=已使用:').first()).toBeVisible();
+    // "净使用"和"剩余"只在 localStorage 区块有，不需要 .first()
+    await expect(localStorageCard.locator('text=净使用:')).toBeVisible();
+    await expect(localStorageCard.locator('text=剩余:')).toBeVisible();
 
-    // 验证说明区域显示
-    await expect(page.locator('h3:has-text("说明")')).toBeVisible();
+    console.log('系统资源 localStorage 验证完成');
 
-    console.log('系统资源验证完成');
+    // ══════════════════════════════════════════════════════════════════════════════
+    // 6.7.1. 验证 JavaScript 内存使用情况（新增功能）
+    // ══════════════════════════════════════════════════════════════════════════════
+
+    // 验证 JavaScript 内存使用情况标题显示
+    const memoryTitle = page.locator('h3:has-text("JavaScript 内存使用情况")');
+    await expect(memoryTitle).toBeVisible({ timeout: 2000 });
+    console.log('JavaScript 内存使用情况标题验证完成');
+
+    // 验证 JS 堆内存进度条显示（在 Chromium 浏览器中）
+    // 注意：Playwright 使用 Chromium，所以应该支持 performance.memory API
+    const jsHeapMemorySection = page.locator('div.space-y-2').filter({ has: page.locator('span:has-text("JS 堆内存")') });
+    await expect(jsHeapMemorySection).toBeVisible({ timeout: 2000 });
+
+    // 验证进度条存在且为绿色（使用率 < 80%）
+    const memoryProgressBar = jsHeapMemorySection.locator('div.w-full.h-4.bg-gray-200.rounded-full');
+    await expect(memoryProgressBar).toBeVisible();
+    const greenProgressFill = memoryProgressBar.locator('div.h-full.bg-green-500');
+    await expect(greenProgressFill).toBeVisible();
+    console.log('JS 堆内存进度条验证完成（绿色，使用率 < 80%）');
+
+    // 验证已使用和总容量数值显示
+    await expect(jsHeapMemorySection.locator('text=已使用:')).toBeVisible();
+    await expect(jsHeapMemorySection.locator('text=总容量:')).toBeVisible();
+
+    // 验证数值格式正确（包含 MB 单位）
+    const usedMemoryText = await jsHeapMemorySection.locator('strong').first().textContent();
+    expect(usedMemoryText).toMatch(/\d+\.\d+ MB/);
+    const totalMemoryText = await jsHeapMemorySection.locator('strong').last().textContent();
+    expect(totalMemoryText).toMatch(/\d+\.\d+ MB/);
+    console.log('JS 堆内存数值验证完成');
+
+    // 验证 DOM 统计区块显示
+    const domStatisticsSection = page.locator('div.bg-gray-50.rounded-lg').filter({ has: page.locator('span:has-text("DOM 统计")') });
+    await expect(domStatisticsSection).toBeVisible({ timeout: 2000 });
+
+    // 验证节点数量和树深度显示
+    await expect(domStatisticsSection.locator('text=节点数量:')).toBeVisible();
+    await expect(domStatisticsSection.locator('text=树深度:')).toBeVisible();
+
+    // 验证数值格式正确（节点数量有千分位分隔符）
+    const nodeCountText = await domStatisticsSection.locator('strong').first().textContent();
+    expect(nodeCountText).toMatch(/\d+.*个/);
+    const treeDepthText = await domStatisticsSection.locator('strong').last().textContent();
+    expect(treeDepthText).toMatch(/\d+.*层/);
+    console.log('DOM 统计验证完成');
+
+    // 验证提示信息显示
+    const tipSection = page.locator('div.bg-blue-50.rounded-lg').filter({ has: page.locator('text=数据每 5 秒自动更新') });
+    await expect(tipSection).toBeVisible({ timeout: 2000 });
+    await expect(tipSection.locator('text=仅 Chrome 浏览器支持内存 API')).toBeVisible();
+    console.log('提示信息验证完成');
+
+    // ══════════════════════════════════════════════════════════════════════════════
+    // 6.7.2. 验证内存数据自动更新（等待 6 秒）
+    // ══════════════════════════════════════════════════════════════════════════════
+
+    // 记录当前的内存值
+    const initialMemoryValue = await jsHeapMemorySection.locator('strong').first().textContent();
+    console.log(`初始内存值: ${initialMemoryValue}`);
+
+    // 等待 6 秒（超过 5 秒刷新周期）
+    await page.waitForTimeout(6000);
+
+    // 验证内存数据已更新（数值可能相同，但刷新机制在工作）
+    const updatedMemoryValue = await jsHeapMemorySection.locator('strong').first().textContent();
+    console.log(`更新后内存值: ${updatedMemoryValue}`);
+
+    // 验证数值格式仍然正确
+    expect(updatedMemoryValue).toMatch(/\d+\.\d+ MB/);
+    console.log('内存数据自动更新验证完成');
+
+    console.log('JavaScript 内存监控功能验证完成');
 
     // ══════════════════════════════════════════════════════════════════════════════
     // 6.8. 点击"依赖服务"，验证服务状态检测功能

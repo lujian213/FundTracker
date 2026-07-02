@@ -28,6 +28,24 @@ interface StorageUsage {
   keyBytes: Record<string, number>;
 }
 
+/**
+ * 内存使用情况接口
+ */
+interface MemoryUsage {
+  // JS 堆内存
+  totalJSHeapSize: number;      // 总容量（字节）
+  usedJSHeapSize: number;       // 已使用（字节）
+  jsHeapSizeLimit: number;      // 最大限制（字节）
+  usedPercentage: number;       // 使用百分比
+
+  // DOM 统计
+  domNodeCount: number;         // DOM 节点总数
+  domTreeDepth: number;         // DOM 树深度
+
+  // 兼容性
+  isSupported: boolean;         // 是否支持 performance.memory
+}
+
 // localStorage 估算容量（浏览器通常为 5-10MB）
 const ESTIMATED_TOTAL_BYTES = 5 * 1024 * 1024; // 5MB
 const WARNING_THRESHOLD = 80; // 80%
@@ -49,9 +67,83 @@ const formatBytes = (bytes: number): string => {
   return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
 };
 
+/**
+ * 计算 DOM 树深度
+ * @returns DOM 树的最大深度
+ */
+const calculateDomTreeDepth = (): number => {
+  const getMaxDepth = (element: Element, depth: number): number => {
+    const children = element.children;
+    if (children.length === 0) return depth;
+
+    let maxChildDepth = depth;
+    for (let i = 0; i < children.length; i++) {
+      maxChildDepth = Math.max(maxChildDepth, getMaxDepth(children[i], depth + 1));
+    }
+    return maxChildDepth;
+  };
+
+  return getMaxDepth(document.body, 1);
+};
+
+/**
+ * 创建默认内存使用情况对象
+ * @param domNodeCount DOM 节点数量
+ * @param domTreeDepth DOM 树深度
+ * @returns 默认的 MemoryUsage 对象
+ */
+const createDefaultMemoryUsage = (domNodeCount: number, domTreeDepth: number): MemoryUsage => ({
+  totalJSHeapSize: 0,
+  usedJSHeapSize: 0,
+  jsHeapSizeLimit: 0,
+  usedPercentage: 0,
+  domNodeCount,
+  domTreeDepth,
+  isSupported: false
+});
+
+/**
+ * 获取内存使用情况
+ * @returns MemoryUsage 或 null（获取失败时）
+ */
+const getMemoryUsage = (): MemoryUsage | null => {
+  try {
+    // 统计 DOM 节点和深度（所有浏览器都支持）
+    const domNodeCount = document.querySelectorAll('*').length;
+    const domTreeDepth = calculateDomTreeDepth();
+
+    // 检查 performance.memory API 是否存在（仅 Chrome 支持）
+    if (!('memory' in performance)) {
+      return createDefaultMemoryUsage(domNodeCount, domTreeDepth);
+    }
+
+    const memory = (performance as any).memory;
+
+    // 验证数据有效性
+    if (!memory || !memory.totalJSHeapSize || !memory.usedJSHeapSize) {
+      console.warn('内存数据异常:', memory);
+      return createDefaultMemoryUsage(domNodeCount, domTreeDepth);
+    }
+
+    return {
+      totalJSHeapSize: memory.totalJSHeapSize,
+      usedJSHeapSize: memory.usedJSHeapSize,
+      jsHeapSizeLimit: memory.jsHeapSizeLimit,
+      usedPercentage: (memory.usedJSHeapSize / memory.totalJSHeapSize) * 100,
+      domNodeCount,
+      domTreeDepth,
+      isSupported: true
+    };
+  } catch (error) {
+    console.error('获取内存数据失败:', error);
+    return null;
+  }
+};
+
 const SystemResourcePanel: React.FC = () => {
   const [usage, setUsage] = useState<StorageUsage | null>(null);
   const [showDetails, setShowDetails] = useState(false); // 折叠状态
+  const [memoryUsage, setMemoryUsage] = useState<MemoryUsage | null>(null); // 内存使用情况
 
   // 导出 localStorage 内容到 JSON 文件
   const handleExportLocalStorage = () => {
@@ -160,6 +252,22 @@ const SystemResourcePanel: React.FC = () => {
     };
 
     setUsage(calculateStorageUsage());
+  }, []);
+
+  // 每 5 秒自动更新内存数据
+  useEffect(() => {
+    const updateMemory = () => {
+      setMemoryUsage(getMemoryUsage());
+    };
+
+    // 初始化时立即获取一次
+    updateMemory();
+
+    // 每 5 秒刷新一次
+    const intervalId = setInterval(updateMemory, 5000);
+
+    // 清理定时器
+    return () => clearInterval(intervalId);
   }, []);
 
   return (
@@ -285,6 +393,82 @@ const SystemResourcePanel: React.FC = () => {
         )}
       </div>
 
+      {/* JavaScript 内存使用情况 */}
+      <div className="bg-white rounded-xl border border-gray-200 p-5">
+        <h3 className="font-semibold text-gray-800 mb-4 flex items-center">
+          <i className="fas fa-memory text-green-500 mr-2"></i>
+          JavaScript 内存使用情况
+        </h3>
+
+        {memoryUsage && (
+          <div className="space-y-4">
+            {/* JS 堆内存 */}
+            {memoryUsage.isSupported ? (
+              <div className="space-y-2">
+                {(() => {
+                  const isWarning = memoryUsage.usedPercentage >= 80;
+                  return (
+                    <>
+                      <div className="flex items-center justify-between text-sm">
+                        <span className="text-gray-600 font-medium">JS 堆内存</span>
+                        <span className={`text-xs font-bold ${isWarning ? 'text-red-600' : 'text-gray-600'}`}>
+                          {memoryUsage.usedPercentage.toFixed(1)}%
+                        </span>
+                      </div>
+                      <div className="relative">
+                        <div className="w-full h-4 bg-gray-200 rounded-full overflow-hidden">
+                          <div
+                            className={`h-full transition-all duration-300 ${isWarning ? 'bg-red-500' : 'bg-green-500'}`}
+                            style={{ width: `${Math.min(100, memoryUsage.usedPercentage)}%` }}
+                          />
+                        </div>
+                      </div>
+                      <div className="flex justify-between text-sm">
+                        <span className="text-gray-600">已使用: <strong>{formatBytes(memoryUsage.usedJSHeapSize)}</strong></span>
+                        <span className="text-gray-600">总容量: <strong>{formatBytes(memoryUsage.totalJSHeapSize)}</strong></span>
+                      </div>
+                    </>
+                  );
+                })()}
+              </div>
+            ) : (
+              <div className="bg-yellow-50 rounded-lg p-3 flex items-start space-x-2">
+                <i className="fas fa-exclamation-triangle text-yellow-500 text-sm mt-0.5"></i>
+                <div className="text-sm text-yellow-700">
+                  <p className="font-medium">当前浏览器不支持内存 API</p>
+                  <p className="text-xs mt-1">建议使用 Chrome 浏览器查看完整数据</p>
+                </div>
+              </div>
+            )}
+
+            {/* DOM 统计 */}
+            <div className="bg-gray-50 rounded-lg p-3 space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="text-sm font-medium text-gray-700">DOM 统计</span>
+              </div>
+              <div className="flex justify-between text-sm text-gray-600">
+                <span>节点数量: <strong>{memoryUsage.domNodeCount.toLocaleString()} 个</strong></span>
+                <span>树深度: <strong>{memoryUsage.domTreeDepth} 层</strong></span>
+              </div>
+            </div>
+
+            {/* 提示信息 */}
+            <div className="bg-blue-50 rounded-lg p-3 flex items-center space-x-2">
+              <i className="fas fa-info-circle text-blue-500 text-sm"></i>
+              <span className="text-xs text-blue-700">
+                💡 数据每 5 秒自动更新 (仅 Chrome 浏览器支持内存 API)
+              </span>
+            </div>
+          </div>
+        )}
+
+        {!memoryUsage && (
+          <div className="text-sm text-gray-500 text-center py-4">
+            加载中...
+          </div>
+        )}
+      </div>
+
       {/* 说明 */}
       <div className="bg-gray-50 rounded-xl border border-gray-200 p-5">
         <h3 className="font-semibold text-gray-700 mb-3 flex items-center">
@@ -311,6 +495,18 @@ const SystemResourcePanel: React.FC = () => {
           <li className="flex items-start">
             <i className="fas fa-check text-green-500 mt-1 mr-2 text-xs"></i>
             <span>当使用超过 80% 时，百分比标签会变为红色并显示警告信息</span>
+          </li>
+          <li className="flex items-start">
+            <i className="fas fa-check text-green-500 mt-1 mr-2 text-xs"></i>
+            <span><strong className="text-green-600">JS 堆内存</strong>：显示当前页面的 JavaScript 内存占用（仅 Chrome 支持）</span>
+          </li>
+          <li className="flex items-start">
+            <i className="fas fa-check text-green-500 mt-1 mr-2 text-xs"></i>
+            <span><strong className="text-green-600">DOM 统计</strong>：显示当前页面的 DOM 节点数量和树深度（所有浏览器支持）</span>
+          </li>
+          <li className="flex items-start">
+            <i className="fas fa-check text-green-500 mt-1 mr-2 text-xs"></i>
+            <span>内存数据每 5 秒自动刷新，当使用超过 80% 时进度条变为红色</span>
           </li>
         </ul>
       </div>
