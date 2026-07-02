@@ -4,6 +4,31 @@ import React from 'react';
 import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
 import '@testing-library/jest-dom';
 import ImportantNewsNotifier from '../../components/ImportantNewsNotifier';
+import { NewsProvider, useNews } from '../../contexts/NewsContext';
+import NewsAIAnalysisModal from '../../components/NewsAIAnalysisModal';
+
+// 全局AI分析模态框组件 - 与App.tsx中的GlobalNewsAIModal一致
+const GlobalNewsAIModal: React.FC = () => {
+  const { aiModalNews, closeAIModal } = useNews();
+  return (
+    <NewsAIAnalysisModal
+      key={aiModalNews?.code || 'closed'}
+      isVisible={aiModalNews !== null}
+      onClose={closeAIModal}
+      news={aiModalNews!}
+    />
+  );
+};
+
+// 测试用的包装组件
+const TestWrapper: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  return (
+    <NewsProvider>
+      {children}
+      <GlobalNewsAIModal />
+    </NewsProvider>
+  );
+};
 
 describe('ImportantNewsNotifier AI Analysis', () => {
   beforeEach(() => {
@@ -27,7 +52,11 @@ describe('ImportantNewsNotifier AI Analysis', () => {
   };
 
   it('should render AI analysis button when notification is visible', async () => {
-    render(<ImportantNewsNotifier />);
+    render(
+      <TestWrapper>
+        <ImportantNewsNotifier />
+      </TestWrapper>
+    );
 
     // Initially no notification
     expect(screen.queryByLabelText('AI分析')).not.toBeInTheDocument();
@@ -44,7 +73,11 @@ describe('ImportantNewsNotifier AI Analysis', () => {
   });
 
   it('should open AI modal when AI button is clicked', async () => {
-    render(<ImportantNewsNotifier />);
+    render(
+      <TestWrapper>
+        <ImportantNewsNotifier />
+      </TestWrapper>
+    );
 
     // Dispatch event to show notification
     act(() => {
@@ -63,7 +96,11 @@ describe('ImportantNewsNotifier AI Analysis', () => {
   });
 
   it('should not trigger handleClick when AI button is clicked', async () => {
-    render(<ImportantNewsNotifier />);
+    render(
+      <TestWrapper>
+        <ImportantNewsNotifier />
+      </TestWrapper>
+    );
 
     // Dispatch event to show notification
     act(() => {
@@ -80,7 +117,11 @@ describe('ImportantNewsNotifier AI Analysis', () => {
   });
 
   it('should close AI modal when onClose is triggered', async () => {
-    render(<ImportantNewsNotifier />);
+    render(
+      <TestWrapper>
+        <ImportantNewsNotifier />
+      </TestWrapper>
+    );
 
     // Dispatch event to show notification
     act(() => {
@@ -107,7 +148,11 @@ describe('ImportantNewsNotifier AI Analysis', () => {
   });
 
   it('should keep notification visible after AI modal is closed', async () => {
-    render(<ImportantNewsNotifier />);
+    render(
+      <TestWrapper>
+        <ImportantNewsNotifier />
+      </TestWrapper>
+    );
 
     // Dispatch event to show notification
     act(() => {

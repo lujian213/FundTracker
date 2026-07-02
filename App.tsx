@@ -67,6 +67,7 @@ import { processCalendarHoliday, parseCalendarAIResponse } from './services/cale
 import { isDev } from './utils/env';
 import NewsSidebar from './components/NewsSidebar';
 import ImportantNewsNotifier from './components/ImportantNewsNotifier';
+import NewsAIAnalysisModal from './components/NewsAIAnalysisModal';
 // 动态导入热力图组件（懒加载ECharts）
 import { lazy } from 'react';
 const SectorHeatmapModal = lazy(() => import('./components/SectorHeatmapModal'));
@@ -1672,7 +1673,23 @@ const AppContent: React.FC = () => {
 
       {/* 重要快讯通知组件 */}
       <ImportantNewsNotifier />
+
+      {/* 全局AI分析模态框 */}
+      <GlobalNewsAIModal />
     </div>
+  );
+};
+
+// 全局AI分析模态框组件 - 使用全局状态渲染
+const GlobalNewsAIModal: React.FC = () => {
+  const { aiModalNews, closeAIModal } = useNews();
+  return (
+    <NewsAIAnalysisModal
+      key={aiModalNews?.code || 'closed'}
+      isVisible={aiModalNews !== null}
+      onClose={closeAIModal}
+      news={aiModalNews!}
+    />
   );
 };
 

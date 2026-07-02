@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
 import { FastNewsItem } from '../types/fastNewsTypes';
-import NewsAIAnalysisModal from './NewsAIAnalysisModal';
+import { useNews } from '../contexts/NewsContext';
 
 interface NotificationItem {
   id: string;
@@ -18,7 +18,9 @@ const ImportantNewsNotifier: React.FC = () => {
   const [queue, setQueue] = useState<NotificationItem[]>([]); // 待显示队列
   const [currentNotification, setCurrentNotification] = useState<NotificationItem | null>(null); // 当前显示的通知
   const [notificationTop, setNotificationTop] = useState(150); // 默认150px
-  const [aiModalNews, setAiModalNews] = useState<FastNewsItem | null>(null); // AI分析模态框新闻（null表示关闭）
+
+  // 使用全局的AI分析模态框状态
+  const { openAIModal } = useNews();
 
   // 监听重要快讯检测事件 - 只负责push到队列
   useEffect(() => {
@@ -92,11 +94,11 @@ const ImportantNewsNotifier: React.FC = () => {
     window.open(news.url, '_blank', 'noopener,noreferrer');
   }, []);
 
-  // 点击AI分析按钮
+  // 点击AI分析按钮（使用全局状态）
   const handleAIAnalysis = useCallback((e: React.MouseEvent, news: FastNewsItem) => {
     e.stopPropagation(); // 阻止触发handleClick
-    setAiModalNews(news);
-  }, []);
+    openAIModal(news);
+  }, [openAIModal]);
 
   if (!currentNotification) return null;
 
@@ -151,14 +153,6 @@ const ImportantNewsNotifier: React.FC = () => {
           {currentNotification.news.summary}
         </div>
       </div>
-
-      {/* AI分析模态框 - 使用key强制重新挂载 */}
-      <NewsAIAnalysisModal
-        key={aiModalNews?.code || 'closed'}
-        isVisible={aiModalNews !== null}
-        onClose={() => setAiModalNews(null)}
-        news={aiModalNews!}
-      />
     </div>
   );
 };
