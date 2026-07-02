@@ -148,14 +148,13 @@ const NewsSidebar: React.FC<NewsSidebarProps> = ({ isVisible, onClose }) => {
       </div>
     </div>
 
-    {/* AI分析模态框 */}
-    {aiModalNews && (
-      <NewsAIAnalysisModal
-        isVisible={true}
-        onClose={() => setAiModalNews(null)}
-        news={aiModalNews}
-      />
-    )}
+    {/* AI分析模态框 - 使用key强制重新挂载 */}
+    <NewsAIAnalysisModal
+      key={aiModalNews?.code || 'closed'}
+      isVisible={aiModalNews !== null}
+      onClose={() => setAiModalNews(null)}
+      news={aiModalNews!}
+    />
   </>
 );
 };
