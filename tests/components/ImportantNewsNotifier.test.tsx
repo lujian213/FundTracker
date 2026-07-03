@@ -345,4 +345,123 @@ describe('ImportantNewsNotifier', () => {
     expect(screen.queryByText('第二条快讯（时间中间）')).not.toBeInTheDocument();
     expect(screen.getByText('第三条快讯（时间最晚）')).toBeInTheDocument();
   });
+
+  // 鼠标悬停功能测试
+  it('should keep notification visible when mouse hovers', () => {
+    render(<ImportantNewsNotifier />);
+
+    // Dispatch event
+    act(() => {
+      window.dispatchEvent(new CustomEvent('important-news-detected', {
+        detail: { news: mockImportantNews }
+      }));
+    });
+
+    const notification = screen.getByText('重要快讯标题').closest('div[class*="bg-white"]');
+    expect(notification).toHaveClass('opacity-100');
+
+    // Mouse enters notification
+    fireEvent.mouseEnter(notification!);
+
+    // Wait 6 seconds (past the normal 5-second fade start time)
+    act(() => {
+      jest.advanceTimersByTime(6000);
+    });
+
+    // Should NOT start fading (still visible due to hover)
+    expect(notification).toHaveClass('opacity-100');
+  });
+
+  it('should restart timing when mouse leaves after hover', () => {
+    render(<ImportantNewsNotifier />);
+
+    // Dispatch event
+    act(() => {
+      window.dispatchEvent(new CustomEvent('important-news-detected', {
+        detail: { news: mockImportantNews }
+      }));
+    });
+
+    const notification = screen.getByText('重要快讯标题').closest('div[class*="bg-white"]');
+
+    // Hover for 3 seconds
+    fireEvent.mouseEnter(notification!);
+    act(() => {
+      jest.advanceTimersByTime(3000);
+    });
+
+    // Mouse leaves
+    fireEvent.mouseLeave(notification!);
+
+    // Notification should still be visible
+    expect(notification).toHaveClass('opacity-100');
+
+    // Wait 5 seconds after mouse leave (should start fading)
+    act(() => {
+      jest.advanceTimersByTime(5000);
+    });
+
+    // Should now start fading
+    expect(notification).toHaveClass('opacity-0');
+  });
+
+  it('should restore opacity to 100 when hovering during fade', () => {
+    render(<ImportantNewsNotifier />);
+
+    // Dispatch event
+    act(() => {
+      window.dispatchEvent(new CustomEvent('important-news-detected', {
+        detail: { news: mockImportantNews }
+      }));
+    });
+
+    const notification = screen.getByText('重要快讯标题').closest('div[class*="bg-white"]');
+
+    // Wait 5 seconds to start fading
+    act(() => {
+      jest.advanceTimersByTime(5000);
+    });
+
+    // Should be fading
+    expect(notification).toHaveClass('opacity-0');
+
+    // Mouse enters during fade
+    fireEvent.mouseEnter(notification!);
+
+    // Should restore to full opacity
+    expect(notification).toHaveClass('opacity-100');
+
+    // Wait more time (should not fade while hovering)
+    act(() => {
+      jest.advanceTimersByTime(3000);
+    });
+
+    // Still visible
+    expect(notification).toHaveClass('opacity-100');
+  });
+
+  it('should not remove notification while hovering past 8 seconds', () => {
+    render(<ImportantNewsNotifier />);
+
+    // Dispatch event
+    act(() => {
+      window.dispatchEvent(new CustomEvent('important-news-detected', {
+        detail: { news: mockImportantNews }
+      }));
+    });
+
+    const notification = screen.getByText('重要快讯标题').closest('div[class*="bg-white"]');
+
+    // Hover immediately
+    fireEvent.mouseEnter(notification!);
+
+    // Wait 10 seconds (past normal 8-second removal time)
+    act(() => {
+      jest.advanceTimersByTime(10000);
+    });
+
+    // Notification should still be visible
+    expect(screen.getByText('重要快讯标题')).toBeInTheDocument();
+    expect(notification).toHaveClass('opacity-100');
+  });
 });

@@ -13,11 +13,13 @@ interface NotificationItem {
 /**
  * 重要快讯通知组件
  * 简化设计：队列有数据时立即显示，每个通知显示5秒+淡出3秒=8秒周期
+ * 支持鼠标悬停：悬停时保持显示，离开后重新开始完整计时
  */
 const ImportantNewsNotifier: React.FC = () => {
   const [queue, setQueue] = useState<NotificationItem[]>([]); // 待显示队列
   const [currentNotification, setCurrentNotification] = useState<NotificationItem | null>(null); // 当前显示的通知
   const [notificationTop, setNotificationTop] = useState(150); // 默认150px
+  const [isHovered, setIsHovered] = useState(false); // 鼠标悬停状态
 
   // 使用全局的AI分析模态框状态
   const { openAIModal } = useNews();
@@ -58,8 +60,18 @@ const ImportantNewsNotifier: React.FC = () => {
   }, [currentNotification, queue.length]);
 
   // 当前通知的生命周期：显示5秒后开始淡出，第8秒完全消失
+  // 鼠标悬停时保持显示，离开后重新开始完整计时
   useEffect(() => {
     if (!currentNotification) return;
+
+    // 鼠标悬停时：保持显示状态，不设置定时器
+    if (isHovered) {
+      // 如果正在淡出，重置为完全显示
+      if (currentNotification.isFading) {
+        setCurrentNotification(prev => prev ? { ...prev, isFading: false } : null);
+      }
+      return;
+    }
 
     // 5秒后开始淡出
     const fadeTimer = setTimeout(() => {
@@ -75,7 +87,7 @@ const ImportantNewsNotifier: React.FC = () => {
       clearTimeout(fadeTimer);
       clearTimeout(disappearTimer);
     };
-  }, [currentNotification?.id]);
+  }, [currentNotification?.id, isHovered]);
 
   // 计算通知位置：持仓按钮下方10px
   useEffect(() => {
@@ -106,6 +118,16 @@ const ImportantNewsNotifier: React.FC = () => {
     openAIModal(news);
   }, [openAIModal]);
 
+  // 鼠标悬停处理：进入时保持显示
+  const handleMouseEnter = useCallback(() => {
+    setIsHovered(true);
+  }, []);
+
+  // 鼠标离开处理：离开后重新开始完整计时
+  const handleMouseLeave = useCallback(() => {
+    setIsHovered(false);
+  }, []);
+
   if (!currentNotification) return null;
 
   const positionStyle = {
@@ -124,6 +146,8 @@ const ImportantNewsNotifier: React.FC = () => {
           currentNotification.isFading ? 'opacity-0' : 'opacity-100'
         }`}
         onClick={() => handleClick(currentNotification.news)}
+        onMouseEnter={handleMouseEnter}
+        onMouseLeave={handleMouseLeave}
       >
         {/* 重要标签 */}
         <div className="flex items-center mb-2">
