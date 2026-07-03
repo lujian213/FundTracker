@@ -6,6 +6,7 @@ import {
   extractTopSectors
 } from '../services/sectorService';
 import { SectorData, SectorType } from '../types/sectorData';
+import { useModalBodyStyle } from '../hooks/useModalBodyStyle';
 
 interface SectorHeatmapModalProps {
   isOpen: boolean;
@@ -19,6 +20,9 @@ export default function SectorHeatmapModal({
   isOpen,
   onClose
 }: SectorHeatmapModalProps) {
+  // 全屏模态框打开时隐藏主页面滚动条
+  useModalBodyStyle(isOpen);
+
   const [sectorType, setSectorType] = useState<SectorType>('concept');
   const [sectors, setSectors] = useState<SectorData[] | null>(null);
   const [loading, setLoading] = useState(false);

@@ -12,6 +12,7 @@ import DayCalendar from './DayCalendar';
 import WeekCalendar from './WeekCalendar';
 import MonthCalendar from './MonthCalendar';
 import YearCalendar from './YearCalendar';
+import { useModalBodyStyle } from '../hooks/useModalBodyStyle';
 
 interface Props {
   symbols?: string[];
@@ -23,6 +24,7 @@ type ViewMode = 'chart' | 'calendar';
 type CalendarMode = 'day' | 'week' | 'month' | 'year';
 
 const OverallProfitModal: React.FC<Props> = ({ symbols, onClose, onSelectFund }) => {
+  useModalBodyStyle();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [summary, setSummary] = useState<OverallProfitSummary | null>(null);

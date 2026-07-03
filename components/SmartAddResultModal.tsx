@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom';
 import { SmartAddFund, SmartAddError } from '../hooks/useSmartAddFunds';
 import { fmtNumber, fmtNav } from '../utils/format';
 import { isFeatureEnabled } from '../services/systemConfigService';
+import { useModalBodyStyle } from '../hooks/useModalBodyStyle';
 
 interface SmartAddResultModalProps {
   visible: boolean;
@@ -27,6 +28,7 @@ export function SmartAddResultModal({
   onClose,
   onConfirm,
 }: SmartAddResultModalProps) {
+  useModalBodyStyle(visible);
   const [selectedRowKeys, setSelectedRowKeys] = useState<Set<string>>(new Set());
 
   useEffect(() => {

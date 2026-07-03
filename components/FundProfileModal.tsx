@@ -2,6 +2,7 @@ import React from 'react';
 import { createPortal } from 'react-dom';
 import { FundProfile } from '../types';
 import { formatPercent } from '../utils/format';
+import { useModalBodyStyle } from '../hooks/useModalBodyStyle';
 
 const SUBMODAL_Z_INDEX = 150;
 
@@ -49,6 +50,7 @@ const StockPositionsTable: React.FC<{ data: FundProfile['stock_positions']; comp
 };
 
 const FundProfileModal: React.FC<FundProfileModalProps> = ({ profile, fundName, onClose }) => {
+  useModalBodyStyle();
   // 判断是否有左边内容（类型或板块）
   const hasLeftContent = profile.fund_type || (profile.sectors && profile.sectors.length > 0);
 

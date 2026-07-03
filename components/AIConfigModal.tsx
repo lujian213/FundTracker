@@ -6,6 +6,7 @@ import { getAITemplatesAsync } from '../services/dynamicAITemplateService';
 import { createPortal } from 'react-dom';
 import AlertModal from './AlertModal';
 import { ConfirmDialog } from './ConfirmDialog';
+import { useModalBodyStyle } from '../hooks/useModalBodyStyle';
 
 interface AIConfigModalProps {
   isOpen: boolean;
@@ -13,6 +14,7 @@ interface AIConfigModalProps {
 }
 
 const AIConfigModal: React.FC<AIConfigModalProps> = ({ isOpen, onClose }) => {
+  useModalBodyStyle(isOpen);
   const [configs, setConfigs] = useState<AIConfigProfile[]>([]);
   const [activeConfigId, setActiveConfigId] = useState<string | null>(null);
   const [editingConfig, setEditingConfig] = useState<AIConfigProfile | null>(null);

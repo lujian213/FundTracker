@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import { MarketIndex, HistoricalPoint, VolumeData, KlinePoint, HistoryKlinePeriod, HISTORY_KLINE_PERIOD_CONFIG } from '../types';
 import { fetchIndexHistory, fetchIndexIntradayKline } from '../services/fundService';
 import * as indexService from '../services/indexService';
@@ -12,6 +13,7 @@ import { formatVolume, formatAmount } from '../utils/format';
 import { prepareChartData } from '../utils/chartDataHelper';
 import IndexAISidePanel from './IndexAISidePanel';
 import { getIndexDetailUrl } from '../src/utils/indexUrlHelper';
+import { useModalBodyStyle } from '../hooks/useModalBodyStyle';
 
 // 分钟K线数据内存缓存（不持久化）
 // key: `${symbol}-${period}`, value: KlinePoint[]
@@ -54,6 +56,9 @@ export const IndexDetailsModal: React.FC<IndexDetailsModalProps> = ({ data, onCl
   // Use consistent total height for both tabs
   const chartHeight = 200;
   const volumeHeight = 60; // 成交量图表高度
+
+  // 全屏模态框打开时隐藏主页面滚动条
+  useModalBodyStyle();
 
   useEffect(() => {
     let mounted = true;
@@ -600,18 +605,24 @@ export const IndexDetailsModal: React.FC<IndexDetailsModalProps> = ({ data, onCl
           )}
         </div>
       </div>
-      <IndexAISidePanel
-        isVisible={showAI}
-        onClose={() => setShowAI(false)}
-        indexSymbol={data.info.symbol}
-        indexName={data.info.name}
-        currentValue={data.info.current}
-        currentVolume={data.info.volume}
-        history={chartData}
-        maValues={maValues}
-        volumeData={volumeData}
-        intradayPoints={intradayPoints}
-      />
+      {/* AI Assistant panel - rendered with portal to avoid z-index issues */}
+      {showAI && (() => {
+        const aiPanel = (
+          <IndexAISidePanel
+            isVisible={showAI}
+            onClose={() => setShowAI(false)}
+            indexSymbol={data.info.symbol}
+            indexName={data.info.name}
+            currentValue={data.info.current}
+            currentVolume={data.info.volume}
+            history={chartData}
+            maValues={maValues}
+            volumeData={volumeData}
+            intradayPoints={intradayPoints}
+          />
+        );
+        return (typeof document !== 'undefined' && document.body) ? createPortal(aiPanel, document.body) : aiPanel;
+      })()}
     </div>
   );
 };

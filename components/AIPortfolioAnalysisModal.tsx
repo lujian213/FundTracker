@@ -6,6 +6,7 @@ import remarkGfm from 'remark-gfm';
 import { hasUsableAIConfig, getAIConfig, AIConfiguration } from '../services/aiConfigService';
 import { analyzePortfolio, PortfolioItem } from '../services/aiPortfolioService';
 import { StreamCallback } from '../services/aiService';
+import { useModalBodyStyle } from '../hooks/useModalBodyStyle';
 
 interface AIPortfolioAnalysisModalProps {
   isVisible: boolean;
@@ -20,6 +21,7 @@ const AIPortfolioAnalysisModal: React.FC<AIPortfolioAnalysisModalProps> = ({
   onClose,
   portfolioData
 }) => {
+  useModalBodyStyle(isVisible);
   const [state, setState] = useState<AnalysisState>('idle');
   const [content, setContent] = useState<string>('');
   const [errorMessage, setErrorMessage] = useState<string>('');

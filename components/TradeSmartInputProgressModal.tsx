@@ -3,6 +3,7 @@
 import React, { useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { TradeSmartInputState } from '../hooks/useTradeSmartInput';
+import { useModalBodyStyle } from '../hooks/useModalBodyStyle';
 
 interface TradeSmartInputProgressModalProps {
   visible: boolean;
@@ -20,6 +21,7 @@ export function TradeSmartInputProgressModal({
   state,
   onComplete,
 }: TradeSmartInputProgressModalProps) {
+  useModalBodyStyle(visible);
   // 处理完成后自动关闭（延长到2秒，让用户看清进度）
   useEffect(() => {
     if (!state.isProcessing && state.processed === state.total && state.total > 0) {

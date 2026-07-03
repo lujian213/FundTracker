@@ -3,6 +3,7 @@ import React, { useState, useMemo, useRef } from 'react';
 import { getEventsForYear, getUpcomingEvents, isHolidayType, isImportantDataType } from '../services/calendarService';
 import { toLocalDateKey } from '../utils/priceResolver';
 import CalendarEventTooltip, { CalendarEventItem } from './CalendarEventTooltip';
+import { useModalBodyStyle } from '../hooks/useModalBodyStyle';
 
 interface CalendarModalProps {
   onClose: () => void;
@@ -35,6 +36,9 @@ export const CalendarModal: React.FC<CalendarModalProps> = ({
   onClose,
   zIndex = 150,
 }) => {
+  // 全屏模态框打开时隐藏主页面滚动条
+  useModalBodyStyle();
+
   const today = new Date();
   const [currentYear, setCurrentYear] = useState(today.getFullYear());
   const [viewMonth, setViewMonth] = useState(today.getMonth());

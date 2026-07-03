@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { MarketType } from '../types';
 import AlertModal from './AlertModal';
 import { convertIndexCode, INDEX_NAME_MAP } from '../src/utils/indexUrlHelper';
+import { useModalBodyStyle } from '../hooks/useModalBodyStyle';
 
 interface AddTickerModalProps {
   onClose: () => void;
@@ -13,6 +14,7 @@ interface AddTickerModalProps {
 type TabType = 'fund' | 'index';
 
 export const AddTickerModal: React.FC<AddTickerModalProps> = ({ onClose, onAdd, isLoading, progress }) => {
+  useModalBodyStyle();
   const [activeTab, setActiveTab] = useState<TabType>('fund');
   const [tabInputs, setTabInputs] = useState<Record<TabType, string>>({
     fund: '',

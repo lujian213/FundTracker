@@ -17,6 +17,7 @@ import StrategyParamsPanel from './config/StrategyParamsPanel';
 import SearchProvidersPanel from './config/SearchProvidersPanel';
 import DependencyServicesPanel from './config/DependencyServicesPanel';
 import { Ticker, MarketIndex } from '../types';
+import { useModalBodyStyle } from '../hooks/useModalBodyStyle';
 
 export type ConfigSection = 'backup' | 'sync' | 'ai' | 'system' | 'params' | 'strategy' | 'search' | 'resource' | 'snapshot' | 'dependency';
 
@@ -58,6 +59,7 @@ const SystemConfigModal: React.FC<SystemConfigModalProps> = ({
   marketIndices = [],
   onBackupSettingsChange,
 }) => {
+  useModalBodyStyle(isOpen);
   const [activeSection, setActiveSection] = useState<ConfigSection>('backup');
 
   const handleKeyDown = (e: React.KeyboardEvent) => {

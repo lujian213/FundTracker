@@ -3,6 +3,7 @@
 import React, { useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { SmartAddState } from '../hooks/useSmartAddFunds';
+import { useModalBodyStyle } from '../hooks/useModalBodyStyle';
 
 interface SmartAddProgressModalProps {
   visible: boolean;
@@ -15,6 +16,7 @@ export function SmartAddProgressModal({
   state,
   onComplete,
 }: SmartAddProgressModalProps) {
+  useModalBodyStyle(visible);
   useEffect(() => {
     if (!state.isProcessing && state.processed === state.total && state.total > 0) {
       const timer = setTimeout(() => {

@@ -1,6 +1,7 @@
 // components/InitialPriceAdjustModal.tsx
 import React, { useState, useMemo } from 'react';
 import { fmtNumber, fmtNav } from '../utils/format';
+import { useModalBodyStyle } from '../hooks/useModalBodyStyle';
 
 interface InitialPriceAdjustModalProps {
   symbol: string;
@@ -62,6 +63,7 @@ export const InitialPriceAdjustModal: React.FC<InitialPriceAdjustModalProps> = (
   onClose,
   zIndex = 150,
 }) => {
+  useModalBodyStyle();
   const [referenceProfit, setReferenceProfit] = useState<string>(() => currentProfit.toFixed(2));
   const [referencePrice, setReferencePrice] = useState<string>(() => currentPrice.toFixed(4));
 

@@ -15,6 +15,7 @@ import { getDraftModalHeight, saveDraftModalHeight } from '../services/userPrefe
 import { loadInvestmentDraft, saveInvestmentDraft, saveAllDraftsToStorage, cleanOldDrafts } from '../services/appDataService';
 import * as marketFundService from '../services/marketFundService';
 import * as indexService from '../services/indexService';
+import { useModalBodyStyle } from '../hooks/useModalBodyStyle';
 
 // 防抖延迟时间（毫秒）
 const DEBOUNCE_DELAY = 500;
@@ -42,6 +43,7 @@ const InvestmentDraftModal: React.FC<InvestmentDraftModalProps> = ({
   marketIndices,
   globalIndices
 }) => {
+  useModalBodyStyle();
   const [draftData, setDraftData] = useState<Record<string, DraftEntry>>({});
   const [copied, setCopied] = useState(false);
   const [screenshotCopied, setScreenshotCopied] = useState(false);

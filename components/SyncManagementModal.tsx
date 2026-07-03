@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { testConnection } from '../services/eggfundService';
+import { useModalBodyStyle } from '../hooks/useModalBodyStyle';
 
 interface SyncConfig {
   eggfundUsername: string;
@@ -15,6 +16,7 @@ interface Props {
 }
 
 const SyncManagementModal: React.FC<Props> = ({ isOpen, onClose, onSave, initialConfig }) => {
+  useModalBodyStyle(isOpen);
   const [username, setUsername] = useState(initialConfig?.eggfundUsername || '');
   const [password, setPassword] = useState(initialConfig?.eggfundPassword || '');
   const [testResult, setTestResult] = useState<{success: boolean; message: string} | null>(null);

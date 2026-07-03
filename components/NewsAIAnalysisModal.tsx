@@ -9,6 +9,7 @@ import { getAllMarketFunds } from '../services/marketFundService';
 import { FastNewsItem } from '../types/fastNewsTypes';
 import { StreamCallback } from '../services/aiService';
 import { MarketFund } from '../types';
+import { useModalBodyStyle } from '../hooks/useModalBodyStyle';
 
 interface NewsAIAnalysisModalProps {
   isVisible: boolean;
@@ -23,6 +24,7 @@ const NewsAIAnalysisModal: React.FC<NewsAIAnalysisModalProps> = ({
   onClose,
   news
 }) => {
+  useModalBodyStyle(isVisible);
   const [state, setState] = useState<AnalysisState>('idle');
   const [content, setContent] = useState<string>('');
   const [errorMessage, setErrorMessage] = useState<string>('');

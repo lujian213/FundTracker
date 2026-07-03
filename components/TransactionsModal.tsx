@@ -11,6 +11,7 @@ import { TradeSmartInputResultModal } from './TradeSmartInputResultModal';
 import { useTradeSmartInput } from '../hooks/useTradeSmartInput';
 import { getHistory } from '../services/marketFundService';
 import { findNextValidTradeDate, calculateTradeEffect } from '../utils/tradeEffectCalculator';
+import { useModalBodyStyle } from '../hooks/useModalBodyStyle';
 
 interface Props {
   portfolio: Ticker[];
@@ -45,6 +46,7 @@ function formatNum(v: number): React.ReactNode {
 }
 
 const TransactionsModal: React.FC<Props> = ({ portfolio, marketData, onClose, onSelectFund, initiallySelectedFund }) => {
+  useModalBodyStyle();
   const [tradeDateStrs, setTradeDateStrs] = useState<string[]>([]);
   const [selectedDateStr, setSelectedDateStr] = useState<string | null>(null);
   const [pickerOpen, setPickerOpen] = useState(false);

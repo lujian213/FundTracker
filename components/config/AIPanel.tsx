@@ -15,8 +15,10 @@ import {
   getAITemplates,
   createConfigFromTemplate,
 } from '../../services/aiConfigService';
+import { useModalBodyStyle } from '../../hooks/useModalBodyStyle';
 
 const AIPanel: React.FC = () => {
+  useModalBodyStyle();
   const [configs, setConfigs] = useState<AIConfigProfile[]>([]);
   const [activeConfigId, setActiveConfigId] = useState<string | null>(null);
   const [editingConfig, setEditingConfig] = useState<AIConfigProfile | null>(null);

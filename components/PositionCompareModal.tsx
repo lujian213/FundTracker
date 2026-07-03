@@ -2,6 +2,7 @@ import React from 'react';
 import { createPortal } from 'react-dom';
 import { PositionCompareResult, PositionCompareItem } from '../types/positionExportTypes';
 import { formatMoneyWithSeparators } from '../utils/format';
+import { useModalBodyStyle } from '../hooks/useModalBodyStyle';
 
 interface PositionCompareModalProps {
   compareResult: PositionCompareResult;
@@ -21,6 +22,7 @@ function formatRatio(ratio: number | null): string {
 }
 
 const PositionCompareModal: React.FC<PositionCompareModalProps> = ({ compareResult, onClose }) => {
+  useModalBodyStyle();
   const { items, totalCurrentValue, totalImportedValue, totalValueDiff, totalRatio } = compareResult;
 
   const content = (

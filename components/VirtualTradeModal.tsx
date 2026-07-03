@@ -12,6 +12,7 @@ import { getUnitsForDate } from '../utils/positionHelper';
 import { defaultVirtualCash } from '../services/strategyConfig';
 import { computeProfitTimeline } from '../utils/profitCalculator';
 import useTrades from '../hooks/useTrades';
+import { useModalBodyStyle } from '../hooks/useModalBodyStyle';
 import { adjustProfitTimelineForDisplay } from '../utils/profitAdjustment';
 import { SymbolBadge } from './SymbolBadge';
 import { calculateRealProfit, calculateRealProfitSync, getStoredPosition, getTradesForFund } from '../utils/realProfitCalculator';
@@ -32,6 +33,7 @@ interface Props {
 }
 
 export const VirtualTradeModal: React.FC<Props> = ({ symbol, fundName, history: initialHistory, valuation, recommendedStrategy, onClose, fetchHistory, zIndex = 120 }) => {
+  useModalBodyStyle();
   const [history, setHistory] = useState<HistoricalPoint[] | null>(initialHistory ?? null);
   const fetchFn = fetchHistory ?? defaultFetchFundHistory;
 

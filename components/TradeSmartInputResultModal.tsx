@@ -11,6 +11,7 @@ import { OcrTradeData, TradeOperation } from '../utils/tradeOcrParser';
 import { isFeatureEnabled } from '../services/systemConfigService';
 import { getAllFundInfos } from '../services/marketFundService';
 import { matchFundByCode, matchFundByName } from '../utils/fundNameMatcher';
+import { useModalBodyStyle } from '../hooks/useModalBodyStyle';
 
 /**
  * 记录编辑值状态
@@ -46,6 +47,7 @@ export function TradeSmartInputResultModal({
   onClose,
   onConfirm,
 }: TradeSmartInputResultModalProps) {
+  useModalBodyStyle(visible);
   // 选中的记录索引集合
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
   // 是否显示关闭确认弹窗

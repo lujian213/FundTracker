@@ -6,6 +6,7 @@ import '@testing-library/jest-dom';
 import NewsSidebar from '../../components/NewsSidebar';
 import { getFastNews } from '../../services/marketNewsService';
 import { getTimerJobScheduler } from '../../services/timerJobScheduler';
+import { modalOpened, modalClosed } from '../../utils/modalHelper';
 
 // Mock marketNewsService
 jest.mock('../../services/marketNewsService');
@@ -259,6 +260,80 @@ describe('NewsSidebar', () => {
 
       expect(document.body.style.overflow).toBe('');
       expect(document.body.style.paddingRight).toBe('');
+    });
+
+    it('should not add padding-right when scrollbar width is 0 (e.g., modal already open)', async () => {
+      mockGetFastNews.mockReturnValue(mockNews);
+      // Mock scrollbar width = 0 (no scrollbar, e.g., full-screen modal already open)
+      Object.defineProperty(window, 'innerWidth', { value: 1024, configurable: true });
+      Object.defineProperty(document.documentElement, 'clientWidth', { value: 1024, configurable: true });
+
+      await act(async () => {
+        render(<NewsSidebar isVisible={true} onClose={() => {}} />);
+      });
+
+      // 滚动条宽度 = 0，不应该添加paddingRight，避免在全屏模态框打开时引起布局跳动
+      expect(document.body.style.overflow).toBe('hidden');
+      expect(document.body.style.paddingRight).toBe('');
+    });
+
+    it('should not modify body styles when high z-index full-screen modal is open', async () => {
+      mockGetFastNews.mockReturnValue(mockNews);
+
+      // 模拟全屏模态框打开（使用引用计数机制）
+      modalOpened();
+
+      // modalOpened 会设置 body overflow: hidden
+      const overflowBeforeSidebar = document.body.style.overflow;
+
+      await act(async () => {
+        render(<NewsSidebar isVisible={true} onClose={() => {}} />);
+      });
+
+      // 有全屏模态窗口打开时，NewsSidebar不应该修改body样式
+      // body overflow 应该保持 modalOpened 设置的状态
+      expect(document.body.style.overflow).toBe(overflowBeforeSidebar);
+
+      // 清理：关闭模态框
+      modalClosed();
+    });
+
+    it('should not modify body styles when modal uses inline style z-index', async () => {
+      mockGetFastNews.mockReturnValue(mockNews);
+
+      // 模拟全屏模态框打开（使用引用计数机制）
+      modalOpened();
+
+      const overflowBeforeSidebar = document.body.style.overflow;
+
+      await act(async () => {
+        render(<NewsSidebar isVisible={true} onClose={() => {}} />);
+      });
+
+      // 有全屏模态窗口打开时，NewsSidebar不应该修改body样式
+      expect(document.body.style.overflow).toBe(overflowBeforeSidebar);
+
+      // 清理：关闭模态框
+      modalClosed();
+    });
+
+    it('should not modify body styles when modal uses pure inline style (no className)', async () => {
+      mockGetFastNews.mockReturnValue(mockNews);
+
+      // 模拟全屏模态框打开（使用引用计数机制）
+      modalOpened();
+
+      const overflowBeforeSidebar = document.body.style.overflow;
+
+      await act(async () => {
+        render(<NewsSidebar isVisible={true} onClose={() => {}} />);
+      });
+
+      // 有全屏模态窗口打开时，NewsSidebar不应该修改body样式
+      expect(document.body.style.overflow).toBe(overflowBeforeSidebar);
+
+      // 清理：关闭模态框
+      modalClosed();
     });
   });
 });

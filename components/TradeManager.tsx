@@ -4,6 +4,7 @@ import { fetchFundHistory } from '../services/fundService';
 import { resolvePreferredPrice, toLocalDateKey } from '../utils/priceResolver';
 import { formatDateDisplay } from '../utils/dateFormat';
 import useTrades from '../hooks/useTrades';
+import { useModalBodyStyle } from '../hooks/useModalBodyStyle';
 import { getMatcher, MatchedRecord } from '../utils/tradeMatcher';
 import { SymbolBadge } from './SymbolBadge';
 import { FeeInput } from './FeeInput';
@@ -25,6 +26,7 @@ export const TradeManager: React.FC<{
   startDate?: string | null;
   initialViewMode?: ViewMode;
 }> = ({ name, symbol, currentPrice, previousPrice, realtimeDate, netWorthDate, onClose, zIndex = 130, initialPosition = 0, initialPrice = null, startDate = null, initialViewMode = 'normal' }) => {
+  useModalBodyStyle();
   const { trades, refresh, add, update, remove, setAll, exportJSON, exportCSV } = useTrades(symbol);
   const [page, setPage] = useState(0);
   const [viewMode, setViewMode] = useState<ViewMode>(initialViewMode);

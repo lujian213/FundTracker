@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { readBackupConfig, writeBackupConfig } from '../utils/backupService';
 import { secondsUntilNext, formatCountdown } from '../utils/dateTimeUtils';
+import { useModalBodyStyle } from '../hooks/useModalBodyStyle';
 
 interface Props {
   autoExportTime: string;          // current "HH:mm" value from App state
@@ -11,6 +12,7 @@ interface Props {
 }
 
 const BackupSettingsModal: React.FC<Props> = ({ autoExportTime, autoBackupEnabled, onSave, onClose }) => {
+  useModalBodyStyle();
   const [tmpTime, setTmpTime] = useState(autoExportTime);
   const [tmpEnabled, setTmpEnabled] = useState(autoBackupEnabled);
   const [error, setError] = useState('');

@@ -10,6 +10,7 @@ import { readAll as readAllTrades } from '../hooks/useTrades';
 import { PositionCompareResult, PositionExportData } from '../types/positionExportTypes';
 import { exportPositions, importPositions, computeCompareResult } from '../utils/positionExportService';
 import PositionCompareModal from './PositionCompareModal';
+import { useModalBodyStyle } from '../hooks/useModalBodyStyle';
 
 interface Props {
   portfolio: Ticker[];
@@ -87,6 +88,7 @@ const TrendModal = memo(function TrendModal({ onClose, valuationsOverride }: Tre
 });
 
 const PositionsModal: React.FC<Props> = ({ portfolio, marketData, onClose, onSelectFund }) => {
+  useModalBodyStyle();
   const [hoveredSymbol, setHoveredSymbol] = useState<string | null>(null);
   const [showTrend, setShowTrend] = useState(false);
   const [showAIPanel, setShowAIPanel] = useState(false);

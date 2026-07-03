@@ -10,6 +10,7 @@ import { analyzeInvestmentDraft, DraftEntry } from '../services/aiInvestmentDraf
 import { StreamCallback } from '../services/aiService';
 import * as marketFundService from '../services/marketFundService';
 import * as indexService from '../services/indexService';
+import { useModalBodyStyle } from '../hooks/useModalBodyStyle';
 
 interface AIInvestmentDraftModalProps {
   isVisible: boolean;
@@ -38,6 +39,7 @@ const AIInvestmentDraftModal: React.FC<AIInvestmentDraftModalProps> = ({
   globalIndices: _globalIndices,
   marketData: _marketData
 }) => {
+  useModalBodyStyle(isVisible);
   const [state, setState] = useState<AnalysisState>('idle');
   const [content, setContent] = useState<string>('');
   const [errorMessage, setErrorMessage] = useState<string>('');

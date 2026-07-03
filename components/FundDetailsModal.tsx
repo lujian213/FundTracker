@@ -26,6 +26,7 @@ import { computePositionSharesByDate, prepareVolumeBars, computeCostPricesByDate
 import { isFeatureEnabled } from '../services/systemConfigService';
 import InitialPriceAdjustModal from './InitialPriceAdjustModal';
 import { buildCashFlows, computeXIRR, computeSimpleAnnualizedReturn } from '../utils/xirrHelper';
+import { useModalBodyStyle } from '../hooks/useModalBodyStyle';
 
 interface FundDetailsModalProps {
   data: ValuationData;
@@ -41,6 +42,7 @@ interface FundDetailsModalProps {
 }
 
 export const FundDetailsModal: React.FC<FundDetailsModalProps> = ({ data, onClose, fetchHistory, position = 'center', animateSlide = false, skipExitAnimation = false, recommendedStrategy, initialTab = 'intraday', profile, fromDraft = false }) => {
+  useModalBodyStyle();
   const [history, setHistory] = useState<HistoricalPoint[]>([]);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<'intraday' | 'history'>(initialTab);

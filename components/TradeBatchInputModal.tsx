@@ -10,6 +10,7 @@ import { ConfirmDialog } from './ConfirmDialog';
 import { loadComboTradesFromStorage } from '../utils/comboTradeService';
 import * as marketFundService from '../services/marketFundService';
 import { FeeInput } from './FeeInput';
+import { useModalBodyStyle } from '../hooks/useModalBodyStyle';
 
 interface Props {
   onClose: () => void;
@@ -90,6 +91,7 @@ interface FundGroup {
 }
 
 const TradeBatchInputModal: React.FC<Props> = ({ onClose, onSaved, portfolio = [], marketData = {} }) => {
+  useModalBodyStyle();
   const [selectedDateStr, setSelectedDateStr] = useState<string>(getPreviousTradingDay());
   const [pickerOpen, setPickerOpen] = useState(false);
   const [pickerMonth, setPickerMonth] = useState<Date>(parseLocalDate(getPreviousTradingDay()));

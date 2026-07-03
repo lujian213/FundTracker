@@ -5,6 +5,7 @@ import { ConfirmDialog } from './ConfirmDialog';
 import { loadComboTradesFromStorage, saveComboTradesToStorage, filterValidRecords, validateComboTrade, isValidComboTradeRecord } from '../utils/comboTradeService';
 import { fmtNumber } from '../utils/format';
 import * as marketFundService from '../services/marketFundService';
+import { useModalBodyStyle } from '../hooks/useModalBodyStyle';
 
 interface Props {
   portfolio: { symbol: string; name: string }[];
@@ -21,6 +22,7 @@ function generateId(): string {
 }
 
 const ComboTradeModal: React.FC<Props> = ({ portfolio, onClose }) => {
+  useModalBodyStyle();
   // 组合列表
   const [comboList, setComboList] = useState<ComboTrade[]>([]);
   // 当前选中的组合ID

@@ -8,6 +8,7 @@ import TradeManager from '../components/TradeManager';
 import { ValuationData } from '../types';
 import { getSyncConfig, getSyncFilterConfig, saveSyncFilterConfig } from '../services/systemConfigService';
 import * as marketFundService from '../services/marketFundService';
+import { useModalBodyStyle } from '../hooks/useModalBodyStyle';
 
 type SyncDirection = 'forward' | 'reverse';
 
@@ -27,6 +28,7 @@ const SyncConfirmationModal: React.FC<Props> = ({
   onError,
   marketData = {}
 }) => {
+  useModalBodyStyle(isOpen);
   const [differences, setDifferences] = useState<TradeDifference[]>([]);
   const [loading, setLoading] = useState<boolean>(false);
   const [loadingMessage, setLoadingMessage] = useState<string>('正在初始化...');

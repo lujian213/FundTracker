@@ -12,12 +12,14 @@ import {
   DependencyStatus,
   DependencyMeta,
 } from '../../services/dependencyService';
+import { useModalBodyStyle } from '../../hooks/useModalBodyStyle';
 
 // 详情弹窗组件
 const DetailDialog: React.FC<{
   status: DependencyStatus | null;
   onClose: () => void;
 }> = ({ status, onClose }) => {
+  useModalBodyStyle(!!status);
   if (!status) return null;
 
   return createPortal(

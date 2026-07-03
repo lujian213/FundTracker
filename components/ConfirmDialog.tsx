@@ -1,5 +1,6 @@
 import React from 'react';
 import { createPortal } from 'react-dom';
+import { useModalBodyStyle } from '../hooks/useModalBodyStyle';
 
 interface ConfirmDialogProps {
   isOpen: boolean;
@@ -24,6 +25,7 @@ export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
   type = 'danger',
   singleButton = false
 }) => {
+  useModalBodyStyle(isOpen);
   if (!isOpen) return null;
 
   const handleKeyDown = (e: React.KeyboardEvent) => {

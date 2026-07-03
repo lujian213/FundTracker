@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { fetchFundHistory as defaultFetchFundHistory, prepareHistoryForProfitCalculation } from '../services/fundService';
 import useTrades from '../hooks/useTrades';
+import { useModalBodyStyle } from '../hooks/useModalBodyStyle';
 import { computeProfitTimeline } from '../utils/profitCalculator';
 import { HistoricalPoint, ProfitPoint } from '../types';
 import { toLocalDateKey } from '../utils/priceResolver';
@@ -28,6 +29,7 @@ interface ProfitModalProps {
 }
 
 const ProfitModal: React.FC<ProfitModalProps> = ({ symbol, fundName, currentPrice, previousPrice, realtimeDate, netWorthDate, onClose, initialPosition = 0, initialPrice = null, initialStartDate = null, fetchHistory, zIndex = 130 }) => {
+  useModalBodyStyle();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [history, setHistory] = useState<HistoricalPoint[]>([]);

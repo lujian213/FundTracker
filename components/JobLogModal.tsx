@@ -1,11 +1,13 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { JobLogEntry, subscribeLogs, clearLogs, formatDateTime } from '../services/jobLogService';
+import { useModalBodyStyle } from '../hooks/useModalBodyStyle';
 
 interface JobLogModalProps {
   onClose: () => void;
 }
 
 const JobLogModal: React.FC<JobLogModalProps> = ({ onClose }) => {
+  useModalBodyStyle();
   const [logs, setLogs] = useState<JobLogEntry[]>([]);
   const scrollRef = useRef<HTMLDivElement>(null);
   const isAtBottomRef = useRef(true);

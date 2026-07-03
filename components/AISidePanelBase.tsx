@@ -8,6 +8,7 @@ import { ContextCompressionService } from '../services/ContextCompressionService
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { getByType, fillTemplateVariables, TEMPLATE_TYPES } from '../services/promptTemplateService';
+import { hasOpenModal, safeRestoreBodyScrollbar } from '../utils/modalHelper';
 import { PromptTemplate } from '../types/promptTemplateTypes';
 import { FundAIQueryContext, IndexAIQueryContext } from '../types/aiServiceTypes';
 
@@ -79,6 +80,33 @@ const AISidePanelBase: React.FC<AISidePanelBaseProps> = ({
       getContextData,
     };
   }, [name, symbol, getContextData]);
+
+  // AI辅助窗口显示时，检测是否有全屏模态框打开
+  // 如果有全屏模态框，不修改body样式，避免布局抖动（全屏模态框已经覆盖视窗，滚动条不可操作）
+  // 如果没有全屏模态框，才隐藏主页面滚动条并补偿宽度
+  useEffect(() => {
+    if (isVisible) {
+      // 如果有全屏模态窗口打开，不修改body样式，避免布局抖动
+      if (hasOpenModal()) {
+        return;
+      }
+
+      // 没有全屏模态框时，才隐藏主页面滚动条
+      const scrollbarWidth = window.innerWidth - document.documentElement.clientWidth;
+      document.body.style.overflow = 'hidden';
+      if (scrollbarWidth > 0) {
+        document.body.style.paddingRight = `${scrollbarWidth}px`;
+      }
+    } else {
+      // 关闭时安全恢复样式
+      safeRestoreBodyScrollbar();
+    }
+
+    return () => {
+      // 清理时安全恢复样式
+      safeRestoreBodyScrollbar();
+    };
+  }, [isVisible]);
 
   // 初始化上下文压缩服务
   const compressionService = new ContextCompressionService();
@@ -1024,78 +1052,12 @@ const AISidePanelBase: React.FC<AISidePanelBaseProps> = ({
     }
   };
 
-  // Calculate position based on the parent modal
-  const calculatePosition = () => {
-    // Find the parent modal element to position relative to it using the specific ID
-    const modal = document.getElementById(modalId) as HTMLElement;
-
-    if (modal) {
-      const rect = modal.getBoundingClientRect();
-      // Ensure there's enough space and it doesn't go off-screen
-      const rightPos = rect.right + 10; // Add a little gap
-      const adjustedLeft = Math.min(rightPos, window.innerWidth - 440); // Max width of 440px (10% wider)
-
-      return {
-        top: `${Math.max(rect.top, 10)}px`, // Minimum 10px from top
-        height: `${rect.height - 20}px`, // Reduce height slightly to account for margins
-        left: `${adjustedLeft}px`,
-      };
-    }
-
-    // Fallback: look for any element with fixed, inset-0 and high z-index
-    let fallbackModal = null;
-    const allElements = Array.from(document.querySelectorAll('*')) as HTMLElement[];
-    fallbackModal = allElements.find(el => {
-      const classes = el.className;
-      const classStr = typeof classes === 'string' ? classes : (classes as any).baseVal || '';
-      const style = window.getComputedStyle(el);
-      return classStr.includes('fixed') &&
-             classStr.includes('inset-0') &&
-             parseInt(style.zIndex) >= 100 &&
-             style.display !== 'none';
-    });
-
-    if (fallbackModal) {
-      const rect = fallbackModal.getBoundingClientRect();
-      const rightPos = rect.right + 10;
-      const adjustedLeft = Math.min(rightPos, window.innerWidth - 400);
-
-      return {
-        top: `${Math.max(rect.top, 10)}px`,
-        height: `${rect.height - 20}px`,
-        left: `${adjustedLeft}px`,
-      };
-    }
-
-    // Default positioning if modal not found
-    return {
-      top: '5vh',
-      height: '90vh',
-      left: 'auto',
-      right: '2rem'
-    };
+  // Calculate position - AI窗口使用固定位置，不依赖modal的动态计算，避免抖动
+  const panelPosition = {
+    top: '10px',        // 固定top，不动态计算
+    height: 'calc(100vh - 20px)', // 固定height，占满视窗高度（留10px上下边距）
+    right: '0'          // 固定right，从视窗右边缘开始
   };
-
-  const [panelPosition, setPanelPosition] = useState(calculatePosition());
-
-  useEffect(() => {
-    const updatePosition = () => {
-      setPanelPosition(calculatePosition());
-    };
-
-    // Update position on resize and scroll
-    window.addEventListener('resize', updatePosition);
-    window.addEventListener('scroll', updatePosition);
-
-    // Also update periodically in case modal appears/disappears
-    const interval = setInterval(updatePosition, 100);
-
-    return () => {
-      window.removeEventListener('resize', updatePosition);
-      window.removeEventListener('scroll', updatePosition);
-      clearInterval(interval);
-    };
-  }, []);
 
   if (!isVisible) return null;
 
@@ -1105,10 +1067,7 @@ const AISidePanelBase: React.FC<AISidePanelBaseProps> = ({
       style={{
         top: panelPosition.top,
         height: panelPosition.height,
-        left: panelPosition.left,
-        maxHeight: 'calc(100vh - 2rem)',
-        marginTop: '1rem',
-        marginBottom: '1rem'
+        right: panelPosition.right
       }}
     >
       <div className="p-4 border-b border-gray-200 bg-gradient-to-r from-blue-50 to-indigo-50">

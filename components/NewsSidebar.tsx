@@ -6,6 +6,7 @@ import { getFastNews } from '../services/marketNewsService';
 import { getTimerJobScheduler } from '../services/timerJobScheduler';
 import { useNews } from '../contexts/NewsContext';
 import NewsCard from './NewsCard';
+import { hasOpenModal, safeRestoreBodyScrollbar } from '../utils/modalHelper';
 
 interface NewsSidebarProps {
   isVisible: boolean;
@@ -48,20 +49,29 @@ const NewsSidebar: React.FC<NewsSidebarProps> = ({ isVisible, onClose }) => {
 
   // 侧边栏显示时隐藏窗口滚动条，消失时恢复
   // 通过添加 padding-right 补偿滚动条宽度，防止滚动条消失导致的页面抖动
+  // 注意：如果当前有高z-index的全屏模态框打开（z >= 100），则完全跳过body样式修改，避免引起布局抖动
   useEffect(() => {
     if (isVisible) {
+      // 如果有全屏模态窗口打开，则不修改body样式，避免布局抖动
+      if (hasOpenModal()) {
+        return;
+      }
+
       // 计算滚动条宽度
       const scrollbarWidth = window.innerWidth - document.documentElement.clientWidth;
       document.body.style.overflow = 'hidden';
-      document.body.style.paddingRight = `${scrollbarWidth}px`;
+      // 只有在有滚动条时才添加padding补偿
+      if (scrollbarWidth > 0) {
+        document.body.style.paddingRight = `${scrollbarWidth}px`;
+      }
     } else {
-      document.body.style.overflow = '';
-      document.body.style.paddingRight = '';
+      // 关闭时安全恢复样式（检查是否有全屏模态框）
+      safeRestoreBodyScrollbar();
     }
 
     return () => {
-      document.body.style.overflow = '';
-      document.body.style.paddingRight = '';
+      // 清理时安全恢复样式（检查是否有全屏模态框）
+      safeRestoreBodyScrollbar();
     };
   }, [isVisible]);
 

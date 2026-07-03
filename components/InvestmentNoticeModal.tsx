@@ -17,6 +17,7 @@ import { resolvePreferredPrice } from '../utils/priceResolver';
 import { calculateRealProfit, getStoredPosition, getTradesForFund } from '../utils/realProfitCalculator';
 import { loadAllStrategies } from '../services/strategyRegistry';
 import * as marketFundService from '../services/marketFundService';
+import { useModalBodyStyle } from '../hooks/useModalBodyStyle';
 
 // 批次大小：每批并行处理5个基金
 const BATCH_SIZE = 5;
@@ -151,6 +152,7 @@ const InvestmentNoticeModal: React.FC<InvestmentNoticeModalProps> = ({
   onSelectFund,
   marketData
 }) => {
+  useModalBodyStyle();
   const [loading, setLoading] = useState(true);
   const [recommendations, setRecommendations] = useState<InvestmentRecommendation[]>([]);
 

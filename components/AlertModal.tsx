@@ -1,5 +1,6 @@
 import React from 'react';
 import { createPortal } from 'react-dom';
+import { useModalBodyStyle } from '../hooks/useModalBodyStyle';
 
 interface AlertModalProps {
   isOpen: boolean;
@@ -9,6 +10,7 @@ interface AlertModalProps {
 }
 
 const AlertModal: React.FC<AlertModalProps> = ({ isOpen, message, onClose, title = '提示' }) => {
+  useModalBodyStyle(isOpen);
   if (!isOpen) return null;
 
   return createPortal(
