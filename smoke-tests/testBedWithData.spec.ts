@@ -3227,6 +3227,219 @@ test.describe('testBedWithData', () => {
     expect(infoText).toContain('时间');
 
     // ══════════════════════════════════════════════════════════════════════════════
+    // 4.1. 点击"历史趋势图"tab，验证图表和交互功能
+    // ══════════════════════════════════════════════════════════════════════════════
+    await page.click('button:has-text("历史趋势图")');
+    await expect(page.locator('button:has-text("历史趋势图")')).toHaveClass(/bg-white border/, { timeout: 2000 });
+
+    // 等待历史趋势图渲染
+    const historyChartSvg = page.locator('#fund-details-modal svg').first();
+    await expect(historyChartSvg).toBeVisible({ timeout: 3000 });
+
+    // 验证历史趋势图有超过10个点
+    const historyChartData = await page.evaluate(() => {
+      const modal = document.querySelector('#fund-details-modal');
+      if (!modal) return { pointCount: 0, hasChart: false };
+      const svg = modal.querySelector('svg');
+      if (!svg) return { pointCount: 0, hasChart: false };
+
+      // 历史趋势图的 hover 矩形选择器
+      const hoverRects = svg.querySelectorAll('rect[fill="transparent"]');
+      const pointCount = hoverRects.length;
+
+      return { pointCount, hasChart: true };
+    });
+    expect(historyChartData?.hasChart).toBe(true);
+    expect(historyChartData?.pointCount).toBeGreaterThan(10);
+
+    // ══════════════════════════════════════════════════════════════════════════════
+    // 4.2. 【新增】验证左侧点位hover时的十字准星效果和价格标签位置
+    // ══════════════════════════════════════════════════════════════════════════════
+    const historyChartBounds = await historyChartSvg.boundingBox();
+    if (historyChartBounds) {
+      // Hover左侧区域（图表宽度的25%位置）
+      const leftX = historyChartBounds.x + historyChartBounds.width * 0.25;
+      const leftY = historyChartBounds.y + historyChartBounds.height * 0.3;
+      await page.mouse.move(leftX, leftY);
+      await page.waitForTimeout(300);
+
+      // 验证十字准星效果：检查是否有两条虚线（垂直和水平）
+      const crosshairLines = await page.evaluate(() => {
+        const modal = document.querySelector('#fund-details-modal');
+        if (!modal) return { hasVerticalLine: false, hasHorizontalLine: false, hasPriceLabel: false, priceLabelPosition: '' };
+
+        const svg = modal.querySelector('svg');
+        if (!svg) return { hasVerticalLine: false, hasHorizontalLine: false, hasPriceLabel: false, priceLabelPosition: '' };
+
+        // 检查虚线元素（strokeDasharray="4 2"）
+        const lines = svg.querySelectorAll('line[stroke-dasharray="4 2"]');
+        let hasVerticalLine = false;
+        let hasHorizontalLine = false;
+
+        lines.forEach(line => {
+          const x1 = parseFloat(line.getAttribute('x1') || '0');
+          const x2 = parseFloat(line.getAttribute('x2') || '0');
+          const y1 = parseFloat(line.getAttribute('y1') || '0');
+          const y2 = parseFloat(line.getAttribute('y2') || '0');
+
+          // 垂直线：x坐标相同
+          if (Math.abs(x1 - x2) < 1) hasVerticalLine = true;
+          // 水平线：y坐标相同
+          if (Math.abs(y1 - y2) < 1) hasHorizontalLine = true;
+        });
+
+        // 检查价格标签（font-semibold的text元素）
+        const priceLabels = svg.querySelectorAll('text.font-semibold');
+        let hasPriceLabel = false;
+        let priceLabelPosition = '';
+
+        priceLabels.forEach(label => {
+          const x = parseFloat(label.getAttribute('x') || '0');
+          const textAnchor = label.getAttribute('text-anchor') || '';
+          const text = label.textContent || '';
+
+          // 价格标签包含数字和小数点
+          if (text.match(/^\d+\.\d{4}$/)) {
+            hasPriceLabel = true;
+            // 判断位置：右侧边缘内侧位置约为 viewBox宽度 - 12
+            const viewBox = svg.getAttribute('viewBox') || '0 0 1000 280';
+            const vbWidth = parseFloat(viewBox.split(' ')[2] || '1000');
+            const rightEdgeX = vbWidth - 30; // PADDING_RIGHT = 30
+            if (x > rightEdgeX - 20) {
+              priceLabelPosition = 'right';
+            } else if (x < 120) { // PADDING_LEFT = 110
+              priceLabelPosition = 'left';
+            }
+          }
+        });
+
+        return { hasVerticalLine, hasHorizontalLine, hasPriceLabel, priceLabelPosition };
+      });
+
+      // 验证十字准星效果（垂直线和水平线都存在）
+      expect(crosshairLines?.hasVerticalLine).toBe(true);
+      expect(crosshairLines?.hasHorizontalLine).toBe(true);
+
+      // 验证价格标签存在且显示在右侧（左侧点位）
+      expect(crosshairLines?.hasPriceLabel).toBe(true);
+      expect(crosshairLines?.priceLabelPosition).toBe('right');
+    }
+
+    // ══════════════════════════════════════════════════════════════════════════════
+    // 4.3. 【新增】验证右侧点位hover时的价格标签位置
+    // ══════════════════════════════════════════════════════════════════════════════
+    if (historyChartBounds) {
+      // Hover右侧区域（图表宽度的75%位置）
+      const rightX = historyChartBounds.x + historyChartBounds.width * 0.75;
+      const rightY = historyChartBounds.y + historyChartBounds.height * 0.3;
+      await page.mouse.move(rightX, rightY);
+      await page.waitForTimeout(300);
+
+      // 验证价格标签位置在左侧（右侧点位）
+      const rightPriceLabelCheck = await page.evaluate(() => {
+        const modal = document.querySelector('#fund-details-modal');
+        if (!modal) return { hasPriceLabel: false, priceLabelPosition: '' };
+
+        const svg = modal.querySelector('svg');
+        if (!svg) return { hasPriceLabel: false, priceLabelPosition: '' };
+
+        const priceLabels = svg.querySelectorAll('text.font-semibold');
+        let hasPriceLabel = false;
+        let priceLabelPosition = '';
+
+        priceLabels.forEach(label => {
+          const x = parseFloat(label.getAttribute('x') || '0');
+          const text = label.textContent || '';
+
+          if (text.match(/^\d+\.\d{4}$/)) {
+            hasPriceLabel = true;
+            const viewBox = svg.getAttribute('viewBox') || '0 0 1000 280';
+            const vbWidth = parseFloat(viewBox.split(' ')[2] || '1000');
+            const rightEdgeX = vbWidth - 30;
+            if (x > rightEdgeX - 20) {
+              priceLabelPosition = 'right';
+            } else if (x < 120) {
+              priceLabelPosition = 'left';
+            }
+          }
+        });
+
+        return { hasPriceLabel, priceLabelPosition };
+      });
+
+      expect(rightPriceLabelCheck?.hasPriceLabel).toBe(true);
+      expect(rightPriceLabelCheck?.priceLabelPosition).toBe('left');
+    }
+
+    // ══════════════════════════════════════════════════════════════════════════════
+    // 4.4. 【新增】验证交易点hover提示框半透明效果和内容
+    // ══════════════════════════════════════════════════════════════════════════════
+    // 查找交易点标记（买入/卖出的圆点）
+    const tradeMarkers = await page.evaluate(() => {
+      const modal = document.querySelector('#fund-details-modal');
+      if (!modal) return { hasMarkers: false, markerCount: 0 };
+
+      const svg = modal.querySelector('svg');
+      if (!svg) return { hasMarkers: false, markerCount: 0 };
+
+      // 查找交易点圆圈（带有 data-testid="marker-circle-*" 的元素）
+      const markers = svg.querySelectorAll('circle[data-testid^="marker-circle-"]');
+      return { hasMarkers: markers.length > 0, markerCount: markers.length };
+    });
+
+    if (tradeMarkers?.hasMarkers && tradeMarkers?.markerCount > 0) {
+      // Hover第一个交易点
+      const firstMarker = historyChartSvg.locator('circle[data-testid^="marker-circle-"]').first();
+      if (await firstMarker.count() > 0) {
+        const markerBounds = await firstMarker.boundingBox();
+        if (markerBounds) {
+          await page.mouse.move(markerBounds.x + markerBounds.width / 2, markerBounds.y + markerBounds.height / 2);
+          await page.waitForTimeout(300);
+
+          // 验证hover提示框的半透明效果和内容
+          const tooltipCheck = await page.evaluate(() => {
+            const modal = document.querySelector('#fund-details-modal');
+            if (!modal) return { hasTooltip: false, isTransparent: false, hasPositionInfo: false };
+
+            const svg = modal.querySelector('svg');
+            if (!svg) return { hasTooltip: false, isTransparent: false, hasPositionInfo: false };
+
+            // 查找hover提示框rect（深色背景，带rx/ry圆角）
+            const tooltipRects = svg.querySelectorAll('rect[rx][ry][fill="#111827"]');
+            let hasTooltip = false;
+            let isTransparent = false;
+            let hasPositionInfo = false;
+
+            tooltipRects.forEach(rect => {
+              const fillOpacity = parseFloat(rect.getAttribute('fill-opacity') || '1');
+              if (fillOpacity < 0.9) {
+                hasTooltip = true;
+                isTransparent = true;
+              }
+            });
+
+            // 检查是否显示仓位信息（包含"仓位"或"份"的文本）
+            const texts = svg.querySelectorAll('text');
+            texts.forEach(text => {
+              const content = text.textContent || '';
+              if (content.includes('仓位') || content.includes('份')) {
+                hasPositionInfo = true;
+              }
+            });
+
+            return { hasTooltip, isTransparent, hasPositionInfo };
+          });
+
+          // 验证提示框存在且半透明
+          expect(tooltipCheck?.hasTooltip).toBe(true);
+          expect(tooltipCheck?.isTransparent).toBe(true);
+          // 验证显示仓位信息（如果有持仓数据）
+          // 注意：仓位信息可能不总是存在（取决于该基金是否有持仓）
+        }
+      }
+    }
+
+    // ══════════════════════════════════════════════════════════════════════════════
     // 5. 点击"基金详情"按钮，弹出详细信息窗口
     // ══════════════════════════════════════════════════════════════════════════════
     await page.click('button:has-text("基金详情")');

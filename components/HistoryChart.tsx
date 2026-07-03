@@ -377,7 +377,7 @@ const HistoryChart: React.FC<HistoryChartProps> = ({
 
           return (
             <g className="pointer-events-none">
-              <rect x={tooltipX - 60} y={tooltipY - 20} rx={6} ry={6} width={120} height={tooltipHeight} fill="#111827" fillOpacity={0.9} />
+              <rect x={tooltipX - 60} y={tooltipY - 20} rx={6} ry={6} width={120} height={tooltipHeight} fill="#111827" fillOpacity={0.6} />
               {lines.map((ln, i) => (
                 <text key={i} x={tooltipX} y={tooltipY - 6 + i * 14} textAnchor="middle" className="text-[11px] font-medium" fill={i === lines.length - 1 && positionText ? '#f59e0b' : '#fff'}>{ln}</text>
               ))}
@@ -420,23 +420,46 @@ const HistoryChart: React.FC<HistoryChartProps> = ({
         {(() => {
           const hpPoint = hoveredPoint ? points.find(p => p.data && (p.data as any).date === (hoveredPoint as any).date) : undefined;
           const px = hpPoint ? hpPoint.x : undefined;
-          if (px === undefined || px === null) return null;
+          const py = hpPoint ? hpPoint.y : undefined;
+          if (px === undefined || px === null || py === undefined || py === null) return null;
 
           const vbParts = (viewBox || '0 0 1000 280').split(' ').map(Number);
           const vbW = vbParts[2] || 1000;
           const vbH = vbParts[3] || height;
           const chartTop = PADDING_TOP;
           const chartBottom = showFundVolumeChart ? totalHeight : (showVolume ? totalHeight : (vbH - PADDING_BOTTOM));
+          const chartLeft = PADDING_LEFT;
+          const chartRight = vbW - PADDING_RIGHT;
 
+          // 日期标签
           const labelText = formatLocalDate((hoveredPoint as any).date);
           const EST_CHAR_WIDTH = 7;
           const halfWidth = Math.ceil((labelText.length * EST_CHAR_WIDTH) / 2) + 6;
           const labelX = Math.max(halfWidth, Math.min(vbW - halfWidth, px));
 
+          // 价格标签
+          const priceValue = (hoveredPoint as any).value;
+          const priceText = priceValue !== undefined && priceValue !== null ? priceValue.toFixed(4) : '';
+
+          // 根据点的位置决定价格标签显示在哪一端
+          const centerX = (chartLeft + chartRight) / 2;
+          const isLeftSide = px < centerX;
+          // 左侧点：价格标签显示在右端（图表右侧边缘内侧）
+          // 右侧点：价格标签显示在左端（Y轴标签位置）
+          const priceLabelX = isLeftSide ? chartRight - 12 : chartLeft - 12;
+
           return (
             <>
+              {/* 垂直虚线 */}
               <line x1={px} y1={chartTop} x2={px} y2={chartBottom} stroke={stroke} strokeWidth="1" strokeDasharray="4 2" className="pointer-events-none" />
+              {/* 日期标签 */}
               <text x={labelX} y={Math.max(18, chartTop - 4)} textAnchor="middle" className="text-[12px] font-medium fill-gray-600 pointer-events-none">{labelText}</text>
+              {/* 水平虚线 */}
+              <line x1={chartLeft} y1={py} x2={chartRight} y2={py} stroke={stroke} strokeWidth="1" strokeDasharray="4 2" className="pointer-events-none" />
+              {/* 价格标签（根据点位置动态调整显示方向） */}
+              {priceText && (
+                <text x={priceLabelX} y={py} textAnchor="end" alignmentBaseline="middle" className="text-[13px] font-semibold pointer-events-none" fill={stroke}>{priceText}</text>
+              )}
             </>
           );
         })()}
