@@ -46,16 +46,22 @@ const NewsSidebar: React.FC<NewsSidebarProps> = ({ isVisible, onClose }) => {
     return () => window.removeEventListener('fast-news-cache-updated', handleCacheUpdate);
   }, []);
 
-  // 侧边栏显示时隐藏窗口滚动条,消失时恢复
+  // 侧边栏显示时隐藏窗口滚动条，消失时恢复
+  // 通过添加 padding-right 补偿滚动条宽度，防止滚动条消失导致的页面抖动
   useEffect(() => {
     if (isVisible) {
+      // 计算滚动条宽度
+      const scrollbarWidth = window.innerWidth - document.documentElement.clientWidth;
       document.body.style.overflow = 'hidden';
+      document.body.style.paddingRight = `${scrollbarWidth}px`;
     } else {
       document.body.style.overflow = '';
+      document.body.style.paddingRight = '';
     }
 
     return () => {
       document.body.style.overflow = '';
+      document.body.style.paddingRight = '';
     };
   }, [isVisible]);
 

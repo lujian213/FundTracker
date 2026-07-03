@@ -28,10 +28,16 @@ describe('NewsSidebar', () => {
     } as any);
     // 默认返回空数组
     mockGetFastNews.mockReturnValue([]);
+    // 重置 body 样式
+    document.body.style.overflow = '';
+    document.body.style.paddingRight = '';
   });
 
   afterEach(() => {
     jest.useRealTimers();
+    // 清理 body 样式
+    document.body.style.overflow = '';
+    document.body.style.paddingRight = '';
   });
 
   const mockNews = [
@@ -175,6 +181,84 @@ describe('NewsSidebar', () => {
 
     await waitFor(() => {
       expect(screen.getByText('1 条快讯')).toBeInTheDocument();
+    });
+  });
+
+  describe('scrollbar handling', () => {
+    it('should set body overflow to hidden when sidebar becomes visible', async () => {
+      mockGetFastNews.mockReturnValue(mockNews);
+
+      const { rerender } = render(<NewsSidebar isVisible={false} onClose={() => {}} />);
+
+      expect(document.body.style.overflow).toBe('');
+
+      await act(async () => {
+        rerender(<NewsSidebar isVisible={true} onClose={() => {}} />);
+      });
+
+      expect(document.body.style.overflow).toBe('hidden');
+    });
+
+    it('should restore body overflow when sidebar becomes hidden', async () => {
+      mockGetFastNews.mockReturnValue(mockNews);
+
+      const { rerender } = render(<NewsSidebar isVisible={true} onClose={() => {}} />);
+
+      expect(document.body.style.overflow).toBe('hidden');
+
+      await act(async () => {
+        rerender(<NewsSidebar isVisible={false} onClose={() => {}} />);
+      });
+
+      expect(document.body.style.overflow).toBe('');
+    });
+
+    it('should add padding-right to compensate scrollbar width when visible', async () => {
+      mockGetFastNews.mockReturnValue(mockNews);
+      // Mock scrollbar width calculation (window.innerWidth - document.documentElement.clientWidth)
+      Object.defineProperty(window, 'innerWidth', { value: 1024, configurable: true });
+      Object.defineProperty(document.documentElement, 'clientWidth', { value: 1007, configurable: true });
+
+      await act(async () => {
+        render(<NewsSidebar isVisible={true} onClose={() => {}} />);
+      });
+
+      // 滚动条宽度 = 1024 - 1007 = 17px
+      expect(document.body.style.paddingRight).toBe('17px');
+    });
+
+    it('should remove padding-right when sidebar becomes hidden', async () => {
+      mockGetFastNews.mockReturnValue(mockNews);
+      Object.defineProperty(window, 'innerWidth', { value: 1024, configurable: true });
+      Object.defineProperty(document.documentElement, 'clientWidth', { value: 1007, configurable: true });
+
+      const { rerender } = render(<NewsSidebar isVisible={true} onClose={() => {}} />);
+
+      expect(document.body.style.paddingRight).toBe('17px');
+
+      await act(async () => {
+        rerender(<NewsSidebar isVisible={false} onClose={() => {}} />);
+      });
+
+      expect(document.body.style.paddingRight).toBe('');
+    });
+
+    it('should clean up body styles on unmount', async () => {
+      mockGetFastNews.mockReturnValue(mockNews);
+      Object.defineProperty(window, 'innerWidth', { value: 1024, configurable: true });
+      Object.defineProperty(document.documentElement, 'clientWidth', { value: 1007, configurable: true });
+
+      const { unmount } = render(<NewsSidebar isVisible={true} onClose={() => {}} />);
+
+      expect(document.body.style.overflow).toBe('hidden');
+      expect(document.body.style.paddingRight).toBe('17px');
+
+      await act(async () => {
+        unmount();
+      });
+
+      expect(document.body.style.overflow).toBe('');
+      expect(document.body.style.paddingRight).toBe('');
     });
   });
 });
