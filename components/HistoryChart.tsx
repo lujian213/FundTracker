@@ -428,7 +428,8 @@ const HistoryChart: React.FC<HistoryChartProps> = ({
           const vbH = vbParts[3] || height;
           const chartTop = PADDING_TOP;
           const chartBottom = showFundVolumeChart ? totalHeight : (showVolume ? totalHeight : (vbH - PADDING_BOTTOM));
-          const chartLeft = PADDING_LEFT;
+          // 使用实际数据点的最小 x 坐标作为图表左边缘，确保水平虚线覆盖所有点
+          const chartLeft = points.length > 0 ? Math.min(...points.map(p => p.x)) : PADDING_LEFT;
           const chartRight = vbW - PADDING_RIGHT;
 
           // 日期标签
@@ -454,8 +455,10 @@ const HistoryChart: React.FC<HistoryChartProps> = ({
               <line x1={px} y1={chartTop} x2={px} y2={chartBottom} stroke={stroke} strokeWidth="1" strokeDasharray="4 2" className="pointer-events-none" />
               {/* 日期标签 */}
               <text x={labelX} y={Math.max(18, chartTop - 4)} textAnchor="middle" className="text-[12px] font-medium fill-gray-600 pointer-events-none">{labelText}</text>
-              {/* 水平虚线 */}
+              {/* 水平虚线 - 从图表左边缘到右边缘 */}
               <line x1={chartLeft} y1={py} x2={chartRight} y2={py} stroke={stroke} strokeWidth="1" strokeDasharray="4 2" className="pointer-events-none" />
+              {/* 交叉点标记 - 确保水平虚线和垂直虚线与点相连 */}
+              <circle cx={px} cy={py} r="4" fill={stroke} className="pointer-events-none" />
               {/* 价格标签（根据点位置动态调整显示方向） */}
               {priceText && (
                 <text x={priceLabelX} y={py} textAnchor="end" alignmentBaseline="middle" className="text-[13px] font-semibold pointer-events-none" fill={stroke}>{priceText}</text>

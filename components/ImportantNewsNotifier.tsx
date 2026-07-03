@@ -26,7 +26,13 @@ const ImportantNewsNotifier: React.FC = () => {
   useEffect(() => {
     const handleImportantNews = (event: CustomEvent<{ news: FastNewsItem[] }>) => {
       const newImportantNews = event.detail.news;
-      const newItems = newImportantNews.map(news => ({
+
+      // 按时间从早到晚排序（确保最早的快讯先显示）
+      const sortedNews = [...newImportantNews].sort((a, b) => {
+        return new Date(a.showTime).getTime() - new Date(b.showTime).getTime();
+      });
+
+      const newItems = sortedNews.map(news => ({
         id: `${news.code}-${Date.now()}`,
         news,
         isFading: false,

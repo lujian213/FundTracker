@@ -47,6 +47,34 @@ describe('ImportantNewsNotifier', () => {
     },
   ];
 
+  // 乱序快讯（用于测试排序功能）
+  const mockUnorderedNews = [
+    {
+      code: 'news-3',
+      title: '第三条快讯（时间最晚）',
+      summary: '第三条摘要',
+      showTime: '2026-06-30 10:02:00',
+      titleColor: 3,
+      url: 'https://example.com/news/3',
+    },
+    {
+      code: 'news-1',
+      title: '第一条快讯（时间最早）',
+      summary: '第一条摘要',
+      showTime: '2026-06-30 10:00:00',
+      titleColor: 3,
+      url: 'https://example.com/news/1',
+    },
+    {
+      code: 'news-2',
+      title: '第二条快讯（时间中间）',
+      summary: '第二条摘要',
+      showTime: '2026-06-30 10:01:00',
+      titleColor: 3,
+      url: 'https://example.com/news/2',
+    },
+  ];
+
   it('should listen to important-news-detected event and display notification', () => {
     render(<ImportantNewsNotifier />);
 
@@ -280,5 +308,41 @@ describe('ImportantNewsNotifier', () => {
 
     // Notification should not appear
     expect(screen.queryByText('重要快讯标题')).not.toBeInTheDocument();
+  });
+
+  it('should sort notifications by showTime from earliest to latest', () => {
+    render(<ImportantNewsNotifier />);
+
+    // Dispatch event with unordered news (latest first in array)
+    act(() => {
+      window.dispatchEvent(new CustomEvent('important-news-detected', {
+        detail: { news: mockUnorderedNews }
+      }));
+    });
+
+    // The earliest news should be displayed first
+    expect(screen.getByText('第一条快讯（时间最早）')).toBeInTheDocument();
+    expect(screen.queryByText('第二条快讯（时间中间）')).not.toBeInTheDocument();
+    expect(screen.queryByText('第三条快讯（时间最晚）')).not.toBeInTheDocument();
+
+    // Wait 8 seconds for first notification to disappear
+    act(() => {
+      jest.advanceTimersByTime(8000);
+    });
+
+    // Second notification (middle time) should now be displayed
+    expect(screen.queryByText('第一条快讯（时间最早）')).not.toBeInTheDocument();
+    expect(screen.getByText('第二条快讯（时间中间）')).toBeInTheDocument();
+    expect(screen.queryByText('第三条快讯（时间最晚）')).not.toBeInTheDocument();
+
+    // Wait another 8 seconds
+    act(() => {
+      jest.advanceTimersByTime(8000);
+    });
+
+    // Third notification (latest time) should now be displayed
+    expect(screen.queryByText('第一条快讯（时间最早）')).not.toBeInTheDocument();
+    expect(screen.queryByText('第二条快讯（时间中间）')).not.toBeInTheDocument();
+    expect(screen.getByText('第三条快讯（时间最晚）')).toBeInTheDocument();
   });
 });
