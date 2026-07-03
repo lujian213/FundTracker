@@ -18,6 +18,7 @@ describe('FeeInput', () => {
       <FeeInput
         symbol="000001"
         type="buy"
+        currentDate="2026-06-15"
         price={1.0}
         total={1000}
         value={10}
@@ -49,6 +50,7 @@ describe('FeeInput', () => {
       <FeeInput
         symbol="000001"
         type="buy"
+        currentDate="2026-06-15"
         price={1.0}
         total={1000}
         value={10}
@@ -65,6 +67,7 @@ describe('FeeInput', () => {
     expect(mockCalculateFee).toHaveBeenCalledWith({
       historicalTrades: expect.any(Array),
       type: 'buy',
+      currentDate: '2026-06-15',
       price: 1.0,
       total: 1000,
       shares: undefined,
@@ -82,6 +85,7 @@ describe('FeeInput', () => {
       <FeeInput
         symbol="000001"
         type="buy"
+        currentDate="2026-06-15"
         price={1.0}
         total={1000}
         value={10}
@@ -99,6 +103,7 @@ describe('FeeInput', () => {
       <FeeInput
         symbol="000001"
         type="buy"
+        currentDate="2026-06-15"
         price={1.0}
         value={10}
         onChange={() => {}}
@@ -114,6 +119,7 @@ describe('FeeInput', () => {
       <FeeInput
         symbol="000001"
         type="sell"
+        currentDate="2026-06-15"
         price={1.0}
         value={10}
         onChange={() => {}}
@@ -129,6 +135,7 @@ describe('FeeInput', () => {
       <FeeInput
         symbol="000001"
         type="buy"
+        currentDate="2026-06-15"
         price={1.0}
         total={1000}
         value={10}
@@ -147,6 +154,7 @@ describe('FeeInput', () => {
       <FeeInput
         symbol="000001"
         type="buy"
+        currentDate="2026-06-15"
         price={1.0}
         total={1000}
         value={10}
@@ -172,6 +180,7 @@ describe('FeeInput', () => {
       <FeeInput
         symbol="000001"
         type="buy"
+        currentDate="2026-06-15"
         price={1.0}
         total={1000}
         value={10}
@@ -201,6 +210,7 @@ describe('FeeInput', () => {
       <FeeInput
         symbol="000001"
         type="buy"
+        currentDate="2026-06-15"
         price={1.0}
         total={1000}
         value={10}
@@ -241,6 +251,7 @@ describe('FeeInput', () => {
       <FeeInput
         symbol="000001"
         type="buy"
+        currentDate="2026-06-15"
         price={1.0}
         total={1000}
         value={10}
@@ -255,5 +266,42 @@ describe('FeeInput', () => {
     await waitFor(() => {
       expect(screen.getByText(/已根据历史记录计算: 15\.68元/)).toBeInTheDocument();
     });
+  });
+
+  test('卖出场景传递正确的参数', async () => {
+    const mockGetTradesForSymbol = useTrades.getTradesForSymbol as jest.Mock;
+    const mockCalculateFee = feeCalculator.calculateFee as jest.Mock;
+
+    mockGetTradesForSymbol.mockReturnValue([
+      { id: '1', date: '2024-01-01', type: 'sell', shares: 100, price: 1.0, fee: 5 },
+    ]);
+    mockCalculateFee.mockReturnValue(2.5);
+
+    const handleChange = jest.fn();
+    render(
+      <FeeInput
+        symbol="000001"
+        type="sell"
+        currentDate="2026-06-15"
+        price={1.5}
+        shares={200}
+        value={10}
+        onChange={handleChange}
+      />
+    );
+
+    const button = screen.getByRole('button', { name: '自动计算手续费' });
+    fireEvent.click(button);
+
+    // 验证调用参数正确
+    expect(mockCalculateFee).toHaveBeenCalledWith({
+      historicalTrades: expect.any(Array),
+      type: 'sell',
+      currentDate: '2026-06-15',
+      price: 1.5,
+      total: undefined,
+      shares: 200,
+    });
+    expect(handleChange).toHaveBeenCalledWith(2.5);
   });
 });

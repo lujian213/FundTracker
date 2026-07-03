@@ -674,6 +674,7 @@ const TradeBatchInputModal: React.FC<Props> = ({ onClose, onSaved, portfolio = [
                               <FeeInput
                                 symbol={group.symbol}
                                 type={row.type}
+                                currentDate={selectedDateStr}
                                 price={row.price}
                                 total={row.type === 'buy' ? row.total : undefined}
                                 shares={row.type === 'sell' ? row.shares : undefined}

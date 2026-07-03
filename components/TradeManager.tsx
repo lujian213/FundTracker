@@ -505,6 +505,7 @@ export const TradeManager: React.FC<{
             <FeeInput
               symbol={symbol}
               type={type}
+              currentDate={date}
               price={displayPrice}
               total={type === 'buy' ? Number(total) : undefined}
               shares={type === 'sell' ? Number(shares) : undefined}

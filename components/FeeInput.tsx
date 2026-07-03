@@ -5,6 +5,7 @@ import { calculateFee } from '../utils/feeCalculator';
 export interface FeeInputProps {
   symbol: string;
   type: 'buy' | 'sell';
+  currentDate: string; // 当前交易日期，用于精确匹配历史记录
   price: number;
   total?: number; // 买入时必需
   shares?: number; // 卖出时必需
@@ -23,6 +24,7 @@ export interface FeeInputProps {
 export function FeeInput({
   symbol,
   type,
+  currentDate,
   price,
   total,
   shares,
@@ -68,8 +70,8 @@ export function FeeInput({
 
       // 计算手续费 - 使用运行时验证替代类型断言
       const fee = type === 'buy'
-        ? calculateFee({ historicalTrades, type, price, total: total! })
-        : calculateFee({ historicalTrades, type, price, shares: shares! });
+        ? calculateFee({ historicalTrades, type, currentDate, price, total: total! })
+        : calculateFee({ historicalTrades, type, currentDate, price, shares: shares! });
 
       // 调用 onChange
       onChange(fee);
@@ -84,7 +86,7 @@ export function FeeInput({
       console.error('FeeInput: 计算手续费失败', error);
       showToast('计算手续费失败，请手动输入');
     }
-  }, [symbol, type, price, total, shares, onChange, showToast]);
+  }, [symbol, type, currentDate, price, total, shares, onChange, showToast]);
 
   return (
     <div className="relative">
