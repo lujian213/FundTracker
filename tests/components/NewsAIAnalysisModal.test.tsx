@@ -106,6 +106,58 @@ describe('NewsAIAnalysisModal', () => {
     expect(screen.getByText(/重要/)).toBeTruthy();
   });
 
+  // === 快讯标题链接 ===
+  test('renders clickable link for news title when url exists', async () => {
+    mockAnalyzeNewsImpact.mockImplementation(() =>
+      new Promise(resolve =>
+        setTimeout(() => resolve({ content: 'AI分析结果', success: true }), 100)
+      )
+    );
+
+    render(
+      <NewsAIAnalysisModal
+        isVisible={true}
+        onClose={() => {}}
+        news={mockNews}
+      />
+    );
+
+    // 验证标题链接存在
+    const titleLink = screen.getByRole('link', { name: mockNews.title });
+    expect(titleLink).toBeTruthy();
+    expect(titleLink.getAttribute('href')).toBe(mockNews.url);
+    expect(titleLink.getAttribute('target')).toBe('_blank');
+  });
+
+  // === 快讯标题无链接 ===
+  test('renders plain text for news title when url does not exist', async () => {
+    const newsWithoutUrl: FastNewsItem = {
+      code: 'test-003',
+      title: '无链接快讯标题',
+      summary: '无链接快讯摘要',
+      showTime: '2026-07-01 11:00:00',
+      titleColor: 0,
+    };
+
+    mockAnalyzeNewsImpact.mockImplementation(() =>
+      new Promise(resolve =>
+        setTimeout(() => resolve({ content: 'AI分析结果', success: true }), 100)
+      )
+    );
+
+    render(
+      <NewsAIAnalysisModal
+        isVisible={true}
+        onClose={() => {}}
+        news={newsWithoutUrl}
+      />
+    );
+
+    // 验证标题显示但没有链接
+    expect(screen.getByText(newsWithoutUrl.title)).toBeTruthy();
+    expect(screen.queryByRole('link', { name: newsWithoutUrl.title })).toBeNull();
+  });
+
   // === 正常加载流程 ===
   test('shows loading state and calls analyzeNewsImpact on mount', async () => {
     mockAnalyzeNewsImpact.mockImplementation(() =>

@@ -292,7 +292,19 @@ const NewsAIAnalysisModal: React.FC<NewsAIAnalysisModalProps> = ({
   const renderNewsPreview = () => (
     <div className="bg-gray-50 rounded-lg p-4 mb-4 border border-gray-100">
       <div className="flex items-center gap-2 mb-2">
-        <h4 className="font-semibold text-gray-800 flex-1">{news.title}</h4>
+        {news.url ? (
+          <a
+            href={news.url}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="font-semibold text-blue-600 flex-1 hover:text-blue-700 hover:underline cursor-pointer inline-flex items-center gap-1.5"
+          >
+            <span>{news.title}</span>
+            <i className="fas fa-external-link-alt text-xs opacity-60" />
+          </a>
+        ) : (
+          <h4 className="font-semibold text-gray-800 flex-1">{news.title}</h4>
+        )}
         {news.titleColor === 3 && (
           <span className="px-2 py-1 bg-red-100 text-red-600 text-xs font-medium rounded">
             重要
