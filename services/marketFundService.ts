@@ -13,7 +13,7 @@ import {
 } from '../types';
 import { STORAGE_KEYS, OLD_STORAGE_KEYS } from './storageKeys';
 import {
-  floorToMinute, isSameLocalDay, dedupeByMinute, extractTradeDateFromF80, extractDateFromTimestamp, filterTodayIntraday
+  floorToMinute, isSameLocalDay, isSameDay, dedupeByMinute, extractTradeDateFromF80, extractDateFromTimestamp, filterTodayIntraday
 } from '../utils/dateTimeUtils';
 import { toLocalDateKey } from '../utils/priceResolver';
 import { compressConsecutiveSameValues } from '../utils/intradayCompression';
@@ -791,8 +791,12 @@ export function appendIntradayPoint(
   const existing = funds.get(symbol);
   if (!existing) return;
 
-  // 过滤掉非当天数据和比新时间戳更晚的脏数据
-  let intraday = existing.intraday.filter(p => isSameLocalDay(p.timestamp) && p.timestamp <= minuteTs);
+  // 过滤掉与新数据不同天的数据和比新时间戳更晚的脏数据
+  // 使用 API 数据的时间戳（minuteTs）判断日期，而不是当前时间
+  // 这样周日刷新返回周五数据时，周五的日内数据会被保留
+  let intraday = existing.intraday.filter(p =>
+    isSameDay(p.timestamp, minuteTs) && p.timestamp <= minuteTs
+  );
 
   // 检查是否与上一个点值相同（跳过连续相同值）
   const last = intraday[intraday.length - 1];

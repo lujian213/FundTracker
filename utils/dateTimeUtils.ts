@@ -48,6 +48,19 @@ export function isSameLocalDay(ts: number): boolean {
 }
 
 /**
+ * 检查两个时间戳是否属于同一天（本地时间）
+ * @param ts1 第一个时间戳（毫秒）
+ * @param ts2 第二个时间戳（毫秒）
+ */
+export function isSameDay(ts1: number, ts2: number): boolean {
+  const d1 = new Date(ts1);
+  const d2 = new Date(ts2);
+  return d1.getFullYear() === d2.getFullYear()
+    && d1.getMonth() === d2.getMonth()
+    && d1.getDate() === d2.getDate();
+}
+
+/**
  * 获取今天的开始和结束时间戳
  */
 export function getTodayStartEnd(): { start: number; end: number } {

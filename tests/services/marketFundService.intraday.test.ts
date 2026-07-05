@@ -66,6 +66,82 @@ describe('marketFundService - Intraday Operations', () => {
     });
   });
 
+  describe('appendIntradayPoint - filtering by API data date (not current time)', () => {
+    test('should preserve intraday data from same day as API data when current time is different day', () => {
+      // 场景：周日刷新，API 返回周五数据（gztime = 周五），应保留周五的日内数据
+      marketFundService.addFund('000001', '测试基金');
+
+      // 使用 fake timers 模拟当前时间是周五（用于添加周五的日内数据）
+      const fridayMorning = new Date('2026-07-03 09:00:00');
+      jest.useFakeTimers().setSystemTime(fridayMorning);
+
+      // 模拟周五的日内数据（多个点）
+      const friday930 = new Date('2026-07-03 09:30:00').getTime();
+      const friday1000 = new Date('2026-07-03 10:00:00').getTime();
+      const friday1100 = new Date('2026-07-03 11:00:00').getTime();
+
+      // 添加周五的日内数据点
+      marketFundService.appendIntradayPoint('000001', 1.20, 0, friday930, '2026-07-03');
+      marketFundService.appendIntradayPoint('000001', 1.22, 0.5, friday1000, '2026-07-03');
+      marketFundService.appendIntradayPoint('000001', 1.25, 1.0, friday1100, '2026-07-03');
+
+      // 验证周五数据已添加
+      const beforeRefresh = marketFundService.getIntraday('000001');
+      expect(beforeRefresh.length).toBe(3);
+
+      // 模拟周日刷新：将当前时间设为周日
+      const sundayMorning = new Date('2026-07-05 11:00:00');
+      jest.setSystemTime(sundayMorning);
+
+      // API 返回周五数据（gztime = 周五 15:00）
+      // 关键：传入的 lastUpdated 是周五时间，而不是当前周日时间
+      const friday1500 = new Date('2026-07-03 15:00:00').getTime();
+      marketFundService.appendIntradayPoint('000001', 1.28, 1.5, friday1500, '2026-07-03');
+
+      // 期望：周五的日内数据应该被保留（因为新数据也是周五的）
+      const afterRefresh = marketFundService.getIntraday('000001');
+      expect(afterRefresh.length).toBe(4); // 原有3个点 + 新增1个点
+      expect(afterRefresh[0].value).toBeCloseTo(1.20);
+      expect(afterRefresh[3].value).toBeCloseTo(1.28);
+
+      jest.useRealTimers();
+    });
+
+    test('should clear intraday data when API data is from different day', () => {
+      // 场景：周一开盘，API 返回周一数据，应清除周五的旧日内数据
+      marketFundService.addFund('000001', '测试基金');
+
+      // 模拟当前时间是周五
+      const fridayMorning = new Date('2026-07-03 09:00:00');
+      jest.useFakeTimers().setSystemTime(fridayMorning);
+
+      // 添加周五的日内数据
+      const friday1000 = new Date('2026-07-03 10:00:00').getTime();
+      marketFundService.appendIntradayPoint('000001', 1.22, 0.5, friday1000, '2026-07-03');
+
+      // 验证周五数据已添加
+      expect(marketFundService.getIntraday('000001').length).toBe(1);
+
+      // 模拟周一刷新：当前时间设为周一
+      const mondayMorning = new Date('2026-07-05 09:00:00');
+      jest.setSystemTime(mondayMorning);
+
+      // API 返回周一数据
+      const monday930 = new Date('2026-07-05 09:30:00').getTime();
+      marketFundService.appendIntradayPoint('000001', 1.30, 2.0, monday930, '2026-07-05');
+
+      // 期望：周五数据应该被清除，只保留周一新数据
+      const afterRefresh = marketFundService.getIntraday('000001');
+      expect(afterRefresh.length).toBe(1);
+      expect(afterRefresh[0].value).toBeCloseTo(1.30);
+      // 验证时间戳是周一
+      const mondayDate = new Date(afterRefresh[0].timestamp);
+      expect(mondayDate.getDate()).toBe(5);
+
+      jest.useRealTimers();
+    });
+  });
+
   describe('appendIntradayPoint - compression', () => {
     test('should skip adding point when value equals last point', () => {
       marketFundService.addFund('000001', '测试基金');
