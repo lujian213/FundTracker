@@ -428,6 +428,7 @@ export const IndexDetailsModal: React.FC<IndexDetailsModalProps> = ({ data, onCl
                       stroke="#2563eb"
                       onHover={p => setHoveredIntradayPoint(p)}
                       valueDecimalPlaces={2}
+                      showKeyTimes={true}
                     />
                   ) : (
                     <>

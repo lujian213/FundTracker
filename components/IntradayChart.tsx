@@ -10,9 +10,10 @@ interface IntradayChartProps {
   fill?: string;
   onHover?: (p: IntradayPoint | null) => void;
   valueDecimalPlaces?: number;  // tooltip中value显示的小数位数，默认4
+  showKeyTimes?: boolean;  // 是否显示A股变盘点时间线（仅国内指数使用）
 }
 
-const IntradayChart: React.FC<IntradayChartProps> = ({ points, width = 1000, height = 250, stroke = '#ef4444', fill, onHover, valueDecimalPlaces = 4 }) => {
+const IntradayChart: React.FC<IntradayChartProps> = ({ points, width = 1000, height = 250, stroke = '#ef4444', fill, onHover, valueDecimalPlaces = 4, showKeyTimes = false }) => {
   const [hoverIdx, setHoverIdx] = useState<number | null>(null);
 
   const data = useMemo(() => {
@@ -280,8 +281,8 @@ const IntradayChart: React.FC<IntradayChartProps> = ({ points, width = 1000, hei
         {xLabels.map((lbl, i) => (
           <text key={`xl-${i}`} x={lbl.x} y={paddingTop + innerH + 20} textAnchor="middle" className="text-[12px] fill-gray-400 font-medium">{lbl.text}</text>
         ))}
-        {/* A股变盘点垂直红线 */}
-        {keyTimePoints.map((kp, i) => {
+        {/* A股变盘点垂直红线（仅国内指数显示） */}
+        {showKeyTimes && keyTimePoints.map((kp, i) => {
           const x = getX(kp.idx);
           return (
             <g key={`keytime-${i}`}>
