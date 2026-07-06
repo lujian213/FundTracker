@@ -25,12 +25,23 @@ export function hasOpenModal(): boolean {
  * 全屏模态窗口打开时调用
  *
  * 记录原始滚动条状态，隐藏滚动条，并增加引用计数
+ * 注意：只记录真正未被修改的原始状态（overflow为空或visible）
  */
 export function modalOpened(): void {
   // 第一次打开模态窗口时，记录原始状态
   if (modalRefCount === 0) {
-    originalOverflow = document.body.style.overflow;
-    originalPaddingRight = document.body.style.paddingRight;
+    // 只记录未被修改的原始状态
+    // 如果当前overflow已经是'hidden'，说明已被其他组件（如侧边栏）修改
+    // 此时记录空字符串作为原始状态，避免错误地恢复到修改后的状态
+    const currentOverflow = document.body.style.overflow;
+    originalOverflow = (currentOverflow === '' || currentOverflow === 'visible')
+      ? currentOverflow
+      : '';
+
+    const currentPaddingRight = document.body.style.paddingRight;
+    originalPaddingRight = (currentOverflow === '' || currentOverflow === 'visible')
+      ? currentPaddingRight
+      : '';
 
     // 计算滚动条宽度
     const scrollbarWidth = window.innerWidth - document.documentElement.clientWidth;
