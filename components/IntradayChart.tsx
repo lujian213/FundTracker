@@ -180,6 +180,43 @@ const IntradayChart: React.FC<IntradayChartProps> = ({ points, width = 1000, hei
     return { text: `${d.getHours()}:${String(d.getMinutes()).padStart(2, '0')}`, x: getX(idx) };
   });
 
+  // A股变盘点时间（小时:分钟）
+  const KEY_TIMES = [
+    { hour: 10, minute: 0 },
+    { hour: 10, minute: 30 },
+    { hour: 11, minute: 0 },
+    { hour: 13, minute: 30 },
+    { hour: 14, minute: 0 },
+    { hour: 14, minute: 30 },
+  ];
+
+  // 找到变盘点对应的数据点索引
+  const keyTimePoints = (() => {
+    const result: { idx: number; timeText: string }[] = [];
+    for (const kt of KEY_TIMES) {
+      // 找到最接近该时间的数据点
+      let bestIdx = -1;
+      let bestDiff = Number.POSITIVE_INFINITY;
+      for (let i = 0; i < data.pts.length; i++) {
+        const ts = data.pts[i].timestamp;
+        const d = new Date(ts);
+        const diff = Math.abs(d.getHours() * 60 + d.getMinutes() - (kt.hour * 60 + kt.minute));
+        // 允许最多5分钟的误差
+        if (diff <= 5 && diff < bestDiff) {
+          bestDiff = diff;
+          bestIdx = i;
+        }
+      }
+      if (bestIdx >= 0) {
+        result.push({
+          idx: bestIdx,
+          timeText: `${kt.hour}:${String(kt.minute).padStart(2, '0')}`
+        });
+      }
+    }
+    return result;
+  })();
+
   useEffect(() => {
     if (!onHover) return;
     if (hoverIdx === null) onHover(null);
@@ -243,6 +280,34 @@ const IntradayChart: React.FC<IntradayChartProps> = ({ points, width = 1000, hei
         {xLabels.map((lbl, i) => (
           <text key={`xl-${i}`} x={lbl.x} y={paddingTop + innerH + 20} textAnchor="middle" className="text-[12px] fill-gray-400 font-medium">{lbl.text}</text>
         ))}
+        {/* A股变盘点垂直红线 */}
+        {keyTimePoints.map((kp, i) => {
+          const x = getX(kp.idx);
+          return (
+            <g key={`keytime-${i}`}>
+              {/* 垂直红色虚线 */}
+              <line
+                x1={x}
+                y1={paddingTop}
+                x2={x}
+                y2={paddingTop + innerH}
+                stroke="#ef4444"
+                strokeWidth={1}
+                strokeDasharray="4 2"
+              />
+              {/* x轴时间标注 */}
+              <text
+                x={x}
+                y={paddingTop + innerH + 20}
+                textAnchor="middle"
+                className="text-[11px] fill-red-500 font-medium"
+                fill="#ef4444"
+              >
+                {kp.timeText}
+              </text>
+            </g>
+          );
+        })}
         {/* vertical hover line */}
         {hoverIdx !== null && svgPts[hoverIdx] && (
           <g className="pointer-events-none">
