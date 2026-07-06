@@ -552,7 +552,9 @@ export function appendIntradayPoint(
   if (!existing) return;
 
   // 使用 tradingPeriodBegin 清空上一个交易时段的旧数据，并过滤脏数据
-  const minTs = tradingPeriodBegin ?? 0;
+  // 关键逻辑：如果 tradingPeriodBegin > minuteTs（开盘前），不应该清空旧数据
+  // 只有当 tradingPeriodBegin <= minuteTs（开盘后）才清空旧数据
+  const minTs = (tradingPeriodBegin && tradingPeriodBegin <= minuteTs) ? tradingPeriodBegin : 0;
   let intraday = existing.intraday.filter(p => p.timestamp >= minTs && p.timestamp <= minuteTs);
 
   // 检查是否与上一个点值相同（跳过连续相同值）
