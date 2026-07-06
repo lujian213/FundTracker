@@ -52,8 +52,8 @@ export const AddTickerModal: React.FC<AddTickerModalProps> = ({ onClose, onAdd, 
       // Index tab - 使用统一的代码转换函数
       const codes = parts.map(c => convertIndexCode(c));
 
-      // 验证指数代码格式：必须是 "数字.数字" 或 "数字.字母" 格式
-      const validIndexPattern = /^\d+\.\d+$|^\d+\.[A-Za-z]+$/;
+      // 验证指数代码格式：必须是 "数字.字母或数字组合" 格式
+      const validIndexPattern = /^\d+\.[A-Za-z0-9]+$/;
       const validCodes = codes.filter(c => validIndexPattern.test(c));
 
       if (validCodes.length > 0) {

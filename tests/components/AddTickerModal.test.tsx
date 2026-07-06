@@ -119,4 +119,24 @@ describe('AddTickerModal', () => {
     // onAdd should be called with index codes
     expect(onAdd).toHaveBeenCalledWith(expect.arrayContaining(['100.NDX', '1.000001']), MarketType.INDEX);
   });
+
+  test('adds index codes with alphanumeric suffix (like 100.KS11)', async () => {
+    const onClose = jest.fn();
+    const onAdd = jest.fn().mockResolvedValue(undefined);
+    render(<AddTickerModal onClose={onClose} onAdd={onAdd} isLoading={false} />);
+
+    // Switch to index tab
+    const indexTab = screen.getByText('指数行情');
+    fireEvent.click(indexTab);
+
+    const textarea = screen.getByPlaceholderText(/例如: 100.NDX/);
+    // KS11 is a valid index code format (Korean KOSPI index)
+    fireEvent.change(textarea, { target: { value: '100.KS11' } });
+
+    const addButton = screen.getByText('添加代码');
+    fireEvent.click(addButton);
+
+    // onAdd should be called with the alphanumeric index code
+    expect(onAdd).toHaveBeenCalledWith(expect.arrayContaining(['100.KS11']), MarketType.INDEX);
+  });
 });
