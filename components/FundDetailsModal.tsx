@@ -52,6 +52,9 @@ export const FundDetailsModal: React.FC<FundDetailsModalProps> = ({ data, onClos
   const [hoveredTrade, setHoveredTrade] = useState<any | null>(null);
   const [visibleMAs, setVisibleMAs] = useState<Record<number, boolean>>(() => Object.fromEntries(DEFAULT_VISIBLE_MAS.map(n => [n, true])));
   const [showTooltip, setShowTooltip] = useState(false);
+  // 两点对比功能
+  const [compareMode, setCompareMode] = useState<boolean>(false);
+  const [selectedPoints, setSelectedPoints] = useState<HistoricalPoint[]>([]);
   // 满仓额度与初始仓位（单位：份）
   const [fullCapacity, setFullCapacity] = useState<number>(0);
   const [initialPosition, setInitialPosition] = useState<number>(0);
@@ -75,6 +78,55 @@ export const FundDetailsModal: React.FC<FundDetailsModalProps> = ({ data, onClos
   const [showPriceAdjust, setShowPriceAdjust] = useState(false);
   // 基金详情弹窗控制
   const [showProfileModal, setShowProfileModal] = useState(false);
+
+  // 两点对比功能处理函数
+  const toggleCompareMode = () => {
+    const newMode = !compareMode;
+    setCompareMode(newMode);
+    if (!newMode) {
+      setSelectedPoints([]);  // 关闭时清空选中点
+    }
+  };
+
+  const handleSelectPoint = (point: HistoricalPoint) => {
+    if (selectedPoints.length >= 2) {
+      return;  // 已选 2 个点，不再接受新选择
+    }
+    setSelectedPoints([...selectedPoints, point]);
+  };
+
+  const clearSelection = () => {
+    setSelectedPoints([]);
+  };
+
+  // 计算两点对比信息（使用 useMemo 避免每次渲染重新计算）
+  const compareInfo = useMemo(() => {
+    if (selectedPoints.length === 0) return null;
+
+    const formatPointInfo = (point: HistoricalPoint) => {
+      const dateStr = toLocalDateKey(point.date);
+      const valueStr = point.value.toFixed(4);
+      return `${dateStr}: ${valueStr}`;
+    };
+
+    if (selectedPoints.length === 1) {
+      return formatPointInfo(selectedPoints[0]);
+    }
+
+    // 两个点：显示两点信息和变化百分比
+    const point1Info = formatPointInfo(selectedPoints[0]);
+    const point2Info = formatPointInfo(selectedPoints[1]);
+    const changePercent = ((selectedPoints[1].value - selectedPoints[0].value) / selectedPoints[0].value) * 100;
+    const changeSign = changePercent >= 0 ? '+' : '';
+    const changeColor = changePercent >= 0 ? '#ef4444' : '#22c55e';
+
+    return (
+      <span>
+        {point1Info} → {point2Info}
+        <span style={{ color: changeColor }}> ({changeSign}{changePercent.toFixed(2)}%)</span>
+      </span>
+    );
+  }, [selectedPoints]);
 
   // AI Assistant state variables
   interface Message {
@@ -1317,6 +1369,39 @@ export const FundDetailsModal: React.FC<FundDetailsModalProps> = ({ data, onClos
                       <div className="text-xs text-transparent font-medium">占位</div>
                     </div>
                     <div className="relative" style={{ height: chartHeight }}>
+                      {/* 两点对比控件 - 左上角绝对定位 */}
+                      <div className="absolute top-0 left-2 z-10 flex items-center space-x-1">
+                        <button
+                          type="button"
+                          aria-label="两点对比"
+                          title="两点对比"
+                          onClick={toggleCompareMode}
+                          className="text-[10px] p-1.5 rounded border inline-flex items-center justify-center transition-colors bg-white/80 backdrop-blur-sm"
+                          style={{
+                            borderColor: compareMode ? '#2563eb' : '#d1d5db',
+                            color: compareMode ? '#2563eb' : '#6b7280',
+                            backgroundColor: compareMode ? 'rgba(37, 99, 235, 0.1)' : 'rgba(255,255,255,0.8)'
+                          }}
+                        >
+                          <i className="fas fa-ruler text-xs"></i>
+                        </button>
+                        {compareMode && (
+                          <button
+                            type="button"
+                            aria-label="清除选择"
+                            title="清除选择"
+                            onClick={clearSelection}
+                            className="text-[10px] p-1.5 rounded border border-gray-300 inline-flex items-center justify-center transition-colors bg-white/80 backdrop-blur-sm text-gray-500 hover:text-gray-700 hover:border-gray-400"
+                          >
+                            <i className="fas fa-times text-xs"></i>
+                          </button>
+                        )}
+                        {compareMode && selectedPoints.length > 0 && (
+                          <span className="text-[11px] font-medium ml-2" style={{ color: '#374151' }}>
+                            {compareInfo}
+                          </span>
+                        )}
+                      </div>
                       {/* 均线切换按钮 - 右上角绝对定位 */}
                       <div className="absolute top-1 right-2 z-10 flex items-center space-x-1">
                         {MA_WINDOWS.map(n => {
@@ -1373,6 +1458,10 @@ export const FundDetailsModal: React.FC<FundDetailsModalProps> = ({ data, onClos
                          volumeChartHeight={80}
                          costPath={trendChartData.costPath}
                          costPrices={trendChartData.costPrices}
+                         // 两点对比功能
+                         compareMode={compareMode}
+                         selectedPoints={selectedPoints}
+                         onSelectPoint={handleSelectPoint}
                        />
                      </div>
                     {/* 占位区域，保持与日内趋势图高度一致 */}

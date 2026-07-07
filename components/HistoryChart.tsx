@@ -33,6 +33,10 @@ interface HistoryChartProps {
   // 成本价曲线（新增）
   costPath?: string;                     // 成本价曲线 SVG 路径
   costPrices?: (number | null | undefined)[]; // 成本价数据（用于悬停显示）
+  // 两点对比功能
+  compareMode?: boolean;
+  selectedPoints?: HistoricalPoint[];
+  onSelectPoint?: (point: HistoricalPoint) => void;
 }
 
 const HistoryChart: React.FC<HistoryChartProps> = ({
@@ -64,6 +68,10 @@ const HistoryChart: React.FC<HistoryChartProps> = ({
   // 成本价曲线
   costPath,
   costPrices,
+  // 两点对比功能
+  compareMode,
+  selectedPoints,
+  onSelectPoint,
 }) => {
   // find index of hovered point for MA lookup
   const hoveredIndex = hoveredPoint ? points.findIndex(p => p.data === hoveredPoint) : -1;
@@ -78,6 +86,12 @@ const HistoryChart: React.FC<HistoryChartProps> = ({
 
   // 是否显示基金交易量区域
   const showFundVolumeChart = showFundVolume && fundVolumeBars && fundVolumeBars.length > 0;
+
+  // 两点对比：构建日期到坐标点的映射，避免每次渲染都执行线性查找
+  const pointsByDate = useMemo(
+    () => new Map(points.map(p => [p.data.date, p])),
+    [points]
+  );
 
   // chart paddings must match modal chartData paddingTop/paddingBottom and paddingLeft/paddingRight
   const PADDING_LEFT = 110; // increased to reserve space for up to ~12 chars (including thousand separators and symbols)
@@ -227,7 +241,17 @@ const HistoryChart: React.FC<HistoryChartProps> = ({
         ))}
 
         {points.map((p, i) => (
-          <rect key={i} x={p.x - 5} y={0} width="10" height={Math.max(1, height - 40)} fill="transparent" onMouseEnter={() => setHoveredPoint(p.data)} className="cursor-crosshair" />
+          <rect
+            key={i}
+            x={p.x - 5}
+            y={0}
+            width="10"
+            height={Math.max(1, height - 40)}
+            fill="transparent"
+            onMouseEnter={() => setHoveredPoint(p.data)}
+            onClick={compareMode ? () => onSelectPoint?.(p.data) : undefined}
+            className={compareMode ? "cursor-pointer" : "cursor-crosshair"}
+          />
         ))}
 
         {/* 成交量柱状图（仅指数显示） */}
@@ -325,6 +349,36 @@ const HistoryChart: React.FC<HistoryChartProps> = ({
             <circle data-testid={`marker-circle-${idx}`} cx={m.x} cy={m.y} r={5} fill={m.type === 'position_start' ? '#22c55e' : (m.type === 'sell' ? '#2563eb' : '#ef4444')} stroke="#fff" strokeWidth={1} />
           </g>
         ))}
+
+        {/* 两点对比 - 选中点圆点标记 */}
+        {selectedPoints && selectedPoints.map((point, idx) => {
+          const p = pointsByDate.get(point.date);
+          if (!p) return null;
+          const color = idx === 0 ? '#f97316' : '#8b5cf6';  // 第一点橙色，第二点紫色
+          return (
+            <g key={`selected-point-${idx}`}>
+              {/* 外圈光环效果 */}
+              <circle
+                cx={p.x}
+                cy={p.y}
+                r="12"
+                fill={color}
+                fillOpacity="0.3"
+                className="pointer-events-none"
+              />
+              {/* 内圈实心圆点 */}
+              <circle
+                cx={p.x}
+                cy={p.y}
+                r="8"
+                fill={color}
+                stroke="#fff"
+                strokeWidth={3}
+                className="pointer-events-none"
+              />
+            </g>
+          );
+        })}
 
         {/* marker hovertips (render when a marker is hovered via hoveredPoint + matching marker) */}
         {(() => {

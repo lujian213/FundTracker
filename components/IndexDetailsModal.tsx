@@ -45,6 +45,58 @@ export const IndexDetailsModal: React.FC<IndexDetailsModalProps> = ({ data, onCl
   const [intradayPoints, setIntradayPoints] = useState<any[]>([]);
   const [visibleMAs, setVisibleMAs] = useState<Record<number, boolean>>(() => Object.fromEntries(DEFAULT_VISIBLE_MAS.map(n => [n, true])));
   const [hoveredIntradayPoint, setHoveredIntradayPoint] = useState<any | null>(null);
+  // 两点对比功能
+  const [compareMode, setCompareMode] = useState<boolean>(false);
+  const [selectedPoints, setSelectedPoints] = useState<HistoricalPoint[]>([]);
+
+  // 两点对比功能处理函数
+  const toggleCompareMode = () => {
+    const newMode = !compareMode;
+    setCompareMode(newMode);
+    if (!newMode) {
+      setSelectedPoints([]);
+    }
+  };
+
+  const handleSelectPoint = (point: HistoricalPoint) => {
+    if (selectedPoints.length >= 2) {
+      return;
+    }
+    setSelectedPoints([...selectedPoints, point]);
+  };
+
+  const clearSelection = () => {
+    setSelectedPoints([]);
+  };
+
+  // 计算两点对比信息（使用 useMemo 避免每次渲染重新计算）
+  const compareInfo = useMemo(() => {
+    if (selectedPoints.length === 0) return null;
+
+    const formatPointInfo = (point: HistoricalPoint) => {
+      const dateStr = toLocalDateKey(point.date);
+      const valueStr = point.value.toFixed(4);
+      return `${dateStr}: ${valueStr}`;
+    };
+
+    if (selectedPoints.length === 1) {
+      return formatPointInfo(selectedPoints[0]);
+    }
+
+    const point1Info = formatPointInfo(selectedPoints[0]);
+    const point2Info = formatPointInfo(selectedPoints[1]);
+    const changePercent = ((selectedPoints[1].value - selectedPoints[0].value) / selectedPoints[0].value) * 100;
+    const changeSign = changePercent >= 0 ? '+' : '';
+    const changeColor = changePercent >= 0 ? '#ef4444' : '#22c55e';
+
+    return (
+      <span>
+        {point1Info} → {point2Info}
+        <span style={{ color: changeColor }}> ({changeSign}{changePercent.toFixed(2)}%)</span>
+      </span>
+    );
+  }, [selectedPoints]);
+
   const [showAI, setShowAI] = useState(false);
   // 历史趋势图周期选择（日K、5分钟、15分钟、30分钟、60分钟）
   const [historyPeriod, setHistoryPeriod] = useState<HistoryKlinePeriod>('realtime'); // 'realtime' 表示日K
@@ -392,6 +444,41 @@ export const IndexDetailsModal: React.FC<IndexDetailsModalProps> = ({ data, onCl
                 </div>
                 {/* 固定高度的图表容器，确保tab切换时高度不变 */}
                 <div className="relative" style={{ height: chartHeight + 12 }}>
+                  {/* 两点对比控件 - 左上角绝对定位（历史趋势图） */}
+                  {activeTab === 'history' && (
+                    <div className="absolute top-0 left-2 z-10 flex items-center space-x-1">
+                      <button
+                        type="button"
+                        aria-label="两点对比"
+                        title="两点对比"
+                        onClick={toggleCompareMode}
+                        className="text-[10px] p-1.5 rounded border inline-flex items-center justify-center transition-colors bg-white/80 backdrop-blur-sm"
+                        style={{
+                          borderColor: compareMode ? '#2563eb' : '#d1d5db',
+                          color: compareMode ? '#2563eb' : '#6b7280',
+                          backgroundColor: compareMode ? 'rgba(37, 99, 235, 0.1)' : 'rgba(255,255,255,0.8)'
+                        }}
+                      >
+                        <i className="fas fa-ruler text-xs"></i>
+                      </button>
+                      {compareMode && (
+                        <button
+                          type="button"
+                          aria-label="清除选择"
+                          title="清除选择"
+                          onClick={clearSelection}
+                          className="text-[10px] p-1.5 rounded border border-gray-300 inline-flex items-center justify-center transition-colors bg-white/80 backdrop-blur-sm text-gray-500 hover:text-gray-700 hover:border-gray-400"
+                        >
+                          <i className="fas fa-times text-xs"></i>
+                        </button>
+                      )}
+                      {compareMode && selectedPoints.length > 0 && (
+                        <span className="text-[11px] font-medium ml-2" style={{ color: '#374151' }}>
+                          {compareInfo}
+                        </span>
+                      )}
+                    </div>
+                  )}
                   {/* 均线切换按钮 - 右上角绝对定位（历史趋势图 + 日K模式） */}
                   {activeTab === 'history' && (
                     <div className="absolute top-1 right-2 z-10 flex items-center space-x-1">
@@ -458,6 +545,9 @@ export const IndexDetailsModal: React.FC<IndexDetailsModalProps> = ({ data, onCl
                          height={chartHeight}
                          volumeData={volumeData}
                          volumeHeight={volumeHeight}
+                         compareMode={compareMode}
+                         selectedPoints={selectedPoints}
+                         onSelectPoint={handleSelectPoint}
                        />
                     </>
                   )}

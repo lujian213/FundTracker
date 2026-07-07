@@ -3096,6 +3096,181 @@ test.describe('testBedWithData', () => {
   });
 
   // ═══════════════════════════════════════════════════════════════════════════════
+  // 测试用例 10.1：国内指数变盘点测试
+  // ═══════════════════════════════════════════════════════════════════════════════
+
+  test('国内指数变盘点测试', async () => {
+    const page = sharedPage!;
+
+    // ══════════════════════════════════════════════════════════════════════════════
+    // 1. 点击上证指数卡片（国内指数），弹出详情窗口
+    // ══════════════════════════════════════════════════════════════════════════════
+    const indexCards = page.locator('div.bg-white.rounded-2xl.border').filter({ has: page.locator('h4') });
+    const shangZhengCard = indexCards.filter({ has: page.locator('text=上证指数') }).first();
+    await expect(shangZhengCard).toBeVisible({ timeout: 10000 });
+    await shangZhengCard.click();
+
+    const indexModal = page.locator('#index-details-modal h2');
+    await expect(indexModal).toBeVisible({ timeout: 5000 });
+
+    // ══════════════════════════════════════════════════════════════════════════════
+    // 2. 验证日内趋势图显示变盘点时间线
+    // ══════════════════════════════════════════════════════════════════════════════
+    await expect(page.locator('button:has-text("日内趋势图")')).toHaveClass(/bg-white border/);
+    const intradayChart = page.locator('#index-details-modal svg').first();
+    await expect(intradayChart).toBeVisible({ timeout: 5000 });
+
+    // 验证变盘点垂直虚线存在（红色虚线）
+    const keyTimeLines = await page.evaluate(() => {
+      const svg = document.querySelector('#index-details-modal svg');
+      if (!svg) return { count: 0 };
+      const lines = svg.querySelectorAll('line[stroke="#ef4444"][stroke-dasharray="4 2"]');
+      return { count: lines.length };
+    });
+    expect(keyTimeLines?.count).toBeGreaterThan(0);
+
+    // 验证变盘点时间标注存在（红色文字）
+    const keyTimeLabels = await page.evaluate(() => {
+      const svg = document.querySelector('#index-details-modal svg');
+      if (!svg) return { has10_00: false, has10_30: false };
+      const texts = svg.querySelectorAll('text[fill="#ef4444"]');
+      let has10_00 = false, has10_30 = false;
+      texts.forEach(t => {
+        const text = t.textContent || '';
+        if (text.includes('10:00') || text.includes('10:0')) has10_00 = true;
+        if (text.includes('10:30')) has10_30 = true;
+      });
+      return { has10_00, has10_30 };
+    });
+    // 至少有一个变盘点时间标注
+    expect(keyTimeLabels?.has10_00 || keyTimeLabels?.has10_30).toBe(true);
+
+    // ══════════════════════════════════════════════════════════════════════════════
+    // 3. 点击历史趋势图tab
+    // ══════════════════════════════════════════════════════════════════════════════
+    await page.click('button:has-text("历史趋势图")');
+    await expect(page.locator('button:has-text("历史趋势图")')).toHaveClass(/bg-white border/, { timeout: 2000 });
+
+    // ══════════════════════════════════════════════════════════════════════════════
+    // 4. 验证两点对比按钮存在
+    // ══════════════════════════════════════════════════════════════════════════════
+    const compareButton = page.locator('#index-details-modal button[title="两点对比"]');
+    await expect(compareButton).toBeVisible({ timeout: 3000 });
+
+    // ══════════════════════════════════════════════════════════════════════════════
+    // 5. 点击两点对比按钮，验证按钮变色
+    // ══════════════════════════════════════════════════════════════════════════════
+    await compareButton.click();
+    await page.waitForTimeout(500); // 等待状态更新
+
+    // 验证按钮变为蓝色高亮状态（检查 borderColor）
+    const buttonBorderColor = await compareButton.evaluate((btn) => {
+      const style = window.getComputedStyle(btn);
+      return style.borderColor;
+    });
+    // borderColor 应该包含蓝色（rgb 格式或 hex 格式）
+    const isBlueBorder = buttonBorderColor.includes('37, 99, 235') || buttonBorderColor.includes('#2563eb');
+    expect(isBlueBorder).toBe(true);
+
+    // 验证清除按钮出现
+    const clearButton = page.locator('#index-details-modal button[title="清除选择"]');
+    await expect(clearButton).toBeVisible({ timeout: 3000 });
+
+    // ══════════════════════════════════════════════════════════════════════════════
+    // 6. 点击图表上的一个数据点，验证选中点标记和信息显示
+    // ══════════════════════════════════════════════════════════════════════════════
+    const historyChart = page.locator('#index-details-modal svg').first();
+    const historyBounds = await historyChart.boundingBox();
+    if (historyBounds) {
+      // 点击图表中部的数据点
+      await page.mouse.click(historyBounds.x + historyBounds.width * 0.4, historyBounds.y + historyBounds.height * 0.4);
+    }
+
+    // 验证橙色选中点标记存在
+    const orangePoint = await page.evaluate(() => {
+      const svg = document.querySelector('#index-details-modal svg');
+      if (!svg) return false;
+      const circles = svg.querySelectorAll('circle[fill="#f97316"]');
+      return circles.length >= 2; // 外圈+内圈共2个
+    });
+    expect(orangePoint).toBe(true);
+
+    // ══════════════════════════════════════════════════════════════════════════════
+    // 7. 点击图表上的另一个数据点，验证第二个选中点和变化百分比
+    // ══════════════════════════════════════════════════════════════════════════════
+    if (historyBounds) {
+      // 点击另一个数据点
+      await page.mouse.click(historyBounds.x + historyBounds.width * 0.6, historyBounds.y + historyBounds.height * 0.5);
+    }
+
+    // 验证紫色选中点标记存在
+    const purplePoint = await page.evaluate(() => {
+      const svg = document.querySelector('#index-details-modal svg');
+      if (!svg) return false;
+      const circles = svg.querySelectorAll('circle[fill="#8b5cf6"]');
+      return circles.length >= 2; // 外圈+内圈共2个
+    });
+    expect(purplePoint).toBe(true);
+
+    // 验证信息显示包含变化百分比
+    const compareInfo = await page.evaluate(() => {
+      const modal = document.querySelector('#index-details-modal');
+      if (!modal) return { hasPercent: false };
+      // 查找两点对比信息显示区域
+      const spans = modal.querySelectorAll('span');
+      for (const span of spans) {
+        const text = span.textContent || '';
+        if (text.includes('%') && (text.includes('+') || text.includes('-'))) {
+          return { hasPercent: true, text };
+        }
+      }
+      return { hasPercent: false };
+    });
+    expect(compareInfo?.hasPercent).toBe(true);
+
+    // ══════════════════════════════════════════════════════════════════════════════
+    // 8. 点击清除按钮，验证选中点和信息消失
+    // ══════════════════════════════════════════════════════════════════════════════
+    await clearButton.click();
+
+    // 验证选中点标记消失
+    const noPoints = await page.evaluate(() => {
+      const svg = document.querySelector('#index-details-modal svg');
+      if (!svg) return true;
+      const orange = svg.querySelectorAll('circle[fill="#f97316"]');
+      const purple = svg.querySelectorAll('circle[fill="#8b5cf6"]');
+      return orange.length === 0 && purple.length === 0;
+    });
+    expect(noPoints).toBe(true);
+
+    // ══════════════════════════════════════════════════════════════════════════════
+    // 9. 再次点击两点对比按钮，验证模式关闭
+    // ══════════════════════════════════════════════════════════════════════════════
+    await compareButton.click();
+    await page.waitForTimeout(500); // 等待状态更新
+
+    // 验证按钮恢复为灰色状态（检查 color）
+    const buttonColor = await compareButton.evaluate((btn) => {
+      const style = window.getComputedStyle(btn);
+      return style.color;
+    });
+    // color 应该是灰色 rgb(107, 114, 128)
+    const isGrayColor = buttonColor.includes('107, 114, 128') || buttonColor.includes('#6b7280');
+    expect(isGrayColor).toBe(true);
+
+    // 验证清除按钮消失
+    await expect(clearButton).not.toBeVisible({ timeout: 3000 });
+
+    // ══════════════════════════════════════════════════════════════════════════════
+    // 10. 关闭窗口
+    // ══════════════════════════════════════════════════════════════════════════════
+    await page.click('#index-details-modal button:has(i.fa-times)');
+    await expect(indexModal).not.toBeVisible();
+
+    console.log('国内指数变盘点测试完成');
+  });
+
+  // ═══════════════════════════════════════════════════════════════════════════════
   // 测试用例 11：基金卡片测试
   // ═══════════════════════════════════════════════════════════════════════════════
 
