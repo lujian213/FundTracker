@@ -74,8 +74,8 @@ export const IndexDetailsModal: React.FC<IndexDetailsModalProps> = ({ data, onCl
     if (selectedPoints.length === 0) return null;
 
     const formatPointInfo = (point: HistoricalPoint) => {
-      const dateStr = toLocalDateKey(point.date);
-      const valueStr = point.value.toFixed(4);
+      const dateStr = toLocalDateKey(point.date).replace(/-/g, '/');
+      const valueStr = point.value.toFixed(2);
       return `${dateStr}: ${valueStr}`;
     };
 

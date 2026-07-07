@@ -104,8 +104,8 @@ export const FundDetailsModal: React.FC<FundDetailsModalProps> = ({ data, onClos
     if (selectedPoints.length === 0) return null;
 
     const formatPointInfo = (point: HistoricalPoint) => {
-      const dateStr = toLocalDateKey(point.date);
-      const valueStr = point.value.toFixed(4);
+      const dateStr = toLocalDateKey(point.date).replace(/-/g, '/');
+      const valueStr = point.value.toFixed(4);  // 基金保留4位小数
       return `${dateStr}: ${valueStr}`;
     };
 
