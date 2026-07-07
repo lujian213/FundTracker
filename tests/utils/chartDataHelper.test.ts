@@ -1,5 +1,6 @@
 import { prepareChartData, smartPrepareChartData } from '../../utils/chartDataHelper';
 import { HistoricalPoint } from '../../types';
+import { toLocalDateKey } from '../../utils/priceResolver';
 
 describe('prepareChartData', () => {
   // 生成测试数据
@@ -200,8 +201,8 @@ describe('smartPrepareChartData', () => {
     it('应该强制保留交易日', () => {
       const data = generateTestData(200);
       // 交易日在早期数据中（第10天和第20天）
-      const tradeDate1 = new Date(data[10].date).toISOString().split('T')[0];
-      const tradeDate2 = new Date(data[20].date).toISOString().split('T')[0];
+      const tradeDate1 = toLocalDateKey(data[10].date);
+      const tradeDate2 = toLocalDateKey(data[20].date);
       const preserveDates = [tradeDate1, tradeDate2];
 
       const result = smartPrepareChartData(data, {
@@ -215,7 +216,7 @@ describe('smartPrepareChartData', () => {
 
       // 验证显示数据包含这些日期
       const displayDates = result.displayData.map(p =>
-        new Date(p.date).toISOString().split('T')[0]
+        toLocalDateKey(p.date)
       );
       expect(displayDates).toContain(tradeDate1);
       expect(displayDates).toContain(tradeDate2);
@@ -223,7 +224,7 @@ describe('smartPrepareChartData', () => {
 
     it('应该保留建仓日期', () => {
       const data = generateTestData(200);
-      const startDate = new Date(data[5].date).toISOString().split('T')[0];
+      const startDate = toLocalDateKey(data[5].date);
 
       const result = smartPrepareChartData(data, {
         displayCount: 60,
@@ -236,7 +237,7 @@ describe('smartPrepareChartData', () => {
     it('交易日在最近displayCount范围内时应正常包含', () => {
       const data = generateTestData(200);
       // 交易日在最近60天内（第150天）
-      const tradeDate = new Date(data[150].date).toISOString().split('T')[0];
+      const tradeDate = toLocalDateKey(data[150].date);
 
       const result = smartPrepareChartData(data, {
         displayCount: 60,
@@ -254,7 +255,7 @@ describe('smartPrepareChartData', () => {
       // 情况1：第一笔交易日期在 displayCount 范围外（更早）
       // displayCount=60，范围是第140-200个点
       // 第一笔交易在第50个点（更早）
-      const firstTradeDate = new Date(data[50].date).toISOString().split('T')[0];
+      const firstTradeDate = toLocalDateKey(data[50].date);
       const result = smartPrepareChartData(data, {
         displayCount: 60,
         preserveDates: [firstTradeDate]
@@ -262,7 +263,7 @@ describe('smartPrepareChartData', () => {
 
       // 显示起点应为第一笔交易日期（因为它更早）
       const displayDates = result.displayData.map(p =>
-        new Date(p.date).toISOString().split('T')[0]
+        toLocalDateKey(p.date)
       );
       expect(displayDates).toContain(firstTradeDate);
     });
@@ -272,16 +273,16 @@ describe('smartPrepareChartData', () => {
 
       // displayCount=60，范围是第140-200个点
       // 第一笔交易在第150个点（在范围内）
-      const firstTradeDate = new Date(data[150].date).toISOString().split('T')[0];
+      const firstTradeDate = toLocalDateKey(data[150].date);
       const result = smartPrepareChartData(data, {
         displayCount: 60,
         preserveDates: [firstTradeDate]
       });
 
       // 显示起点应为第140个点（displayCount范围起点）
-      const displayCountStartDate = new Date(data[140].date).toISOString().split('T')[0];
+      const displayCountStartDate = toLocalDateKey(data[140].date);
       const displayDates = result.displayData.map(p =>
-        new Date(p.date).toISOString().split('T')[0]
+        toLocalDateKey(p.date)
       );
       expect(displayDates[0]).toBe(displayCountStartDate);
     });
@@ -294,9 +295,9 @@ describe('smartPrepareChartData', () => {
       });
 
       // displayCount=60，范围是第140-200个点
-      const displayCountStartDate = new Date(data[140].date).toISOString().split('T')[0];
+      const displayCountStartDate = toLocalDateKey(data[140].date);
       const displayDates = result.displayData.map(p =>
-        new Date(p.date).toISOString().split('T')[0]
+        toLocalDateKey(p.date)
       );
       expect(displayDates[0]).toBe(displayCountStartDate);
     });
@@ -304,7 +305,7 @@ describe('smartPrepareChartData', () => {
     it('应该保留转折点（在早期数据范围内）', () => {
       const data = generateDataWithTurningPoints(200);
       // 第一笔交易在第10天（确保转折点在早期数据范围内）
-      const firstTradeDate = new Date(data[10].date).toISOString().split('T')[0];
+      const firstTradeDate = toLocalDateKey(data[10].date);
 
       const result = smartPrepareChartData(data, {
         displayCount: 60,
@@ -318,7 +319,7 @@ describe('smartPrepareChartData', () => {
 
     it('转折点阈值应影响检测结果', () => {
       const data = generateDataWithTurningPoints(200);
-      const firstTradeDate = new Date(data[5].date).toISOString().split('T')[0];
+      const firstTradeDate = toLocalDateKey(data[5].date);
 
       const resultLowThreshold = smartPrepareChartData(data, {
         displayCount: 60,
@@ -365,7 +366,7 @@ describe('smartPrepareChartData', () => {
     it('交易日的MA值应正确', () => {
       const data = generateTestData(200);
       const tradeIdx = 10;
-      const tradeDate = new Date(data[tradeIdx].date).toISOString().split('T')[0];
+      const tradeDate = toLocalDateKey(data[tradeIdx].date);
 
       const result = smartPrepareChartData(data, {
         displayCount: 60,
@@ -374,7 +375,7 @@ describe('smartPrepareChartData', () => {
 
       // 找到交易日在displayData中的索引
       const displayIdx = result.displayData.findIndex(p =>
-        new Date(p.date).toISOString().split('T')[0] === tradeDate
+        toLocalDateKey(p.date) === tradeDate
       );
 
       // 该点应该有MA值
@@ -394,10 +395,10 @@ describe('smartPrepareChartData', () => {
 
       // 最近60个点全部保留
       const recentDates = data.slice(-60).map(p =>
-        new Date(p.date).toISOString().split('T')[0]
+        toLocalDateKey(p.date)
       );
       const lastDisplayDates = result.displayData.slice(-60).map(p =>
-        new Date(p.date).toISOString().split('T')[0]
+        toLocalDateKey(p.date)
       );
       expect(lastDisplayDates).toEqual(recentDates);
     });
@@ -406,9 +407,9 @@ describe('smartPrepareChartData', () => {
       const data = generateTestData(200);
       // 早期有多个交易日
       const preserveDates = [
-        new Date(data[10].date).toISOString().split('T')[0],
-        new Date(data[30].date).toISOString().split('T')[0],
-        new Date(data[50].date).toISOString().split('T')[0]
+        toLocalDateKey(data[10].date),
+        toLocalDateKey(data[30].date),
+        toLocalDateKey(data[50].date)
       ];
 
       const result = smartPrepareChartData(data, {
