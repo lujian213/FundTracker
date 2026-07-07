@@ -12,7 +12,7 @@ import { formatDateDisplay, formatDateShort, formatTime } from '../utils/dateFor
 import { formatVolume, formatAmount } from '../utils/format';
 import { prepareChartData } from '../utils/chartDataHelper';
 import IndexAISidePanel from './IndexAISidePanel';
-import { getIndexDetailUrl } from '../src/utils/indexUrlHelper';
+import { getIndexDetailUrl, isAStockIndex } from '../src/utils/indexUrlHelper';
 import { useModalBodyStyle } from '../hooks/useModalBodyStyle';
 
 // 分钟K线数据内存缓存（不持久化）
@@ -428,7 +428,7 @@ export const IndexDetailsModal: React.FC<IndexDetailsModalProps> = ({ data, onCl
                       stroke="#2563eb"
                       onHover={p => setHoveredIntradayPoint(p)}
                       valueDecimalPlaces={2}
-                      showKeyTimes={true}
+                      showKeyTimes={isAStockIndex(data.info.symbol)}
                     />
                   ) : (
                     <>

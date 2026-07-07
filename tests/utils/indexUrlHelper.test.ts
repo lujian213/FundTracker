@@ -5,6 +5,7 @@ import {
   getMarketDescription,
   isDomesticIndex,
   isGlobalIndex,
+  isAStockIndex,
   getIndexMarketType,
   getIndexName,
   convertIndexCode,
@@ -235,6 +236,41 @@ describe('Index URL Helper', () => {
     test('港股指数', () => {
       expect(isGlobalIndex('100.HSI')).toBe(false);
       expect(isGlobalIndex('124.HSTECH')).toBe(false);
+    });
+  });
+
+  describe('isAStockIndex', () => {
+    test('A股指数 - 上交所', () => {
+      expect(isAStockIndex('1.000001')).toBe(true);
+      expect(isAStockIndex('1.000300')).toBe(true);
+    });
+
+    test('A股指数 - 深交所', () => {
+      expect(isAStockIndex('0.399001')).toBe(true);
+      expect(isAStockIndex('0.399006')).toBe(true);
+      expect(isAStockIndex('0.399005')).toBe(true);
+    });
+
+    test('港股指数 - 不属于A股', () => {
+      expect(isAStockIndex('100.HSI')).toBe(false);
+      expect(isAStockIndex('124.HSTECH')).toBe(false);
+    });
+
+    test('美股指数 - 不属于A股', () => {
+      expect(isAStockIndex('100.NDX')).toBe(false);
+      expect(isAStockIndex('100.SPX')).toBe(false);
+      expect(isAStockIndex('100.DJI')).toBe(false);
+      expect(isAStockIndex('100.IXIC')).toBe(false);
+    });
+
+    test('全球期货 - 不属于A股', () => {
+      expect(isAStockIndex('101.GC00Y')).toBe(false);
+      expect(isAStockIndex('102.CL00Y')).toBe(false);
+    });
+
+    test('无效格式返回false', () => {
+      expect(isAStockIndex('invalid')).toBe(false);
+      expect(isAStockIndex('000001')).toBe(false); // 缺少市场代码前缀
     });
   });
 

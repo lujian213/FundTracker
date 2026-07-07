@@ -140,6 +140,21 @@ export function isDomesticIndex(symbol: string): boolean {
 }
 
 /**
+ * 判断是否为A股指数（仅上交所和深交所）
+ * @param symbol 指数代码，格式：{市场代码}.{指数代码}
+ * @returns 是否为A股指数
+ */
+export function isAStockIndex(symbol: string): boolean {
+  try {
+    const { marketCode } = parseIndexCode(symbol);
+    // A股指数：市场代码为 0（深交所）或 1（上交所）
+    return marketCode === 0 || marketCode === 1;
+  } catch {
+    return false;
+  }
+}
+
+/**
  * 判断是否为全球指数（美股 + 商品期货等）
  * @param symbol 指数代码，格式：{市场代码}.{指数代码}
  * @returns 是否为全球指数
