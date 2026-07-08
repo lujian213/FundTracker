@@ -1462,6 +1462,8 @@ export const FundDetailsModal: React.FC<FundDetailsModalProps> = ({ data, onClos
                          compareMode={compareMode}
                          selectedPoints={selectedPoints}
                          onSelectPoint={handleSelectPoint}
+                         priceDecimals={4}
+                         showPriceLine={true}
                        />
                      </div>
                     {/* 占位区域，保持与日内趋势图高度一致 */}

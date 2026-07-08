@@ -2,6 +2,7 @@ import React, { useMemo } from 'react';
 import { HistoricalPoint, VolumeData, VolumeBar, FundPositionTrendPoint } from '../types';
 import { MA_COLORS } from '../utils/movingAverage';
 import { toLocalDateKey } from '../utils/priceResolver';
+import { fmtNumber } from '../utils/format';
 
 interface HistoryChartProps {
   viewBox: string;
@@ -37,6 +38,9 @@ interface HistoryChartProps {
   compareMode?: boolean;
   selectedPoints?: HistoricalPoint[];
   onSelectPoint?: (point: HistoricalPoint) => void;
+  // 价格格式化参数（简化版）
+  priceDecimals?: number; // 价格小数位数，默认4（如：基金净值4位，指数点位2位）
+  showPriceLine?: boolean; // 是否显示水平虚线和价格标签，默认true（持仓总金额趋势设为false）
 }
 
 const HistoryChart: React.FC<HistoryChartProps> = ({
@@ -72,6 +76,9 @@ const HistoryChart: React.FC<HistoryChartProps> = ({
   compareMode,
   selectedPoints,
   onSelectPoint,
+  // 价格格式化参数
+  priceDecimals = 4,
+  showPriceLine = true,
 }) => {
   // find index of hovered point for MA lookup
   const hoveredIndex = hoveredPoint ? points.findIndex(p => p.data === hoveredPoint) : -1;
@@ -492,9 +499,13 @@ const HistoryChart: React.FC<HistoryChartProps> = ({
           const halfWidth = Math.ceil((labelText.length * EST_CHAR_WIDTH) / 2) + 6;
           const labelX = Math.max(halfWidth, Math.min(vbW - halfWidth, px));
 
-          // 价格标签
+          // 价格标签：根据参数格式化（移除IIFE，简化逻辑）
           const priceValue = (hoveredPoint as any).value;
-          const priceText = priceValue !== undefined && priceValue !== null ? priceValue.toFixed(4) : '';
+          // showPriceLine为false时不显示价格（持仓总金额趋势）
+          // priceDecimals控制小数位数（指数2位，基金4位）
+          const priceText = !showPriceLine || priceValue == null
+            ? ''
+            : fmtNumber(priceValue, priceDecimals);
 
           // 根据点的位置决定价格标签显示在哪一端
           const centerX = (chartLeft + chartRight) / 2;
@@ -509,13 +520,15 @@ const HistoryChart: React.FC<HistoryChartProps> = ({
               <line x1={px} y1={chartTop} x2={px} y2={chartBottom} stroke={stroke} strokeWidth="1" strokeDasharray="4 2" className="pointer-events-none" />
               {/* 日期标签 */}
               <text x={labelX} y={Math.max(18, chartTop - 4)} textAnchor="middle" className="text-[12px] font-medium fill-gray-600 pointer-events-none">{labelText}</text>
-              {/* 水平虚线 - 从图表左边缘到右边缘 */}
-              <line x1={chartLeft} y1={py} x2={chartRight} y2={py} stroke={stroke} strokeWidth="1" strokeDasharray="4 2" className="pointer-events-none" />
-              {/* 交叉点标记 - 确保水平虚线和垂直虚线与点相连 */}
-              <circle cx={px} cy={py} r="4" fill={stroke} className="pointer-events-none" />
-              {/* 价格标签（根据点位置动态调整显示方向） */}
-              {priceText && (
-                <text x={priceLabelX} y={py} textAnchor="end" alignmentBaseline="middle" className="text-[13px] font-semibold pointer-events-none" fill={stroke}>{priceText}</text>
+              {/* 水平虚线、交叉点标记、价格标签 - 仅在showPriceLine为true时显示 */}
+              {showPriceLine && (
+                <>
+                  <line x1={chartLeft} y1={py} x2={chartRight} y2={py} stroke={stroke} strokeWidth="1" strokeDasharray="4 2" className="pointer-events-none" />
+                  <circle cx={px} cy={py} r="4" fill={stroke} className="pointer-events-none" />
+                  {priceText && (
+                    <text x={priceLabelX} y={py} textAnchor="end" alignmentBaseline="middle" className="text-[13px] font-semibold pointer-events-none" fill={stroke}>{priceText}</text>
+                  )}
+                </>
               )}
             </>
           );

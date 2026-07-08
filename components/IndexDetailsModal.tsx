@@ -548,6 +548,8 @@ export const IndexDetailsModal: React.FC<IndexDetailsModalProps> = ({ data, onCl
                          compareMode={compareMode}
                          selectedPoints={selectedPoints}
                          onSelectPoint={handleSelectPoint}
+                         priceDecimals={2}
+                         showPriceLine={true}
                        />
                     </>
                   )}

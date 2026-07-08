@@ -271,6 +271,7 @@ export default function PositionTrendChart({ data, loading, height = 320 }: Posi
           hoveredPoint={hoveredPoint}
           setHoveredPoint={(p: any) => setHoveredPoint(p as HistoricalPoint)}
           visibleMAs={{}}
+          showPriceLine={false}
         />
         {/* 第二条折线：净投入总额 */}
         {path2 && (
