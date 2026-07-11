@@ -65,7 +65,7 @@ describe('OverallProfitModal chart click sync', () => {
     });
 
     // Table should show the fund row with date2 cumulative profit 10 and diff +10
-    await waitFor(() => expect(screen.getByText('Fund A (000001)')).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText('Fund A')).toBeInTheDocument());
     const diffCell = document.querySelector('tbody tr td:nth-child(4)') as HTMLElement;
     expect(diffCell.textContent?.replace(/\s+/g, '')).toBe('+10.00');
     // 期间累计显示图表完整期间的累计（从起始到终止），与日期选择器无关

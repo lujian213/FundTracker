@@ -1,18 +1,48 @@
 import React, { useEffect, useMemo, useState, useCallback, useRef } from 'react';
 import { createPortal } from 'react-dom';
-import { computeOverallProfit } from '../services/fundService';
-import { OverallProfitSummary, OverallProfitPoint, OverallFundRow } from '../types';
+import { computeOverallProfit, fetchFundHistory } from '../services/fundService';
+import { OverallProfitSummary, OverallProfitPoint, OverallFundRow, AttributionResult, KPIResult, HistoricalPoint } from '../types';
 import { toLocalDateKey } from '../utils/priceResolver';
 import { OVERALL_PROFIT_DATE_PRESETS, getOverallProfitPresetRange, OverallProfitDatePresetKey } from '../utils/overallProfitDatePresets';
-import { formatMoney, formatMoneyWithSeparators } from '../utils/format';
+import { formatMoney, formatMoneyWithSeparators, formatSharePercent } from '../utils/format';
 import { formatDateDisplay } from '../utils/dateFormat';
 import { buildLinearPath, CHART_DIMENSIONS, mergeChartPoints, ChartPointWithData, buildDisplayIndexMap } from '../utils/chartUtils';
+import { calculateProfitAttribution, calculateKPIs, calculateTWR, calculatePortfolioTWR, calculateMaxDrawdownFromValue, calculateVolatilityFromValue, calculateVolatilityFromValueWithTrades } from '../utils/performanceAttribution';
+import { getTradesForSymbol } from '../hooks/useTrades';
+import { getPosition } from '../services/marketFundService';
+import { computePositionTrend } from '../utils/positionTrend';
 import { MoneyCell } from './MoneyCell';
 import DayCalendar from './DayCalendar';
 import WeekCalendar from './WeekCalendar';
 import MonthCalendar from './MonthCalendar';
 import YearCalendar from './YearCalendar';
+import PerformanceAnalysisChart from './PerformanceAnalysisChart';
+import KPICardDisplay from './KPICardDisplay';
 import { useModalBodyStyle } from '../hooks/useModalBodyStyle';
+import { fetchFundHistory as fetchHistoryForTrend } from '../services/fundService';
+import { getAllFundSymbols } from '../services/marketFundService';
+
+/**
+ * 计算夏普比率和卡玛比率
+ * @param annualizedReturnPercent 年化收益率（百分比）
+ * @param maxDrawdown 最大回撤（百分比，正值）
+ * @param volatility 波动率（百分比）
+ * @param riskFreeRate 无风险利率（百分比，默认3%）
+ */
+function calculateRatios(
+  annualizedReturnPercent: number | null,
+  maxDrawdown: number | null,
+  volatility: number | null,
+  riskFreeRate: number = 3
+): { sharpeRatio: number | null; calmarRatio: number | null } {
+  const sharpeRatio = (volatility !== null && volatility > 0 && annualizedReturnPercent !== null)
+    ? (annualizedReturnPercent - riskFreeRate) / volatility
+    : null;
+  const calmarRatio = (maxDrawdown !== null && maxDrawdown > 0 && annualizedReturnPercent !== null)
+    ? annualizedReturnPercent / maxDrawdown
+    : null;
+  return { sharpeRatio, calmarRatio };
+}
 
 interface Props {
   symbols?: string[];
@@ -20,7 +50,7 @@ interface Props {
   onSelectFund?: (symbol: string) => void;
 }
 
-type ViewMode = 'chart' | 'calendar';
+type ViewMode = 'chart' | 'calendar' | 'performance';
 type CalendarMode = 'day' | 'week' | 'month' | 'year';
 
 const OverallProfitModal: React.FC<Props> = ({ symbols, onClose, onSelectFund }) => {
@@ -40,6 +70,11 @@ const OverallProfitModal: React.FC<Props> = ({ symbols, onClose, onSelectFund })
   // 日历当前显示的年月
   const [calendarYear, setCalendarYear] = useState<number>(new Date().getFullYear());
   const [calendarMonth, setCalendarMonth] = useState<number>(new Date().getMonth() + 1);
+
+  // 绩效分析状态
+  const [selectedFund, setSelectedFund] = useState<string | null>(null);
+  const [performanceData, setPerformanceData] = useState<AttributionResult | null>(null);
+  const [kpiData, setKpiData] = useState<KPIResult | null>(null);
 
   const chartWrapRef = useRef<HTMLDivElement | null>(null);
   const chartSvgRef = useRef<SVGSVGElement | null>(null);
@@ -586,6 +621,287 @@ const OverallProfitModal: React.FC<Props> = ({ symbols, onClose, onSelectFund })
     setTableRows(rows.filter(r => !!r.startDate && r.startDate <= toDate));
   }, [summary, fromDate, toDate]);
 
+  // 绩效分析计算：当数据就绪时计算（所有tab共享）
+  useEffect(() => {
+    if (!summary) return;
+    if (!summary || !chartTimeline || chartTimeline.length === 0) {
+      setPerformanceData(null);
+      setKpiData(null);
+      setSelectedFund(null);
+      return;
+    }
+
+    // 计算收益归因
+    const attribution = calculateProfitAttribution(tableRows);
+    setPerformanceData(attribution);
+
+    // 不自动选中基金，默认显示整体组合KPI
+  }, [viewMode, summary, chartTimeline, tableRows]);
+
+  // 根据选中基金计算KPI（使用完整时间线，不受时间选择器影响）
+  useEffect(() => {
+    if (!summary) return;
+
+    const calculateKPI = async () => {
+      if (selectedFund && summary.perFundTimelines?.[selectedFund]) {
+        // 选中单个基金：使用TWR方法计算收益率
+        try {
+          // 获取历史净值数据
+          const history = await fetchFundHistory(selectedFund);
+          if (!history || history.length === 0) {
+            // 如果无法获取历史数据，回退到原方法
+            const fundTimeline = summary.perFundTimelines[selectedFund].map(p => ({
+              date: p.date,
+              cumulativeProfit: p.cumulativeProfit,
+              dailyProfit: 0,
+            }));
+            const fundKpi = calculateKPIs(fundTimeline);
+            setKpiData(fundKpi);
+            return;
+          }
+
+          // 获取交易记录
+          const trades = getTradesForSymbol(selectedFund) || [];
+
+          // 获取持仓信息
+          const position = getPosition(selectedFund);
+          const initialShares = position?.initialPosition || 0;
+          const startDate = position?.startDate;
+
+          // 当initialShares为0但有交易记录时，从第一笔交易开始计算
+          if (!startDate) {
+            // 没有startDate，无法计算
+            setKpiData(null);
+            return;
+          }
+
+          // 如果initialShares为0，检查是否有交易记录
+          if (initialShares === 0) {
+            if (trades.length === 0) {
+              // 没有交易记录，确实没有持仓
+              setKpiData(null);
+              return;
+            }
+            // 有交易记录，从第一笔交易日期开始计算
+            const firstTradeDate = trades.reduce((min, t) => t.date < min ? t.date : min, trades[0].date);
+            const adjustedStartDate = firstTradeDate < startDate ? firstTradeDate : startDate;
+
+            // 计算结束日期
+            const endDate = chartTimeline.length > 0 ? chartTimeline[chartTimeline.length - 1].date : toLocalDateKey(new Date());
+
+            // 使用TWR计算，传入初始份额为0
+            const twrResult = calculateTWR(history, trades, 0, adjustedStartDate, endDate);
+
+            if (twrResult.twr !== null && twrResult.dailyValues) {
+              // 过滤掉市值为0的数据点
+              const validDailyValues = twrResult.dailyValues.filter(d => d.value > 0);
+
+              if (validDailyValues.length < 2) {
+                // 有效数据点太少，无法计算
+                setKpiData(null);
+                return;
+              }
+
+              // 使用复利方式计算年化收益率
+              const tradingDays = validDailyValues.length;
+              const annualizedReturn = Math.pow(1 + twrResult.twr, 252 / tradingDays) - 1;
+              const annualizedReturnPercent = annualizedReturn * 100;
+              const maxDrawdown = calculateMaxDrawdownFromValue(validDailyValues);
+              // 使用考虑交易记录的波动率计算
+              const volatility = calculateVolatilityFromValueWithTrades(validDailyValues, trades, `单基金:${selectedFund}`);
+
+              // 计算夏普比率和卡玛比率
+              const { sharpeRatio, calmarRatio } = calculateRatios(annualizedReturnPercent, maxDrawdown, volatility);
+
+              setKpiData({
+                annualizedReturn: annualizedReturnPercent,
+                maxDrawdown: maxDrawdown !== null && maxDrawdown > 0 ? maxDrawdown : null,
+                volatility: volatility !== null && volatility > 0 ? volatility : null,
+                sharpeRatio: sharpeRatio,
+                calmarRatio: calmarRatio,
+              });
+            } else {
+              setKpiData(null);
+            }
+            return;
+          }
+
+          // 计算结束日期（图表结束日期）
+          const endDate = chartTimeline.length > 0 ? chartTimeline[chartTimeline.length - 1].date : toLocalDateKey(new Date());
+
+          // 使用TWR计算收益率
+          const twrResult = calculateTWR(history, trades, initialShares, startDate, endDate);
+
+          if (twrResult.twr !== null) {
+            // 计算年化收益率（复利方式）
+            const fundTimeline = summary.perFundTimelines[selectedFund];
+            const tradingDays = fundTimeline.length;
+            const annualizedReturn = tradingDays > 0 ? Math.pow(1 + twrResult.twr, 252 / tradingDays) - 1 : null;
+            const annualizedReturnPercent = annualizedReturn !== null ? annualizedReturn * 100 : null;
+
+            // 从市值数据计算最大回撤
+            const maxDrawdown = twrResult.dailyValues ? calculateMaxDrawdownFromValue(twrResult.dailyValues) : null;
+
+            // 从市值数据计算波动率（考虑交易记录的影响）
+              const volatility = twrResult.dailyValues
+                ? calculateVolatilityFromValueWithTrades(twrResult.dailyValues, trades, `单基金:${selectedFund}`)
+                : null;
+
+            // 计算夏普比率和卡玛比率（基于计算出的收益率和波动率）
+            const sharpeRatio = (volatility !== null && volatility > 0 && annualizedReturnPercent !== null)
+              ? (annualizedReturnPercent - 3) / volatility  // 无风险利率3%
+              : null;
+            const calmarRatio = (maxDrawdown !== null && maxDrawdown > 0 && annualizedReturnPercent !== null)
+              ? annualizedReturnPercent / maxDrawdown
+              : null;
+
+            // 合并结果：使用TWR的年化收益率、市值计算的最大回撤和波动率
+            setKpiData({
+              annualizedReturn: annualizedReturnPercent,
+              maxDrawdown: maxDrawdown !== null && maxDrawdown > 0 ? maxDrawdown : null,
+              volatility: volatility !== null && volatility > 0 ? volatility : null,
+              sharpeRatio: sharpeRatio,
+              calmarRatio: calmarRatio,
+            });
+          } else {
+            // TWR计算失败，回退到原方法
+            const fundTimeline = summary.perFundTimelines[selectedFund].map(p => ({
+              date: p.date,
+              cumulativeProfit: p.cumulativeProfit,
+              dailyProfit: 0,
+            }));
+            const fundKpi = calculateKPIs(fundTimeline);
+            setKpiData(fundKpi);
+          }
+        } catch (error) {
+          console.error('计算TWR失败:', error);
+          // 出错时回退到原方法
+          const fundTimeline = summary.perFundTimelines[selectedFund].map(p => ({
+            date: p.date,
+            cumulativeProfit: p.cumulativeProfit,
+            dailyProfit: 0,
+          }));
+          const fundKpi = calculateKPIs(fundTimeline);
+          setKpiData(fundKpi);
+        }
+      } else {
+        // 整体组合：使用持仓趋势数据计算TWR
+        try {
+          // 获取所有基金代码
+          const allSymbols = getAllFundSymbols();
+
+          if (!allSymbols || allSymbols.length === 0) {
+            // 如果没有基金，使用原方法
+            const overallKpi = calculateKPIs(chartTimeline);
+            setKpiData(overallKpi);
+            return;
+          }
+
+          // 收集所有基金的持仓配置和交易记录
+          const initialPositions: Record<string, number> = {};
+          const trades: Record<string, any[]> = {};
+          const valuationHistory: Record<string, { date: string; price: number }[]> = {};
+
+          // 获取时间范围
+          const startDate = chartFromDate || toLocalDateKey(new Date());
+          const endDate = chartTimeline.length > 0 ? chartTimeline[chartTimeline.length - 1].date : toLocalDateKey(new Date());
+
+          // 获取每个基金的数据
+          for (const sym of allSymbols) {
+            const position = getPosition(sym);
+            if (position && position.startDate) {
+              initialPositions[sym] = position.initialPosition || 0;
+
+              // 获取交易记录
+              const fundTrades = getTradesForSymbol(sym) || [];
+              trades[sym] = fundTrades.map(t => ({
+                ...t,
+                type: t.type as 'buy' | 'sell',
+              }));
+
+              // 获取历史净值
+              const history = await fetchHistoryForTrend(sym);
+              if (history && history.length > 0) {
+                valuationHistory[sym] = history.map(h => {
+                  const d = new Date(h.date as number);
+                  return {
+                    date: `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`,
+                    price: h.value,
+                  };
+                });
+              }
+            }
+          }
+
+          // 计算持仓趋势
+          const positionTrend = computePositionTrend({
+            symbols: allSymbols,
+            initialPositions,
+            trades,
+            valuationHistory,
+            startDate,
+            endDate,
+          });
+
+          if (positionTrend && positionTrend.length >= 2) {
+            // 使用TWR计算收益率
+            const twrResult = calculatePortfolioTWR(positionTrend);
+
+            if (twrResult.twr !== null) {
+              // 计算年化收益率（复利方式）
+              const tradingDays = positionTrend.length;
+              const annualizedReturn = Math.pow(1 + twrResult.twr, 252 / tradingDays) - 1;
+              const annualizedReturnPercent = annualizedReturn * 100;
+
+              // 从市值数据计算最大回撤
+              const maxDrawdown = twrResult.dailyValues ? calculateMaxDrawdownFromValue(twrResult.dailyValues) : null;
+
+              // 从市值数据计算波动率
+              const volatility = twrResult.dailyValues ? calculateVolatilityFromValue(twrResult.dailyValues, '整体组合') : null;
+
+              // 计算夏普比率和卡玛比率
+              const sharpeRatio = (volatility !== null && volatility > 0 && annualizedReturnPercent !== null)
+                ? (annualizedReturnPercent - 3) / volatility  // 无风险利率3%
+                : null;
+              const calmarRatio = (maxDrawdown !== null && maxDrawdown > 0 && annualizedReturnPercent !== null)
+                ? annualizedReturnPercent / maxDrawdown
+                : null;
+
+              // 合并结果：使用TWR的年化收益率、市值计算的最大回撤和波动率
+              setKpiData({
+                annualizedReturn: annualizedReturnPercent,
+                maxDrawdown: maxDrawdown !== null && maxDrawdown > 0 ? maxDrawdown : null,
+                volatility: volatility !== null && volatility > 0 ? volatility : null,
+                sharpeRatio: sharpeRatio,
+                calmarRatio: calmarRatio,
+              });
+            } else {
+              // TWR计算失败，使用原方法
+              const overallKpi = calculateKPIs(chartTimeline);
+              setKpiData(overallKpi);
+            }
+          } else {
+            // 无法计算持仓趋势，使用原方法
+            const overallKpi = calculateKPIs(chartTimeline);
+            setKpiData(overallKpi);
+          }
+        } catch (error) {
+          console.error('计算整体组合TWR失败:', error);
+          // 出错时回退到原方法
+          const overallKpi = calculateKPIs(chartTimeline);
+          setKpiData(overallKpi);
+        }
+      }
+    };
+
+    calculateKPI();
+  }, [selectedFund, summary, chartTimeline, chartFromDate]);
+
+  // 日期变化时重置选中基金
+  useEffect(() => {
+    setSelectedFund(null);
+  }, [fromDate, toDate]);
+
   // 处理列排序点击：点击某列时，该列启用排序，循环切换排序方向
   const handleSortClick = useCallback((column: 'from' | 'to' | 'diff') => {
     if (sortColumn === column) {
@@ -645,6 +961,19 @@ const OverallProfitModal: React.FC<Props> = ({ symbols, onClose, onSelectFund })
               title="盈利日历"
             >
               <i className="fas fa-calendar-alt" />
+            </button>
+            <button
+              type="button"
+              onClick={() => setViewMode('performance')}
+              className={`w-10 h-10 rounded-full flex items-center justify-center transition-colors ${
+                viewMode === 'performance'
+                  ? 'bg-blue-100 text-blue-700'
+                  : 'bg-gray-50 text-gray-500 hover:bg-gray-100'
+              }`}
+              aria-label="显示绩效分析"
+              title="绩效分析"
+            >
+              <i className="fas fa-chart-pie" />
             </button>
             <button aria-label="关闭整体盈亏窗口" className="w-8 h-8 rounded-full bg-gray-50 flex items-center justify-center text-gray-400 hover:bg-gray-100" onClick={onClose}><i className="fas fa-times"></i></button>
           </div>
@@ -831,6 +1160,59 @@ const OverallProfitModal: React.FC<Props> = ({ symbols, onClose, onSelectFund })
                   );
                 })()}
               </div>
+              ) : viewMode === 'performance' ? (
+                <div className="bg-gradient-to-b from-gray-50 to-white rounded-xl p-4 relative shadow-inner" style={{ height: 232 }}>
+                  <div className="flex flex-col lg:flex-row gap-4 h-full">
+                    {/* 左侧：环形饼图 */}
+                    <div className="flex-shrink-0 flex items-center justify-center">
+                      {performanceData ? (
+                        <PerformanceAnalysisChart
+                          fundData={performanceData}
+                          selectedFund={selectedFund}
+                          onSelectFund={setSelectedFund}
+                        />
+                      ) : (
+                        <div className="flex items-center justify-center bg-gray-100 rounded-lg" style={{ width: 280, height: 200 }}>
+                          <div className="text-gray-400 text-sm">暂无绩效数据</div>
+                        </div>
+                      )}
+                    </div>
+                    {/* 右侧：KPI卡片 */}
+                    <div className="flex-1 min-w-0 flex items-center">
+                      <KPICardDisplay
+                        kpiData={kpiData}
+                        fundName={
+                          selectedFund && performanceData
+                            ? (() => {
+                                const fund = performanceData.funds.find(f => f.symbol === selectedFund);
+                                const fundName = fund?.name || selectedFund;
+                                const fundCode = String(selectedFund).padStart(6, '0');
+                                return `${fundName} (${fundCode})`;
+                              })()
+                            : "整体组合"
+                        }
+                        holdingDays={
+                          selectedFund
+                            ? (() => {
+                                const position = getPosition(selectedFund);
+                                const trades = getTradesForSymbol(selectedFund) || [];
+                                // 如果初始份额为0且有交易记录，从第一笔交易开始计算
+                                if (position?.initialPosition === 0 && trades.length > 0) {
+                                  const firstTradeDate = trades.reduce((min, t) => t.date < min ? t.date : min, trades[0].date);
+                                  const endDate = chartTimeline.length > 0 ? chartTimeline[chartTimeline.length - 1].date : toLocalDateKey(new Date());
+                                  return Math.floor((new Date(endDate).getTime() - new Date(firstTradeDate).getTime()) / (1000 * 60 * 60 * 24)) + 1;
+                                }
+                                // 否则使用时间线长度
+                                return summary?.perFundTimelines?.[selectedFund]?.length || 0;
+                              })()
+                            : (chartFromDate && chartEndDate
+                              ? Math.floor((new Date(chartEndDate).getTime() - new Date(chartFromDate).getTime()) / (1000 * 60 * 60 * 24)) + 1
+                              : 0)
+                        }
+                      />
+                    </div>
+                  </div>
+                </div>
               ) : (
               <div className="bg-gradient-to-b from-gray-50 to-white rounded-xl p-2 relative shadow-inner" style={{ height: 232 }}>
                 <div className="flex h-full">
@@ -1000,21 +1382,22 @@ const OverallProfitModal: React.FC<Props> = ({ symbols, onClose, onSelectFund })
                   <div className="overflow-y-auto" style={{ maxHeight: '330px' }}>
                     <table className="w-full text-sm table-fixed border-collapse">
                       <colgroup>
-                        <col style={{ width: '50%' }} />
-                        <col style={{ width: '16.6667%' }} />
-                        <col style={{ width: '16.6667%' }} />
-                        <col style={{ width: '16.6667%' }} />
+                        <col style={{ width: '35%' }} />
+                        <col style={{ width: '15%' }} />
+                        <col style={{ width: '15%' }} />
+                        <col style={{ width: '15%' }} />
+                        <col style={{ width: '15%' }} />
                       </colgroup>
                       <thead className="sticky top-0 z-10 bg-gray-50">
                         <tr className="border-b border-gray-200">
-                          <th className="px-3 py-2 text-left text-xs font-semibold text-gray-500">基金名称（基金代码）</th>
-                          <th className="px-3 py-2 text-right text-xs font-semibold text-gray-500">
+                          <th className="px-2 py-2 text-left text-xs font-semibold text-gray-500" style={{ maxWidth: '140px' }}>基金名称</th>
+                          <th className="px-3 py-2 text-right text-xs font-semibold text-gray-500 whitespace-nowrap">
                             <button
                               className="inline-flex items-center gap-1 hover:text-gray-700 transition-colors select-none"
                               onClick={() => handleSortClick('from')}
                               title="点击切换排序"
                             >
-                              {formatDateDisplay(fromDate)}累计盈利
+                              {formatDateDisplay(fromDate)}
                               <span className="text-gray-400">
                                 {sortColumn !== 'from' && <i className="fas fa-sort" />}
                                 {sortColumn === 'from' && sortOrder === 'none' && <i className="fas fa-sort" />}
@@ -1023,13 +1406,13 @@ const OverallProfitModal: React.FC<Props> = ({ symbols, onClose, onSelectFund })
                               </span>
                             </button>
                           </th>
-                          <th className="px-3 py-2 text-right text-xs font-semibold text-gray-500">
+                          <th className="px-3 py-2 text-right text-xs font-semibold text-gray-500 whitespace-nowrap">
                             <button
                               className="inline-flex items-center gap-1 hover:text-gray-700 transition-colors select-none"
                               onClick={() => handleSortClick('to')}
                               title="点击切换排序"
                             >
-                              {formatDateDisplay(toDate)}累计盈利
+                              {formatDateDisplay(toDate)}
                               <span className="text-gray-400">
                                 {sortColumn !== 'to' && <i className="fas fa-sort" />}
                                 {sortColumn === 'to' && sortOrder === 'none' && <i className="fas fa-sort" />}
@@ -1038,7 +1421,7 @@ const OverallProfitModal: React.FC<Props> = ({ symbols, onClose, onSelectFund })
                               </span>
                             </button>
                           </th>
-                          <th className="px-3 py-2 text-right text-xs font-semibold text-gray-500">
+                          <th className="px-2 py-2 text-right text-xs font-semibold text-gray-500 whitespace-nowrap">
                             <button
                               className="inline-flex items-center gap-1 hover:text-gray-700 transition-colors select-none"
                               onClick={() => handleSortClick('diff')}
@@ -1053,29 +1436,62 @@ const OverallProfitModal: React.FC<Props> = ({ symbols, onClose, onSelectFund })
                               </span>
                             </button>
                           </th>
+                          <th className="px-2 py-2 text-right text-xs font-semibold text-gray-500 whitespace-nowrap">
+                            收益占比
+                          </th>
                         </tr>
                       </thead>
                       <tbody>
-                        {displayedRows.map(p => (
-                          <tr key={p.symbol} className="border-b border-gray-50 hover:bg-gray-50 transition-colors">
-                            <td className="px-3 py-2 text-left text-xs text-gray-700">
-                              {onSelectFund ? (
-                                <button
-                                  className="text-left w-full truncate hover:text-blue-600 transition-colors"
-                                  title={`${p.name} (${String(p.symbol).padStart(6,'0')})`}
-                                  onClick={() => { onSelectFund(String(p.symbol)); onClose(); }}
-                                >
-                                  {(p.name && p.name.trim()) ? `${p.name} (${String(p.symbol).padStart(6,'0')})` : `(${String(p.symbol).padStart(6,'0')})`}
-                                </button>
-                              ) : (
-                                (p.name && p.name.trim()) ? `${p.name} (${String(p.symbol).padStart(6,'0')})` : `(${String(p.symbol).padStart(6,'0')})`
-                              )}
-                            </td>
-                            <td className="px-3 py-2 text-right text-xs">{(p.profitFrom||0)===0? <span className="text-black">-</span> : <span className={`${(p.profitFrom||0)>0? 'text-red-600':'text-green-600'}`}>{(p.profitFrom||0)>0?'+':''}{formatMoneyWithSeparators(p.profitFrom||0)}</span>}</td>
-                            <td className="px-3 py-2 text-right text-xs">{(p.profitTo||0)===0? <span className="text-black">-</span> : <span className={`${(p.profitTo||0)>0? 'text-red-600':'text-green-600'}`}>{(p.profitTo||0)>0?'+':''}{formatMoneyWithSeparators(p.profitTo||0)}</span>}</td>
-                            <td className="px-3 py-2 text-right text-xs"><MoneyCell value={p.profitDiff||0} /></td>
-                          </tr>
-                        ))}
+                        {displayedRows.map(p => {
+                          // 从 performanceData 中获取收益占比（所有tab都显示）
+                          const profitSharePercent = performanceData
+                            ? performanceData.funds.find(f => f.symbol === p.symbol)?.profitShare ?? 0
+                            : 0;
+
+                          return (
+                            <tr key={p.symbol} className={`border-b border-gray-50 hover:bg-gray-50 transition-colors ${viewMode === 'performance' && selectedFund === p.symbol ? 'bg-blue-50' : ''}`}>
+                              <td className="px-2 py-2 text-left text-xs text-gray-700" style={{ maxWidth: '140px' }}>
+                                <div className="flex items-center gap-1">
+                                  <div className="truncate flex-1">
+                                    {onSelectFund ? (
+                                      <button
+                                        className="text-left w-full truncate hover:text-blue-600 transition-colors"
+                                        title={`${p.name} (${String(p.symbol).padStart(6,'0')})`}
+                                        onClick={() => { onSelectFund(String(p.symbol)); onClose(); }}
+                                      >
+                                        {(p.name && p.name.trim()) ? p.name : `(${String(p.symbol).padStart(6,'0')})`}
+                                      </button>
+                                    ) : (
+                                      (p.name && p.name.trim()) ? p.name : `(${String(p.symbol).padStart(6,'0')})`
+                                    )}
+                                  </div>
+                                  {/* 绩效分析tab：显示问号图标，点击选中该基金 */}
+                                  {viewMode === 'performance' && (
+                                    <button
+                                      className="w-3.5 h-3.5 rounded-full bg-blue-100 hover:bg-blue-200 text-blue-600 flex items-center justify-center transition-colors cursor-pointer flex-shrink-0"
+                                      style={{ fontSize: '10px', lineHeight: 1 }}
+                                      title={`查看 ${p.name || p.symbol} 的绩效分析`}
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        setSelectedFund(selectedFund === p.symbol ? null : p.symbol);
+                                      }}
+                                    >
+                                      ?
+                                    </button>
+                                  )}
+                                </div>
+                              </td>
+                              <td className="px-3 py-2 text-right text-xs">{(p.profitFrom||0)===0? <span className="text-black">-</span> : <span className={`${(p.profitFrom||0)>0? 'text-red-600':'text-green-600'}`}>{(p.profitFrom||0)>0?'+':''}{formatMoneyWithSeparators(p.profitFrom||0)}</span>}</td>
+                              <td className="px-3 py-2 text-right text-xs">{(p.profitTo||0)===0? <span className="text-black">-</span> : <span className={`${(p.profitTo||0)>0? 'text-red-600':'text-green-600'}`}>{(p.profitTo||0)>0?'+':''}{formatMoneyWithSeparators(p.profitTo||0)}</span>}</td>
+                              <td className="px-2 py-2 text-right text-xs"><MoneyCell value={p.profitDiff||0} /></td>
+                              <td className="px-2 py-2 text-right text-xs">
+                                {profitSharePercent > 0
+                                  ? <span className={`${(p.profitDiff||0)>0? 'text-red-600':'text-green-600'}`}>{formatSharePercent(profitSharePercent)}</span>
+                                  : <span className="text-gray-400">-</span>}
+                              </td>
+                            </tr>
+                          );
+                        })}
                       </tbody>
                       <tfoot className="sticky bottom-0 z-10 bg-gray-50">
                         {(() => {
@@ -1085,10 +1501,11 @@ const OverallProfitModal: React.FC<Props> = ({ symbols, onClose, onSelectFund })
                           const totalDiff = rows.reduce((s, r) => s + (r.profitDiff || 0), 0);
                           return (
                             <tr className="border-t border-gray-200">
-                              <td className="px-3 py-2 text-left text-xs font-bold text-gray-700">总计：{rows.length}条记录</td>
+                              <td className="px-2 py-2 text-left text-xs font-bold text-gray-700" style={{ maxWidth: '140px' }}>总计：{rows.length}条</td>
                               <td className="px-3 py-2 text-right text-xs font-bold">{totalFrom===0? <span className="text-black">-</span> : <span className={`${totalFrom>0? 'text-red-600':'text-green-600'}`}>{totalFrom>0?'+':''}{formatMoneyWithSeparators(totalFrom)}</span>}</td>
                               <td className="px-3 py-2 text-right text-xs font-bold">{totalTo===0? <span className="text-black">-</span> : <span className={`${totalTo>0? 'text-red-600':'text-green-600'}`}>{totalTo>0?'+':''}{formatMoneyWithSeparators(totalTo)}</span>}</td>
-                              <td className="px-3 py-2 text-right text-xs font-bold">{totalDiff===0? <span className="text-black">-</span> : totalDiff>0? <span className="text-red-600">+{formatMoneyWithSeparators(totalDiff)}</span> : <span className="text-green-600">{formatMoneyWithSeparators(totalDiff)}</span>}</td>
+                              <td className="px-2 py-2 text-right text-xs font-bold">{totalDiff===0? <span className="text-black">-</span> : totalDiff>0? <span className="text-red-600">+{formatMoneyWithSeparators(totalDiff)}</span> : <span className="text-green-600">{formatMoneyWithSeparators(totalDiff)}</span>}</td>
+                              <td className="px-2 py-2 text-right text-xs font-bold text-gray-700">100%</td>
                             </tr>
                           );
                         })()}

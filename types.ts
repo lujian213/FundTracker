@@ -198,6 +198,7 @@ export interface OverallFundRow {
   // added: configured initial position and flag whether startDate came from storage
   initialPosition?: number;
   hasStoredStartDate?: boolean;
+  profitShare?: number; // profit share percentage for attribution
 }
 
 export interface OverallProfitSummary {
@@ -206,6 +207,34 @@ export interface OverallProfitSummary {
   // per-fund time series used to build table and for efficient filtering without recomputation
   perFundTimelines?: Record<string, { date: string; cumulativeProfit: number }[]>;
   totalDiff: number;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// KPI & Performance Attribution types (Dashboard Phase 1)
+// ═══════════════════════════════════════════════════════════════════════════════
+
+// KPI calculation result
+export interface KPIResult {
+  annualizedReturn: number | null; // 年化收益率 (%), null if invalid
+  maxDrawdown: number | null; // 最大回撤 (%), negative value, null if invalid
+  volatility: number | null; // 收益波动率 (%), null if invalid
+  sharpeRatio: number | null; // 夏普比率, null if invalid
+  calmarRatio: number | null; // 卡玛比率, null if invalid
+}
+
+// Performance attribution result
+export interface AttributionResult {
+  funds: FundAttributionData[];
+  totalAbsoluteProfit: number; // sum of |profit| for all funds
+}
+
+// Single fund attribution data
+export interface FundAttributionData {
+  symbol: string;
+  name?: string;
+  profit: number; // actual profit amount (can be negative)
+  profitShare: number; // percentage of total absolute profit
+  isProfit: boolean; // true if profit > 0
 }
 
 // ─── Backup / Export-Import types ────────────────────────────────────────────

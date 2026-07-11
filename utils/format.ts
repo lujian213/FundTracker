@@ -50,6 +50,16 @@ export function formatPercent(v: number, decimals = 2): string {
 }
 
 /**
+ * 格式化占比百分比（不显示正负号）
+ * @param v 数值（如 5.5 表示 5.5%）
+ * @param decimals 小数位数，默认2
+ */
+export function formatSharePercent(v: number, decimals = 2): string {
+  if (!Number.isFinite(v)) return '';
+  return v.toFixed(decimals) + '%';
+}
+
+/**
  * 格式化份额（千分位，2位小数）
  * @param v 数值
  */
