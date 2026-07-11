@@ -15,7 +15,7 @@ const MIN_HOLDING_DAYS = 30;
 /**
  * 检查数值是否有效
  */
-function isValidNumber(value: number | null): value is number {
+export function isValidNumber(value: number | null): value is number {
   return value !== null && Number.isFinite(value);
 }
 
@@ -26,7 +26,7 @@ function isValidNumber(value: number | null): value is number {
  * @param decimals 小数位数
  * @param hidePlusSign 是否隐藏+号（用于回撤、波动率等指标）
  */
-function formatKPIValue(value: number | null, isPercent: boolean = true, decimals: number = 2, hidePlusSign: boolean = false): string {
+export function formatKPIValue(value: number | null, isPercent: boolean = true, decimals: number = 2, hidePlusSign: boolean = false): string {
   if (!isValidNumber(value)) {
     return 'N/A';
   }
@@ -44,7 +44,7 @@ function formatKPIValue(value: number | null, isPercent: boolean = true, decimal
 /**
  * 等级配置项
  */
-interface LevelItem {
+export interface LevelItem {
   icon: string;
   title: string;
 }
@@ -56,7 +56,7 @@ interface LevelItem {
  * @param levels 对应的等级配置数组
  * @param compareType 比较类型：'lt' 表示小于阈值（用于波动率、回撤），'gt' 表示大于阈值（用于收益率、夏普比率）
  */
-function getLevelIconByThresholds(
+export function getLevelIconByThresholds(
   value: number | null,
   thresholds: number[],
   levels: LevelItem[],
@@ -71,18 +71,35 @@ function getLevelIconByThresholds(
 
   if (compareType === 'lt') {
     // 小于阈值：找到第一个大于value的阈值位置
-    for (let i = 0; i < thresholds.length; i++) {
-      if (value < thresholds[i]) {
-        levelIndex = i;
-        break;
+    // 例如：波动率 thresholds=[15,25,35], value=20
+    // 20 < 25，所以 levelIndex=1（中等风险）
+    // value < thresholds[0] 时，levelIndex=0（最低等级）
+    if (value < thresholds[0]) {
+      levelIndex = 0;
+    } else {
+      for (let i = 0; i < thresholds.length; i++) {
+        if (value < thresholds[i]) {
+          levelIndex = i;
+          break;
+        }
       }
     }
   } else {
-    // 大于阈值：找到第一个小于value的阈值位置（从高到低）
-    for (let i = thresholds.length - 1; i >= 0; i--) {
-      if (value > thresholds[i]) {
-        levelIndex = i;
-        break;
+    // 大于阈值：找到value所属的等级区间
+    // 例如：夏普比率 thresholds=[0,1,2,3], levels=[🔴,🟡,🟢,🟣,🌟]
+    // value=-1.05 < 0 → levelIndex=0 → 🔴（不佳）
+    // value=0.5 在[0,1)区间 → levelIndex=1 → 🟡（一般）
+    // value=2.5 在[2,3)区间 → levelIndex=3 → 🟣（优秀）
+    // value=4 > 3 → levelIndex=4 → 🟣（卓越）
+    if (value < thresholds[0]) {
+      levelIndex = 0; // 低于最小阈值，使用最低等级
+    } else {
+      // 找到value所属的区间
+      for (let i = thresholds.length - 1; i >= 0; i--) {
+        if (value >= thresholds[i]) {
+          levelIndex = i + 1;
+          break;
+        }
       }
     }
   }
@@ -99,12 +116,12 @@ function getLevelIconByThresholds(
  * - risk: 正数绿色（表示风险）
  * - neutral: 灰色（中性指标）
  */
-type ColorRule = 'profit' | 'risk' | 'neutral';
+export type ColorRule = 'profit' | 'risk' | 'neutral';
 
 /**
  * 根据颜色规则获取颜色类名
  */
-function getColorClassByRule(value: number | null, rule: ColorRule): string {
+export function getColorClassByRule(value: number | null, rule: ColorRule): string {
   if (!isValidNumber(value)) {
     return 'text-gray-500';
   }

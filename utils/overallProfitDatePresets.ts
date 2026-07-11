@@ -1,6 +1,8 @@
 import { toLocalDateKey } from './priceResolver';
 
 export const OVERALL_PROFIT_DATE_PRESETS = [
+  { key: 'today', label: '今天' },
+  { key: 'yesterday', label: '昨天' },
   { key: 'thisMonth', label: '本月' },
   { key: 'lastMonth', label: '上月' },
   { key: 'thisYear', label: '本年' },
@@ -44,6 +46,22 @@ export function getOverallProfitPresetRange(
   let naturalToDate = '';
 
   switch (preset) {
+    case 'today':
+      // 日期1 = 前一天，日期2 = 今天
+      const prevDay = new Date(baseDate);
+      prevDay.setDate(prevDay.getDate() - 1);
+      fromDate = toLocalDateKey(prevDay);
+      naturalToDate = toLocalDateKey(baseDate);
+      break;
+    case 'yesterday':
+      // 日期1 = 前天，日期2 = 昨天
+      const twoDaysAgo = new Date(baseDate);
+      twoDaysAgo.setDate(twoDaysAgo.getDate() - 2);
+      fromDate = toLocalDateKey(twoDaysAgo);
+      const yesterday = new Date(baseDate);
+      yesterday.setDate(yesterday.getDate() - 1);
+      naturalToDate = toLocalDateKey(yesterday);
+      break;
     case 'thisMonth':
       fromDate = toLocalDateKey(endOfPreviousMonth(baseDate));
       naturalToDate = toLocalDateKey(baseDate);
