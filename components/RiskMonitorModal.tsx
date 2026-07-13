@@ -396,7 +396,7 @@ const OverviewTab: React.FC<{
                 当前组合风险{level.text === '高风险' ? '较高' : '适中'}，建议关注
                 {snapshot.maxDrawdown >= thresholds.drawdown.low ? '回撤控制' : ''}
                 {snapshot.hhi > 0.25 ? '和持仓分散度' : ''}。
-                {snapshot.continuousDecline > 0 && `回撤已持续${snapshot.continuousDecline}天。`}
+                {snapshot.currentDrawdownDays > 0 && `回撤已持续${snapshot.currentDrawdownDays}天。`}
               </p>
             </div>
           </div>
@@ -492,7 +492,7 @@ const OverviewTab: React.FC<{
                       return null;
                     })()}
                     <div className="text-gray-400 mt-1">
-                      持续: {snapshot.maxRecoveryDays > 0 ? `${snapshot.maxRecoveryDays}天` : '-'}
+                      持续: {snapshot.maxDrawdownDays > 0 ? `${snapshot.maxDrawdownDays}天` : '-'}
                     </div>
                   </div>
                 )}
@@ -680,7 +680,7 @@ const AlertsTab: React.FC<{ alerts: RiskAlert[] }> = ({ alerts }) => {
                   </div>
                   <div className="text-sm text-gray-600 mb-2">{alert.message}</div>
                   <div className="text-xs text-gray-400 mb-2">
-                    当前值: {alert.currentValue.toFixed(2)}{alert.unit} | 阈值: {alert.threshold}{alert.unit}
+                    当前值: {alert.unit === '天' ? alert.currentValue : alert.currentValue.toFixed(2)}{alert.unit} | 阈值: {alert.threshold}{alert.unit}
                   </div>
                   {/* 建议操作 */}
                   <div className={`text-xs px-3 py-1.5 rounded-lg inline-block ${
@@ -1137,7 +1137,7 @@ const DrawdownTab: React.FC<{
         {/* 恢复统计 */}
         <div className="grid grid-cols-3 gap-3 mt-5">
           <div className="bg-gray-50 rounded-lg p-3 text-center relative group cursor-help">
-            <div className="text-xl font-bold text-gray-800">-{maxDrawdown.toFixed(1)}%</div>
+            <div className="text-xl font-bold text-gray-800">-{maxDrawdown.toFixed(2)}%</div>
             <div className="text-xs text-gray-500 mt-1">历史最大回撤</div>
             {/* Hover tip */}
             {snapshot.maxDrawdownPeakDate && (
@@ -1167,13 +1167,33 @@ const DrawdownTab: React.FC<{
                   }
                   return null;
                 })()}
-                <div className="text-gray-400 mt-1">持续: {snapshot.maxRecoveryDays > 0 ? `${snapshot.maxRecoveryDays}天` : '-'}</div>
+                <div className="text-gray-400 mt-1">持续: {snapshot.maxDrawdownDays > 0 ? `${snapshot.maxDrawdownDays}天` : '-'}</div>
               </div>
             )}
           </div>
-          <div className="bg-gray-50 rounded-lg p-3 text-center">
-            <div className="text-xl font-bold text-gray-800">{maxRecoveryDays > 0 ? `${maxRecoveryDays}天` : '--'}</div>
-            <div className="text-xs text-gray-500 mt-1">历史最长恢复</div>
+          <div className="relative group">
+            <div className="bg-gray-50 rounded-lg p-3 text-center cursor-help">
+              <div className="text-xl font-bold text-gray-800">{maxRecoveryDays > 0 ? `${maxRecoveryDays}天` : '--'}</div>
+              <div className="text-xs text-gray-500 mt-1">历史最长恢复</div>
+            </div>
+            {/* Tooltip */}
+            {maxRecoveryDays > 0 && (
+              <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-3 py-2 bg-gray-800 text-white text-xs rounded-lg opacity-0 group-hover:opacity-100 transition-opacity z-10 w-56 pointer-events-none">
+                <div className="text-gray-300">
+                  <span className="text-green-300">回撤开始</span> {formatDateDisplay(snapshot.maxRecoveryPeakDate) || '-'}
+                </div>
+                <div className="text-gray-400">
+                  <span className="text-red-300">回撤低点</span> {formatDateDisplay(snapshot.maxRecoveryTroughDate) || '-'}
+                </div>
+                {snapshot.maxRecoveryRecoveryDate ? (
+                  <div className="text-gray-300">
+                    <span className="text-blue-300">恢复完成</span> {formatDateDisplay(snapshot.maxRecoveryRecoveryDate)}
+                  </div>
+                ) : (
+                  <div className="text-yellow-400">回撤进行中</div>
+                )}
+              </div>
+            )}
           </div>
           <div className="bg-gray-50 rounded-lg p-3 text-center">
             <div className="text-xl font-bold text-gray-800">{estimatedRemainingDays}</div>

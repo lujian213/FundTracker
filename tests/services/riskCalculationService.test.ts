@@ -618,4 +618,160 @@ describe('riskCalculationService', () => {
       expect(hasTroughData).toBe(true);
     });
   });
+
+  describe('连续下跌天数计算', () => {
+    it('应正确计算从高点开始的连续下跌天数', async () => {
+      const portfolio = createMockPortfolio();
+      const marketData = createMockMarketData();
+
+      mockGetRiskThresholds.mockReturnValue(DEFAULT_RISK_THRESHOLDS);
+      mockComputeOverallProfit.mockResolvedValue(createMockSummary(10));
+
+      // 创建历史净值：连续下跌场景
+      // 1.0 -> 1.5(峰值) -> 1.4 -> 1.3 -> 1.2 -> 1.15 -> 1.10
+      // 从峰值开始连续下跌 5 天
+      const history = [
+        { date: new Date('2024-01-01').getTime(), value: 1.0, equityReturn: 0 },
+        { date: new Date('2024-01-02').getTime(), value: 1.2, equityReturn: 0 },
+        { date: new Date('2024-01-03').getTime(), value: 1.5, equityReturn: 0 },  // 峰值
+        { date: new Date('2024-01-04').getTime(), value: 1.4, equityReturn: 0 },  // ↓
+        { date: new Date('2024-01-05').getTime(), value: 1.3, equityReturn: 0 },  // ↓
+        { date: new Date('2024-01-06').getTime(), value: 1.2, equityReturn: 0 },  // ↓
+        { date: new Date('2024-01-07').getTime(), value: 1.15, equityReturn: 0 }, // ↓
+        { date: new Date('2024-01-08').getTime(), value: 1.10, equityReturn: 0 }, // ↓
+      ];
+
+      mockGetHistory.mockReturnValue(history);
+      mockGetPosition.mockReturnValue({
+        fullCapacity: 10000,
+        initialPosition: 1000,
+        startDate: '2024-01-01',
+        initialPrice: 1.0,
+      });
+      mockGetTradesForSymbol.mockReturnValue([]);
+
+      const snapshot = await computeRiskSnapshot(portfolio, marketData);
+
+      // 从峰值开始连续下跌 5 天
+      expect(snapshot.continuousDecline).toBe(5);
+    });
+
+    it('遇到上涨应停止计算连续下跌天数', async () => {
+      const portfolio = createMockPortfolio();
+      const marketData = createMockMarketData();
+
+      mockGetRiskThresholds.mockReturnValue(DEFAULT_RISK_THRESHOLDS);
+      mockComputeOverallProfit.mockResolvedValue(createMockSummary(10));
+
+      // 创建历史净值：下跌后反弹
+      // 1.0 -> 1.5(峰值) -> 1.4 -> 1.3 -> 1.35(上涨) -> 1.30
+      // 从峰值开始连续下跌 2 天，遇到上涨停止
+      const history = [
+        { date: new Date('2024-01-01').getTime(), value: 1.0, equityReturn: 0 },
+        { date: new Date('2024-01-02').getTime(), value: 1.2, equityReturn: 0 },
+        { date: new Date('2024-01-03').getTime(), value: 1.5, equityReturn: 0 },  // 峰值
+        { date: new Date('2024-01-04').getTime(), value: 1.4, equityReturn: 0 },  // ↓
+        { date: new Date('2024-01-05').getTime(), value: 1.3, equityReturn: 0 },  // ↓
+        { date: new Date('2024-01-06').getTime(), value: 1.35, equityReturn: 0 }, // ↑ 上涨，停止计数
+        { date: new Date('2024-01-07').getTime(), value: 1.30, equityReturn: 0 },
+      ];
+
+      mockGetHistory.mockReturnValue(history);
+      mockGetPosition.mockReturnValue({
+        fullCapacity: 10000,
+        initialPosition: 1000,
+        startDate: '2024-01-01',
+        initialPrice: 1.0,
+      });
+      mockGetTradesForSymbol.mockReturnValue([]);
+
+      const snapshot = await computeRiskSnapshot(portfolio, marketData);
+
+      // 从峰值开始连续下跌 2 天，遇到上涨停止
+      expect(snapshot.continuousDecline).toBe(2);
+    });
+
+    it('遇到持平应停止计算连续下跌天数', async () => {
+      const portfolio = createMockPortfolio();
+      const marketData = createMockMarketData();
+
+      mockGetRiskThresholds.mockReturnValue(DEFAULT_RISK_THRESHOLDS);
+      mockComputeOverallProfit.mockResolvedValue(createMockSummary(10));
+
+      // 创建历史净值：下跌后持平
+      // 1.0 -> 1.5(峰值) -> 1.4 -> 1.3 -> 1.3(持平) -> 1.25
+      const history = [
+        { date: new Date('2024-01-01').getTime(), value: 1.0, equityReturn: 0 },
+        { date: new Date('2024-01-02').getTime(), value: 1.2, equityReturn: 0 },
+        { date: new Date('2024-01-03').getTime(), value: 1.5, equityReturn: 0 },  // 峰值
+        { date: new Date('2024-01-04').getTime(), value: 1.4, equityReturn: 0 },  // ↓
+        { date: new Date('2024-01-05').getTime(), value: 1.3, equityReturn: 0 },  // ↓
+        { date: new Date('2024-01-06').getTime(), value: 1.3, equityReturn: 0 },  // 持平，停止计数
+        { date: new Date('2024-01-07').getTime(), value: 1.25, equityReturn: 0 },
+      ];
+
+      mockGetHistory.mockReturnValue(history);
+      mockGetPosition.mockReturnValue({
+        fullCapacity: 10000,
+        initialPosition: 1000,
+        startDate: '2024-01-01',
+        initialPrice: 1.0,
+      });
+      mockGetTradesForSymbol.mockReturnValue([]);
+
+      const snapshot = await computeRiskSnapshot(portfolio, marketData);
+
+      // 从峰值开始连续下跌 2 天，遇到持平停止
+      expect(snapshot.continuousDecline).toBe(2);
+    });
+
+    it('最高点在最后一天时应返回0', async () => {
+      const portfolio = createMockPortfolio();
+      const marketData = createMockMarketData();
+
+      mockGetRiskThresholds.mockReturnValue(DEFAULT_RISK_THRESHOLDS);
+      mockComputeOverallProfit.mockResolvedValue(createMockSummary(10));
+
+      // 创建历史净值：持续上涨
+      // 1.0 -> 1.1 -> 1.2 -> 1.3 -> 1.4 -> 1.5(峰值在最后)
+      const history = [
+        { date: new Date('2024-01-01').getTime(), value: 1.0, equityReturn: 0 },
+        { date: new Date('2024-01-02').getTime(), value: 1.1, equityReturn: 0 },
+        { date: new Date('2024-01-03').getTime(), value: 1.2, equityReturn: 0 },
+        { date: new Date('2024-01-04').getTime(), value: 1.3, equityReturn: 0 },
+        { date: new Date('2024-01-05').getTime(), value: 1.4, equityReturn: 0 },
+        { date: new Date('2024-01-06').getTime(), value: 1.5, equityReturn: 0 },  // 峰值在最后
+      ];
+
+      mockGetHistory.mockReturnValue(history);
+      mockGetPosition.mockReturnValue({
+        fullCapacity: 10000,
+        initialPosition: 1000,
+        startDate: '2024-01-01',
+        initialPrice: 1.0,
+      });
+      mockGetTradesForSymbol.mockReturnValue([]);
+
+      const snapshot = await computeRiskSnapshot(portfolio, marketData);
+
+      // 最高点在最后一天，没有回撤
+      expect(snapshot.continuousDecline).toBe(0);
+    });
+
+    it('空数据应返回0', async () => {
+      mockGetRiskThresholds.mockReturnValue(DEFAULT_RISK_THRESHOLDS);
+      mockComputeOverallProfit.mockResolvedValue({
+        totalProfit: 0,
+        totalReturn: 0,
+        timeline: [],
+        perFund: [],
+        perFundTimelines: {},
+      });
+      mockGetHistory.mockReturnValue([]);
+
+      const snapshot = await computeRiskSnapshot([], {});
+
+      expect(snapshot.continuousDecline).toBe(0);
+    });
+  });
 });

@@ -585,6 +585,7 @@ export interface RiskSnapshot {
   maxDrawdownPeakProfit: number;    // 最大回撤波峰累计盈利值
   maxDrawdownTroughDate: string | null; // 最大回撤波谷日期
   maxDrawdownTroughProfit: number;  // 最大回撤波谷累计盈利值
+  maxDrawdownDays: number;          // 最大回撤持续天数（从峰值到低点）
   currentDrawdown: number;          // 当前回撤百分比（正值）
   currentDrawdownPeakDate: string | null; // 当前回撤波峰日期
   currentDrawdownPeakNav: number;   // 当前回撤波峰净值
@@ -599,6 +600,10 @@ export interface RiskSnapshot {
   hhi: number;                      // 集中度指数 (0-1)
   continuousDecline: number;        // 连续下跌天数
   maxRecoveryDays: number;          // 历史最长恢复天数
+  maxRecoveryPeakDate: string | null;   // 历史最长恢复的回撤峰值日期
+  maxRecoveryTroughDate: string | null; // 历史最长恢复的回撤低点日期
+  maxRecoveryRecoveryDate: string | null; // 历史最长恢复的恢复日期（null表示未恢复）
+  maxRecoveryInProgress: boolean;   // 当前是否有未恢复的回撤
   alerts: RiskAlert[];              // 预警列表
   fundDrawdowns: FundDrawdown[];    // 各基金回撤
   computedAt: string;               // 计算时间（ISO时间戳）

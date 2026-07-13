@@ -36,6 +36,7 @@ import {
   calculateCurrentDrawdown,
   calculateCurrentDrawdownDetails,
   calculateMaxRecoveryDays,
+  calculateMaxRecoveryDaysDetails,
   estimateVolatilityFromNav,
 } from '../utils/performanceAttribution';
 import { computePositions } from '../utils/positionHelper';
@@ -99,6 +100,7 @@ export async function computeRiskSnapshot(
   const maxDrawdownPeakNav = drawdownDetails.peakNav;
   const maxDrawdownTroughDate = drawdownDetails.troughDate;
   const maxDrawdownTroughNav = drawdownDetails.troughNav;
+  const maxDrawdownDays = drawdownDetails.drawdownDays;
 
   // 4. 从净值曲线计算当前回撤详细信息（使用新函数）
   const currentDrawdownDetails = calculateCurrentDrawdownDetails(navCurve);
@@ -112,7 +114,8 @@ export async function computeRiskSnapshot(
   const currentDrawdownDays = currentDrawdownDetails.drawdownDays;
 
   // 5. 计算历史最长恢复天数（使用公共函数）
-  const maxRecoveryDays = calculateMaxRecoveryDays(navCurve);
+  const maxRecoveryDetails = calculateMaxRecoveryDaysDetails(navCurve);
+  const maxRecoveryDays = maxRecoveryDetails.maxRecoveryDays;
 
   // 6. 检测回撤持续天数（连续下跌）
   const continuousDecline = detectContinuousDeclineFromNav(navCurve);
@@ -162,6 +165,7 @@ export async function computeRiskSnapshot(
     maxDrawdownPeakProfit: maxDrawdownPeakNav,
     maxDrawdownTroughDate,
     maxDrawdownTroughProfit: maxDrawdownTroughNav,
+    maxDrawdownDays,
     currentDrawdown,
     currentDrawdownPeakDate,
     currentDrawdownPeakNav,
@@ -171,6 +175,10 @@ export async function computeRiskSnapshot(
     currentDate,
     currentDrawdownDays,
     maxRecoveryDays,
+    maxRecoveryPeakDate: maxRecoveryDetails.peakDate,
+    maxRecoveryTroughDate: maxRecoveryDetails.troughDate,
+    maxRecoveryRecoveryDate: maxRecoveryDetails.recoveryDate,
+    maxRecoveryInProgress: maxRecoveryDetails.isInProgress,
     volatility,
     sharpeRatio,
     calmarRatio,
@@ -193,6 +201,7 @@ function createEmptySnapshot(now: string): RiskSnapshot {
     maxDrawdownPeakProfit: 0,
     maxDrawdownTroughDate: null,
     maxDrawdownTroughProfit: 0,
+    maxDrawdownDays: 0,
     currentDrawdown: 0,
     currentDrawdownPeakDate: null,
     currentDrawdownPeakNav: 0,
@@ -202,6 +211,10 @@ function createEmptySnapshot(now: string): RiskSnapshot {
     currentDate: null,
     currentDrawdownDays: 0,
     maxRecoveryDays: 0,
+    maxRecoveryPeakDate: null,
+    maxRecoveryTroughDate: null,
+    maxRecoveryRecoveryDate: null,
+    maxRecoveryInProgress: false,
     volatility: 0,
     sharpeRatio: null,
     calmarRatio: null,
@@ -473,6 +486,7 @@ function estimateVolatilityFromTimeline(
 
 /**
  * 从净值曲线检测连续下跌天数
+ * 定义：从高点开始，连续下跌的天数（每天净值都比前一天低），遇到上涨就停止
  */
 function detectContinuousDeclineFromNav(
   navCurve: { date: string; nav: number }[]
@@ -496,8 +510,18 @@ function detectContinuousDeclineFromNav(
     return 0;
   }
 
-  // 回撤持续天数 = 从高点到当前的天数
-  return navCurve.length - 1 - peakIndex;
+  // 从高点开始，计算连续下跌的天数（遇到上涨就停止）
+  let continuousDays = 0;
+  for (let i = peakIndex + 1; i < navCurve.length; i++) {
+    if (navCurve[i].nav < navCurve[i - 1].nav) {
+      continuousDays++;
+    } else {
+      // 遇到上涨或持平，停止计数
+      break;
+    }
+  }
+
+  return continuousDays;
 }
 
 /**
