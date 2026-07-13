@@ -16,6 +16,7 @@ import { formatDateDisplay } from '../utils/dateFormat';
 import { getPosition } from '../services/marketFundService';
 import { computePositions } from '../utils/positionHelper';
 import { getRiskThresholds } from '../services/riskThresholdService';
+import { getScoreColor, getRiskLevel, getAlertLevelStyle, getAlertBadgeStyle } from '../utils/riskLevelHelper';
 
 type RiskTab = 'overview' | 'alerts' | 'concentration' | 'drawdown';
 
@@ -89,6 +90,92 @@ const TooltipCell: React.FC<TooltipCellProps> = ({ children, tooltipContent, cla
     </td>
   );
 };
+
+/**
+ * 风险指标卡片
+ * 显示单个风险指标及其阈值状态
+ */
+interface RiskIndicatorCardProps {
+  icon: string;
+  title: string;
+  value: string;
+  status: 'success' | 'warning' | 'danger' | 'neutral';
+  statusText: string;
+  tooltipPosition: 'left' | 'center' | 'right';
+  tooltipContent: React.ReactNode;
+}
+
+const RiskIndicatorCard: React.FC<RiskIndicatorCardProps> = ({
+  icon,
+  title,
+  value,
+  status,
+  statusText,
+  tooltipPosition,
+  tooltipContent,
+}) => {
+  // 根据状态确定颜色
+  const borderColor = {
+    success: 'border-green-300',
+    warning: 'border-yellow-300',
+    danger: 'border-red-300',
+    neutral: 'border-gray-300',
+  }[status];
+
+  const bgColor = {
+    success: 'bg-gradient-to-br from-green-50 to-white',
+    warning: 'bg-gradient-to-br from-yellow-50 to-white',
+    danger: 'bg-gradient-to-br from-red-50 to-white',
+    neutral: 'bg-gradient-to-br from-gray-50 to-white',
+  }[status];
+
+  const textColor = {
+    success: 'text-green-600',
+    warning: 'text-yellow-600',
+    danger: 'text-red-600',
+    neutral: 'text-gray-600',
+  }[status];
+
+  const statusBgColor = {
+    success: 'bg-green-100 text-green-700',
+    warning: 'bg-yellow-100 text-yellow-700',
+    danger: 'bg-red-100 text-red-700',
+    neutral: 'bg-gray-100 text-gray-700',
+  }[status];
+
+  // Tooltip位置样式
+  const tooltipPositionClass = {
+    left: 'left-0',
+    center: 'left-1/2 -translate-x-1/2',
+    right: 'right-0',
+  }[tooltipPosition];
+
+  return (
+    <div className="relative group">
+      <div className={`bg-white rounded-xl border-2 ${borderColor} ${bgColor} p-4 text-center cursor-pointer transition-all hover:-translate-y-0.5 hover:shadow-lg`}>
+        <div className="text-2xl mb-2">{icon}</div>
+        <div className="text-xs text-gray-500 mb-1">{title}</div>
+        <div className={`text-2xl font-bold ${textColor}`}>{value}</div>
+        <div className={`mt-2 text-xs px-2 py-1 rounded-full inline-block ${statusBgColor}`}>
+          {statusText}
+        </div>
+      </div>
+      {/* Tooltip */}
+      <div className={`absolute bottom-full ${tooltipPositionClass} mb-2 px-4 py-3 bg-gray-800 text-white text-xs rounded-lg opacity-0 group-hover:opacity-100 transition-opacity z-10 w-60 pointer-events-none`}>
+        {tooltipContent}
+      </div>
+    </div>
+  );
+};
+
+/**
+ * 根据值和阈值判断状态
+ */
+function getThresholdStatus(value: number, low: number, high: number): 'success' | 'warning' | 'danger' {
+  if (value >= high) return 'danger';
+  if (value >= low) return 'warning';
+  return 'success';
+}
 
 interface RiskMonitorModalProps {
   isOpen: boolean;
@@ -283,22 +370,6 @@ const OverviewTab: React.FC<{
     );
   }, [portfolio, marketData]);
 
-  // 风险评分颜色
-  const getScoreColor = (score: number) => {
-    if (score >= 80) return 'bg-gradient-to-br from-green-500 to-green-600';
-    if (score >= 60) return 'bg-gradient-to-br from-yellow-500 to-yellow-600';
-    if (score >= 40) return 'bg-gradient-to-br from-orange-500 to-orange-600';
-    return 'bg-gradient-to-br from-red-500 to-red-600';
-  };
-
-  // 风险等级文字
-  const getRiskLevel = (score: number) => {
-    if (score >= 80) return { text: '低风险', icon: '🟢', color: 'text-green-600' };
-    if (score >= 60) return { text: '中低风险', icon: '🟡', color: 'text-yellow-600' };
-    if (score >= 40) return { text: '中等风险', icon: '🟠', color: 'text-orange-600' };
-    return { text: '高风险', icon: '🔴', color: 'text-red-600' };
-  };
-
   const level = getRiskLevel(snapshot.score);
   const thresholds = getRiskThresholds();
 
@@ -338,181 +409,162 @@ const OverviewTab: React.FC<{
           📈 风险指标
         </h3>
         <div className="grid grid-cols-4 gap-4">
-          {/* 波动率 - 第一个tooltip左对齐 */}
-          <div className="relative group">
-            <div className={`bg-white rounded-xl border-2 p-4 text-center cursor-pointer transition-all hover:-translate-y-0.5 hover:shadow-lg ${
-              snapshot.volatility >= thresholds.volatility.high ? 'border-orange-300 bg-gradient-to-br from-orange-50 to-white' :
-              snapshot.volatility >= thresholds.volatility.low ? 'border-yellow-300 bg-gradient-to-br from-yellow-50 to-white' : 'border-green-300 bg-gradient-to-br from-green-50 to-white'
-            }`}>
-              <div className="text-2xl mb-2">📊</div>
-              <div className="text-xs text-gray-500 mb-1">组合波动率</div>
-              <div className={`text-2xl font-bold ${
-                snapshot.volatility >= thresholds.volatility.high ? 'text-orange-600' :
-                snapshot.volatility >= thresholds.volatility.low ? 'text-yellow-600' : 'text-green-600'
-              }`}>{snapshot.volatility.toFixed(2)}%</div>
-              <div className={`mt-2 text-xs px-2 py-1 rounded-full inline-block ${
-                snapshot.volatility >= thresholds.volatility.high ? 'bg-orange-100 text-orange-700' :
-                snapshot.volatility >= thresholds.volatility.low ? 'bg-yellow-100 text-yellow-700' : 'bg-green-100 text-green-700'
-              }`}>
-                {snapshot.volatility >= thresholds.volatility.high ? '高波动' :
-                snapshot.volatility >= thresholds.volatility.low ? '中等波动' : '低波动'}
-              </div>
-            </div>
-            {/* Tooltip - 显示在上方，左对齐避免超出左边缘 */}
-            <div className="absolute bottom-full left-0 mb-2 px-4 py-3 bg-gray-800 text-white text-xs rounded-lg opacity-0 group-hover:opacity-100 transition-opacity z-10 w-60 pointer-events-none">
-              <strong>波动率详情</strong>
-              <div className="mt-1 text-gray-300">
-                当前组合年化波动率 {snapshot.volatility.toFixed(2)}%，处于{snapshot.volatility >= thresholds.volatility.high ? '较高' : snapshot.volatility >= thresholds.volatility.low ? '中等' : '较低'}水平。
-              </div>
-              <div className="mt-1 text-gray-400">
-                低阈值: {thresholds.volatility.low}% | 高阈值: {thresholds.volatility.high}%<br/>
-                同类平均: ~15%
-              </div>
-              <div className={`mt-1 ${snapshot.volatility < thresholds.volatility.low ? 'text-green-400' : snapshot.volatility < thresholds.volatility.high ? 'text-yellow-400' : 'text-red-400'}`}>
-                建议：{snapshot.volatility < thresholds.volatility.low ? '波动率较低，可接受' :
-                       snapshot.volatility < thresholds.volatility.high ? '波动率适中，继续观察' : '波动率较高，注意风险'}
-              </div>
-            </div>
-          </div>
+          {/* 波动率 */}
+          <RiskIndicatorCard
+            icon="📊"
+            title="组合波动率"
+            value={`${snapshot.volatility.toFixed(2)}%`}
+            status={
+              snapshot.volatility >= thresholds.volatility.high ? 'danger' :
+              snapshot.volatility >= thresholds.volatility.low ? 'warning' : 'success'
+            }
+            statusText={
+              snapshot.volatility >= thresholds.volatility.high ? '高波动' :
+              snapshot.volatility >= thresholds.volatility.low ? '中等波动' : '低波动'
+            }
+            tooltipPosition="left"
+            tooltipContent={
+              <>
+                <strong>波动率详情</strong>
+                <div className="mt-1 text-gray-300">
+                  当前组合年化波动率 {snapshot.volatility.toFixed(2)}%，处于{snapshot.volatility >= thresholds.volatility.high ? '较高' : snapshot.volatility >= thresholds.volatility.low ? '中等' : '较低'}水平。
+                </div>
+                <div className="mt-1 text-gray-400">
+                  低阈值: {thresholds.volatility.low}% | 高阈值: {thresholds.volatility.high}%<br/>
+                  同类平均: ~15%
+                </div>
+                <div className={`mt-1 ${snapshot.volatility < thresholds.volatility.low ? 'text-green-400' : snapshot.volatility < thresholds.volatility.high ? 'text-yellow-400' : 'text-red-400'}`}>
+                  建议：{snapshot.volatility < thresholds.volatility.low ? '波动率较低，可接受' :
+                         snapshot.volatility < thresholds.volatility.high ? '波动率适中，继续观察' : '波动率较高，注意风险'}
+                </div>
+              </>
+            }
+          />
 
           {/* 最大回撤 */}
-          <div className="relative group">
-            <div className={`bg-white rounded-xl border-2 p-4 text-center cursor-pointer transition-all hover:-translate-y-0.5 hover:shadow-lg ${
-              snapshot.maxDrawdown >= thresholds.drawdown.high ? 'border-red-300 bg-gradient-to-br from-red-50 to-white' :
-              snapshot.maxDrawdown >= thresholds.drawdown.low ? 'border-orange-300 bg-gradient-to-br from-orange-50 to-white' : 'border-green-300 bg-gradient-to-br from-green-50 to-white'
-            }`}>
-              <div className="text-2xl mb-2">📉</div>
-              <div className="text-xs text-gray-500 mb-1">最大回撤</div>
-              <div className={`text-2xl font-bold ${
-                snapshot.maxDrawdown >= thresholds.drawdown.high ? 'text-red-600' :
-                snapshot.maxDrawdown >= thresholds.drawdown.low ? 'text-orange-600' : 'text-green-600'
-              }`}>{snapshot.maxDrawdown.toFixed(2)}%</div>
-              <div className={`mt-2 text-xs px-2 py-1 rounded-full inline-block ${
-                snapshot.maxDrawdown >= thresholds.drawdown.high ? 'bg-red-100 text-red-700' :
-                snapshot.maxDrawdown >= thresholds.drawdown.low ? 'bg-orange-100 text-orange-700' : 'bg-green-100 text-green-700'
-              }`}>
-                {snapshot.maxDrawdown >= thresholds.drawdown.high ? `超${thresholds.drawdown.high}%阈值` :
-                snapshot.maxDrawdown >= thresholds.drawdown.low ? `超${thresholds.drawdown.low}%阈值` : '正常'}
-              </div>
-            </div>
-            {/* Tooltip - 显示在上方，居中 */}
-            <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-4 py-3 bg-gray-800 text-white text-xs rounded-lg opacity-0 group-hover:opacity-100 transition-opacity z-10 w-72 pointer-events-none">
-              <strong>历史最大回撤详情</strong>
-              {snapshot.maxDrawdownPeakDate && (
-                <div className="mt-2 pt-2 border-t border-gray-600">
-                  {/* 开始日期 + 净值 */}
-                  <div className="text-gray-400">
-                    <span className="text-green-300">开始</span> {formatDateDisplay(snapshot.maxDrawdownPeakDate)}
-                    <div className="pl-4 text-gray-300">
-                      净值: {snapshot.maxDrawdownPeakProfit.toFixed(4)}
+          <RiskIndicatorCard
+            icon="📉"
+            title="最大回撤"
+            value={`${snapshot.maxDrawdown.toFixed(2)}%`}
+            status={
+              snapshot.maxDrawdown >= thresholds.drawdown.high ? 'danger' :
+              snapshot.maxDrawdown >= thresholds.drawdown.low ? 'warning' : 'success'
+            }
+            statusText={
+              snapshot.maxDrawdown >= thresholds.drawdown.high ? `超${thresholds.drawdown.high}%阈值` :
+              snapshot.maxDrawdown >= thresholds.drawdown.low ? `超${thresholds.drawdown.low}%阈值` : '正常'
+            }
+            tooltipPosition="center"
+            tooltipContent={
+              <>
+                <strong>历史最大回撤详情</strong>
+                {snapshot.maxDrawdownPeakDate && (
+                  <div className="mt-2 pt-2 border-t border-gray-600">
+                    <div className="text-gray-400">
+                      <span className="text-green-300">开始</span> {formatDateDisplay(snapshot.maxDrawdownPeakDate)}
+                      <div className="pl-4 text-gray-300">
+                        净值: {snapshot.maxDrawdownPeakProfit.toFixed(4)}
+                      </div>
+                    </div>
+                    {(() => {
+                      const isCurrentDrawdown = snapshot.maxDrawdown === snapshot.currentDrawdown &&
+                        snapshot.maxDrawdownPeakDate === snapshot.currentDrawdownPeakDate;
+
+                      if (isCurrentDrawdown && snapshot.currentDate) {
+                        return (
+                          <div className="text-gray-400 mt-1">
+                            <span className="text-yellow-300">当前</span> {formatDateDisplay(snapshot.currentDate)}
+                            <div className="pl-4 text-gray-300">
+                              净值: {snapshot.currentNav.toFixed(4)}
+                            </div>
+                          </div>
+                        );
+                      } else if (snapshot.maxDrawdownTroughDate) {
+                        return (
+                          <div className="text-gray-400 mt-1">
+                            <span className="text-red-300">结束</span> {formatDateDisplay(snapshot.maxDrawdownTroughDate)}
+                            <div className="pl-4 text-gray-300">
+                              净值: {snapshot.maxDrawdownTroughProfit.toFixed(4)}
+                            </div>
+                          </div>
+                        );
+                      }
+                      return null;
+                    })()}
+                    <div className="text-gray-400 mt-1">
+                      持续: {snapshot.maxRecoveryDays > 0 ? `${snapshot.maxRecoveryDays}天` : '-'}
                     </div>
                   </div>
-                  {/* 结束日期 + 净值：判断是否是当前回撤 */}
-                  {(() => {
-                    // 如果当前回撤就是历史最大回撤，显示"当前"而非"结束"
-                    const isCurrentDrawdown = snapshot.maxDrawdown === snapshot.currentDrawdown &&
-                      snapshot.maxDrawdownPeakDate === snapshot.currentDrawdownPeakDate;
-
-                    if (isCurrentDrawdown && snapshot.currentDate) {
-                      return (
-                        <div className="text-gray-400 mt-1">
-                          <span className="text-yellow-300">当前</span> {formatDateDisplay(snapshot.currentDate)}
-                          <div className="pl-4 text-gray-300">
-                            净值: {snapshot.currentNav.toFixed(4)}
-                          </div>
-                        </div>
-                      );
-                    } else if (snapshot.maxDrawdownTroughDate) {
-                      return (
-                        <div className="text-gray-400 mt-1">
-                          <span className="text-red-300">结束</span> {formatDateDisplay(snapshot.maxDrawdownTroughDate)}
-                          <div className="pl-4 text-gray-300">
-                            净值: {snapshot.maxDrawdownTroughProfit.toFixed(4)}
-                          </div>
-                        </div>
-                      );
-                    }
-                    return null;
-                  })()}
-                  {/* 持续时间 */}
-                  <div className="text-gray-400 mt-1">
-                    持续: {snapshot.maxRecoveryDays > 0 ? `${snapshot.maxRecoveryDays}天` : '-'}
-                  </div>
+                )}
+                <div className="mt-2 text-gray-400">
+                  轻度预警: {thresholds.drawdown.low}% | 重度预警: {thresholds.drawdown.high}%
                 </div>
-              )}
-              <div className="mt-2 text-gray-400">
-                轻度预警: {thresholds.drawdown.low}% | 重度预警: {thresholds.drawdown.high}%
-              </div>
-            </div>
-          </div>
+              </>
+            }
+          />
 
           {/* 集中度(HHI) */}
-          <div className="relative group">
-            <div className={`bg-white rounded-xl border-2 p-4 text-center cursor-pointer transition-all hover:-translate-y-0.5 hover:shadow-lg ${
-              snapshot.hhi > 0.25 ? 'border-orange-300 bg-gradient-to-br from-orange-50 to-white' :
-              snapshot.hhi > 0.15 ? 'border-yellow-300 bg-gradient-to-br from-yellow-50 to-white' : 'border-green-300 bg-gradient-to-br from-green-50 to-white'
-            }`}>
-              <div className="text-2xl mb-2">🥧</div>
-              <div className="text-xs text-gray-500 mb-1">集中度(HHI)</div>
-              <div className={`text-2xl font-bold ${
-                snapshot.hhi > 0.25 ? 'text-orange-600' :
-                snapshot.hhi > 0.15 ? 'text-yellow-600' : 'text-green-600'
-              }`}>{snapshot.hhi.toFixed(3)}</div>
-              <div className={`mt-2 text-xs px-2 py-1 rounded-full inline-block ${
-                snapshot.hhi > 0.25 ? 'bg-orange-100 text-orange-700' :
-                snapshot.hhi > 0.15 ? 'bg-yellow-100 text-yellow-700' : 'bg-green-100 text-green-700'
-              }`}>
-                {snapshot.hhi > 0.25 ? '高度集中' : snapshot.hhi > 0.15 ? '中度集中' : '分散良好'}
-              </div>
-            </div>
-            {/* Tooltip - 显示在上方，居中 */}
-            <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-4 py-3 bg-gray-800 text-white text-xs rounded-lg opacity-0 group-hover:opacity-100 transition-opacity z-10 w-60 pointer-events-none">
-              <strong>集中度详情</strong>
-              <div className="mt-1 text-gray-300">
-                HHI指数 {snapshot.hhi.toFixed(3)}，表示{snapshot.hhi > 0.25 ? '高度集中' : snapshot.hhi > 0.15 ? '中度集中' : '分散良好'}。
-              </div>
-              {positions.entries.length > 0 && (
-                <div className="mt-1 text-gray-400">
-                  单基金最高占比：{(positions.entries[0].ratio * 100).toFixed(0)}%（建议≤{thresholds.concentration.singleFund}%）<br/>
-                  前三基金占比：{(positions.entries.slice(0, 3).reduce((sum, e) => sum + e.ratio, 0) * 100).toFixed(0)}%（建议≤{thresholds.concentration.topThree}%）
+          <RiskIndicatorCard
+            icon="🥧"
+            title="集中度(HHI)"
+            value={snapshot.hhi.toFixed(3)}
+            status={
+              snapshot.hhi > 0.25 ? 'danger' :
+              snapshot.hhi > 0.15 ? 'warning' : 'success'
+            }
+            statusText={
+              snapshot.hhi > 0.25 ? '高度集中' :
+              snapshot.hhi > 0.15 ? '中度集中' : '分散良好'
+            }
+            tooltipPosition="center"
+            tooltipContent={
+              <>
+                <strong>集中度详情</strong>
+                <div className="mt-1 text-gray-300">
+                  HHI指数 {snapshot.hhi.toFixed(3)}，表示{snapshot.hhi > 0.25 ? '高度集中' : snapshot.hhi > 0.15 ? '中度集中' : '分散良好'}。
                 </div>
-              )}
-              <div className={`mt-1 ${snapshot.hhi <= 0.15 ? 'text-green-400' : snapshot.hhi <= 0.25 ? 'text-yellow-400' : 'text-orange-400'}`}>
-                建议：{snapshot.hhi <= 0.15 ? '持仓分散，可接受' :
-                       snapshot.hhi <= 0.25 ? '集中度偏高，可考虑分散' : '高度集中，建议分散配置'}
-              </div>
-            </div>
-          </div>
+                {positions.entries.length > 0 && (
+                  <div className="mt-1 text-gray-400">
+                    单基金最高占比：{(positions.entries[0].ratio * 100).toFixed(0)}%（建议≤{thresholds.concentration.singleFund}%）<br/>
+                    前三基金占比：{(positions.entries.slice(0, 3).reduce((sum, e) => sum + e.ratio, 0) * 100).toFixed(0)}%（建议≤{thresholds.concentration.topThree}%）
+                  </div>
+                )}
+                <div className={`mt-1 ${snapshot.hhi <= 0.15 ? 'text-green-400' : snapshot.hhi <= 0.25 ? 'text-yellow-400' : 'text-orange-400'}`}>
+                  建议：{snapshot.hhi <= 0.15 ? '持仓分散，可接受' :
+                         snapshot.hhi <= 0.25 ? '集中度偏高，可考虑分散' : '高度集中，建议分散配置'}
+                </div>
+              </>
+            }
+          />
 
-          {/* 夏普比率 - 最后一个tooltip右对齐 */}
-          <div className="relative group">
-            <div className="bg-white rounded-xl border-2 border-green-300 bg-gradient-to-br from-green-50 to-white p-4 text-center cursor-pointer transition-all hover:-translate-y-0.5 hover:shadow-lg">
-              <div className="text-2xl mb-2">⚖️</div>
-              <div className="text-xs text-gray-500 mb-1">夏普比率</div>
-              <div className={`text-2xl font-bold ${
-                snapshot.sharpeRatio && snapshot.sharpeRatio >= 1 ? 'text-green-600' :
-                snapshot.sharpeRatio && snapshot.sharpeRatio >= 0 ? 'text-yellow-600' : 'text-gray-400'
-              }`}>{snapshot.sharpeRatio?.toFixed(2) ?? '-'}</div>
-              <div className={`mt-2 text-xs px-2 py-1 rounded-full inline-block ${
-                snapshot.sharpeRatio && snapshot.sharpeRatio >= 1 ? 'bg-green-100 text-green-700' :
-                snapshot.sharpeRatio && snapshot.sharpeRatio >= 0 ? 'bg-yellow-100 text-yellow-700' : 'bg-gray-100 text-gray-700'
-              }`}>
-                {snapshot.sharpeRatio && snapshot.sharpeRatio >= 1 ? '良好' : snapshot.sharpeRatio && snapshot.sharpeRatio >= 0 ? '一般' : '无数据'}
-              </div>
-            </div>
-            {/* Tooltip - 显示在上方，右对齐避免超出右边缘 */}
-            <div className="absolute bottom-full right-0 mb-2 px-4 py-3 bg-gray-800 text-white text-xs rounded-lg opacity-0 group-hover:opacity-100 transition-opacity z-10 w-60 pointer-events-none">
-              <strong>夏普比率详情</strong>
-              <div className="mt-1 text-gray-300">
-                当前夏普比率 {snapshot.sharpeRatio?.toFixed(2) ?? '-'}，风险调整后收益{snapshot.sharpeRatio && snapshot.sharpeRatio >= 1 ? '良好' : snapshot.sharpeRatio && snapshot.sharpeRatio >= 0 ? '一般' : '无法评估'}。
-              </div>
-              <div className="mt-1 text-gray-400">
-                评级标准：<br/>
-                &lt; 0：不佳 | 0-1：一般<br/>
-                1-2：良好 | &gt; 2：优秀
-              </div>
-            </div>
-          </div>
+          {/* 夏普比率 */}
+          <RiskIndicatorCard
+            icon="⚖️"
+            title="夏普比率"
+            value={snapshot.sharpeRatio?.toFixed(2) ?? '-'}
+            status={
+              snapshot.sharpeRatio !== null && snapshot.sharpeRatio >= 1 ? 'success' :
+              snapshot.sharpeRatio !== null && snapshot.sharpeRatio >= 0 ? 'warning' : 'neutral'
+            }
+            statusText={
+              snapshot.sharpeRatio !== null && snapshot.sharpeRatio >= 1 ? '良好' :
+              snapshot.sharpeRatio !== null && snapshot.sharpeRatio >= 0 ? '一般' : '无数据'
+            }
+            tooltipPosition="right"
+            tooltipContent={
+              <>
+                <strong>夏普比率详情</strong>
+                <div className="mt-1 text-gray-300">
+                  当前夏普比率 {snapshot.sharpeRatio?.toFixed(2) ?? '-'}，风险调整后收益{snapshot.sharpeRatio && snapshot.sharpeRatio >= 1 ? '良好' : snapshot.sharpeRatio && snapshot.sharpeRatio >= 0 ? '一般' : '无法评估'}。
+                </div>
+                <div className="mt-1 text-gray-400">
+                  评级标准：<br/>
+                  &lt; 0：不佳 | 0-1：一般<br/>
+                  1-2：良好 | &gt; 2：优秀
+                </div>
+              </>
+            }
+          />
         </div>
       </div>
 
@@ -930,9 +982,9 @@ const DrawdownTab: React.FC<{
     }
   }
 
-  // 判断当前点是否接近低点或高点（小于15%距离时显示到下方）
-  const isNearLow = recoveryProgress < 15;
-  const isNearHigh = recoveryProgress > 85;
+  // 判断当前点是否接近低点或高点（小于10%距离时显示到下方）
+  const isNearLow = recoveryProgress < 10;
+  const isNearHigh = recoveryProgress > 90;
 
   return (
     <div className="space-y-4">
@@ -1015,14 +1067,16 @@ const DrawdownTab: React.FC<{
             </div>
           </div>
 
-          {/* 当前标记 - 当接近低点或高点时，显示到标尺下方 */}
+          {/* 当前标记 - 当接近低点或高点时，显示到标尺下方，与低点/高点对齐 */}
           <div
             className={`absolute top-0 transform text-center bg-white px-1.5 py-0.5 rounded shadow-sm cursor-help group/current ${
-              isNearLow || isNearHigh
-                ? 'translate-y-full -mt-7 -translate-x-1/2'
-                : '-translate-y-full -translate-x-1/2'
+              isNearLow
+                ? 'translate-y-full -mt-7 left-0' // 接近低点：左对齐，与低点标记对齐
+                : isNearHigh
+                  ? 'translate-y-full -mt-7 right-0' // 接近高点：右对齐，与高点标记对齐
+                  : '-translate-y-full -translate-x-1/2' // 中间位置：居中显示在上方
             }`}
-            style={{ left: `${recoveryProgress}%` }}
+            style={!isNearLow && !isNearHigh ? { left: `${recoveryProgress}%` } : undefined}
             onMouseEnter={(e) => {
               const rect = e.currentTarget.getBoundingClientRect();
               setCurrentTooltipPos({ x: rect.left, y: rect.top });
@@ -1032,8 +1086,8 @@ const DrawdownTab: React.FC<{
           >
             {isNearLow || isNearHigh ? (
               <>
-                <span className="block text-sm font-bold text-orange-600">-{currentDrawdown.toFixed(1)}%</span>
                 <span className="block text-xs text-gray-500">当前</span>
+                <span className="block text-sm font-bold text-orange-600">-{currentDrawdown.toFixed(1)}%</span>
               </>
             ) : (
               <>

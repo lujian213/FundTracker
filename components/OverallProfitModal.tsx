@@ -763,12 +763,7 @@ const OverallProfitModal: React.FC<Props> = ({ symbols, onClose, onSelectFund })
               ? (Math.pow(1 + navReturn / 100, 252 / tradingDays) - 1) * 100
               : navReturn;
 
-            const sharpeRatio = (volatility !== null && volatility > 0 && annualizedReturnPercent !== null)
-              ? (annualizedReturnPercent - 3) / volatility
-              : null;
-            const calmarRatio = (maxDrawdown !== null && maxDrawdown > 0 && annualizedReturnPercent !== null)
-              ? annualizedReturnPercent / maxDrawdown
-              : null;
+            const { sharpeRatio, calmarRatio } = calculateRatios(annualizedReturnPercent, maxDrawdown, volatility);
 
             setKpiData({
               annualizedReturn: annualizedReturnPercent,
@@ -799,13 +794,7 @@ const OverallProfitModal: React.FC<Props> = ({ symbols, onClose, onSelectFund })
           const returnRates = personalResult.returnCurve.map(p => p.returnRate);
           const volatility = estimateVolatilityFromReturnRates(returnRates);
 
-          // 计算夏普比率和卡玛比率
-          const sharpeRatio = (volatility !== null && volatility > 0 && annualizedReturnPercent !== null)
-            ? (annualizedReturnPercent - 3) / volatility
-            : null;
-          const calmarRatio = (maxDrawdown !== null && maxDrawdown > 0 && annualizedReturnPercent !== null)
-            ? annualizedReturnPercent / maxDrawdown
-            : null;
+          const { sharpeRatio, calmarRatio } = calculateRatios(annualizedReturnPercent, maxDrawdown, volatility);
 
           setKpiData({
             annualizedReturn: annualizedReturnPercent,
@@ -872,13 +861,7 @@ const OverallProfitModal: React.FC<Props> = ({ symbols, onClose, onSelectFund })
             const drawdownDetails = calculateMaxDrawdownDetailsFromNav(positionTrendData);
             const maxDrawdown = drawdownDetails.maxDrawdown;
 
-            // 计算夏普比率和卡玛比率
-            const sharpeRatio = (volatility !== null && volatility > 0 && annualizedReturnPercent !== null)
-              ? (annualizedReturnPercent - 3) / volatility
-              : null;
-            const calmarRatio = (maxDrawdown !== null && maxDrawdown > 0 && annualizedReturnPercent !== null)
-              ? annualizedReturnPercent / maxDrawdown
-              : null;
+            const { sharpeRatio, calmarRatio } = calculateRatios(annualizedReturnPercent, maxDrawdown, volatility);
 
             setKpiData({
               annualizedReturn: annualizedReturnPercent,
