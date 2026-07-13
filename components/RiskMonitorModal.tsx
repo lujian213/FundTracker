@@ -1249,12 +1249,15 @@ const DrawdownTab: React.FC<{
                         ) : (
                           <div className="text-gray-400">开始净值: {fd.peakValue.toFixed(4)}</div>
                         )}
-                        <div className="text-gray-300">持续: {fd.currentDrawdownDays}天</div>
-                        {fd.currentReturnRate !== undefined ? (
-                          <div className="text-gray-400">当前收益率: {fd.currentReturnRate.toFixed(2)}%</div>
-                        ) : (
-                          <div className="text-gray-400">当前净值: {fd.currentValue.toFixed(4)}</div>
-                        )}
+                        <div className="text-gray-300 mt-1">
+                          <span className="text-yellow-300">当前</span>
+                          {fd.currentReturnRate !== undefined ? (
+                            <div className="text-gray-400">当前收益率: {fd.currentReturnRate.toFixed(2)}%</div>
+                          ) : (
+                            <div className="text-gray-400">当前净值: {fd.currentValue.toFixed(4)}</div>
+                          )}
+                        </div>
+                        <div className="text-gray-300 mt-1">持续: {fd.currentDrawdownDays}天</div>
                       </>
                     }
                   >
@@ -1276,13 +1279,41 @@ const DrawdownTab: React.FC<{
                         ) : fd.maxDrawdownPeakNav !== undefined && (
                           <div className="text-gray-400">开始净值: {fd.maxDrawdownPeakNav.toFixed(4)}</div>
                         )}
-                        <div className="text-gray-300 mt-1">结束: {formatDateDisplay(fd.maxDrawdownTroughDate) || '-'}</div>
-                        {fd.maxDrawdownTroughReturnRate !== undefined ? (
-                          <div className="text-gray-400">结束收益率: {fd.maxDrawdownTroughReturnRate.toFixed(2)}%</div>
-                        ) : fd.maxDrawdownTroughNav !== undefined && (
-                          <div className="text-gray-400">结束净值: {fd.maxDrawdownTroughNav.toFixed(4)}</div>
-                        )}
-                        <div className="text-gray-300 mt-1">持续: {fd.maxDrawdownDays}天</div>
+                        {(() => {
+                          // 判断最大回撤是否还没结束（就是当前回撤）
+                          // 如果最大回撤峰值日期 = 当前回撤峰值日期，说明最大回撤就是当前回撤
+                          const isCurrentDrawdown = fd.maxDrawdownPeakDate === fd.peakDate;
+                          if (isCurrentDrawdown) {
+                            // 最大回撤还没结束，和当前回撤一样显示
+                            return (
+                              <>
+                                <div className="text-gray-300 mt-1">
+                                  <span className="text-yellow-300">当前</span>
+                                  {fd.currentReturnRate !== undefined ? (
+                                    <div className="text-gray-400">当前收益率: {fd.currentReturnRate.toFixed(2)}%</div>
+                                  ) : fd.currentValue !== undefined && (
+                                    <div className="text-gray-400">当前净值: {fd.currentValue.toFixed(4)}</div>
+                                  )}
+                                </div>
+                                <div className="text-gray-300 mt-1">持续: {fd.currentDrawdownDays}天</div>
+                              </>
+                            );
+                          }
+                          // 最大回撤已结束，显示结束信息
+                          return (
+                            <>
+                              <div className="text-gray-300 mt-1">
+                                <span className="text-red-300">结束</span> {formatDateDisplay(fd.maxDrawdownTroughDate) || '-'}
+                              </div>
+                              {fd.maxDrawdownTroughReturnRate !== undefined ? (
+                                <div className="text-gray-400">结束收益率: {fd.maxDrawdownTroughReturnRate.toFixed(2)}%</div>
+                              ) : fd.maxDrawdownTroughNav !== undefined && (
+                                <div className="text-gray-400">结束净值: {fd.maxDrawdownTroughNav.toFixed(4)}</div>
+                              )}
+                              <div className="text-gray-300 mt-1">持续: {fd.maxDrawdownDays}天</div>
+                            </>
+                          );
+                        })()}
                       </>
                     }
                   >

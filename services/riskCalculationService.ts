@@ -44,6 +44,23 @@ import { computePositionTrend, PositionTrendPoint, Trade, ValuationPoint } from 
 import { computeOverallProfit } from './fundService';
 import { formatDateISO } from '../utils/dateFormat';
 
+/**
+ * 计算两个日期字符串之间的日历天数差
+ * @param startDate 开始日期 (YYYY-MM-DD)
+ * @param endDate 结束日期 (YYYY-MM-DD)
+ * @returns 日历天数差（如果任一日期无效返回0）
+ */
+function calculateCalendarDays(startDate: string | null, endDate: string | null): number {
+  if (!startDate || !endDate) {
+    return 0;
+  }
+  const start = new Date(startDate);
+  const end = new Date(endDate);
+  const diffTime = end.getTime() - start.getTime();
+  const diffDays = Math.round(diffTime / (1000 * 60 * 60 * 24));
+  return Math.max(0, diffDays);
+}
+
 // ═══════════════════════════════════════════════════════════════════════════════
 // 服务状态（内存缓存）
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -326,20 +343,21 @@ function computeFundDrawdownsFromPersonalReturn(
         const maxTroughNav = maxDrawdownDetails.troughNav;
         const maxTroughDate = maxDrawdownDetails.troughDate || '';
 
-        // 计算最大回撤持续天数
-        const maxDrawdownDays = maxPeakDate && maxTroughDate
-          ? navHistory.filter(p => p.date >= maxPeakDate && p.date <= maxTroughDate).length - 1
-          : 0;
+        // 计算最大回撤持续天数（使用日历天数）
+        const maxDrawdownDays = calculateCalendarDays(maxPeakDate, maxTroughDate);
 
         // 使用公共函数计算当前回撤信息
         const currentDrawdownDetails = calculateCurrentDrawdownDetails(navHistory);
         const currentDrawdown = currentDrawdownDetails.currentDrawdown;
-        const currentDrawdownDays = currentDrawdownDetails.drawdownDays;
         const currentPeakDate = currentDrawdownDetails.peakDate || '';
         const currentPeakNav = currentDrawdownDetails.peakNav;
         const currentTroughDate = currentDrawdownDetails.troughDate || '';
         const currentTroughNav = currentDrawdownDetails.troughNav;
         const currentNav = currentDrawdownDetails.currentNav;
+        const currentDateNav = currentDrawdownDetails.currentDate || '';
+
+        // 计算当前回撤持续天数（使用日历天数）
+        const currentDrawdownDays = calculateCalendarDays(currentPeakDate, currentDateNav);
 
         fundDrawdowns.push({
           symbol,
@@ -370,9 +388,12 @@ function computeFundDrawdownsFromPersonalReturn(
       }));
       const currentDrawdownDetails = calculateCurrentDrawdownDetails(returnRateCurve);
       const currentDrawdown = currentDrawdownDetails.currentDrawdown;
-      const currentDrawdownDays = currentDrawdownDetails.drawdownDays;
       const currentPeakDate = currentDrawdownDetails.peakDate || '';
       const currentTroughDate = currentDrawdownDetails.troughDate || '';
+      const currentDateReturn = currentDrawdownDetails.currentDate || '';
+
+      // 计算当前回撤持续天数（使用日历天数）
+      const currentDrawdownDays = calculateCalendarDays(currentPeakDate, currentDateReturn);
 
       // 从原始 returnCurve 获取峰值、当前的净值、收益率
       const peakPoint = personalResult.returnCurve.find(p => p.date === currentPeakDate);
@@ -417,10 +438,8 @@ function computeFundDrawdownsFromPersonalReturn(
       const maxDrawdownPeakNav = maxPeakPoint?.nav;
       const maxDrawdownTroughNav = maxTroughPoint?.nav;
 
-      // 最大回撤持续天数
-      const maxDrawdownDays = maxPeakDate && maxTroughDate
-        ? personalResult.returnCurve.filter(p => p.date >= maxPeakDate && p.date <= maxTroughDate).length - 1
-        : 0;
+      // 最大回撤持续天数（使用日历天数）
+      const maxDrawdownDays = calculateCalendarDays(maxPeakDate, maxTroughDate);
 
       fundDrawdowns.push({
         symbol,
