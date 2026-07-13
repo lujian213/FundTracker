@@ -143,26 +143,18 @@ export default function usePositionTrend(params: UsePositionTrendParams = {}) {
 
           // 如果有建仓记录，将其添加到 tradesMap 中（用于净投入计算）
           // buildSharesTimeline 会跳过 initial 类型，避免重复计算持仓份额
-          // 为了和持仓计算保持一致（假设建仓日期之前仓位已存在），将 initial trade 的日期设为图表起始日期
-          if (pos && pos.initialPosition > 0 && pos.initialPrice) {
+          // 使用基金的实际建仓日期（pos.startDate），而非图表起始日期
+          if (pos && pos.initialPosition > 0 && pos.initialPrice && pos.startDate) {
             const initialTrade = {
               id: '__initial__',
-              date: computedRange.startDate, // 使用图表起始日期，而非基金建仓日期
+              date: pos.startDate, // 使用基金的实际建仓日期
               type: 'initial' as const,
               shares: pos.initialPosition,
               price: pos.initialPrice,
               fee: 0
             };
             tradesMap[s] = [...(tradesMap[s] || []), initialTrade];
-
-            // 同时将图表起始日期的估值添加到 valuationMap，使用建仓价格
-            // 这样起始日期就有估值数据，持仓总金额不会为 0
-            const arr = valuationMap[s] || [];
-            // 检查是否已经有该日期的估值，如果没有则添加
-            if (!arr.find(v => v.date === computedRange.startDate)) {
-              arr.push({ date: computedRange.startDate, price: pos.initialPrice });
-              valuationMap[s] = arr;
-            }
+            // 注意：不再强制添加估值，使用实际历史净值数据
           }
         } catch (e) { initialPositions[s] = 0; }
       }

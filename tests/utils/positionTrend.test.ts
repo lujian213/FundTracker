@@ -92,10 +92,10 @@ describe('computePositionTrend - netInvestment', () => {
     const series = computePositionTrend(input);
     const find = (d: string) => series.find(p => p.date === d) as any;
 
-    // 买入前净投入应为0
-    expect(find('2026-01-04').netInvestment).toBeCloseTo(0);
-    // 买入后净投入应为 100*1.0 + 5 = 105
-    expect(find('2026-01-05').netInvestment).toBeCloseTo(105);
+    // 买入当天净投入仍为0（交易第二天生效）
+    expect(find('2026-01-05').netInvestment).toBeCloseTo(0);
+    // 买入第二天净投入应为 100*1.0 + 5 = 105
+    expect(find('2026-01-06').netInvestment).toBeCloseTo(105);
     expect(find('2026-01-10').netInvestment).toBeCloseTo(105);
   });
 
@@ -121,10 +121,12 @@ describe('computePositionTrend - netInvestment', () => {
     const series = computePositionTrend(input);
     const find = (d: string) => series.find(p => p.date === d) as any;
 
-    // 买入后净投入应为 105
+    // 买入第二天净投入应为 105
     expect(find('2026-01-06').netInvestment).toBeCloseTo(105);
-    // 卖出后净投入应为 105 - (50*1.5 - 3) = 105 - 72 = 33
-    expect(find('2026-01-10').netInvestment).toBeCloseTo(33);
+    // 卖出当天净投入仍为 105
+    expect(find('2026-01-10').netInvestment).toBeCloseTo(105);
+    // 卖出第二天净投入应为 105 - (50*1.5 - 3) = 105 - 72 = 33
+    expect(find('2026-01-11').netInvestment).toBeCloseTo(33);
     expect(find('2026-01-15').netInvestment).toBeCloseTo(33);
   });
 
@@ -181,10 +183,12 @@ describe('computePositionTrend - netInvestment', () => {
     const series = computePositionTrend(input);
     const find = (d: string) => series.find(p => p.date === d) as any;
 
-    // A买入后净投入应为 105
+    // A买入第二天净投入应为 105
     expect(find('2026-01-06').netInvestment).toBeCloseTo(105);
-    // B买入后净投入总额应为 105 + 410 = 515
-    expect(find('2026-01-08').netInvestment).toBeCloseTo(515);
+    // B买入当天净投入仍为 105
+    expect(find('2026-01-08').netInvestment).toBeCloseTo(105);
+    // B买入第二天净投入总额应为 105 + 410 = 515
+    expect(find('2026-01-09').netInvestment).toBeCloseTo(515);
     expect(find('2026-01-15').netInvestment).toBeCloseTo(515);
   });
 
@@ -263,10 +267,10 @@ describe('computePositionTrend - netInvestment', () => {
 
     // 建仓时净投入 = 100 × 1.0 = 100
     expect(find('2026-01-01').netInvestment).toBeCloseTo(100);
-    // 买入前净投入不变
-    expect(find('2026-01-04').netInvestment).toBeCloseTo(100);
-    // 买入后净投入 = 100 + (50 × 1.5 + 5) = 100 + 80 = 180（按买入价格计算）
-    expect(find('2026-01-05').netInvestment).toBeCloseTo(180);
+    // 买入当天净投入不变（交易第二天生效）
+    expect(find('2026-01-05').netInvestment).toBeCloseTo(100);
+    // 买入第二天净投入 = 100 + (50 × 1.5 + 5) = 100 + 80 = 180（按买入价格计算）
+    expect(find('2026-01-06').netInvestment).toBeCloseTo(180);
     expect(find('2026-01-10').netInvestment).toBeCloseTo(180);
   });
 
@@ -389,12 +393,17 @@ describe('computePositionTrend - netInvestment', () => {
     expect(find('2026-01-01').value).toBeCloseTo(150);
     expect(find('2026-01-01').netInvestment).toBeCloseTo(100);
 
-    // 卖出后：份额 = 50，持仓 = 50 × 1.5 = 75
-    expect(find('2026-01-05').value).toBeCloseTo(75);
-    // 卖出后净投入 = 100 - (50 × 1.5 - 3) = 100 - 72 = 28
-    expect(find('2026-01-05').netInvestment).toBeCloseTo(28);
+    // 卖出当天：份额仍为100，持仓 = 100 × 1.5 = 150（交易第二天生效）
+    expect(find('2026-01-05').value).toBeCloseTo(150);
+    // 卖出当天净投入仍为 100
+    expect(find('2026-01-05').netInvestment).toBeCloseTo(100);
+
+    // 卖出第二天：份额 = 50，持仓 = 50 × 1.5 = 75
+    expect(find('2026-01-06').value).toBeCloseTo(75);
+    // 卖出第二天净投入 = 100 - (50 × 1.5 - 3) = 100 - 72 = 28
+    expect(find('2026-01-06').netInvestment).toBeCloseTo(28);
     // 盈利 = 75 - 28 = 47
-    expect(find('2026-01-05').value - find('2026-01-05').netInvestment).toBeCloseTo(47);
+    expect(find('2026-01-06').value - find('2026-01-06').netInvestment).toBeCloseTo(47);
   });
 });
 

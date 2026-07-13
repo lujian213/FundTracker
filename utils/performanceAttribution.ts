@@ -11,9 +11,17 @@ import { OverallFundRow, AttributionResult, FundAttributionData, OverallProfitPo
  */
 interface TWRResult {
   twr: number | null;           // 时间加权收益率
-  dailyValues?: {                // 每日市值数据（用于计算最大回撤）
+  dailyValues?: {                // 每日市值数据
     date: string;
     value: number;
+  }[];
+  dailyNav?: {                   // 每日净值数据
+    date: string;
+    nav: number;
+  }[];
+  cumulativeProfits?: {          // 每日累计盈利数据
+    date: string;
+    profit: number;
   }[];
 }
 
@@ -78,6 +86,58 @@ export function calculatePortfolioTWR(
       value: p.value,
     })),
   };
+}
+
+/**
+ * 从持仓趋势数据计算年化收益率
+ * 使用盈利变化除以净投入的方法计算收益率
+ *
+ * 公式：收益率 = 期间盈利变化 / 平均净投入
+ * 期间盈利变化 = 期末盈利 - 期初盈利
+ * 平均净投入 = (期初净投入 + 期末净投入) / 2
+ *
+ * @param trendData - 持仓趋势数据（包含每日市值和净投入）
+ * @returns 年化收益率百分比
+ */
+export function calculateAnnualizedReturnFromPositionTrend(
+  trendData: { date: string; value: number; netInvestment?: number }[] | null
+): number | null {
+  if (!trendData || trendData.length < 2) {
+    return null;
+  }
+
+  const firstPoint = trendData[0];
+  const lastPoint = trendData[trendData.length - 1];
+
+  // 获取期初和期末的市值与净投入
+  const startValue = firstPoint.value;
+  const endValue = lastPoint.value;
+  const startNetInvestment = firstPoint.netInvestment || 0;
+  const endNetInvestment = lastPoint.netInvestment || 0;
+
+  // 计算期初和期末的盈利
+  const startProfit = startValue - startNetInvestment;
+  const endProfit = endValue - endNetInvestment;
+
+  // 计算平均净投入
+  const avgNetInvestment = (startNetInvestment + endNetInvestment) / 2;
+
+  // 平均净投入必须大于0
+  if (avgNetInvestment <= 0) {
+    return null;
+  }
+
+  // 计算期间盈利变化
+  const profitChange = endProfit - startProfit;
+
+  // 计算期间收益率 = 盈利变化 / 平均净投入
+  const periodReturn = profitChange / avgNetInvestment;
+
+  // 持有天数
+  const days = trendData.length;
+
+  // 年化收益率 = (1 + 期间收益率)^(252/天数) - 1 * 100%
+  return (Math.pow(1 + periodReturn, 252 / days) - 1) * 100;
 }
 
 /**
@@ -197,10 +257,23 @@ export function calculateTWR(
   // Modified Dietz 收益率
   const returnValue = (endValue - startValue - totalCashFlow) / (startValue + weightedCashFlow);
 
-  // 返回收益率和每日市值数据
+  // 计算累计盈利序列：市值 - 累计净投入
+  let cumulativeNetInvestment = 0;
+  const cumulativeProfits: { date: string; profit: number }[] = [];
+  for (const data of dailyData) {
+    cumulativeNetInvestment += data.cashFlow;
+    cumulativeProfits.push({
+      date: data.date,
+      profit: data.value - cumulativeNetInvestment,
+    });
+  }
+
+  // 返回收益率、市值、净值和累计盈利数据
   return {
     twr: returnValue,
     dailyValues: dailyData.map(d => ({ date: d.date, value: d.value })),
+    dailyNav: dailyData.map(d => ({ date: d.date, nav: d.nav })),
+    cumulativeProfits,
   };
 }
 
@@ -243,7 +316,7 @@ export function calculateProfitAttribution(fundRows: OverallFundRow[]): Attribut
 }
 
 /**
- * 从市值数据计算最大回撤
+ * 计算最大回撤（基于市值）
  *
  * @param dailyValues - 每日市值数据
  * @returns 最大回撤百分比（正值）
@@ -276,6 +349,282 @@ export function calculateMaxDrawdownFromValue(
   }
 
   return maxDrawdown;
+}
+
+/**
+ * 计算最大回撤（基于累计盈利）
+ * 使用累计盈利而非市值，避免卖出操作影响回撤计算
+ *
+ * @param cumulativeProfits - 累计盈利数据（市值 - 净投入）
+ * @returns 最大回撤百分比（正值）
+ */
+export function calculateMaxDrawdownFromProfit(
+  cumulativeProfits: { date: string; profit: number }[]
+): number {
+  if (!cumulativeProfits || cumulativeProfits.length === 0) {
+    return 0;
+  }
+
+  let maxPeak = cumulativeProfits[0].profit;
+  let maxDrawdown = 0;
+
+  for (const point of cumulativeProfits) {
+    // 更新峰值
+    if (point.profit > maxPeak) {
+      maxPeak = point.profit;
+    }
+
+    // 只有当峰值 > 0 时才计算回撤（累计盈利为负时，回撤没有意义）
+    if (maxPeak > 0) {
+      const drawdown = (maxPeak - point.profit) / maxPeak * 100;
+      if (drawdown > maxDrawdown) {
+        maxDrawdown = drawdown;
+      }
+    }
+  }
+
+  return maxDrawdown;
+}
+
+/**
+ * 计算单位净值曲线
+ *
+ * 核心逻辑：
+ * 1. 初始净值 = 1.0，初始份额 = 初始市值
+ * 2. 每日净值 = 当日市值 / 总份额
+ * 3. 有现金流时：新增份额 = 现金流 / 昨日净值，更新总份额
+ * 4. 入金/出金只影响份额，不影响净值
+ *
+ * @param positionTrend - 持仓趋势数据（包含每日市值和净投入）
+ * @returns 单位净值曲线
+ */
+export function calculateNavCurve(
+  positionTrend: { date: string; value: number; netInvestment?: number }[]
+): { date: string; nav: number }[] {
+  if (!positionTrend || positionTrend.length === 0) {
+    return [];
+  }
+
+  const navCurve: { date: string; nav: number }[] = [];
+
+  // 初始净值 = 1.0
+  const initialNav = 1.0;
+
+  // 初始份额 = 初始市值 / 初始净值
+  const startValue = positionTrend[0].value;
+  let totalShares = startValue / initialNav;
+
+  for (let i = 0; i < positionTrend.length; i++) {
+    const today = positionTrend[i];
+    const yesterday = i > 0 ? positionTrend[i - 1] : null;
+
+    // 计算当日现金流 = 今日净投入 - 昨日净投入
+    let cashFlow = 0;
+    if (yesterday && today.netInvestment !== undefined && yesterday.netInvestment !== undefined) {
+      cashFlow = today.netInvestment - yesterday.netInvestment;
+    }
+
+    // 如果有现金流，先用昨日净值计算新增份额，再更新总份额
+    if (i > 0 && cashFlow !== 0) {
+      const yesterdayNav = navCurve[i - 1].nav;
+      if (yesterdayNav > 0) {
+        // 新增份额 = 现金流 / 昨日净值（入金为正，出金为负）
+        const newShares = cashFlow / yesterdayNav;
+        totalShares += newShares;
+      }
+    }
+
+    // 计算当日净值 = 当日市值 / 总份额
+    const nav = totalShares > 0 ? today.value / totalShares : 0;
+    navCurve.push({ date: today.date, nav });
+  }
+
+  return navCurve;
+}
+
+/**
+ * 基于单位净值计算最大回撤
+ *
+ * 核心逻辑：
+ * 1. 寻找到当前为止的历史最高净值
+ * 2. 当前回撤 = (当前净值 - 历史最高净值) / 历史最高净值
+ * 3. 最大回撤 = 所有当前回撤的最小值（负得最多的）
+ *
+ * @param navCurve - 单位净值曲线
+ * @returns 最大回撤百分比（正值）
+ */
+export function calculateMaxDrawdownFromNav(
+  navCurve: { date: string; nav: number }[]
+): number {
+  if (!navCurve || navCurve.length === 0) {
+    return 0;
+  }
+
+  let maxPeakNav = navCurve[0].nav;
+  let maxDrawdown = 0;
+
+  for (const point of navCurve) {
+    // 更新历史最高净值
+    if (point.nav > maxPeakNav) {
+      maxPeakNav = point.nav;
+    }
+
+    // 计算当前回撤 = (当前净值 - 历史最高净值) / 历史最高净值
+    if (maxPeakNav > 0) {
+      const drawdown = (maxPeakNav - point.nav) / maxPeakNav * 100;
+      if (drawdown > maxDrawdown) {
+        maxDrawdown = drawdown;
+      }
+    }
+  }
+
+  return maxDrawdown;
+}
+
+/**
+ * 基于单位净值计算最大回撤详细信息
+ *
+ * @param positionTrend - 持仓趋势数据（包含每日市值和净投入）
+ * @returns 最大回撤详细信息（包括峰值和谷值的日期和净值）
+ */
+export function calculateMaxDrawdownDetailsFromNav(
+  positionTrend: { date: string; value: number; netInvestment?: number }[]
+): {
+  maxDrawdown: number;
+  peakDate: string | null;
+  peakNav: number;
+  troughDate: string | null;
+  troughNav: number;
+} {
+  const defaultResult = {
+    maxDrawdown: 0,
+    peakDate: null as string | null,
+    peakNav: 0,
+    troughDate: null as string | null,
+    troughNav: 0,
+  };
+
+  if (!positionTrend || positionTrend.length === 0) {
+    return defaultResult;
+  }
+
+  // 先计算净值曲线
+  const navCurve = calculateNavCurve(positionTrend);
+
+  if (navCurve.length === 0) {
+    return defaultResult;
+  }
+
+  let maxPeakNav = navCurve[0].nav;
+  let maxPeakDate = navCurve[0].date;
+  let maxDrawdown = 0;
+  let troughDate = navCurve[0].date;
+  let troughNav = navCurve[0].nav;
+
+  // 用于记录最大回撤时的峰值信息
+  let drawdownPeakDate = navCurve[0].date;
+  let drawdownPeakNav = navCurve[0].nav;
+
+  for (const point of navCurve) {
+    // 更新历史最高净值
+    if (point.nav > maxPeakNav) {
+      maxPeakNav = point.nav;
+      maxPeakDate = point.date;
+    }
+
+    // 计算当前回撤
+    if (maxPeakNav > 0) {
+      const drawdown = (maxPeakNav - point.nav) / maxPeakNav * 100;
+      if (drawdown > maxDrawdown) {
+        maxDrawdown = drawdown;
+        troughDate = point.date;
+        troughNav = point.nav;
+        // 记录产生最大回撤时的峰值
+        drawdownPeakDate = maxPeakDate;
+        drawdownPeakNav = maxPeakNav;
+      }
+    }
+  }
+
+  return {
+    maxDrawdown,
+    peakDate: maxDrawdown > 0 ? drawdownPeakDate : null,
+    peakNav: maxDrawdown > 0 ? drawdownPeakNav : 0,
+    troughDate: maxDrawdown > 0 ? troughDate : null,
+    troughNav: maxDrawdown > 0 ? troughNav : 0,
+  };
+}
+
+/**
+ * 最大回撤详细信息
+ */
+export interface MaxDrawdownDetails {
+  maxDrawdown: number;      // 最大回撤百分比（正值）
+  peakDate: string | null;  // 波峰日期
+  peakProfit: number;       // 波峰累计盈利值
+  troughDate: string | null; // 波谷日期
+  troughProfit: number;     // 波谷累计盈利值
+}
+
+/**
+ * 计算最大回撤详细信息（包括波峰和波谷）
+ *
+ * @param cumulativeProfits - 累计盈利数据（市值 - 净投入）
+ * @returns 最大回撤详细信息
+ */
+export function calculateMaxDrawdownDetails(
+  cumulativeProfits: { date: string; profit: number }[]
+): MaxDrawdownDetails {
+  const defaultResult: MaxDrawdownDetails = {
+    maxDrawdown: 0,
+    peakDate: null,
+    peakProfit: 0,
+    troughDate: null,
+    troughProfit: 0,
+  };
+
+  if (!cumulativeProfits || cumulativeProfits.length === 0) {
+    return defaultResult;
+  }
+
+  let maxPeak = cumulativeProfits[0].profit;
+  let maxPeakDate = cumulativeProfits[0].date;
+  let maxDrawdown = 0;
+  let troughDate = cumulativeProfits[0].date;
+  let troughProfit = cumulativeProfits[0].profit;
+
+  // 用于记录最大回撤时的波峰信息
+  let drawdownPeakDate = cumulativeProfits[0].date;
+  let drawdownPeakProfit = cumulativeProfits[0].profit;
+
+  for (const point of cumulativeProfits) {
+    // 更新峰值
+    if (point.profit > maxPeak) {
+      maxPeak = point.profit;
+      maxPeakDate = point.date;
+    }
+
+    // 只有当峰值 > 0 时才计算回撤（累计盈利为负时，回撤没有意义）
+    if (maxPeak > 0) {
+      const drawdown = (maxPeak - point.profit) / maxPeak * 100;
+      if (drawdown > maxDrawdown) {
+        maxDrawdown = drawdown;
+        troughDate = point.date;
+        troughProfit = point.profit;
+        // 记录产生最大回撤时的波峰
+        drawdownPeakDate = maxPeakDate;
+        drawdownPeakProfit = maxPeak;
+      }
+    }
+  }
+
+  return {
+    maxDrawdown,
+    peakDate: maxDrawdown > 0 ? drawdownPeakDate : null,
+    peakProfit: maxDrawdown > 0 ? drawdownPeakProfit : 0,
+    troughDate: maxDrawdown > 0 ? troughDate : null,
+    troughProfit: maxDrawdown > 0 ? troughProfit : 0,
+  };
 }
 
 /**
@@ -609,5 +958,519 @@ export function calculateKPIs(
     volatility: volatility > 0 ? volatility : 0,
     sharpeRatio: sharpeRatio,
     calmarRatio: calmarRatio,
+  };
+}
+
+/**
+ * 计算历史最长恢复天数（基于净值）
+ *
+ * 恢复天数的定义：从回撤低点到创新高的天数
+ * 即：从净值跌破前一个峰值开始，到再次创新高的天数
+ *
+ * @param navCurve - 单位净值曲线
+ * @returns 历史最长恢复天数
+ */
+export function calculateMaxRecoveryDays(
+  navCurve: { date: string; nav: number }[]
+): number {
+  if (!navCurve || navCurve.length < 2) {
+    return 0;
+  }
+
+  // 计算历史最高净值
+  const historicalPeakNav = Math.max(...navCurve.map(p => p.nav));
+
+  if (historicalPeakNav <= 0) {
+    return 0;
+  }
+
+  let maxRecoveryDays = 0;
+  let currentPeak = navCurve[0].nav;
+  let inDrawdown = false;
+  let troughIndex = 0;
+
+  for (let i = 1; i < navCurve.length; i++) {
+    const nav = navCurve[i].nav;
+
+    if (nav >= currentPeak) {
+      // 创新高，如果之前处于回撤状态，则完成一个恢复周期
+      if (inDrawdown) {
+        const recoveryDays = i - troughIndex;
+        if (recoveryDays > maxRecoveryDays) {
+          maxRecoveryDays = recoveryDays;
+        }
+        inDrawdown = false;
+      }
+      currentPeak = nav;
+    } else if (nav < currentPeak) {
+      // 处于回撤状态
+      if (!inDrawdown) {
+        inDrawdown = true;
+        troughIndex = i;
+      } else {
+        // 更新低点位置
+        if (nav < navCurve[troughIndex].nav) {
+          troughIndex = i;
+        }
+      }
+    }
+  }
+
+  return maxRecoveryDays;
+}
+
+/**
+ * 从净值曲线估算波动率
+ *
+ * 公式：
+ * 1. 日收益率 = (今日净值 - 昨日净值) / 昨日净值
+ * 2. 日标准差 = sqrt(sum((r - mean)^2) / n)
+ * 3. 年化波动率 = 日标准差 × sqrt(252) × 100%
+ *
+ * @param navCurve - 单位净值曲线
+ * @returns 年化波动率百分比
+ */
+export function estimateVolatilityFromNav(
+  navCurve: { date: string; nav: number }[]
+): number {
+  if (!navCurve || navCurve.length < 2) {
+    return 0;
+  }
+
+  // 计算日收益率
+  const dailyReturns: number[] = [];
+  for (let i = 1; i < navCurve.length; i++) {
+    const prev = navCurve[i - 1].nav;
+    const curr = navCurve[i].nav;
+    if (prev > 0) {
+      dailyReturns.push((curr - prev) / prev);
+    }
+  }
+
+  if (dailyReturns.length === 0) return 0;
+
+  // 计算标准差
+  const mean = dailyReturns.reduce((a, b) => a + b, 0) / dailyReturns.length;
+  const variance = dailyReturns.reduce((sum, r) => sum + (r - mean) ** 2, 0) / dailyReturns.length;
+  const stdDev = Math.sqrt(variance);
+
+  // 年化波动率 = 日标准差 * sqrt(252) * 100%
+  return stdDev * Math.sqrt(252) * 100;
+}
+
+/**
+ * 从个人收益率曲线计算波动率
+ *
+ * 个人收益率是百分比形式（如 20 表示 20%），需要先转换为日收益率变化，
+ * 然后计算标准差并年化。
+ *
+ * 日收益率变化公式（与最大回撤计算一致）：
+ * 日收益率变化 = (今日收益率 - 昨日收益率) / (100 + 昨日收益率)
+ *
+ * @param returnRates - 个人收益率百分比序列（如 [0, 1, 2, 5, 10, ...]）
+ * @returns 年化波动率百分比
+ */
+export function estimateVolatilityFromReturnRates(
+  returnRates: number[]
+): number {
+  if (!returnRates || returnRates.length < 2) {
+    return 0;
+  }
+
+  // 计算每日收益率变化（与最大回撤公式一致）
+  // 日收益率变化 = (今日收益率 - 昨日收益率) / (100 + 昨日收益率)
+  const dailyReturns: number[] = [];
+  for (let i = 1; i < returnRates.length; i++) {
+    const prev = returnRates[i - 1];
+    const curr = returnRates[i];
+    dailyReturns.push((curr - prev) / (100 + prev));
+  }
+
+  if (dailyReturns.length === 0) return 0;
+
+  // 计算标准差
+  const mean = dailyReturns.reduce((a, b) => a + b, 0) / dailyReturns.length;
+  const variance = dailyReturns.reduce((sum, r) => sum + (r - mean) ** 2, 0) / dailyReturns.length;
+  const stdDev = Math.sqrt(variance);
+
+  // 年化波动率 = 日标准差 * sqrt(252) * 100%
+  return stdDev * Math.sqrt(252) * 100;
+}
+
+/**
+ * 计算当前回撤（基于历史最高净值）
+ *
+ * 当前回撤 = (历史最高净值 - 当前净值) / 历史最高净值
+ *
+ * @param navCurve - 单位净值曲线
+ * @returns 当前回撤百分比、峰值日期、峰值净值
+ */
+export function calculateCurrentDrawdown(
+  navCurve: { date: string; nav: number }[]
+): {
+  currentDrawdown: number;
+  peakDate: string | null;
+  peakNav: number;
+} {
+  if (!navCurve || navCurve.length === 0) {
+    return { currentDrawdown: 0, peakDate: null, peakNav: 0 };
+  }
+
+  const currentNav = navCurve[navCurve.length - 1].nav;
+
+  // 找历史最高净值及其日期
+  let peakNav = navCurve[0].nav;
+  let peakDate = navCurve[0].date;
+
+  for (const point of navCurve) {
+    if (point.nav > peakNav) {
+      peakNav = point.nav;
+      peakDate = point.date;
+    }
+  }
+
+  // 计算当前回撤（基于历史最高净值）
+  const currentDrawdown = peakNav > 0 && currentNav < peakNav
+    ? (peakNav - currentNav) / peakNav * 100
+    : 0;
+
+  return { currentDrawdown, peakDate, peakNav };
+}
+
+/**
+ * 计算当前回撤详细信息（包括峰值和低点）
+ *
+ * 当前回撤的定义：从最近的峰值（未被后续数据超越的高点）到当前的状态
+ * - 峰值：最后一个比它后面所有点都高的点
+ * - 低点：峰值之后的最低点
+ * - 当前：最新的净值
+ *
+ * 恢复进度 = (当前净值 - 低点净值) / (峰值净值 - 低点净值) * 100
+ *
+ * @param navCurve - 单位净值曲线（按日期排序）
+ * @returns 当前回撤详细信息
+ */
+export function calculateCurrentDrawdownDetails(
+  navCurve: { date: string; nav: number }[]
+): {
+  currentDrawdown: number;      // 当前回撤深度（相对于峰值）
+  peakDate: string | null;      // 峰值日期
+  peakNav: number;              // 峰值净值
+  troughDate: string | null;    // 低点日期
+  troughNav: number;            // 低点净值
+  currentNav: number;           // 当前净值
+  currentDate: string | null;   // 当前日期
+  recoveryProgress: number;     // 恢复进度（从低点恢复的百分比）
+  drawdownDays: number;         // 当前回撤持续天数（从峰值到当前）
+} {
+  if (!navCurve || navCurve.length === 0) {
+    return {
+      currentDrawdown: 0,
+      peakDate: null,
+      peakNav: 0,
+      troughDate: null,
+      troughNav: 0,
+      currentNav: 0,
+      currentDate: null,
+      recoveryProgress: 0,
+      drawdownDays: 0,
+    };
+  }
+
+  const lastIndex = navCurve.length - 1;
+  const currentNav = navCurve[lastIndex].nav;
+  const currentDate = navCurve[lastIndex].date;
+
+  // 如果只有一个数据点，没有回撤
+  if (navCurve.length === 1) {
+    return {
+      currentDrawdown: 0,
+      peakDate: currentDate,
+      peakNav: currentNav,
+      troughDate: currentDate,
+      troughNav: currentNav,
+      currentNav,
+      currentDate,
+      recoveryProgress: 0,
+      drawdownDays: 0,
+    };
+  }
+
+  // 找峰值：从前往后找第一个比它之后所有点都高的点
+  // 这样的点之后的所有点都没有超过它，所以从这个点开始一直处于回撤状态
+  // 注意：最后一个点不算，因为它后面没有点了
+  let peakIndex = lastIndex;
+  let peakNav = currentNav;
+  let peakDate = currentDate;
+
+  for (let i = 0; i < lastIndex; i++) {
+    const nav = navCurve[i].nav;
+    // 检查这个点是否比它后面的所有点都高（严格大于）
+    let isHigherThanAllLater = true;
+    for (let j = i + 1; j <= lastIndex; j++) {
+      if (navCurve[j].nav >= nav) {
+        isHigherThanAllLater = false;
+        break;
+      }
+    }
+
+    // 找到第一个满足条件的点，就是当前回撤的峰值
+    if (isHigherThanAllLater) {
+      peakIndex = i;
+      peakNav = nav;
+      peakDate = navCurve[i].date;
+      break;  // 找到第一个就停止
+    }
+  }
+
+  // 找低点：峰值之后的最低点（如果有多个相同最低值，取最新的那个）
+  let troughIndex = peakIndex;
+  let troughNav = peakNav;
+  let troughDate = peakDate;
+
+  for (let i = peakIndex + 1; i <= lastIndex; i++) {
+    if (navCurve[i].nav <= troughNav) {  // 使用 <= 取最新的低点
+      troughIndex = i;
+      troughNav = navCurve[i].nav;
+      troughDate = navCurve[i].date;
+    }
+  }
+
+  // 计算当前回撤深度（相对于峰值）
+  const currentDrawdown = peakNav > 0 && currentNav < peakNav
+    ? (peakNav - currentNav) / peakNav * 100
+    : 0;
+
+  // 计算恢复进度：从低点恢复了多少
+  // 恢复进度 = (当前净值 - 低点净值) / (峰值净值 - 低点净值) * 100
+  let recoveryProgress = 0;
+  if (peakNav > troughNav) {
+    recoveryProgress = (currentNav - troughNav) / (peakNav - troughNav) * 100;
+    recoveryProgress = Math.max(0, Math.min(100, recoveryProgress));
+  }
+
+  // 计算当前回撤持续天数（从峰值到当前的数据点数-1）
+  const drawdownDays = lastIndex - peakIndex;
+
+  return {
+    currentDrawdown,
+    peakDate,
+    peakNav,
+    troughDate,
+    troughNav,
+    currentNav,
+    currentDate,
+    recoveryProgress,
+    drawdownDays,
+  };
+}
+
+/**
+ * 计算单个基金的个人持仓收益率曲线
+ *
+ * 核心概念：
+ * 1. 持仓成本价 = 加权平均成本（每次买入后重新计算）
+ * 2. 个人收益率 = (当日净值 - 成本价) / 成本价
+ * 3. 个人回撤在收益率曲线上计算
+ *
+ * @param history - 历史净值数据（按日期排序）
+ * @param trades - 交易记录（申购/赎回）
+ * @param initialShares - 初始份额
+ * @param initialPrice - 初始价格（建仓价格）
+ * @returns 个人收益率曲线、持仓成本、当前收益率、最大回撤等信息
+ */
+export interface PersonalReturnPoint {
+  date: string;
+  nav: number;           // 当日基金净值
+  shares: number;        // 当日持有份额
+  costPrice: number;     // 当日持仓成本价
+  returnRate: number;    // 当日个人收益率 (%)
+  marketValue: number;   // 当日市值
+  totalCost: number;     // 累计总投入
+}
+
+export interface PersonalReturnResult {
+  returnCurve: PersonalReturnPoint[];
+  averageCost: number;      // 当前持仓成本价
+  currentReturn: number;    // 当前收益率 (%)
+  maxReturn: number;        // 最高收益率 (%)
+  minReturn: number;        // 最低收益率 (%)
+  maxDrawdown: number;      // 个人收益率最大回撤 (%)
+  currentDrawdown: number;  // 个人收益率当前回撤 (%)
+  // 波峰波谷详细信息
+  peakDate: string | null;     // 波峰日期
+  peakReturn: number;          // 波峰收益率 (%)
+  peakNav: number;             // 波峰时基金净值
+  troughDate: string | null;   // 波谷日期
+  troughReturn: number;        // 波谷收益率 (%)
+  troughNav: number;           // 波谷时基金净值
+}
+
+export function calculatePersonalReturnCurve(
+  history: { date: string; nav: number }[],
+  trades: { date: string; type: 'buy' | 'sell' | 'initial'; shares: number; price: number; fee?: number }[],
+  initialShares: number,
+  initialPrice: number
+): PersonalReturnResult | null {
+  if (!history || history.length === 0) {
+    return null;
+  }
+
+  // 按日期排序历史净值数据
+  const sortedHistory = history.slice().sort((a, b) => a.date.localeCompare(b.date));
+
+  // 按日期排序交易记录
+  const sortedTrades = trades.slice().sort((a, b) => a.date.localeCompare(b.date));
+
+  // 初始化持仓状态
+  let currentShares = initialShares;
+  let totalCost = initialShares * initialPrice; // 累计总投入（成本）
+  let costPrice = initialPrice; // 持仓成本价（加权平均）
+
+  // 构建每日数据
+  const returnCurve: PersonalReturnPoint[] = [];
+
+  // 按日期处理交易，计算持仓成本价
+  let tradeIndex = 0;
+
+  for (const histPoint of sortedHistory) {
+    const date = histPoint.date;
+    const nav = histPoint.nav;
+
+    // 处理当天的所有交易
+    while (tradeIndex < sortedTrades.length && sortedTrades[tradeIndex].date === date) {
+      const trade = sortedTrades[tradeIndex];
+
+      if (trade.type === 'buy') {
+        // 申购：增加份额和成本
+        const buyAmount = trade.shares * trade.price + (trade.fee || 0);
+        totalCost += buyAmount;
+        currentShares += trade.shares;
+
+        // 重新计算加权平均成本价
+        if (currentShares > 0) {
+          costPrice = totalCost / currentShares;
+        }
+      } else if (trade.type === 'sell') {
+        // 赎回：减少份额，成本价不变（加权平均成本法）
+        const sellAmount = trade.shares * trade.price - (trade.fee || 0);
+        // 赎回不影响成本价，只减少总成本（按比例）
+        if (currentShares > 0) {
+          const costReduction = costPrice * trade.shares;
+          totalCost -= costReduction;
+        }
+        currentShares -= trade.shares;
+
+        // 成本价保持不变（这是加权平均成本法的核心）
+        // 如果全部赎回，成本价重置
+        if (currentShares <= 0) {
+          currentShares = 0;
+          totalCost = 0;
+          costPrice = 0;
+        }
+      } else if (trade.type === 'initial') {
+        // 建仓：已经通过 initialShares 和 initialPrice 参数处理
+        // 这里跳过，避免重复计算
+      }
+
+      tradeIndex++;
+    }
+
+    // 计算当日个人收益率
+    let returnRate = 0;
+    if (costPrice > 0 && currentShares > 0) {
+      returnRate = ((nav - costPrice) / costPrice) * 100;
+    }
+
+    // 计算当日市值
+    const marketValue = currentShares * nav;
+
+    returnCurve.push({
+      date,
+      nav,
+      shares: currentShares,
+      costPrice,
+      returnRate,
+      marketValue,
+      totalCost,
+    });
+  }
+
+  // 过滤有持仓的天数
+  const validDays = returnCurve.filter(p => p.shares > 0 && p.costPrice > 0);
+
+  if (validDays.length === 0) {
+    return null;
+  }
+
+  // 计算收益率统计
+  const returnRates = validDays.map(p => p.returnRate);
+  const maxReturn = Math.max(...returnRates);
+  const minReturn = Math.min(...returnRates);
+  const currentReturn = returnRates[returnRates.length - 1];
+
+  // 在收益率曲线上计算最大回撤
+  // 公式：个人最大回撤 = (当前收益率 - 最高收益率) / (1 + 最高收益率)
+  let maxDrawdown = 0;
+  let currentDrawdown = 0;
+  let peakReturn = returnRates[0];
+  let peakIndex = 0;
+
+  // 找收益率最高点
+  for (let i = 1; i < returnRates.length; i++) {
+    if (returnRates[i] > peakReturn) {
+      peakReturn = returnRates[i];
+      peakIndex = i;
+    }
+  }
+
+  // 波峰波谷详细信息
+  const peakPoint = validDays[peakIndex];
+  let troughIndex = peakIndex;
+  let troughReturn = peakReturn;
+
+  // 计算从最高点到最低点的最大回撤，同时找到波谷
+  // 公式：个人最大回撤 = (当前收益率小数 - 峰值收益率小数) / (1 + 峰值收益率小数)
+  // 注意：收益率是百分比形式（50表示50%），需要转换为小数形式
+  // 简化后：(当前收益率% - 峰值收益率%) / (100 + 峰值收益率%)，再乘100转为百分比
+  for (let i = peakIndex; i < returnRates.length; i++) {
+    const r = returnRates[i];
+    const drawdown = (r - peakReturn) / (100 + peakReturn) * 100;
+    if (drawdown < maxDrawdown) {
+      maxDrawdown = drawdown; // maxDrawdown 是负数，绝对值越大回撤越大
+    }
+    // 更新波谷（收益率最低点）
+    if (r < troughReturn) {
+      troughReturn = r;
+      troughIndex = i;
+    }
+  }
+
+  const troughPoint = validDays[troughIndex];
+
+  // 当前回撤
+  if (currentReturn < peakReturn) {
+    currentDrawdown = (currentReturn - peakReturn) / (100 + peakReturn) * 100;
+  }
+
+  // 取绝对值返回（正值表示回撤幅度）
+  maxDrawdown = Math.abs(maxDrawdown);
+  currentDrawdown = Math.abs(currentDrawdown);
+
+  return {
+    returnCurve: validDays,
+    averageCost: costPrice,
+    currentReturn,
+    maxReturn,
+    minReturn,
+    maxDrawdown,
+    currentDrawdown,
+    // 波峰波谷详细信息
+    peakDate: peakPoint?.date || null,
+    peakReturn: peakReturn,
+    peakNav: peakPoint?.nav || 0,
+    troughDate: troughPoint?.date || null,
+    troughReturn: troughReturn,
+    troughNav: troughPoint?.nav || 0,
   };
 }

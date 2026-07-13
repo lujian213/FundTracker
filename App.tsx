@@ -23,6 +23,7 @@ import { MarketNewsTicker } from './components/MarketNewsTicker';
 import OverallProfitModal from './components/OverallProfitModal';
 import TransactionsModal from './components/TransactionsModal';
 import PositionsModal from './components/PositionsModal';
+import RiskMonitorModal from './components/RiskMonitorModal';
 import InvestmentNoticeModal from './components/InvestmentNoticeModal';
 import InvestmentDraftModal from './components/InvestmentDraftModal';
 import VirtualTradeModal from './components/VirtualTradeModal';
@@ -270,6 +271,7 @@ const AppContent: React.FC = () => {
   const [showPositions, setShowPositions] = useState<boolean>(false);
   const [isInvestmentNoticeModalOpen, setIsInvestmentNoticeModalOpen] = useState<boolean>(false);
   const [isInvestmentDraftModalOpen, setIsInvestmentDraftModalOpen] = useState<boolean>(false);
+  const [showRiskMonitor, setShowRiskMonitor] = useState<boolean>(false);
   const [selectedItems, setSelectedItems] = useState<Set<ManageSelectionKey>>(new Set());
   const [backgroundTasks, setBackgroundTasks] = useState<number>(0);
   // 历史数据更新计数器，用于触发 fundHistories useMemo 重新计算
@@ -1215,6 +1217,7 @@ const AppContent: React.FC = () => {
                   </h2>
                   <div className="flex items-center space-x-2 shrink-0">
                     <button id="positions-button" onClick={() => setShowPositions(true)} className="px-4 py-1.5 rounded-full bg-blue-600 shadow-md text-[11px] font-bold text-white hover:bg-blue-700 transition-all">持仓</button>
+                    <button id="risk-button" onClick={() => setShowRiskMonitor(true)} className="px-4 py-1.5 rounded-full bg-blue-600 shadow-md text-[11px] font-bold text-white hover:bg-blue-700 transition-all">风险</button>
                     <button onClick={() => setShowOverallProfit(true)} className="px-4 py-1.5 rounded-full bg-blue-600 shadow-md text-[11px] font-bold text-white hover:bg-blue-700 transition-all">盈利</button>
                     <button onClick={() => setShowTransactions(true)} className="px-4 py-1.5 rounded-full bg-blue-600 shadow-md text-[11px] font-bold text-white hover:bg-blue-700 transition-all">交易</button>
                     <button onClick={() => setShowSectorHeatmap(true)} className="px-4 py-1.5 rounded-full bg-blue-600 shadow-md text-[11px] font-bold text-white hover:bg-blue-700 transition-all">板块</button>
@@ -1428,6 +1431,7 @@ const AppContent: React.FC = () => {
         }} isLoading={false} />}
       {showOverallProfit && <OverallProfitModal onClose={() => setShowOverallProfit(false)} onSelectFund={(sym) => { setShowOverallProfit(false); setViewingFund({ symbol: sym, fromDraft: false }); }} />}
       {showPositions && <PositionsModal portfolio={portfolio} marketData={marketData} onClose={() => setShowPositions(false)} onSelectFund={(sym) => { setShowPositions(false); setViewingFund({ symbol: sym, fromDraft: false }); }} />}
+      <RiskMonitorModal isOpen={showRiskMonitor} portfolio={portfolio} marketData={marketData} onClose={() => setShowRiskMonitor(false)} onSelectFund={(sym) => { setShowRiskMonitor(false); setViewingFund({ symbol: sym, fromDraft: false }); }} />
       {showTransactions && <TransactionsModal portfolio={portfolio} marketData={marketData} onClose={() => setShowTransactions(false)} onSelectFund={(sym) => { setShowTransactions(false); setViewingFund({ symbol: sym, fromDraft: false }); }} />}
       {showSectorHeatmap && (
         <React.Suspense fallback={<div className="fixed inset-0 flex items-center justify-center bg-black/40 z-[150]"><div className="bg-white rounded-lg p-6 text-gray-600">正在加载板块热力图...</div></div>}>

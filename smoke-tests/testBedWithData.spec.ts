@@ -6881,4 +6881,169 @@ test.describe('testBedWithData', () => {
 
     console.log('板块热力图测试完成');
   });
+
+  // ══════════════════════════════════════════════════════════════════════════════
+  // 14. 风险监控中心测试
+  // ══════════════════════════════════════════════════════════════════════════════
+  test('风险监控中心测试', async () => {
+    const page = sharedPage!;
+
+    // ══════════════════════════════════════════════════════════════════════════════
+    // 1. 点击主界面上的"风险"按钮（位于"持仓"按钮右侧），弹出"风险监控中心"窗口
+    // ══════════════════════════════════════════════════════════════════════════════
+    const riskButton = page.locator('button:has-text("风险")');
+    await expect(riskButton).toBeVisible();
+    await riskButton.click();
+
+    // 等待Modal打开
+    await page.waitForTimeout(500);
+
+    // 验证窗口标题为"风险监控中心"
+    const modalTitle = page.locator('h2:has-text("风险监控中心")');
+    await expect(modalTitle).toBeVisible({ timeout: 5000 });
+
+    // 验证窗口有关闭按钮
+    const closeButton = modalTitle.locator('..').locator('button[aria-label="关闭"]');
+    await expect(closeButton).toBeVisible();
+
+    console.log('风险监控中心窗口打开验证完成');
+
+    // ══════════════════════════════════════════════════════════════════════════════
+    // 2. 验证左侧导航栏有4个Tab
+    // ══════════════════════════════════════════════════════════════════════════════
+    const navTabs = page.locator('nav button');
+    const tabCount = await navTabs.count();
+    expect(tabCount).toBe(4);
+
+    // 验证Tab名称
+    const tabNames = ['风险总览', '预警列表', '集中度分析', '回撤追踪'];
+    for (let i = 0; i < 4; i++) {
+      const tabText = await navTabs.nth(i).textContent();
+      expect(tabText).toContain(tabNames[i]);
+    }
+
+    console.log('左侧导航栏验证完成: 4个Tab');
+
+    // ══════════════════════════════════════════════════════════════════════════════
+    // 3. 风险总览Tab验证
+    // ══════════════════════════════════════════════════════════════════════════════
+    // 默认应该在风险总览Tab
+    const overviewTab = navTabs.nth(0);
+    await expect(overviewTab).toHaveClass(/bg-white/);
+
+    // 验证综合风险评分显示
+    const scoreDisplay = page.locator('text=综合风险评分');
+    await expect(scoreDisplay).toBeVisible();
+
+    // 验证分数在0-100范围内
+    const scoreValue = page.locator('.text-5xl');
+    const scoreText = await scoreValue.textContent();
+    const score = parseInt(scoreText || '0');
+    expect(score).toBeGreaterThanOrEqual(0);
+    expect(score).toBeLessThanOrEqual(100);
+
+    console.log(`综合风险评分验证完成: ${score}分`);
+
+    // 验证4个风险指标卡片显示
+    const indicatorCards = page.locator('text=最大回撤, text=收益波动率, text=夏普比率, text=卡玛比率');
+    await expect(indicatorCards.first()).toBeVisible();
+
+    console.log('风险指标卡片验证完成');
+
+    // ══════════════════════════════════════════════════════════════════════════════
+    // 4. 预警列表Tab验证
+    // ══════════════════════════════════════════════════════════════════════════════
+    const alertsTab = navTabs.nth(1);
+    await alertsTab.click();
+    await page.waitForTimeout(200);
+
+    // 验证预警列表标题
+    const alertsTitle = page.locator('text=预警列表');
+    await expect(alertsTitle).toBeVisible();
+
+    // 验证预警类型筛选按钮
+    const filterButtons = page.locator('button:has-text("全部"), button:has-text("回撤"), button:has-text("波动率"), button:has-text("集中度"), button:has-text("连续下跌")');
+    await expect(filterButtons.first()).toBeVisible();
+
+    console.log('预警列表Tab验证完成');
+
+    // ══════════════════════════════════════════════════════════════════════════════
+    // 5. 集中度分析Tab验证
+    // ══════════════════════════════════════════════════════════════════════════════
+    const concentrationTab = navTabs.nth(2);
+    await concentrationTab.click();
+    await page.waitForTimeout(200);
+
+    // 验证集中度指标显示
+    const hhiDisplay = page.locator('text=HHI');
+    await expect(hhiDisplay).toBeVisible();
+
+    // 验证持仓分布列表
+    const positionList = page.locator('text=持仓分布');
+    await expect(positionList).toBeVisible();
+
+    console.log('集中度分析Tab验证完成');
+
+    // ══════════════════════════════════════════════════════════════════════════════
+    // 6. 回撤追踪Tab验证
+    // ══════════════════════════════════════════════════════════════════════════════
+    const drawdownTab = navTabs.nth(3);
+    await drawdownTab.click();
+    await page.waitForTimeout(200);
+
+    // 验证回撤状态显示
+    const drawdownTitle = page.locator('text=回撤追踪');
+    await expect(drawdownTitle).toBeVisible();
+
+    // 验证恢复进度追踪
+    const recoverySection = page.locator('text=恢复进度追踪');
+    await expect(recoverySection).toBeVisible();
+
+    console.log('回撤追踪Tab验证完成');
+
+    // ══════════════════════════════════════════════════════════════════════════════
+    // 7. 关闭风险监控中心窗口
+    // ══════════════════════════════════════════════════════════════════════════════
+    await closeButton.click();
+    await page.waitForTimeout(200);
+    await expect(modalTitle).not.toBeVisible();
+
+    console.log('风险监控中心窗口关闭完成');
+
+    // ══════════════════════════════════════════════════════════════════════════════
+    // 8. 验证系统参数中的风险预警阈值配置
+    // ══════════════════════════════════════════════════════════════════════════════
+    const configButton = page.locator('button[title="系统配置"]');
+    await configButton.click();
+    await page.waitForTimeout(300);
+
+    // 点击"系统参数"
+    const systemParamsNav = page.locator('nav button:has-text("系统参数")');
+    await systemParamsNav.click();
+    await page.waitForTimeout(200);
+
+    // 验证风险预警阈值配置区域显示
+    const riskThresholdSection = page.locator('text=风险预警阈值');
+    await expect(riskThresholdSection).toBeVisible();
+
+    // 验证4种阈值类型
+    const thresholdTypes = ['回撤预警阈值', '波动率阈值', '连续下跌阈值', '集中度阈值'];
+    for (const type of thresholdTypes) {
+      const typeElement = page.locator(`text=${type}`);
+      await expect(typeElement).toBeVisible();
+    }
+
+    console.log('风险预警阈值配置验证完成');
+
+    // 验证重置按钮
+    const resetButton = page.locator('button:has-text("重置为默认值")');
+    await expect(resetButton).toBeVisible();
+
+    // 关闭系统配置窗口
+    const configCloseButton = page.locator('button[aria-label="关闭"]');
+    await configCloseButton.click();
+    await page.waitForTimeout(200);
+
+    console.log('风险监控中心测试完成');
+  });
 });

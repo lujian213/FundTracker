@@ -73,7 +73,8 @@ function buildSharesTimeline(dates: string[], initial: number, trades: Trade[]):
   let cumulative = initial || 0;
   for (let i = 0; i < dates.length; i++) {
     const d = dates[i];
-    while (idx < sorted.length && sorted[idx].date <= d) {
+    // 使用严格小于：交易在第二天才生效（与 profitCalculator 保持一致）
+    while (idx < sorted.length && sorted[idx].date < d) {
       // initial 类型已经通过 initial 参数处理，这里跳过避免重复计算
       if (sorted[idx].type !== 'initial') {
         cumulative += (sorted[idx].type === 'buy' ? sorted[idx].shares : -sorted[idx].shares);
@@ -137,24 +138,28 @@ function buildNetInvestmentTimeline(
       const tradeList = sortedTradesMap[sym];
       let idx = tradeIndices[sym] || 0;
 
-      // 处理该日期及之前的所有交易
-      while (idx < tradeList.length && tradeList[idx].date <= d) {
+      // 使用严格小于：交易在第二天才生效（与 profitCalculator 保持一致）
+      while (idx < tradeList.length && tradeList[idx].date < d) {
         const trade = tradeList[idx];
         const isSell = trade.type === 'sell';
+        const isInitial = trade.type === 'initial';
         const shares = trade.shares || 0;
         const price = trade.price || 0;
         const fee = trade.fee || 0;
 
-        // 计算交易额：买入/建仓为 数量*价格+手续费，卖出为 数量*价格-手续费
-        const tradeAmount = isSell
-          ? price * shares - fee
-          : price * shares + fee;
+        // initial 类型的交易已通过 initialCost 计算，跳过避免重复
+        if (!isInitial) {
+          // 计算交易额：买入为 数量*价格+手续费，卖出为 数量*价格-手续费
+          const tradeAmount = isSell
+            ? price * shares - fee
+            : price * shares + fee;
 
-        // 累加交易额：买入/建仓为正，卖出为负
-        if (isSell) {
-          res[i] -= tradeAmount;
-        } else {
-          res[i] += tradeAmount;
+          // 累加交易额：买入为正，卖出为负
+          if (isSell) {
+            res[i] -= tradeAmount;
+          } else {
+            res[i] += tradeAmount;
+          }
         }
 
         idx++;
@@ -184,8 +189,31 @@ export function computePositionTrend(input: PositionTrendInput): PositionTrendSe
     perSymbolPrices[sym] = buildPriceTimeline(dates, vlist);
   }
 
-  // 计算净投入时间线
+  // 计算净投入时间线（只包含交易记录）
   const netInvestmentTimeline = buildNetInvestmentTimeline(dates, trades);
+
+  // 计算初始持仓的建仓成本（份额 × 建仓价格，而非第一天市值）
+  // 从 initial 类型交易记录中提取建仓成本
+  let initialCost = 0;
+  for (const sym of symbols) {
+    const initShares = initialPositions && initialPositions[sym] ? initialPositions[sym] : 0;
+    if (initShares > 0) {
+      // 查找该基金的 initial 类型交易记录
+      const tlist = trades && trades[sym] ? trades[sym] : [];
+      const initialTrade = tlist.find(t => t.type === 'initial');
+      if (initialTrade && initialTrade.price) {
+        // 使用建仓价格计算成本
+        initialCost += initShares * initialTrade.price;
+      } else {
+        // 如果没有 initial 交易记录，使用第一天估值作为建仓成本（回退）
+        const prices = perSymbolPrices[sym];
+        const firstPrice = prices && prices.length > 0 ? prices[0] : null;
+        if (firstPrice !== null && firstPrice !== undefined) {
+          initialCost += initShares * firstPrice;
+        }
+      }
+    }
+  }
 
   const series: PositionTrendSeries = dates.map((d, i) => {
     let total = 0;
@@ -196,7 +224,8 @@ export function computePositionTrend(input: PositionTrendInput): PositionTrendSe
         total += shares * price;
       }
     }
-    return { date: d, value: total, netInvestment: netInvestmentTimeline[i] };
+    // 净投入 = 初始成本 + 交易记录金额
+    return { date: d, value: total, netInvestment: initialCost + netInvestmentTimeline[i] };
   });
 
   return series;

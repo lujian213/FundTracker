@@ -220,6 +220,13 @@ export interface KPIResult {
   volatility: number | null; // 收益波动率 (%), null if invalid
   sharpeRatio: number | null; // 夏普比率, null if invalid
   calmarRatio: number | null; // 卡玛比率, null if invalid
+  // 最大回撤详细信息（仅单个基金时有效）
+  drawdownPeakDate?: string | null;    // 波峰日期
+  drawdownPeakReturn?: number;         // 波峰收益率 (%)
+  drawdownPeakNav?: number;            // 波峰时基金净值
+  drawdownTroughDate?: string | null;  // 波谷日期
+  drawdownTroughReturn?: number;       // 波谷收益率 (%)
+  drawdownTroughNav?: number;          // 波谷时基金净值
 }
 
 // Performance attribution result
@@ -495,4 +502,112 @@ export interface KlinePoint {
   volume: number;       // 成交量
   amount: number;       // 成交额
   changePercent: number; // 涨跌幅（百分比，基于昨日收盘）
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// 风险监控相关类型 (v1.42)
+// ═══════════════════════════════════════════════════════════════════════════════
+
+/** 风险预警类型 */
+export type RiskAlertType = 'drawdown' | 'volatility' | 'concentration' | 'continuous_decline' | 'daily_change';
+
+/** 风险预警等级 */
+export type RiskAlertLevel = 'low' | 'medium' | 'high';
+
+/** 风险预警 */
+export interface RiskAlert {
+  id: string;                       // 唯一标识
+  type: RiskAlertType;              // 预警类型
+  level: RiskAlertLevel;            // 预警等级
+  target: string;                   // 触发对象（基金代码或"PORTFOLIO"表示整体组合）
+  targetName: string;               // 触发对象名称
+  currentValue: number;             // 当前值
+  threshold: number;                // 阈值
+  unit: string;                     // 单位（%、天等）
+  triggeredAt: string;              // ISO 时间戳
+  message: string;                  // 预警消息
+}
+
+/** 基金回撤信息 */
+export interface FundDrawdown {
+  symbol: string;                   // 基金代码
+  name: string;                     // 基金名称
+  currentDrawdown: number;          // 当前回撤百分比（正值）
+  currentDrawdownDays: number;      // 当前回撤持续天数
+  maxDrawdown: number;              // 最大回撤百分比（正值）
+  maxDrawdownPeakDate: string;      // 最大回撤波峰日期
+  maxDrawdownTroughDate: string;    // 最大回撤波谷日期
+  maxDrawdownDays: number;          // 最大回撤持续天数
+  maxDrawdownPeakNav?: number;      // 最大回撤波峰净值
+  maxDrawdownTroughNav?: number;    // 最大回撤波谷净值
+  maxDrawdownPeakReturnRate?: number; // 最大回撤波峰收益率 (%)
+  maxDrawdownTroughReturnRate?: number; // 最大回撤波谷收益率 (%)
+  peakDate: string;                 // 当前回撤峰值日期
+  peakValue: number;                // 峰值市值（净值）
+  peakReturnRate?: number;          // 峰值时个人收益率 (%)
+  troughDate?: string;              // 当前回撤低点日期
+  troughValue?: number;             // 当前回撤低点净值
+  troughReturnRate?: number;        // 当前回撤低点收益率 (%)
+  currentValue: number;             // 当前市值（净值）
+  currentReturnRate?: number;       // 当前个人收益率 (%)
+}
+
+/** 风险阈值配置 */
+export interface RiskThresholds {
+  drawdown: {                       // 回撤预警阈值
+    low: number;                    // 轻度预警（黄色）
+    medium: number;                 // 中度预警（橙色）
+    high: number;                   // 重度预警（红色）
+  };
+  volatility: {                     // 波动率阈值
+    low: number;                    // 低波动阈值（绿色）
+    high: number;                   // 高波动阈值（红色）
+  };
+  dailyChange: {                    // 单日波动阈值
+    warning: number;                // 预警阈值
+    severe: number;                 // 严重阈值
+  };
+  continuousDecline: {              // 连续下跌阈值
+    low: number;                    // 轻度关注（天）
+    high: number;                   // 高度关注（天）
+  };
+  concentration: {                  // 集中度阈值
+    singleFund: number;             // 单基金上限（%）
+    topThree: number;               // 前三基金上限（%）
+  };
+}
+
+/** 风险快照 */
+export interface RiskSnapshot {
+  score: number;                    // 综合风险评分 (0-100)
+  maxDrawdown: number;              // 历史最大回撤百分比（正值）
+  maxDrawdownPeakDate: string | null;  // 最大回撤波峰日期
+  maxDrawdownPeakProfit: number;    // 最大回撤波峰累计盈利值
+  maxDrawdownTroughDate: string | null; // 最大回撤波谷日期
+  maxDrawdownTroughProfit: number;  // 最大回撤波谷累计盈利值
+  currentDrawdown: number;          // 当前回撤百分比（正值）
+  currentDrawdownPeakDate: string | null; // 当前回撤波峰日期
+  currentDrawdownPeakNav: number;   // 当前回撤波峰净值
+  currentDrawdownTroughDate: string | null; // 当前回撤波谷日期
+  currentDrawdownTroughNav: number; // 当前回撤波谷净值
+  currentNav: number;               // 当前净值
+  currentDate: string | null;       // 当前日期
+  currentDrawdownDays: number;      // 当前回撤持续天数
+  volatility: number;               // 年化波动率百分比
+  sharpeRatio: number | null;       // 夏普比率
+  calmarRatio: number | null;       // 卡玛比率
+  hhi: number;                      // 集中度指数 (0-1)
+  continuousDecline: number;        // 连续下跌天数
+  maxRecoveryDays: number;          // 历史最长恢复天数
+  alerts: RiskAlert[];              // 预警列表
+  fundDrawdowns: FundDrawdown[];    // 各基金回撤
+  computedAt: string;               // 计算时间（ISO时间戳）
+}
+
+/** 增量计算状态（内存缓存） */
+export interface RiskIncrementalState {
+  snapshot: RiskSnapshot;           // 风险快照
+  portfolioHash: string;            // 投资组合数据指纹
+  historyHash: string;              // 历史数据指纹
+  lastUpdated: number;              // 上次更新时间戳（毫秒）
 }

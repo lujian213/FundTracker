@@ -1,6 +1,7 @@
 import React from 'react';
 import { KPIResult } from '../types';
 import { formatPercent, formatSharePercent } from '../utils/format';
+import { formatDateDisplay } from '../utils/dateFormat';
 import { getProfitColorClass } from '../utils/calendarCommon';
 
 interface KPICardDisplayProps {
@@ -144,7 +145,7 @@ export function getColorClassByRule(value: number | null, rule: ColorRule): stri
  * KPI指标配置
  */
 interface KPIConfig {
-  key: keyof KPIResult;
+  key: 'annualizedReturn' | 'maxDrawdown' | 'volatility' | 'sharpeRatio' | 'calmarRatio';
   name: string;
   description: string;
   isPercent: boolean;
@@ -253,15 +254,67 @@ const KPI_CONFIGS: KPIConfig[] = [
 ];
 
 /**
+ * 最大回撤详细信息
+ */
+interface DrawdownDetails {
+  peakDate: string | null;
+  peakReturn: number;
+  peakNav: number;
+  troughDate: string | null;
+  troughReturn: number;
+  troughNav: number;
+}
+
+/**
  * 单个KPI卡片组件
  */
 const KPICard: React.FC<{
   config: KPIConfig;
   value: number | null;
-}> = ({ config, value }) => {
+  drawdownDetails?: DrawdownDetails;
+}> = ({ config, value, drawdownDetails }) => {
   const displayValue = formatKPIValue(value, config.isPercent, config.decimals, config.hidePlusSign);
   const colorClass = getColorClassByRule(value, config.colorRule);
   const levelIcon = getLevelIconByThresholds(value, config.levelThresholds, config.levelItems, config.levelCompareType);
+
+  // 最大回撤的详细 tooltip
+  const renderDrawdownTooltip = () => {
+    if (config.key !== 'maxDrawdown' || !drawdownDetails || !drawdownDetails.peakDate || !drawdownDetails.troughDate) {
+      return null;
+    }
+
+    return (
+      <div className="absolute top-full left-1/2 -translate-x-1/2 mt-2 px-4 py-3 bg-gray-800 text-white text-xs rounded-lg opacity-0 group-hover:opacity-100 transition-opacity z-10 w-60 pointer-events-none">
+        <div className="text-gray-400">
+          <span className="text-green-300">波峰</span> {formatDateDisplay(drawdownDetails.peakDate)}
+          <div className="pl-4 text-gray-300">
+            收益率: {drawdownDetails.peakReturn.toFixed(2)}%
+          </div>
+        </div>
+        <div className="text-gray-400 mt-1">
+          <span className="text-red-300">波谷</span> {formatDateDisplay(drawdownDetails.troughDate)}
+          <div className="pl-4 text-gray-300">
+            收益率: {drawdownDetails.troughReturn.toFixed(2)}%
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  // 如果有详细信息，使用带 tooltip 的版本
+  if (config.key === 'maxDrawdown' && drawdownDetails) {
+    return (
+      <div className="relative group bg-white rounded-lg p-3 border border-gray-100 shadow-sm hover:shadow-md transition-shadow flex flex-col">
+        <div className="text-xs text-gray-500 mb-1">{config.name}</div>
+        <div className={`text-lg font-semibold ${colorClass}`}>
+          {displayValue}
+          {levelIcon}
+        </div>
+        <div className="text-xs text-gray-400 mt-1 leading-tight">{config.description}</div>
+        {renderDrawdownTooltip()}
+      </div>
+    );
+  }
 
   return (
     <div className="bg-white rounded-lg p-3 border border-gray-100 shadow-sm hover:shadow-md transition-shadow flex flex-col">
@@ -282,6 +335,16 @@ const KPICard: React.FC<{
 export const KPICardDisplay: React.FC<KPICardDisplayProps> = ({ kpiData, fundName, holdingDays }) => {
   const isKPIAvailable = holdingDays >= MIN_HOLDING_DAYS;
 
+  // 准备最大回撤的详细信息
+  const drawdownDetails: DrawdownDetails | undefined = kpiData?.drawdownPeakDate && kpiData?.drawdownTroughDate ? {
+    peakDate: kpiData.drawdownPeakDate,
+    peakReturn: kpiData.drawdownPeakReturn ?? 0,
+    peakNav: kpiData.drawdownPeakNav ?? 0,
+    troughDate: kpiData.drawdownTroughDate ?? null,
+    troughReturn: kpiData.drawdownTroughReturn ?? 0,
+    troughNav: kpiData.drawdownTroughNav ?? 0,
+  } : undefined;
+
   return (
     <div className="w-full h-full flex flex-col">
       {/* 标题 */}
@@ -299,7 +362,8 @@ export const KPICardDisplay: React.FC<KPICardDisplayProps> = ({ kpiData, fundNam
             <KPICard
               key={config.key}
               config={config}
-              value={kpiData ? kpiData[config.key] : null}
+              value={kpiData ? (kpiData[config.key] ?? null) : null}
+              drawdownDetails={config.key === 'maxDrawdown' ? drawdownDetails : undefined}
             />
           ))}
         </div>

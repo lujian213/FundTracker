@@ -1,16 +1,16 @@
 import React, { useEffect, useMemo, useState, useCallback, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { computeOverallProfit, fetchFundHistory } from '../services/fundService';
+import { computePositionTrendData } from '../services/riskCalculationService';
+import { getAllFundSymbols, getPosition } from '../services/marketFundService';
 import { OverallProfitSummary, OverallProfitPoint, OverallFundRow, AttributionResult, KPIResult, HistoricalPoint } from '../types';
 import { toLocalDateKey } from '../utils/priceResolver';
 import { OVERALL_PROFIT_DATE_PRESETS, getOverallProfitPresetRange, OverallProfitDatePresetKey } from '../utils/overallProfitDatePresets';
 import { formatMoney, formatMoneyWithSeparators, formatSharePercent } from '../utils/format';
-import { formatDateDisplay } from '../utils/dateFormat';
+import { formatDateDisplay, formatDateISO } from '../utils/dateFormat';
 import { buildLinearPath, CHART_DIMENSIONS, mergeChartPoints, ChartPointWithData, buildDisplayIndexMap } from '../utils/chartUtils';
-import { calculateProfitAttribution, calculateKPIs, calculateTWR, calculatePortfolioTWR, calculateMaxDrawdownFromValue, calculateVolatilityFromValue, calculateVolatilityFromValueWithTrades } from '../utils/performanceAttribution';
+import { calculateProfitAttribution, calculateKPIs, calculateTWR, calculateMaxDrawdownFromValue, calculateVolatilityFromValueWithTrades, calculateMaxDrawdownFromProfit, calculatePortfolioTWR, calculateAnnualizedReturnFromPositionTrend, calculateNavCurve, calculateMaxDrawdownFromNav, calculateMaxDrawdownDetailsFromNav, calculatePersonalReturnCurve, estimateVolatilityFromNav, estimateVolatilityFromReturnRates } from '../utils/performanceAttribution';
 import { getTradesForSymbol } from '../hooks/useTrades';
-import { getPosition } from '../services/marketFundService';
-import { computePositionTrend } from '../utils/positionTrend';
 import { MoneyCell } from './MoneyCell';
 import DayCalendar from './DayCalendar';
 import WeekCalendar from './WeekCalendar';
@@ -19,8 +19,7 @@ import YearCalendar from './YearCalendar';
 import PerformanceAnalysisChart from './PerformanceAnalysisChart';
 import KPICardDisplay from './KPICardDisplay';
 import { useModalBodyStyle } from '../hooks/useModalBodyStyle';
-import { fetchFundHistory as fetchHistoryForTrend } from '../services/fundService';
-import { getAllFundSymbols } from '../services/marketFundService';
+import usePositionTrend from '../hooks/usePositionTrend';
 
 /**
  * 计算夏普比率和卡玛比率
@@ -347,6 +346,14 @@ const OverallProfitModal: React.FC<Props> = ({ symbols, onClose, onSelectFund })
     return summary.timeline[summary.timeline.length - 1].date;
   }, [summary]);
 
+  // 获取持仓趋势数据（用于计算年化收益率）
+  // 使用与图表相同的时间范围，确保数据一致性
+  const positionTrend = usePositionTrend({
+    symbols,
+    startDate: chartFromDate || undefined,
+    endDate: chartEndDate || undefined,
+  });
+
   // 日历数据：从 chartTimeline 构建 date -> dailyProfit 的映射
   const dailyProfitMap = useMemo(() => {
     const map: Record<string, number> = {};
@@ -644,7 +651,7 @@ const OverallProfitModal: React.FC<Props> = ({ symbols, onClose, onSelectFund })
 
     const calculateKPI = async () => {
       if (selectedFund && summary.perFundTimelines?.[selectedFund]) {
-        // 选中单个基金：使用TWR方法计算收益率
+        // 选中单个基金：使用个人持仓回撤计算方法
         try {
           // 获取历史净值数据
           const history = await fetchFundHistory(selectedFund);
@@ -666,6 +673,7 @@ const OverallProfitModal: React.FC<Props> = ({ symbols, onClose, onSelectFund })
           // 获取持仓信息
           const position = getPosition(selectedFund);
           const initialShares = position?.initialPosition || 0;
+          const initialPrice = position?.initialPrice || 0;
           const startDate = position?.startDate;
 
           // 当initialShares为0但有交易记录时，从第一笔交易开始计算
@@ -675,6 +683,16 @@ const OverallProfitModal: React.FC<Props> = ({ symbols, onClose, onSelectFund })
             return;
           }
 
+          // 将历史数据转换为 { date, nav } 格式
+          const navHistory = history.map(h => {
+            const d = new Date(h.date as number);
+            return { date: formatDateISO(d), nav: h.value };
+          }).sort((a, b) => a.date.localeCompare(b.date));
+
+          // 确定初始价格和份额
+          let effectiveInitialShares = initialShares;
+          let effectiveInitialPrice = initialPrice;
+
           // 如果initialShares为0，检查是否有交易记录
           if (initialShares === 0) {
             if (trades.length === 0) {
@@ -682,99 +700,129 @@ const OverallProfitModal: React.FC<Props> = ({ symbols, onClose, onSelectFund })
               setKpiData(null);
               return;
             }
-            // 有交易记录，从第一笔交易日期开始计算
-            const firstTradeDate = trades.reduce((min, t) => t.date < min ? t.date : min, trades[0].date);
-            const adjustedStartDate = firstTradeDate < startDate ? firstTradeDate : startDate;
-
-            // 计算结束日期
-            const endDate = chartTimeline.length > 0 ? chartTimeline[chartTimeline.length - 1].date : toLocalDateKey(new Date());
-
-            // 使用TWR计算，传入初始份额为0
-            const twrResult = calculateTWR(history, trades, 0, adjustedStartDate, endDate);
-
-            if (twrResult.twr !== null && twrResult.dailyValues) {
-              // 过滤掉市值为0的数据点
-              const validDailyValues = twrResult.dailyValues.filter(d => d.value > 0);
-
-              if (validDailyValues.length < 2) {
-                // 有效数据点太少，无法计算
-                setKpiData(null);
-                return;
-              }
-
-              // 使用复利方式计算年化收益率
-              const tradingDays = validDailyValues.length;
-              const annualizedReturn = Math.pow(1 + twrResult.twr, 252 / tradingDays) - 1;
-              const annualizedReturnPercent = annualizedReturn * 100;
-              const maxDrawdown = calculateMaxDrawdownFromValue(validDailyValues);
-              // 使用考虑交易记录的波动率计算
-              const volatility = calculateVolatilityFromValueWithTrades(validDailyValues, trades, `单基金:${selectedFund}`);
-
-              // 计算夏普比率和卡玛比率
-              const { sharpeRatio, calmarRatio } = calculateRatios(annualizedReturnPercent, maxDrawdown, volatility);
-
-              setKpiData({
-                annualizedReturn: annualizedReturnPercent,
-                maxDrawdown: maxDrawdown !== null && maxDrawdown > 0 ? maxDrawdown : null,
-                volatility: volatility !== null && volatility > 0 ? volatility : null,
-                sharpeRatio: sharpeRatio,
-                calmarRatio: calmarRatio,
-              });
+            // 从第一笔买入交易获取初始价格
+            const firstBuy = trades.find(t => t.type === 'buy');
+            if (firstBuy) {
+              effectiveInitialShares = firstBuy.shares;
+              effectiveInitialPrice = firstBuy.price || 0;
             } else {
+              // 没有买入记录，无法计算
               setKpiData(null);
+              return;
             }
-            return;
           }
 
-          // 计算结束日期（图表结束日期）
-          const endDate = chartTimeline.length > 0 ? chartTimeline[chartTimeline.length - 1].date : toLocalDateKey(new Date());
+          // 使用个人持仓回撤计算方法
+          const personalResult = calculatePersonalReturnCurve(
+            navHistory,
+            trades.map(t => ({
+              date: t.date,
+              type: t.type as 'buy' | 'sell' | 'initial',
+              shares: t.shares,
+              price: t.price || 0,
+              fee: t.fee || 0,
+            })),
+            effectiveInitialShares,
+            effectiveInitialPrice
+          );
 
-          // 使用TWR计算收益率
-          const twrResult = calculateTWR(history, trades, initialShares, startDate, endDate);
+          // 如果个人回撤计算失败（如成本已收回导致成本价为负），回退到基金净值回撤
+          if (!personalResult) {
+            // 使用基金净值回撤方法
+            const maxDrawdown = navHistory.length > 1
+              ? calculateMaxDrawdownFromNav(navHistory.map(n => ({ date: n.date, nav: n.nav })))
+              : 0;
 
-          if (twrResult.twr !== null) {
-            // 计算年化收益率（复利方式）
-            const fundTimeline = summary.perFundTimelines[selectedFund];
-            const tradingDays = fundTimeline.length;
-            const annualizedReturn = tradingDays > 0 ? Math.pow(1 + twrResult.twr, 252 / tradingDays) - 1 : null;
-            const annualizedReturnPercent = annualizedReturn !== null ? annualizedReturn * 100 : null;
+            // 计算波峰波谷详细信息
+            const drawdownDetails = navHistory.length > 1
+              ? calculateMaxDrawdownDetailsFromNav(navHistory.map(n => ({ date: n.date, value: n.nav, netInvestment: 1 })))
+              : { peakDate: null, peakNav: 0, troughDate: null, troughNav: 0 };
 
-            // 从市值数据计算最大回撤
-            const maxDrawdown = twrResult.dailyValues ? calculateMaxDrawdownFromValue(twrResult.dailyValues) : null;
+            // 从净值数据计算波动率
+            const volatility = navHistory.length > 1
+              ? (() => {
+                  const returns: number[] = [];
+                  for (let i = 1; i < navHistory.length; i++) {
+                    if (navHistory[i - 1].nav > 0) {
+                      returns.push((navHistory[i].nav - navHistory[i - 1].nav) / navHistory[i - 1].nav);
+                    }
+                  }
+                  if (returns.length === 0) return null;
+                  const mean = returns.reduce((a, b) => a + b, 0) / returns.length;
+                  const variance = returns.reduce((sum, r) => sum + (r - mean) ** 2, 0) / returns.length;
+                  return Math.sqrt(variance) * Math.sqrt(252) * 100;
+                })()
+              : null;
 
-            // 从市值数据计算波动率（考虑交易记录的影响）
-              const volatility = twrResult.dailyValues
-                ? calculateVolatilityFromValueWithTrades(twrResult.dailyValues, trades, `单基金:${selectedFund}`)
-                : null;
+            // 计算年化收益率（基于净值增长）
+            const tradingDays = navHistory.length;
+            const navReturn = navHistory.length > 1 && navHistory[0].nav > 0
+              ? ((navHistory[navHistory.length - 1].nav - navHistory[0].nav) / navHistory[0].nav) * 100
+              : 0;
+            const annualizedReturnPercent = tradingDays > 1 && navHistory[0].nav > 0
+              ? (Math.pow(1 + navReturn / 100, 252 / tradingDays) - 1) * 100
+              : navReturn;
 
-            // 计算夏普比率和卡玛比率（基于计算出的收益率和波动率）
             const sharpeRatio = (volatility !== null && volatility > 0 && annualizedReturnPercent !== null)
-              ? (annualizedReturnPercent - 3) / volatility  // 无风险利率3%
+              ? (annualizedReturnPercent - 3) / volatility
               : null;
             const calmarRatio = (maxDrawdown !== null && maxDrawdown > 0 && annualizedReturnPercent !== null)
               ? annualizedReturnPercent / maxDrawdown
               : null;
 
-            // 合并结果：使用TWR的年化收益率、市值计算的最大回撤和波动率
             setKpiData({
               annualizedReturn: annualizedReturnPercent,
-              maxDrawdown: maxDrawdown !== null && maxDrawdown > 0 ? maxDrawdown : null,
+              maxDrawdown: maxDrawdown > 0 ? maxDrawdown : null,
               volatility: volatility !== null && volatility > 0 ? volatility : null,
               sharpeRatio: sharpeRatio,
               calmarRatio: calmarRatio,
+              // 基金净值回撤的波峰波谷信息
+              drawdownPeakDate: drawdownDetails.peakDate,
+              drawdownPeakNav: drawdownDetails.peakNav,
+              drawdownTroughDate: drawdownDetails.troughDate,
+              drawdownTroughNav: drawdownDetails.troughNav,
             });
-          } else {
-            // TWR计算失败，回退到原方法
-            const fundTimeline = summary.perFundTimelines[selectedFund].map(p => ({
-              date: p.date,
-              cumulativeProfit: p.cumulativeProfit,
-              dailyProfit: 0,
-            }));
-            const fundKpi = calculateKPIs(fundTimeline);
-            setKpiData(fundKpi);
+            return;
           }
+
+          // 计算年化收益率（基于个人收益率）
+          // 如果有足够的交易日数据，使用收益率曲线计算年化
+          const tradingDays = personalResult.returnCurve.length;
+          const annualizedReturnPercent = tradingDays > 1
+            ? (Math.pow(1 + personalResult.currentReturn / 100, 252 / tradingDays) - 1) * 100
+            : personalResult.currentReturn;
+
+          // 使用个人回撤数据
+          const maxDrawdown = personalResult.maxDrawdown;
+
+          // 计算波动率（基于个人日收益率变化，与最大回撤计算方式一致）
+          const returnRates = personalResult.returnCurve.map(p => p.returnRate);
+          const volatility = estimateVolatilityFromReturnRates(returnRates);
+
+          // 计算夏普比率和卡玛比率
+          const sharpeRatio = (volatility !== null && volatility > 0 && annualizedReturnPercent !== null)
+            ? (annualizedReturnPercent - 3) / volatility
+            : null;
+          const calmarRatio = (maxDrawdown !== null && maxDrawdown > 0 && annualizedReturnPercent !== null)
+            ? annualizedReturnPercent / maxDrawdown
+            : null;
+
+          setKpiData({
+            annualizedReturn: annualizedReturnPercent,
+            maxDrawdown: maxDrawdown > 0 ? maxDrawdown : null,
+            volatility: volatility !== null && volatility > 0 ? volatility : null,
+            sharpeRatio: sharpeRatio,
+            calmarRatio: calmarRatio,
+            // 个人回撤的波峰波谷详细信息
+            drawdownPeakDate: personalResult.peakDate,
+            drawdownPeakReturn: personalResult.peakReturn,
+            drawdownPeakNav: personalResult.peakNav,
+            drawdownTroughDate: personalResult.troughDate,
+            drawdownTroughReturn: personalResult.troughReturn,
+            drawdownTroughNav: personalResult.troughNav,
+          });
         } catch (error) {
-          console.error('计算TWR失败:', error);
+          console.error('计算个人回撤失败:', error);
           // 出错时回退到原方法
           const fundTimeline = summary.perFundTimelines[selectedFund].map(p => ({
             date: p.date,
@@ -785,117 +833,77 @@ const OverallProfitModal: React.FC<Props> = ({ symbols, onClose, onSelectFund })
           setKpiData(fundKpi);
         }
       } else {
-        // 整体组合：使用持仓趋势数据计算TWR
-        try {
-          // 获取所有基金代码
-          const allSymbols = getAllFundSymbols();
-
-          if (!allSymbols || allSymbols.length === 0) {
-            // 如果没有基金，使用原方法
-            const overallKpi = calculateKPIs(chartTimeline);
-            setKpiData(overallKpi);
-            return;
-          }
-
-          // 收集所有基金的持仓配置和交易记录
-          const initialPositions: Record<string, number> = {};
-          const trades: Record<string, any[]> = {};
-          const valuationHistory: Record<string, { date: string; price: number }[]> = {};
-
-          // 获取时间范围
-          const startDate = chartFromDate || toLocalDateKey(new Date());
-          const endDate = chartTimeline.length > 0 ? chartTimeline[chartTimeline.length - 1].date : toLocalDateKey(new Date());
-
-          // 获取每个基金的数据
-          for (const sym of allSymbols) {
-            const position = getPosition(sym);
-            if (position && position.startDate) {
-              initialPositions[sym] = position.initialPosition || 0;
-
-              // 获取交易记录
-              const fundTrades = getTradesForSymbol(sym) || [];
-              trades[sym] = fundTrades.map(t => ({
-                ...t,
-                type: t.type as 'buy' | 'sell',
-              }));
-
-              // 获取历史净值
-              const history = await fetchHistoryForTrend(sym);
-              if (history && history.length > 0) {
-                valuationHistory[sym] = history.map(h => {
-                  const d = new Date(h.date as number);
-                  return {
-                    date: `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`,
-                    price: h.value,
-                  };
-                });
-              }
+        // 整体组合：使用完整数据计算波动率（与风险监控一致）
+        const calculatePortfolioKPI = async () => {
+          try {
+            if (!chartTimeline || chartTimeline.length < 2) {
+              setKpiData(null);
+              return;
             }
-          }
 
-          // 计算持仓趋势
-          const positionTrend = computePositionTrend({
-            symbols: allSymbols,
-            initialPositions,
-            trades,
-            valuationHistory,
-            startDate,
-            endDate,
-          });
-
-          if (positionTrend && positionTrend.length >= 2) {
-            // 使用TWR计算收益率
-            const twrResult = calculatePortfolioTWR(positionTrend);
-
-            if (twrResult.twr !== null) {
-              // 计算年化收益率（复利方式）
-              const tradingDays = positionTrend.length;
-              const annualizedReturn = Math.pow(1 + twrResult.twr, 252 / tradingDays) - 1;
-              const annualizedReturnPercent = annualizedReturn * 100;
-
-              // 从市值数据计算最大回撤
-              const maxDrawdown = twrResult.dailyValues ? calculateMaxDrawdownFromValue(twrResult.dailyValues) : null;
-
-              // 从市值数据计算波动率
-              const volatility = twrResult.dailyValues ? calculateVolatilityFromValue(twrResult.dailyValues, '整体组合') : null;
-
-              // 计算夏普比率和卡玛比率
-              const sharpeRatio = (volatility !== null && volatility > 0 && annualizedReturnPercent !== null)
-                ? (annualizedReturnPercent - 3) / volatility  // 无风险利率3%
-                : null;
-              const calmarRatio = (maxDrawdown !== null && maxDrawdown > 0 && annualizedReturnPercent !== null)
-                ? annualizedReturnPercent / maxDrawdown
-                : null;
-
-              // 合并结果：使用TWR的年化收益率、市值计算的最大回撤和波动率
-              setKpiData({
-                annualizedReturn: annualizedReturnPercent,
-                maxDrawdown: maxDrawdown !== null && maxDrawdown > 0 ? maxDrawdown : null,
-                volatility: volatility !== null && volatility > 0 ? volatility : null,
-                sharpeRatio: sharpeRatio,
-                calmarRatio: calmarRatio,
+            // 获取有持仓的基金列表（与风险监控一致）
+            let portfolioSymbols = symbols || [];
+            if (portfolioSymbols.length === 0) {
+              const allSymbols = getAllFundSymbols();
+              portfolioSymbols = allSymbols.filter(sym => {
+                const pos = getPosition(sym);
+                return pos && pos.fullCapacity > 0;
               });
-            } else {
-              // TWR计算失败，使用原方法
-              const overallKpi = calculateKPIs(chartTimeline);
-              setKpiData(overallKpi);
             }
-          } else {
-            // 无法计算持仓趋势，使用原方法
-            const overallKpi = calculateKPIs(chartTimeline);
-            setKpiData(overallKpi);
+
+            if (portfolioSymbols.length === 0) {
+              setKpiData(null);
+              return;
+            }
+
+            // 使用完整数据计算净值曲线和波动率（与风险监控保持一致）
+            const positionTrendData = await computePositionTrendData(portfolioSymbols);
+            const navCurve = calculateNavCurve(positionTrendData);
+
+            // 从净值曲线计算波动率（与风险监控保持一致）
+            const volatility = estimateVolatilityFromNav(navCurve);
+
+            // 使用持仓趋势数据计算年化收益率
+            const annualizedReturnPercent = calculateAnnualizedReturnFromPositionTrend(
+              positionTrendData
+            );
+
+            // 从净值曲线计算最大回撤详细信息
+            const drawdownDetails = calculateMaxDrawdownDetailsFromNav(positionTrendData);
+            const maxDrawdown = drawdownDetails.maxDrawdown;
+
+            // 计算夏普比率和卡玛比率
+            const sharpeRatio = (volatility !== null && volatility > 0 && annualizedReturnPercent !== null)
+              ? (annualizedReturnPercent - 3) / volatility
+              : null;
+            const calmarRatio = (maxDrawdown !== null && maxDrawdown > 0 && annualizedReturnPercent !== null)
+              ? annualizedReturnPercent / maxDrawdown
+              : null;
+
+            setKpiData({
+              annualizedReturn: annualizedReturnPercent,
+              maxDrawdown: maxDrawdown !== null && maxDrawdown > 0 ? maxDrawdown : null,
+              volatility: volatility !== null && volatility > 0 ? volatility : null,
+              sharpeRatio: sharpeRatio,
+              calmarRatio: calmarRatio,
+              // 组合回撤的波峰波谷详细信息
+              drawdownPeakDate: drawdownDetails.peakDate,
+              drawdownPeakNav: drawdownDetails.peakNav,
+              drawdownTroughDate: drawdownDetails.troughDate,
+              drawdownTroughNav: drawdownDetails.troughNav,
+            });
+          } catch (error) {
+            console.error('计算整体组合KPI失败:', error);
+            setKpiData(null);
           }
-        } catch (error) {
-          console.error('计算整体组合TWR失败:', error);
-          // 出错时回退到原方法
-          const overallKpi = calculateKPIs(chartTimeline);
-          setKpiData(overallKpi);
-        }
+        };
+
+        calculatePortfolioKPI();
       }
     };
 
     calculateKPI();
-  }, [selectedFund, summary, chartTimeline, chartFromDate]);
+  }, [selectedFund, symbols, summary, chartTimeline, chartFromDate]);
 
   // 日期变化时重置选中基金
   useEffect(() => {
