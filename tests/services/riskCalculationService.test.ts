@@ -7,7 +7,7 @@
 import { computeRiskSnapshot, clearRiskCache, getRiskCacheState } from '../../services/riskCalculationService';
 import { getRiskThresholds, saveRiskThresholds, DEFAULT_RISK_THRESHOLDS } from '../../services/riskThresholdService';
 import { Ticker, ValuationData, RiskThresholds, OverallProfitSummary } from '../../types';
-import { getHistory, getPosition } from '../../services/marketFundService';
+import { getHistory, getPosition, getValuation } from '../../services/marketFundService';
 import { getTradesForSymbol } from '../../hooks/useTrades';
 
 // Mock dependencies
@@ -16,6 +16,17 @@ jest.mock('../../hooks/useTrades');
 jest.mock('../../services/riskThresholdService');
 jest.mock('../../services/fundService', () => ({
   computeOverallProfit: jest.fn(),
+  prepareHistoryForProfitCalculation: jest.fn((params) => {
+    // 简单实现：返回历史数据，如果有当前估值则添加到最后
+    const { history, currentPrice } = params;
+    if (!history || history.length === 0) return [];
+    const result = history.slice();
+    if (currentPrice && result.length > 0) {
+      // 用当前估值覆盖最后一个历史点
+      result[result.length - 1] = { ...result[result.length - 1], value: currentPrice };
+    }
+    return result;
+  }),
 }));
 
 // Import the mocked function
@@ -23,6 +34,7 @@ import { computeOverallProfit } from '../../services/fundService';
 
 const mockGetHistory = getHistory as jest.MockedFunction<typeof getHistory>;
 const mockGetPosition = getPosition as jest.MockedFunction<typeof getPosition>;
+const mockGetValuation = getValuation as jest.MockedFunction<typeof getValuation>;
 const mockGetTradesForSymbol = getTradesForSymbol as jest.MockedFunction<typeof getTradesForSymbol>;
 const mockGetRiskThresholds = getRiskThresholds as jest.MockedFunction<typeof getRiskThresholds>;
 const mockComputeOverallProfit = computeOverallProfit as jest.MockedFunction<typeof computeOverallProfit>;
@@ -772,6 +784,146 @@ describe('riskCalculationService', () => {
       const snapshot = await computeRiskSnapshot([], {});
 
       expect(snapshot.continuousDecline).toBe(0);
+    });
+  });
+
+  describe('当前回撤使用估值数据', () => {
+    it('整体组合当前回撤应使用当日估值', async () => {
+      const portfolio = createMockPortfolio();
+      const marketData = createMockMarketData();
+
+      mockGetRiskThresholds.mockReturnValue(DEFAULT_RISK_THRESHOLDS);
+      mockComputeOverallProfit.mockResolvedValue(createMockSummary(10));
+
+      // 历史净值：最后一天是 1.0
+      const history = [
+        { date: new Date('2024-01-01').getTime(), value: 1.0, equityReturn: 0 },
+        { date: new Date('2024-01-02').getTime(), value: 1.2, equityReturn: 0 },
+        { date: new Date('2024-01-03').getTime(), value: 1.5, equityReturn: 0 },  // 峰值
+        { date: new Date('2024-01-04').getTime(), value: 1.3, equityReturn: 0 },
+        { date: new Date('2024-01-05').getTime(), value: 1.4, equityReturn: 0 },
+        { date: new Date('2024-01-06').getTime(), value: 1.35, equityReturn: 0 },
+        { date: new Date('2024-01-07').getTime(), value: 1.0, equityReturn: 0 },  // 历史数据最后一天
+      ];
+
+      // 当前估值：1.30（比历史最后一天 1.0 更低）
+      const valuation: ValuationData = {
+        symbol: '000001',
+        name: '测试基金1',
+        currentPrice: 1.30,
+        previousPrice: 1.35,
+        changePercentage: -3.7,
+        lastUpdated: '2024-01-07 15:00',
+        realtimeDate: '2024-01-07',
+        netWorthDate: '2024-01-06',
+        valuationDate: '2024-01-07',
+        sourceUrl: '',
+      };
+
+      mockGetHistory.mockReturnValue(history);
+      mockGetValuation.mockReturnValue(valuation);
+      mockGetPosition.mockReturnValue({
+        fullCapacity: 10000,
+        initialPosition: 1000,
+        startDate: '2024-01-01',
+        initialPrice: 1.0,
+      });
+      mockGetTradesForSymbol.mockReturnValue([]);
+
+      const snapshot = await computeRiskSnapshot(portfolio, marketData);
+
+      // 验证当前净值使用了估值数据
+      // 如果使用估值，当前净值应该是 1.30
+      // 如果不使用估值，当前净值应该是 1.0
+      expect(snapshot.currentNav).toBeCloseTo(1.30, 1);
+    });
+
+    it('单个基金当前回撤应使用当日估值', async () => {
+      const portfolio = createMockPortfolio();
+      const marketData = createMockMarketData();
+
+      mockGetRiskThresholds.mockReturnValue(DEFAULT_RISK_THRESHOLDS);
+      mockComputeOverallProfit.mockResolvedValue(createMockSummary(10));
+
+      // 历史净值：最后一天是 1.0
+      const history = [
+        { date: new Date('2024-01-01').getTime(), value: 1.0, equityReturn: 0 },
+        { date: new Date('2024-01-02').getTime(), value: 1.2, equityReturn: 0 },
+        { date: new Date('2024-01-03').getTime(), value: 1.5, equityReturn: 0 },  // 峰值
+        { date: new Date('2024-01-04').getTime(), value: 1.3, equityReturn: 0 },
+        { date: new Date('2024-01-05').getTime(), value: 1.4, equityReturn: 0 },
+        { date: new Date('2024-01-06').getTime(), value: 1.35, equityReturn: 0 },
+        { date: new Date('2024-01-07').getTime(), value: 1.0, equityReturn: 0 },  // 历史数据最后一天
+      ];
+
+      // 当前估值：1.30（比历史最后一天 1.0 高）
+      const valuation: ValuationData = {
+        symbol: '000001',
+        name: '测试基金1',
+        currentPrice: 1.30,
+        previousPrice: 1.35,
+        changePercentage: -3.7,
+        lastUpdated: '2024-01-07 15:00',
+        realtimeDate: '2024-01-07',
+        netWorthDate: '2024-01-06',
+        valuationDate: '2024-01-07',
+        sourceUrl: '',
+      };
+
+      mockGetHistory.mockReturnValue(history);
+      mockGetValuation.mockReturnValue(valuation);
+      mockGetPosition.mockReturnValue({
+        fullCapacity: 10000,
+        initialPosition: 1000,
+        startDate: '2024-01-01',
+        initialPrice: 1.0,
+      });
+      mockGetTradesForSymbol.mockReturnValue([]);
+
+      const snapshot = await computeRiskSnapshot(portfolio, marketData);
+
+      // 应有单个基金回撤数据
+      expect(snapshot.fundDrawdowns.length).toBeGreaterThanOrEqual(1);
+      const fundDrawdown = snapshot.fundDrawdowns[0];
+
+      // 验证当前净值使用了估值数据
+      // 如果使用估值，当前净值应该是 1.30
+      // 如果不使用估值，当前净值应该是 1.0
+      expect(fundDrawdown.currentValue).toBeCloseTo(1.30, 1);
+    });
+
+    it('无估值数据时应使用历史净值', async () => {
+      const portfolio = createMockPortfolio();
+      const marketData = createMockMarketData();
+
+      mockGetRiskThresholds.mockReturnValue(DEFAULT_RISK_THRESHOLDS);
+      mockComputeOverallProfit.mockResolvedValue(createMockSummary(10));
+
+      // 历史净值
+      const history = [
+        { date: new Date('2024-01-01').getTime(), value: 1.0, equityReturn: 0 },
+        { date: new Date('2024-01-02').getTime(), value: 1.2, equityReturn: 0 },
+        { date: new Date('2024-01-03').getTime(), value: 1.5, equityReturn: 0 },  // 峰值
+        { date: new Date('2024-01-04').getTime(), value: 1.3, equityReturn: 0 },
+        { date: new Date('2024-01-05').getTime(), value: 1.4, equityReturn: 0 },
+        { date: new Date('2024-01-06').getTime(), value: 1.35, equityReturn: 0 },
+        { date: new Date('2024-01-07').getTime(), value: 1.30, equityReturn: 0 },
+      ];
+
+      mockGetHistory.mockReturnValue(history);
+      mockGetValuation.mockReturnValue(undefined);  // 无估值数据
+      mockGetPosition.mockReturnValue({
+        fullCapacity: 10000,
+        initialPosition: 1000,
+        startDate: '2024-01-01',
+        initialPrice: 1.0,
+      });
+      mockGetTradesForSymbol.mockReturnValue([]);
+
+      const snapshot = await computeRiskSnapshot(portfolio, marketData);
+
+      // 无估值时，当前净值应该是历史最后一天的净值 1.30
+      expect(snapshot.currentNav).toBeCloseTo(1.30, 1);
     });
   });
 });

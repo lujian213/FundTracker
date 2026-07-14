@@ -41,8 +41,9 @@ import {
 } from '../utils/performanceAttribution';
 import { computePositions } from '../utils/positionHelper';
 import { computePositionTrend, PositionTrendPoint, Trade, ValuationPoint } from '../utils/positionTrend';
-import { computeOverallProfit } from './fundService';
+import { computeOverallProfit, prepareHistoryForProfitCalculation } from './fundService';
 import { formatDateISO } from '../utils/dateFormat';
+import { toLocalDateKey } from '../utils/priceResolver';
 
 /**
  * 计算两个日期字符串之间的日历天数差
@@ -280,6 +281,8 @@ function computeFundDrawdownsFromPersonalReturn(
   portfolio: Ticker[]
 ): FundDrawdown[] {
   const fundDrawdowns: FundDrawdown[] = [];
+  const today = new Date();
+  const todayStr = formatDateISO(today);
 
   for (const ticker of portfolio) {
     const symbol = ticker.symbol;
@@ -289,14 +292,25 @@ function computeFundDrawdownsFromPersonalReturn(
       const initialShares = position?.initialPosition || 0;
       const initialPrice = position?.initialPrice || 0;
 
-      // 获取历史净值数据
+      // 获取历史净值数据和当前估值
       const history = getHistory(symbol) || [];
+      const valuation = getValuation(symbol);
       if (history.length === 0) continue;
 
+      // 使用 prepareHistoryForProfitCalculation 合并历史数据和当前估值
+      const preparedHist = prepareHistoryForProfitCalculation({
+        history,
+        targetDate: todayStr,
+        todayDate: todayStr,
+        currentPrice: valuation?.currentPrice,
+        realtimeDate: valuation?.realtimeDate,
+        previousPrice: valuation?.previousPrice,
+        netWorthDate: valuation?.netWorthDate,
+      });
+
       // 转换为 { date, nav } 格式
-      const navHistory = history.map(h => {
-        const d = new Date(h.date);
-        return { date: formatDateISO(d), nav: h.value };
+      const navHistory = preparedHist.map(h => {
+        return { date: formatDateISO(new Date(h.date)), nav: h.value };
       }).sort((a, b) => a.date.localeCompare(b.date));
 
       // 获取交易记录
@@ -586,12 +600,24 @@ export async function computePositionTrendData(
       }));
     } catch (e) { tradesMap[sym] = []; }
 
-    // 获取估值数据
+    // 获取估值数据（使用 prepareHistoryForProfitCalculation 包含当日估值）
     try {
       const hist = getHistory(sym) || [];
-      valuationMap[sym] = hist.map(h => {
-        const d = new Date(h.date);
-        return { date: formatDateISO(d), price: h.value };
+      const val = getValuation(sym);
+
+      // 使用与整体盈亏相同的逻辑，把当日估值也计算进去
+      const preparedHist = prepareHistoryForProfitCalculation({
+        history: hist,
+        targetDate: todayStr,
+        todayDate: todayStr,
+        currentPrice: val?.currentPrice,
+        realtimeDate: val?.realtimeDate,
+        previousPrice: val?.previousPrice,
+        netWorthDate: val?.netWorthDate,
+      });
+
+      valuationMap[sym] = preparedHist.map(h => {
+        return { date: formatDateISO(new Date(h.date)), price: h.value };
       });
     } catch (e) { valuationMap[sym] = []; }
 
