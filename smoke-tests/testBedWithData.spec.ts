@@ -1878,6 +1878,46 @@ test.describe('testBedWithData', () => {
       console.log('饼图扇区点击跳过（元素可能不可点击）');
     }
 
+    // ══════════════════════════════════════════════════════════════════════════════
+    // 25.1 验证重置按钮
+    // ══════════════════════════════════════════════════════════════════════════════
+    // 使用表格中的"?"按钮选中基金（更可靠）
+    const questionButton = page.locator('table tbody tr button').filter({ hasText: '?' }).first();
+    await questionButton.click();
+    await page.waitForTimeout(500);
+    console.log('通过表格"?"按钮选中基金');
+
+    // 饼图重置按钮：白色背景 + 边框 + 包含SVG图标
+    const pieChartResetButton = page.locator('button.bg-white.border').filter({ hasText: '重置' });
+
+    // 选中基金后，验证重置按钮出现
+    await expect(pieChartResetButton).toBeVisible({ timeout: 3000 });
+    console.log('重置按钮出现验证完成');
+
+    // 点击重置按钮，验证取消选中状态
+    await pieChartResetButton.click();
+    await page.waitForTimeout(500);
+
+    // 验证重置按钮消失（选中状态被取消）
+    await expect(pieChartResetButton).not.toBeVisible({ timeout: 2000 });
+    console.log('重置按钮消失验证完成');
+
+    // 验证KPI区域恢复显示整体组合指标
+    const portfolioTitle = page.locator('h3:has-text("整体组合")');
+    await expect(portfolioTitle).toBeVisible({ timeout: 3000 });
+    console.log('整体组合指标显示验证完成');
+
+    // ══════════════════════════════════════════════════════════════════════════════
+    // 25.2 再次选中基金验证重置按钮
+    // ══════════════════════════════════════════════════════════════════════════════
+    // 再次使用表格"?"按钮选中基金
+    await questionButton.click();
+    await page.waitForTimeout(500);
+
+    // 验证重置按钮再次出现
+    await expect(pieChartResetButton).toBeVisible({ timeout: 3000 });
+    console.log('再次选中后重置按钮验证完成');
+
     // 切换回图表视图
     await page.locator('button[aria-label="显示盈亏曲线图表"]').click();
     await expect(chartPoints.first()).toBeVisible({ timeout: 1000 });
