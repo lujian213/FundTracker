@@ -299,7 +299,7 @@ const RiskMonitorModal: React.FC<RiskMonitorModalProps> = ({
               >
                 <span>{item.label}</span>
                 {item.badge !== undefined && item.badge > 0 && (
-                  <span className={`ml-1 px-1.5 py-0.5 rounded-full text-xs ${
+                  <span className={`ml-1 min-w-[20px] h-5 px-1.5 rounded-full text-xs flex items-center justify-center ${
                     activeTab === item.id ? 'bg-red-600 text-white' : 'bg-red-500 text-white'
                   }`}>
                     {item.badge}
