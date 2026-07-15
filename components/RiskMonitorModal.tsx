@@ -1005,7 +1005,7 @@ const DrawdownTab: React.FC<{
           {/* 回撤大数字 */}
           <div>
             <div className="text-5xl font-extrabold text-red-600 leading-none">
-              -{currentDrawdown.toFixed(1)}%
+              -{currentDrawdown.toFixed(2)}%
             </div>
             <div className="text-sm text-red-800 mt-1">当前回撤深度</div>
             <div className={`mt-2 inline-block px-3 py-1 rounded-full text-xs font-semibold ${
@@ -1059,7 +1059,7 @@ const DrawdownTab: React.FC<{
           {/* 低点标记 */}
           <div className="absolute top-0 left-0 transform -translate-y-full text-center bg-white px-1.5 py-0.5 rounded shadow-sm cursor-help group/low">
             <span className="block text-xs text-gray-500">低点</span>
-            <span className="block text-sm font-bold text-red-700">-{troughDrawdown.toFixed(1)}%</span>
+            <span className="block text-sm font-bold text-red-700">-{troughDrawdown.toFixed(2)}%</span>
             {/* Hover tip */}
             <div className="absolute bottom-full left-0 mb-2 px-3 py-2 bg-gray-800 text-white text-xs rounded-lg opacity-0 group-hover/low:opacity-100 transition-opacity z-50 w-36 pointer-events-none">
               <div className="text-gray-300">日期: {formatDateDisplay(troughDate) || '-'}</div>
@@ -1087,12 +1087,12 @@ const DrawdownTab: React.FC<{
             {isNearLow || isNearHigh ? (
               <>
                 <span className="block text-xs text-gray-500">当前</span>
-                <span className="block text-sm font-bold text-orange-600">-{currentDrawdown.toFixed(1)}%</span>
+                <span className="block text-sm font-bold text-orange-600">-{currentDrawdown.toFixed(2)}%</span>
               </>
             ) : (
               <>
                 <span className="block text-xs text-gray-500">当前</span>
-                <span className="block text-sm font-bold text-orange-600">-{currentDrawdown.toFixed(1)}%</span>
+                <span className="block text-sm font-bold text-orange-600">-{currentDrawdown.toFixed(2)}%</span>
               </>
             )}
           </div>

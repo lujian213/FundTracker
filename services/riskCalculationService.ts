@@ -156,12 +156,12 @@ export async function computeRiskSnapshot(
     ? annualizedReturn / maxDrawdown
     : null;
 
-  // 11. 生成预警
+  // 11. 生成预警（使用当前回撤）
   const alerts = generateAlerts(
     portfolio,
     marketData,
     {
-      maxDrawdown,
+      currentDrawdown,
       volatility,
       hhi,
       continuousDecline,
@@ -640,7 +640,7 @@ function generateAlerts(
   portfolio: Ticker[],
   marketData: Record<string, ValuationData>,
   metrics: {
-    maxDrawdown: number;
+    currentDrawdown: number;
     volatility: number;
     hhi: number;
     continuousDecline: number;
@@ -651,42 +651,42 @@ function generateAlerts(
   const alerts: RiskAlert[] = [];
   const now = new Date().toISOString();
 
-  // 1. 回撤预警
-  if (metrics.maxDrawdown >= thresholds.drawdown.high) {
+  // 1. 回撤预警（使用当前回撤）
+  if (metrics.currentDrawdown >= thresholds.drawdown.high) {
     alerts.push(createAlert(
       'drawdown',
       'high',
       'PORTFOLIO',
       '整体组合',
-      metrics.maxDrawdown,
+      metrics.currentDrawdown,
       thresholds.drawdown.high,
       '%',
       now,
-      `整体组合回撤${metrics.maxDrawdown.toFixed(2)}%，超过重度预警阈值${thresholds.drawdown.high}%`
+      `整体组合当前回撤${metrics.currentDrawdown.toFixed(2)}%，超过重度预警阈值${thresholds.drawdown.high}%`
     ));
-  } else if (metrics.maxDrawdown >= thresholds.drawdown.medium) {
+  } else if (metrics.currentDrawdown >= thresholds.drawdown.medium) {
     alerts.push(createAlert(
       'drawdown',
       'medium',
       'PORTFOLIO',
       '整体组合',
-      metrics.maxDrawdown,
+      metrics.currentDrawdown,
       thresholds.drawdown.medium,
       '%',
       now,
-      `整体组合回撤${metrics.maxDrawdown.toFixed(2)}%，超过中度预警阈值${thresholds.drawdown.medium}%`
+      `整体组合当前回撤${metrics.currentDrawdown.toFixed(2)}%，超过中度预警阈值${thresholds.drawdown.medium}%`
     ));
-  } else if (metrics.maxDrawdown >= thresholds.drawdown.low) {
+  } else if (metrics.currentDrawdown >= thresholds.drawdown.low) {
     alerts.push(createAlert(
       'drawdown',
       'low',
       'PORTFOLIO',
       '整体组合',
-      metrics.maxDrawdown,
+      metrics.currentDrawdown,
       thresholds.drawdown.low,
       '%',
       now,
-      `整体组合回撤${metrics.maxDrawdown.toFixed(2)}%，超过轻度预警阈值${thresholds.drawdown.low}%`
+      `整体组合当前回撤${metrics.currentDrawdown.toFixed(2)}%，超过轻度预警阈值${thresholds.drawdown.low}%`
     ));
   }
 
