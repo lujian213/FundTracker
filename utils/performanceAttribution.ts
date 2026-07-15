@@ -5,6 +5,7 @@
  */
 
 import { OverallFundRow, AttributionResult, FundAttributionData, OverallProfitPoint, KPIResult, TradeRecord, HistoricalPoint } from '../types';
+import { computeCostPricesByDate } from './tradeVolumeHelper';
 
 /**
  * TWR计算结果
@@ -1285,23 +1286,24 @@ export function calculateCurrentDrawdownDetails(
   // 找峰值：从前往后找第一个比它之后所有点都高的点
   // 这样的点之后的所有点都没有超过它，所以从这个点开始一直处于回撤状态
   // 注意：最后一个点不算，因为它后面没有点了
+  //
+  // 优化：使用后缀最大值数组，将 O(n²) 优化为 O(n)
+  // suffixMax[i] = 从索引 i 到末尾的最大值
+  const suffixMax: number[] = new Array(navCurve.length);
+  suffixMax[lastIndex] = navCurve[lastIndex].nav;
+  for (let i = lastIndex - 1; i >= 0; i--) {
+    suffixMax[i] = Math.max(navCurve[i].nav, suffixMax[i + 1]);
+  }
+
   let peakIndex = lastIndex;
   let peakNav = currentNav;
   let peakDate = currentDate;
 
+  // 找第一个点，其净值严格大于它后面所有点的最大值
   for (let i = 0; i < lastIndex; i++) {
     const nav = navCurve[i].nav;
-    // 检查这个点是否比它后面的所有点都高（严格大于）
-    let isHigherThanAllLater = true;
-    for (let j = i + 1; j <= lastIndex; j++) {
-      if (navCurve[j].nav >= nav) {
-        isHigherThanAllLater = false;
-        break;
-      }
-    }
-
-    // 找到第一个满足条件的点，就是当前回撤的峰值
-    if (isHigherThanAllLater) {
+    // 如果当前点严格大于后面所有点的最大值（suffixMax[i+1]）
+    if (nav > suffixMax[i + 1]) {
       peakIndex = i;
       peakNav = nav;
       peakDate = navCurve[i].date;
@@ -1352,51 +1354,51 @@ export function calculateCurrentDrawdownDetails(
 }
 
 /**
- * 计算单个基金的个人持仓收益率曲线
+ * 计算单个基金的个人持仓回撤（基于单位盈利）
  *
  * 核心概念：
- * 1. 持仓成本价 = 加权平均成本（每次买入后重新计算）
- * 2. 个人收益率 = (当日净值 - 成本价) / 成本价
- * 3. 个人回撤在收益率曲线上计算
+ * 1. 成本价 = (初始成本 + 累计买入 - 累计卖出) / 累计份额（实际成本法）
+ * 2. 单位盈利 = 净值 - 成本价（每份赚多少钱）
+ * 3. 峰值 = 历史上单位盈利最大的那天
+ * 4. 回撤 = (峰值单位盈利 - 当前单位盈利) / 峰值单位盈利
  *
  * @param history - 历史净值数据（按日期排序）
  * @param trades - 交易记录（申购/赎回）
  * @param initialShares - 初始份额
  * @param initialPrice - 初始价格（建仓价格）
- * @returns 个人收益率曲线、持仓成本、当前收益率、最大回撤等信息
+ * @returns 单位盈利曲线、当前单位盈利、最大回撤等信息
  */
 export interface PersonalReturnPoint {
   date: string;
   nav: number;           // 当日基金净值
   shares: number;        // 当日持有份额
-  costPrice: number;     // 当日持仓成本价
-  returnRate: number;    // 当日个人收益率 (%)
-  marketValue: number;   // 当日市值
-  totalCost: number;     // 累计总投入
+  costPrice: number;     // 当日成本价
+  unitProfit: number;    // 当日单位盈利（净值 - 成本价）
 }
 
 export interface PersonalReturnResult {
   returnCurve: PersonalReturnPoint[];
-  averageCost: number;      // 当前持仓成本价
-  currentReturn: number;    // 当前收益率 (%)
-  maxReturn: number;        // 最高收益率 (%)
-  minReturn: number;        // 最低收益率 (%)
-  maxDrawdown: number;      // 个人收益率最大回撤 (%)
-  currentDrawdown: number;  // 个人收益率当前回撤 (%)
+  currentUnitProfit: number;    // 当前单位盈利
+  maxUnitProfit: number;        // 最高单位盈利
+  maxDrawdown: number;          // 最大回撤 (%)
+  currentDrawdown: number;      // 当前回撤 (%)
   // 波峰波谷详细信息
   peakDate: string | null;     // 波峰日期
-  peakReturn: number;          // 波峰收益率 (%)
+  peakUnitProfit: number;      // 波峰单位盈利
   peakNav: number;             // 波峰时基金净值
+  peakCostPrice: number;       // 波峰时成本价
   troughDate: string | null;   // 波谷日期
-  troughReturn: number;        // 波谷收益率 (%)
+  troughUnitProfit: number;    // 波谷单位盈利
   troughNav: number;           // 波谷时基金净值
+  troughCostPrice: number;     // 波谷时成本价
 }
 
 export function calculatePersonalReturnCurve(
   history: { date: string; nav: number }[],
   trades: { date: string; type: 'buy' | 'sell' | 'initial'; shares: number; price: number; fee?: number }[],
   initialShares: number,
-  initialPrice: number
+  initialPrice: number,
+  startDate?: string | null  // 可选：建仓日期（持仓记录中的 startDate）
 ): PersonalReturnResult | null {
   if (!history || history.length === 0) {
     return null;
@@ -1405,158 +1407,201 @@ export function calculatePersonalReturnCurve(
   // 按日期排序历史净值数据
   const sortedHistory = history.slice().sort((a, b) => a.date.localeCompare(b.date));
 
-  // 按日期排序交易记录
-  const sortedTrades = trades.slice().sort((a, b) => a.date.localeCompare(b.date));
+  // 确定建仓日期
+  let positionStartDate: string | null = startDate || null;
+  if (!positionStartDate) {
+    const sortedTrades = trades.slice().sort((a, b) => a.date.localeCompare(b.date));
+    const initialTrade = sortedTrades.find(t => t.type === 'initial');
+    if (initialTrade) {
+      positionStartDate = initialTrade.date;
+    } else if (initialShares > 0) {
+      positionStartDate = sortedHistory[0].date;
+    } else {
+      const firstBuy = sortedTrades.find(t => t.type === 'buy');
+      if (firstBuy) {
+        positionStartDate = firstBuy.date;
+      }
+    }
+  }
 
-  // 初始化持仓状态
-  let currentShares = initialShares;
-  let totalCost = initialShares * initialPrice; // 累计总投入（成本）
-  let costPrice = initialPrice; // 持仓成本价（加权平均）
+  if (!positionStartDate) {
+    return null;
+  }
 
-  // 构建每日数据
+  // 验证建仓日期是否在历史数据范围内
+  const firstHistoryDate = sortedHistory[0].date;
+  const lastHistoryDate = sortedHistory[sortedHistory.length - 1].date;
+  if (positionStartDate > lastHistoryDate) {
+    return null;
+  }
+  if (positionStartDate < firstHistoryDate) {
+    positionStartDate = firstHistoryDate;
+  }
+
+  // 获取所有日期列表（从 startDate 开始）
+  const dates = sortedHistory.filter(h => h.date >= positionStartDate).map(h => h.date);
+
+  // 过滤掉 initial 类型的交易（初始持仓已通过 initialShares 和 initialPrice 处理）
+  const filteredTrades = trades.filter(t => t.type !== 'initial');
+
+  // 使用 computeCostPricesByDate 计算每日成本价（实际成本法，与基金详情页面一致）
+  const costPriceMap = computeCostPricesByDate(
+    initialShares,
+    initialPrice,
+    positionStartDate,
+    filteredTrades.map((t, index) => ({
+      id: `trade-${index}`,
+      date: t.date,
+      type: t.type as 'buy' | 'sell',
+      shares: t.shares,
+      price: t.price,
+      fee: t.fee || 0
+    })),
+    dates
+  );
+
+  // 构建交易记录映射：用于计算每日份额
+  const tradesByDate: Record<string, typeof trades> = {};
+  for (const trade of trades) {
+    if (!tradesByDate[trade.date]) {
+      tradesByDate[trade.date] = [];
+    }
+    tradesByDate[trade.date].push(trade);
+  }
+
+  // 计算每日份额
+  let cumulativeShares = initialShares;
+  const sharesMap = new Map<string, number>();
+  for (const date of dates) {
+    // 处理当日的交易
+    const dayTrades = tradesByDate[date] || [];
+    for (const trade of dayTrades) {
+      if (trade.type === 'buy') {
+        cumulativeShares += trade.shares;
+      } else if (trade.type === 'sell') {
+        cumulativeShares -= trade.shares;
+      }
+    }
+    sharesMap.set(date, cumulativeShares);
+  }
+
+  // 构建每日单位盈利曲线
   const returnCurve: PersonalReturnPoint[] = [];
-
-  // 按日期处理交易，计算持仓成本价
-  let tradeIndex = 0;
 
   for (const histPoint of sortedHistory) {
     const date = histPoint.date;
     const nav = histPoint.nav;
 
-    // 处理当天的所有交易
-    while (tradeIndex < sortedTrades.length && sortedTrades[tradeIndex].date === date) {
-      const trade = sortedTrades[tradeIndex];
-
-      if (trade.type === 'buy') {
-        // 申购：增加份额和成本
-        const buyAmount = trade.shares * trade.price + (trade.fee || 0);
-        totalCost += buyAmount;
-        currentShares += trade.shares;
-
-        // 重新计算加权平均成本价
-        if (currentShares > 0) {
-          costPrice = totalCost / currentShares;
-        }
-      } else if (trade.type === 'sell') {
-        // 赎回：减少份额，成本价不变（加权平均成本法）
-        const sellAmount = trade.shares * trade.price - (trade.fee || 0);
-        // 赎回不影响成本价，只减少总成本（按比例）
-        if (currentShares > 0) {
-          const costReduction = costPrice * trade.shares;
-          totalCost -= costReduction;
-        }
-        currentShares -= trade.shares;
-
-        // 成本价保持不变（这是加权平均成本法的核心）
-        // 如果全部赎回，成本价重置
-        if (currentShares <= 0) {
-          currentShares = 0;
-          totalCost = 0;
-          costPrice = 0;
-        }
-      } else if (trade.type === 'initial') {
-        // 建仓：已经通过 initialShares 和 initialPrice 参数处理
-        // 这里跳过，避免重复计算
-      }
-
-      tradeIndex++;
+    // 跳过 startDate 之前的日期
+    if (date < positionStartDate) {
+      continue;
     }
 
-    // 计算当日个人收益率
-    let returnRate = 0;
-    if (costPrice > 0 && currentShares > 0) {
-      returnRate = ((nav - costPrice) / costPrice) * 100;
+    // 获取当日成本价
+    const costPrice = costPriceMap.get(date);
+    const shares = sharesMap.get(date) || 0;
+
+    // 如果没有成本价，跳过
+    if (costPrice === null || costPrice === undefined) {
+      continue;
     }
 
-    // 计算当日市值
-    const marketValue = currentShares * nav;
+    // 计算当日单位盈利
+    const unitProfit = nav - costPrice;
 
     returnCurve.push({
       date,
       nav,
-      shares: currentShares,
+      shares,
       costPrice,
-      returnRate,
-      marketValue,
-      totalCost,
+      unitProfit,
     });
   }
 
-  // 过滤有持仓的天数
-  const validDays = returnCurve.filter(p => p.shares > 0 && p.costPrice > 0);
-
-  if (validDays.length === 0) {
+  if (returnCurve.length === 0) {
     return null;
   }
 
-  // 计算收益率统计
-  const returnRates = validDays.map(p => p.returnRate);
-  const maxReturn = Math.max(...returnRates);
-  const minReturn = Math.min(...returnRates);
-  const currentReturn = returnRates[returnRates.length - 1];
+  // 获取单位盈利序列
+  const unitProfits = returnCurve.map(p => p.unitProfit);
+  const maxUnitProfit = Math.max(...unitProfits);
+  const currentUnitProfit = unitProfits[unitProfits.length - 1];
 
-  // 在收益率曲线上计算最大回撤
-  // 公式：个人最大回撤 = (当前收益率 - 最高收益率) / (1 + 最高收益率)
-  let maxDrawdown = 0;
-  let currentDrawdown = 0;
-  let peakReturn = returnRates[0];
+  // 找峰值（单位盈利最大的那天）
   let peakIndex = 0;
-
-  // 找收益率最高点
-  for (let i = 1; i < returnRates.length; i++) {
-    if (returnRates[i] > peakReturn) {
-      peakReturn = returnRates[i];
+  let peakUnitProfit = unitProfits[0];
+  for (let i = 1; i < unitProfits.length; i++) {
+    if (unitProfits[i] > peakUnitProfit) {
+      peakUnitProfit = unitProfits[i];
       peakIndex = i;
     }
   }
 
-  // 波峰波谷详细信息
-  const peakPoint = validDays[peakIndex];
-  let troughIndex = peakIndex;
-  let troughReturn = peakReturn;
+  const peakPoint = returnCurve[peakIndex];
 
-  // 计算从最高点到最低点的最大回撤，同时找到波谷
-  // 公式：个人最大回撤 = (当前收益率小数 - 峰值收益率小数) / (1 + 峰值收益率小数)
-  // 注意：收益率是百分比形式（50表示50%），需要转换为小数形式
-  // 简化后：(当前收益率% - 峰值收益率%) / (100 + 峰值收益率%)，再乘100转为百分比
-  for (let i = peakIndex; i < returnRates.length; i++) {
-    const r = returnRates[i];
-    const drawdown = (r - peakReturn) / (100 + peakReturn) * 100;
-    if (drawdown < maxDrawdown) {
-      maxDrawdown = drawdown; // maxDrawdown 是负数，绝对值越大回撤越大
-    }
-    // 更新波谷（收益率最低点）
-    if (r < troughReturn) {
-      troughReturn = r;
+  // 找低点（峰值后单位盈利最小的那天）
+  let troughIndex = peakIndex;
+  let troughUnitProfit = peakUnitProfit;
+  for (let i = peakIndex; i < unitProfits.length; i++) {
+    if (unitProfits[i] < troughUnitProfit) {
+      troughUnitProfit = unitProfits[i];
       troughIndex = i;
     }
   }
 
-  const troughPoint = validDays[troughIndex];
+  const troughPoint = returnCurve[troughIndex];
 
-  // 当前回撤
-  if (currentReturn < peakReturn) {
-    currentDrawdown = (currentReturn - peakReturn) / (100 + peakReturn) * 100;
+  // 计算最大回撤（基于净值曲线）
+  // 峰值净值 = 历史最高净值
+  // 低点净值 = 峰值后最低净值
+  // 回撤 = (峰值净值 - 低点净值) / 峰值净值 × 100%
+  let peakNav = returnCurve[0].nav;
+  let peakNavIndex = 0;
+  for (let i = 1; i < returnCurve.length; i++) {
+    if (returnCurve[i].nav > peakNav) {
+      peakNav = returnCurve[i].nav;
+      peakNavIndex = i;
+    }
   }
 
-  // 取绝对值返回（正值表示回撤幅度）
-  maxDrawdown = Math.abs(maxDrawdown);
-  currentDrawdown = Math.abs(currentDrawdown);
+  const peakNavPoint = returnCurve[peakNavIndex];
+
+  // 找低点（峰值后净值最低点）
+  let troughNav = peakNav;
+  let troughNavIndex = peakNavIndex;
+  for (let i = peakNavIndex; i < returnCurve.length; i++) {
+    if (returnCurve[i].nav < troughNav) {
+      troughNav = returnCurve[i].nav;
+      troughNavIndex = i;
+    }
+  }
+
+  const troughNavPoint = returnCurve[troughNavIndex];
+
+  // 计算净值回撤百分比
+  let maxDrawdown = 0;
+  let currentDrawdown = 0;
+
+  if (peakNav > 0) {
+    maxDrawdown = (peakNav - troughNav) / peakNav * 100;
+    const currentNav = returnCurve[returnCurve.length - 1].nav;
+    currentDrawdown = (peakNav - currentNav) / peakNav * 100;
+  }
 
   return {
-    returnCurve: validDays,
-    averageCost: costPrice,
-    currentReturn,
-    maxReturn,
-    minReturn,
+    returnCurve,
+    currentUnitProfit,
+    maxUnitProfit,
     maxDrawdown,
     currentDrawdown,
-    // 波峰波谷详细信息
-    peakDate: peakPoint?.date || null,
-    peakReturn: peakReturn,
-    peakNav: peakPoint?.nav || 0,
-    troughDate: troughPoint?.date || null,
-    troughReturn: troughReturn,
-    troughNav: troughPoint?.nav || 0,
+    // 净值回撤详细信息
+    peakDate: peakNavPoint?.date || null,
+    peakNav: peakNav,
+    peakUnitProfit: peakNavPoint?.unitProfit || 0,
+    peakCostPrice: peakNavPoint?.costPrice || 0,
+    troughDate: troughNavPoint?.date || null,
+    troughNav: troughNav,
+    troughUnitProfit: troughNavPoint?.unitProfit || 0,
+    troughCostPrice: troughNavPoint?.costPrice || 0,
   };
 }

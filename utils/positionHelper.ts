@@ -3,6 +3,48 @@ import { getTradesForSymbol } from '../hooks/useTrades';
 import { fetchFundHistory } from '../services/fundService';
 import * as marketFundService from '../services/marketFundService';
 
+/**
+ * 获取最新估值数据的日期和价格
+ * 规则：取 realtimeDate 和 netWorthDate 中较晚的日期对应的价格
+ * - 如果 realtimeDate > netWorthDate，使用 currentPrice
+ * - 否则使用 previousPrice
+ *
+ * @param valuation - 估值数据
+ * @returns 包含日期和价格的对象，如果无法获取则返回 null
+ */
+export function getLatestValuationPrice(valuation: ValuationData | null | undefined): { date: string; price: number } | null {
+  if (!valuation) return null;
+
+  const realtimeDateStr = valuation.realtimeDate && valuation.realtimeDate !== '---' ? valuation.realtimeDate : null;
+  const netWorthDateStr = valuation.netWorthDate && valuation.netWorthDate !== '---' ? valuation.netWorthDate : null;
+
+  let currentDate: string | null = null;
+  let currentPrice: number = 0;
+
+  if (realtimeDateStr && netWorthDateStr) {
+    // 取两者中较晚的日期
+    if (realtimeDateStr > netWorthDateStr) {
+      currentDate = realtimeDateStr;
+      currentPrice = valuation.currentPrice;
+    } else {
+      currentDate = netWorthDateStr;
+      currentPrice = valuation.previousPrice;
+    }
+  } else if (realtimeDateStr) {
+    currentDate = realtimeDateStr;
+    currentPrice = valuation.currentPrice;
+  } else if (netWorthDateStr) {
+    currentDate = netWorthDateStr;
+    currentPrice = valuation.previousPrice;
+  }
+
+  if (!currentDate || !currentPrice || currentPrice <= 0) {
+    return null;
+  }
+
+  return { date: currentDate, price: currentPrice };
+}
+
 export interface PositionEntry {
   symbol: string;
   name: string;

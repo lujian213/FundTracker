@@ -222,10 +222,10 @@ export interface KPIResult {
   calmarRatio: number | null; // 卡玛比率, null if invalid
   // 最大回撤详细信息（仅单个基金时有效）
   drawdownPeakDate?: string | null;    // 波峰日期
-  drawdownPeakReturn?: number;         // 波峰收益率 (%)
+  drawdownPeakUnitProfit?: number;     // 波峰单位盈利
   drawdownPeakNav?: number;            // 波峰时基金净值
   drawdownTroughDate?: string | null;  // 波谷日期
-  drawdownTroughReturn?: number;       // 波谷收益率 (%)
+  drawdownTroughUnitProfit?: number;   // 波谷单位盈利
   drawdownTroughNav?: number;          // 波谷时基金净值
 }
 
@@ -540,16 +540,21 @@ export interface FundDrawdown {
   maxDrawdownDays: number;          // 最大回撤持续天数
   maxDrawdownPeakNav?: number;      // 最大回撤波峰净值
   maxDrawdownTroughNav?: number;    // 最大回撤波谷净值
-  maxDrawdownPeakReturnRate?: number; // 最大回撤波峰收益率 (%)
-  maxDrawdownTroughReturnRate?: number; // 最大回撤波谷收益率 (%)
+  maxDrawdownPeakCostPrice?: number;  // 最大回撤波峰成本价
+  maxDrawdownTroughCostPrice?: number; // 最大回撤波谷成本价
+  maxDrawdownPeakUnitProfit?: number; // 最大回撤波峰单位盈利
+  maxDrawdownTroughUnitProfit?: number; // 最大回撤波谷单位盈利
   peakDate: string;                 // 当前回撤峰值日期
-  peakValue: number;                // 峰值市值（净值）
-  peakReturnRate?: number;          // 峰值时个人收益率 (%)
+  peakValue: number;                // 峰值净值
+  peakCostPrice?: number;           // 峰值时成本价
+  peakUnitProfit?: number;          // 峰值时单位盈利
   troughDate?: string;              // 当前回撤低点日期
   troughValue?: number;             // 当前回撤低点净值
-  troughReturnRate?: number;        // 当前回撤低点收益率 (%)
-  currentValue: number;             // 当前市值（净值）
-  currentReturnRate?: number;       // 当前个人收益率 (%)
+  troughCostPrice?: number;         // 低点时成本价
+  troughUnitProfit?: number;        // 低点时单位盈利
+  currentValue: number;             // 当前净值
+  currentCostPrice?: number;        // 当前成本价
+  currentUnitProfit?: number;       // 当前单位盈利
 }
 
 /** 风险阈值配置 */

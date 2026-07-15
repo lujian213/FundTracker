@@ -99,16 +99,16 @@ export async function computeRiskSnapshot(
   const thresholds = getRiskThresholds();
   const now = new Date().toISOString();
 
-  // 1. 使用整体盈亏的计算逻辑获取累计盈利数据
+  // 1. 并行获取累计盈利数据和持仓趋势数据（两者无依赖关系）
   const symbols = portfolio.map(t => t.symbol);
-  const summary = await computeOverallProfit({ symbols });
+  const [summary, positionTrendData] = await Promise.all([
+    computeOverallProfit({ symbols }),
+    computePositionTrendData(symbols)
+  ]);
 
   if (!summary || !summary.timeline || summary.timeline.length === 0) {
     return createEmptySnapshot(now);
   }
-
-  // 2. 计算持仓趋势数据（用于年化收益率和净值计算）
-  const positionTrendData = await computePositionTrendData(symbols);
 
   // 3. 计算净值曲线和最大回撤详细信息
   const navCurve = calculateNavCurve(positionTrendData);
@@ -275,7 +275,7 @@ function detectContinuousDeclineFromTimeline(
 
 /**
  * 从个人收益率曲线计算各基金回撤
- * 使用加权平均成本法计算用户的持仓成本价，然后基于个人收益率曲线计算回撤
+ * 使用单位盈利法计算：单位盈利 = 净值 - 成本价
  */
 function computeFundDrawdownsFromPersonalReturn(
   portfolio: Ticker[]
@@ -328,7 +328,7 @@ function computeFundDrawdownsFromPersonalReturn(
         effectiveInitialPrice = firstBuy.price || 0;
       }
 
-      // 使用个人持仓回撤计算方法
+      // 使用单位盈利法计算回撤
       const personalResult = calculatePersonalReturnCurve(
         navHistory,
         trades.map(t => ({
@@ -339,17 +339,18 @@ function computeFundDrawdownsFromPersonalReturn(
           fee: t.fee || 0,
         })),
         effectiveInitialShares,
-        effectiveInitialPrice
+        effectiveInitialPrice,
+        position?.startDate  // 传递建仓日期
       );
 
-      // 如果个人回撤计算失败（如成本已收回），回退到基金净值回撤
+      // 如果计算失败，回退到基金净值回撤
       if (!personalResult) {
         // 使用基金净值回撤方法
         const maxDrawdown = navHistory.length > 1
           ? calculateMaxDrawdownFromNav(navHistory)
           : 0;
 
-        // 计算历史最大回撤的详细信息（需要转换为 value 格式）
+        // 计算历史最大回撤的详细信息
         const navHistoryForMaxDrawdown = navHistory.map(p => ({ date: p.date, value: p.nav }));
         const maxDrawdownDetails = calculateMaxDrawdownDetailsFromNav(navHistoryForMaxDrawdown);
         const maxPeakNav = maxDrawdownDetails.peakNav;
@@ -357,10 +358,8 @@ function computeFundDrawdownsFromPersonalReturn(
         const maxTroughNav = maxDrawdownDetails.troughNav;
         const maxTroughDate = maxDrawdownDetails.troughDate || '';
 
-        // 计算最大回撤持续天数（使用日历天数）
         const maxDrawdownDays = calculateCalendarDays(maxPeakDate, maxTroughDate);
 
-        // 使用公共函数计算当前回撤信息
         const currentDrawdownDetails = calculateCurrentDrawdownDetails(navHistory);
         const currentDrawdown = currentDrawdownDetails.currentDrawdown;
         const currentPeakDate = currentDrawdownDetails.peakDate || '';
@@ -370,7 +369,6 @@ function computeFundDrawdownsFromPersonalReturn(
         const currentNav = currentDrawdownDetails.currentNav;
         const currentDateNav = currentDrawdownDetails.currentDate || '';
 
-        // 计算当前回撤持续天数（使用日历天数）
         const currentDrawdownDays = calculateCalendarDays(currentPeakDate, currentDateNav);
 
         fundDrawdowns.push({
@@ -393,93 +391,47 @@ function computeFundDrawdownsFromPersonalReturn(
         continue;
       }
 
-      // 使用公共函数计算当前回撤信息（基于个人收益率）
-      // 将个人收益率转换为"净值"形式：returnRate +20% → nav 120
-      // 这样可以复用 calculateCurrentDrawdownDetails 函数
-      const returnRateCurve = personalResult.returnCurve.map(p => ({
-        date: p.date,
-        nav: 100 + p.returnRate,  // +20% → 120
-      }));
-      const currentDrawdownDetails = calculateCurrentDrawdownDetails(returnRateCurve);
-      const currentDrawdown = currentDrawdownDetails.currentDrawdown;
-      const currentPeakDate = currentDrawdownDetails.peakDate || '';
-      const currentTroughDate = currentDrawdownDetails.troughDate || '';
-      const currentDateReturn = currentDrawdownDetails.currentDate || '';
+      // 使用单位盈利法的结果
+      const currentDrawdown = personalResult.currentDrawdown;
+      const maxDrawdown = personalResult.maxDrawdown;
 
-      // 计算当前回撤持续天数（使用日历天数）
-      const currentDrawdownDays = calculateCalendarDays(currentPeakDate, currentDateReturn);
+      // 计算持续天数
+      const maxDrawdownDays = calculateCalendarDays(personalResult.peakDate || '', personalResult.troughDate || '');
+      const currentDrawdownDays = calculateCalendarDays(personalResult.peakDate || '', todayStr);
 
-      // 从原始 returnCurve 获取峰值、当前的净值、收益率
-      const peakPoint = personalResult.returnCurve.find(p => p.date === currentPeakDate);
+      // 当前单位盈利
       const currentPoint = personalResult.returnCurve[personalResult.returnCurve.length - 1];
-      const currentPeakNav = peakPoint?.nav || 0;
-      const currentNav = currentPoint?.nav || 0;
-      const peakReturnRate = peakPoint?.returnRate;
-      const currentReturnRate = currentPoint?.returnRate;
-
-      // 低点信息：从原始 returnCurve 获取低点的净值和收益率
-      const troughPoint = currentTroughDate ? personalResult.returnCurve.find(p => p.date === currentTroughDate) : undefined;
-      const currentTroughNav = troughPoint?.nav ?? undefined;
-      const troughReturnRate = troughPoint?.returnRate;
-
-      // 计算历史最大回撤的详细信息（基于收益率）
-      let maxPeakReturn = personalResult.returnCurve[0]?.returnRate || 0;
-      let maxPeakDate = personalResult.returnCurve[0]?.date || '';
-      let maxTroughReturn = maxPeakReturn;
-      let maxTroughDate = personalResult.returnCurve[0]?.date || '';
-      let tempPeakReturn = maxPeakReturn;
-      let tempPeakDate = maxPeakDate;
-
-      for (const point of personalResult.returnCurve) {
-        if (point.returnRate > tempPeakReturn) {
-          tempPeakReturn = point.returnRate;
-          tempPeakDate = point.date;
-        }
-        const drawdown = tempPeakReturn > 0
-          ? Math.abs((point.returnRate - tempPeakReturn) / (100 + tempPeakReturn) * 100)
-          : 0;
-        if (drawdown >= personalResult.maxDrawdown - 0.01) { // 允许小误差
-          maxPeakReturn = tempPeakReturn;
-          maxPeakDate = tempPeakDate;
-          maxTroughReturn = point.returnRate;
-          maxTroughDate = point.date;
-        }
-      }
-
-      // 获取历史最大回撤波峰和波谷时的净值
-      const maxPeakPoint = personalResult.returnCurve.find(p => p.date === maxPeakDate);
-      const maxTroughPoint = personalResult.returnCurve.find(p => p.date === maxTroughDate);
-      const maxDrawdownPeakNav = maxPeakPoint?.nav;
-      const maxDrawdownTroughNav = maxTroughPoint?.nav;
-
-      // 最大回撤持续天数（使用日历天数）
-      const maxDrawdownDays = calculateCalendarDays(maxPeakDate, maxTroughDate);
 
       fundDrawdowns.push({
         symbol,
         name: ticker.name,
         currentDrawdown,
         currentDrawdownDays,
-        maxDrawdown: personalResult.maxDrawdown,
-        maxDrawdownPeakDate: maxPeakDate,
-        maxDrawdownTroughDate: maxTroughDate,
+        maxDrawdown,
+        maxDrawdownPeakDate: personalResult.peakDate || '',
+        maxDrawdownTroughDate: personalResult.troughDate || '',
         maxDrawdownDays,
-        maxDrawdownPeakNav,
-        maxDrawdownTroughNav,
-        maxDrawdownPeakReturnRate: maxPeakReturn,
-        maxDrawdownTroughReturnRate: maxTroughReturn,
-        peakDate: currentPeakDate,
-        peakValue: currentPeakNav,
-        peakReturnRate,
-        troughDate: currentTroughDate,
-        troughValue: currentTroughNav,
-        troughReturnRate,
-        currentValue: currentNav,
-        currentReturnRate,
+        maxDrawdownPeakNav: personalResult.peakNav,
+        maxDrawdownTroughNav: personalResult.troughNav,
+        maxDrawdownPeakCostPrice: personalResult.peakCostPrice,
+        maxDrawdownTroughCostPrice: personalResult.troughCostPrice,
+        maxDrawdownPeakUnitProfit: personalResult.peakUnitProfit,
+        maxDrawdownTroughUnitProfit: personalResult.troughUnitProfit,
+        peakDate: personalResult.peakDate || '',
+        peakValue: personalResult.peakNav,
+        peakCostPrice: personalResult.peakCostPrice,
+        peakUnitProfit: personalResult.peakUnitProfit,
+        troughDate: personalResult.troughDate || '',
+        troughValue: personalResult.troughNav,
+        troughCostPrice: personalResult.troughCostPrice,
+        troughUnitProfit: personalResult.troughUnitProfit,
+        currentValue: currentPoint?.nav || 0,
+        currentCostPrice: currentPoint?.costPrice,
+        currentUnitProfit: currentPoint?.unitProfit,
       });
     } catch (e) {
       // 单个基金计算失败，跳过
-      console.warn(`计算基金 ${symbol} 个人回撤失败:`, e);
+      console.warn(`计算基金 ${symbol} 回撤失败:`, e);
     }
   }
 

@@ -2,7 +2,8 @@ import React, { useEffect, useMemo, useState, useCallback, useRef } from 'react'
 import { createPortal } from 'react-dom';
 import { computeOverallProfit, fetchFundHistory } from '../services/fundService';
 import { computePositionTrendData } from '../services/riskCalculationService';
-import { getAllFundSymbols, getPosition } from '../services/marketFundService';
+import { getAllFundSymbols, getPosition, getValuation } from '../services/marketFundService';
+import { getLatestValuationPrice } from '../utils/positionHelper';
 import { OverallProfitSummary, OverallProfitPoint, OverallFundRow, AttributionResult, KPIResult, HistoricalPoint } from '../types';
 import { toLocalDateKey } from '../utils/priceResolver';
 import { OVERALL_PROFIT_DATE_PRESETS, getOverallProfitPresetRange, OverallProfitDatePresetKey } from '../utils/overallProfitDatePresets';
@@ -10,6 +11,7 @@ import { formatMoney, formatMoneyWithSeparators, formatSharePercent } from '../u
 import { formatDateDisplay, formatDateISO } from '../utils/dateFormat';
 import { buildLinearPath, CHART_DIMENSIONS, mergeChartPoints, ChartPointWithData, buildDisplayIndexMap } from '../utils/chartUtils';
 import { calculateProfitAttribution, calculateKPIs, calculateTWR, calculateMaxDrawdownFromValue, calculateVolatilityFromValueWithTrades, calculateMaxDrawdownFromProfit, calculatePortfolioTWR, calculateAnnualizedReturnFromPositionTrend, calculateNavCurve, calculateMaxDrawdownFromNav, calculateMaxDrawdownDetailsFromNav, calculatePersonalReturnCurve, estimateVolatilityFromNav, estimateVolatilityFromReturnRates } from '../utils/performanceAttribution';
+import { calculateFundAnnualizedReturn } from '../utils/fundReturnCalculator';
 import { getTradesForSymbol } from '../hooks/useTrades';
 import { MoneyCell } from './MoneyCell';
 import DayCalendar from './DayCalendar';
@@ -723,7 +725,8 @@ const OverallProfitModal: React.FC<Props> = ({ symbols, onClose, onSelectFund })
               fee: t.fee || 0,
             })),
             effectiveInitialShares,
-            effectiveInitialPrice
+            effectiveInitialPrice,
+            startDate  // 传递建仓日期
           );
 
           // 如果个人回撤计算失败（如成本已收回导致成本价为负），回退到基金净值回撤
@@ -759,8 +762,9 @@ const OverallProfitModal: React.FC<Props> = ({ symbols, onClose, onSelectFund })
             const navReturn = navHistory.length > 1 && navHistory[0].nav > 0
               ? ((navHistory[navHistory.length - 1].nav - navHistory[0].nav) / navHistory[0].nav) * 100
               : 0;
+            // 使用简单年化：收益率 × (365 / 投资天数)
             const annualizedReturnPercent = tradingDays > 1 && navHistory[0].nav > 0
-              ? (Math.pow(1 + navReturn / 100, 252 / tradingDays) - 1) * 100
+              ? navReturn * (365 / tradingDays)
               : navReturn;
 
             const { sharpeRatio, calmarRatio } = calculateRatios(annualizedReturnPercent, maxDrawdown, volatility);
@@ -780,19 +784,45 @@ const OverallProfitModal: React.FC<Props> = ({ symbols, onClose, onSelectFund })
             return;
           }
 
-          // 计算年化收益率（基于个人收益率）
-          // 如果有足够的交易日数据，使用收益率曲线计算年化
-          const tradingDays = personalResult.returnCurve.length;
-          const annualizedReturnPercent = tradingDays > 1
-            ? (Math.pow(1 + personalResult.currentReturn / 100, 252 / tradingDays) - 1) * 100
-            : personalResult.currentReturn;
-
           // 使用个人回撤数据
           const maxDrawdown = personalResult.maxDrawdown;
 
-          // 计算波动率（基于个人日收益率变化，与最大回撤计算方式一致）
-          const returnRates = personalResult.returnCurve.map(p => p.returnRate);
-          const volatility = estimateVolatilityFromReturnRates(returnRates);
+          // 计算波动率（基于净值变化，而不是单位盈利变化）
+          const volatility = estimateVolatilityFromNav(personalResult.returnCurve.map(p => ({
+            date: p.date,
+            nav: p.nav
+          })));
+
+          // 计算年化收益率（使用现金流方法，与基金详情页一致）
+          // 使用个人回撤数据计算份额
+          const lastPoint = personalResult.returnCurve[personalResult.returnCurve.length - 1];
+          const currentShares = lastPoint?.shares || 0;
+
+          // 使用公共函数获取最新估值数据
+          const valuation = getValuation(selectedFund);
+          const latestValuation = getLatestValuationPrice(valuation);
+
+          // 如果无法获取估值数据，回退到历史净值的最后一条
+          const currentPrice = latestValuation?.price || lastPoint?.nav || 0;
+          const currentDate = latestValuation?.date || lastPoint?.date || '';
+
+          // 使用公共函数计算年化收益率
+          const annualizedReturnPercent = calculateFundAnnualizedReturn({
+            initialPosition: effectiveInitialShares,
+            initialPrice: effectiveInitialPrice,
+            startDate: startDate,
+            trades: trades.map((t, index) => ({
+              id: `trade-${index}`,
+              date: t.date,
+              type: t.type as 'buy' | 'sell',
+              shares: t.shares,
+              price: t.price || 0,
+              fee: t.fee || 0
+            })),
+            currentShares: currentShares,
+            currentPrice: currentPrice,
+            currentDate: currentDate
+          });
 
           const { sharpeRatio, calmarRatio } = calculateRatios(annualizedReturnPercent, maxDrawdown, volatility);
 
@@ -804,10 +834,10 @@ const OverallProfitModal: React.FC<Props> = ({ symbols, onClose, onSelectFund })
             calmarRatio: calmarRatio,
             // 个人回撤的波峰波谷详细信息
             drawdownPeakDate: personalResult.peakDate,
-            drawdownPeakReturn: personalResult.peakReturn,
+            drawdownPeakUnitProfit: personalResult.peakUnitProfit,
             drawdownPeakNav: personalResult.peakNav,
             drawdownTroughDate: personalResult.troughDate,
-            drawdownTroughReturn: personalResult.troughReturn,
+            drawdownTroughUnitProfit: personalResult.troughUnitProfit,
             drawdownTroughNav: personalResult.troughNav,
           });
         } catch (error) {

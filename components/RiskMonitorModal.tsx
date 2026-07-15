@@ -1243,19 +1243,19 @@ const DrawdownTab: React.FC<{
                     className="py-3 px-4 text-right"
                     tooltipContent={
                       <>
-                        <div className="text-gray-300">开始: {formatDateDisplay(fd.peakDate) || '-'}</div>
-                        {fd.peakReturnRate !== undefined ? (
-                          <div className="text-gray-400">开始收益率: {fd.peakReturnRate.toFixed(2)}%</div>
-                        ) : (
-                          <div className="text-gray-400">开始净值: {fd.peakValue.toFixed(4)}</div>
-                        )}
+                        <div className="text-gray-300">
+                          <span className="text-green-300">高点</span> {formatDateDisplay(fd.peakDate) || '-'}
+                          <div className="pl-4 text-gray-400">净值: {fd.peakValue.toFixed(4)}</div>
+                        </div>
+                        <div className="text-gray-300 mt-1">
+                          <span className="text-red-300">低点</span> {formatDateDisplay(fd.troughDate || null) || '-'}
+                          {fd.troughValue !== undefined && (
+                            <div className="pl-4 text-gray-400">净值: {fd.troughValue.toFixed(4)}</div>
+                          )}
+                        </div>
                         <div className="text-gray-300 mt-1">
                           <span className="text-yellow-300">当前</span>
-                          {fd.currentReturnRate !== undefined ? (
-                            <div className="text-gray-400">当前收益率: {fd.currentReturnRate.toFixed(2)}%</div>
-                          ) : (
-                            <div className="text-gray-400">当前净值: {fd.currentValue.toFixed(4)}</div>
-                          )}
+                          <div className="pl-4 text-gray-400">净值: {fd.currentValue.toFixed(4)}</div>
                         </div>
                         <div className="text-gray-300 mt-1">持续: {fd.currentDrawdownDays}天</div>
                       </>
@@ -1273,12 +1273,12 @@ const DrawdownTab: React.FC<{
                     className="py-3 px-4 text-right"
                     tooltipContent={
                       <>
-                        <div className="text-gray-300">开始: {formatDateDisplay(fd.maxDrawdownPeakDate) || '-'}</div>
-                        {fd.maxDrawdownPeakReturnRate !== undefined ? (
-                          <div className="text-gray-400">开始收益率: {fd.maxDrawdownPeakReturnRate.toFixed(2)}%</div>
-                        ) : fd.maxDrawdownPeakNav !== undefined && (
-                          <div className="text-gray-400">开始净值: {fd.maxDrawdownPeakNav.toFixed(4)}</div>
-                        )}
+                        <div className="text-gray-300">
+                          <span className="text-green-300">高点</span> {formatDateDisplay(fd.maxDrawdownPeakDate) || '-'}
+                          {fd.maxDrawdownPeakNav !== undefined && (
+                            <div className="pl-4 text-gray-400">净值: {fd.maxDrawdownPeakNav.toFixed(4)}</div>
+                          )}
+                        </div>
                         {(() => {
                           // 判断最大回撤是否还没结束（就是当前回撤）
                           // 如果最大回撤峰值日期 = 当前回撤峰值日期，说明最大回撤就是当前回撤
@@ -1288,11 +1288,15 @@ const DrawdownTab: React.FC<{
                             return (
                               <>
                                 <div className="text-gray-300 mt-1">
+                                  <span className="text-red-300">低点</span> {formatDateDisplay(fd.troughDate || null) || '-'}
+                                  {fd.troughValue !== undefined && (
+                                    <div className="pl-4 text-gray-400">净值: {fd.troughValue.toFixed(4)}</div>
+                                  )}
+                                </div>
+                                <div className="text-gray-300 mt-1">
                                   <span className="text-yellow-300">当前</span>
-                                  {fd.currentReturnRate !== undefined ? (
-                                    <div className="text-gray-400">当前收益率: {fd.currentReturnRate.toFixed(2)}%</div>
-                                  ) : fd.currentValue !== undefined && (
-                                    <div className="text-gray-400">当前净值: {fd.currentValue.toFixed(4)}</div>
+                                  {fd.currentValue !== undefined && (
+                                    <div className="pl-4 text-gray-400">净值: {fd.currentValue.toFixed(4)}</div>
                                   )}
                                 </div>
                                 <div className="text-gray-300 mt-1">持续: {fd.currentDrawdownDays}天</div>
@@ -1303,12 +1307,10 @@ const DrawdownTab: React.FC<{
                           return (
                             <>
                               <div className="text-gray-300 mt-1">
-                                <span className="text-red-300">结束</span> {formatDateDisplay(fd.maxDrawdownTroughDate) || '-'}
+                                <span className="text-red-300">低点</span> {formatDateDisplay(fd.maxDrawdownTroughDate || null) || '-'}
                               </div>
-                              {fd.maxDrawdownTroughReturnRate !== undefined ? (
-                                <div className="text-gray-400">结束收益率: {fd.maxDrawdownTroughReturnRate.toFixed(2)}%</div>
-                              ) : fd.maxDrawdownTroughNav !== undefined && (
-                                <div className="text-gray-400">结束净值: {fd.maxDrawdownTroughNav.toFixed(4)}</div>
+                              {fd.maxDrawdownTroughNav !== undefined && (
+                                <div className="pl-4 text-gray-400">净值: {fd.maxDrawdownTroughNav.toFixed(4)}</div>
                               )}
                               <div className="text-gray-300 mt-1">持续: {fd.maxDrawdownDays}天</div>
                             </>
@@ -1326,17 +1328,11 @@ const DrawdownTab: React.FC<{
                       <>
                         <div className="text-gray-400">
                           <span className="text-green-300">高点</span>
-                          {fd.peakReturnRate !== undefined ? (
-                            <span className="pl-4 text-gray-300">收益率: {fd.peakReturnRate.toFixed(2)}%</span>
-                          ) : (
-                            <span className="pl-4 text-gray-300">净值: {fd.peakValue.toFixed(4)}</span>
-                          )}
+                          <span className="pl-4 text-gray-300">净值: {fd.peakValue.toFixed(4)}</span>
                         </div>
                         <div className="text-gray-400 mt-1">
                           <span className="text-red-300">低点</span>
-                          {fd.troughReturnRate !== undefined ? (
-                            <span className="pl-4 text-gray-300">收益率: {fd.troughReturnRate.toFixed(2)}%</span>
-                          ) : fd.troughValue !== undefined ? (
+                          {fd.troughValue !== undefined ? (
                             <span className="pl-4 text-gray-300">净值: {fd.troughValue.toFixed(4)}</span>
                           ) : (
                             <span className="pl-4 text-gray-300">净值: --</span>
@@ -1344,11 +1340,7 @@ const DrawdownTab: React.FC<{
                         </div>
                         <div className="text-gray-400 mt-1">
                           <span className="text-orange-300">当前</span>
-                          {fd.currentReturnRate !== undefined ? (
-                            <span className="pl-4 text-gray-300">收益率: {fd.currentReturnRate.toFixed(2)}%</span>
-                          ) : (
-                            <span className="pl-4 text-gray-300">净值: {fd.currentValue.toFixed(4)}</span>
-                          )}
+                          <span className="pl-4 text-gray-300">净值: {fd.currentValue.toFixed(4)}</span>
                         </div>
                       </>
                     }

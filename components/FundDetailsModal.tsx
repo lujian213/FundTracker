@@ -6,7 +6,7 @@ import * as marketFundService from '../services/marketFundService';
 import { MA_COLORS } from '../utils/movingAverage';
 import { DEFAULT_VISIBLE_MAS, MA_WINDOWS } from '../utils/maConfig';
 import { computeRatingFromHistory } from '../utils/ratingHelper';
-import { computeAvgCostPrice } from '../utils/positionHelper';
+import { computeAvgCostPrice, getLatestValuationPrice } from '../utils/positionHelper';
 import RatingTooltip from './RatingTooltip';
 import TradeManager from './TradeManager';
 import useTrades from '../hooks/useTrades';
@@ -26,6 +26,7 @@ import { computePositionSharesByDate, prepareVolumeBars, computeCostPricesByDate
 import { isFeatureEnabled } from '../services/systemConfigService';
 import InitialPriceAdjustModal from './InitialPriceAdjustModal';
 import { buildCashFlows, computeXIRR, computeSimpleAnnualizedReturn } from '../utils/xirrHelper';
+import { calculateFundAnnualizedReturn } from '../utils/fundReturnCalculator';
 import { useModalBodyStyle } from '../hooks/useModalBodyStyle';
 
 interface FundDetailsModalProps {
@@ -1029,35 +1030,21 @@ export const FundDetailsModal: React.FC<FundDetailsModalProps> = ({ data, onClos
         return { shouldShow: true, value: null };
       }
 
-      // 确定当前日期：取 max(realtimeDate, netWorthDate)
-      const realtimeDateStr = valuationData.realtimeDate && valuationData.realtimeDate !== '---' ? valuationData.realtimeDate : null;
-      const netWorthDateStr = valuationData.netWorthDate && valuationData.netWorthDate !== '---' ? valuationData.netWorthDate : null;
-
-      let currentDate: string | null = null;
-      let currentPrice: number = 0;
-
-      if (realtimeDateStr && netWorthDateStr) {
-        // 取两者中较晚的日期
-        if (realtimeDateStr > netWorthDateStr) {
-          currentDate = realtimeDateStr;
-          currentPrice = valuationData.currentPrice;
-        } else {
-          currentDate = netWorthDateStr;
-          currentPrice = valuationData.previousPrice;
-        }
-      } else if (realtimeDateStr) {
-        currentDate = realtimeDateStr;
-        currentPrice = valuationData.currentPrice;
-      } else if (netWorthDateStr) {
-        currentDate = netWorthDateStr;
-        currentPrice = valuationData.previousPrice;
-      }
-
-      if (!currentDate || !currentPrice || currentPrice <= 0) {
+      // 使用公共函数获取最新估值数据
+      const latestValuation = getLatestValuationPrice(valuationData);
+      if (!latestValuation) {
         return { shouldShow: true, value: null }; // 无法计算 → 显示 "—"
       }
 
-      const cashFlows = buildCashFlows({
+      const { date: currentDate, price: currentPrice } = latestValuation;
+
+      // 检查必需参数
+      if (initialPrice === null || !startDate) {
+        return { shouldShow: true, value: null }; // 无法计算 → 显示 "—"
+      }
+
+      // 使用公共函数计算年化收益率
+      const result = calculateFundAnnualizedReturn({
         initialPosition,
         initialPrice,
         startDate,
@@ -1067,12 +1054,6 @@ export const FundDetailsModal: React.FC<FundDetailsModalProps> = ({ data, onClos
         currentDate
       });
 
-      // 现金流少于 2 笔 → 显示 "—"
-      if (!cashFlows || cashFlows.length < 2) {
-        return { shouldShow: true, value: null };
-      }
-
-      const result = computeSimpleAnnualizedReturn(cashFlows);
       // 年化收益率计算失败 → 显示 "—"
       return { shouldShow: true, value: result };
     }, [fullCapacity, initialPosition, tradeList, startDate, initialPrice, totalShares, valuationData.realtimeDate, valuationData.netWorthDate, valuationData.currentPrice, valuationData.previousPrice]);

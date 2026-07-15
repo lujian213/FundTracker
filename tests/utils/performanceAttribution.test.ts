@@ -1169,10 +1169,10 @@ describe('calculateAnnualizedReturnFromPositionTrend', () => {
 // 测试 calculatePersonalReturnCurve
 import { calculatePersonalReturnCurve } from '../../utils/performanceAttribution';
 
-describe('calculatePersonalReturnCurve', () => {
-  // 测试1：一次性买入后的收益率计算
+describe('calculatePersonalReturnCurve (单位盈利法)', () => {
+  // 测试1：一次性买入后的单位盈利计算
   describe('一次性买入', () => {
-    it('应正确计算一次性买入后的收益率', () => {
+    it('应正确计算一次性买入后的单位盈利', () => {
       // 净值从1.0涨到1.2，买入价格1.0
       const history = [
         { date: '2024-01-01', nav: 1.0 },
@@ -1186,12 +1186,13 @@ describe('calculatePersonalReturnCurve', () => {
       const result = calculatePersonalReturnCurve(history, trades, initialShares, initialPrice);
 
       expect(result).toBeDefined();
-      expect(result!.averageCost).toBe(1.0);
-      expect(result!.currentReturn).toBeCloseTo(20, 2); // (1.2-1.0)/1.0*100 = 20%
-      expect(result!.maxReturn).toBeCloseTo(20, 2);
+      // 成本价 = 1.0
+      // 单位盈利 = 净值 - 成本价 = 1.2 - 1.0 = 0.2
+      expect(result!.currentUnitProfit).toBeCloseTo(0.2, 2);
+      expect(result!.maxUnitProfit).toBeCloseTo(0.2, 2);
     });
 
-    it('应正确计算在半山腰买入的收益率', () => {
+    it('应正确计算在半山腰买入的单位盈利', () => {
       // 净值从1.0涨到2.0再跌到1.5，买入价格1.8
       const history = [
         { date: '2024-01-01', nav: 1.0 },
@@ -1209,22 +1210,22 @@ describe('calculatePersonalReturnCurve', () => {
       const result = calculatePersonalReturnCurve(history, trades, initialShares, initialPrice);
 
       expect(result).toBeDefined();
-      expect(result!.averageCost).toBe(1.8);
 
-      // 收益率峰值（净值2.0时）= (2.0-1.8)/1.8 ≈ 11.1%
-      expect(result!.maxReturn).toBeCloseTo(11.1, 1);
+      // 成本价 = 1.8
+      // 01-04：单位盈利 = 2.0 - 1.8 = 0.2
+      // 01-05：单位盈利 = 1.5 - 1.8 = -0.3
+      expect(result!.maxUnitProfit).toBeCloseTo(0.2, 1);
+      expect(result!.currentUnitProfit).toBeCloseTo(-0.3, 1);
 
-      // 当前收益率（净值1.5时）= (1.5-1.8)/1.8 ≈ -16.7%
-      expect(result!.currentReturn).toBeCloseTo(-16.7, 1);
-
-      // 个人最大回撤 = (-16.7 - 11.1) / (1 + 11.1%) ≈ -25%
-      expect(result!.maxDrawdown).toBeCloseTo(25, 1);
+      // 最大回撤（基于净值）：峰值净值 2.0，低点净值 1.5
+      // 回撤 = (2.0 - 1.5) / 2.0 × 100 = 25%
+      expect(result!.maxDrawdown).toBeCloseTo(25, 0);
     });
   });
 
-  // 测试2：定投后的收益率计算
+  // 测试2：定投后的单位盈利计算
   describe('定投情况', () => {
-    it('应正确计算低位定投拉低成本后的收益率', () => {
+    it('应正确计算定投后的单位盈利', () => {
       // 在净值1.0时买5万份，在净值2.0时又买5万份，最终净值1.5
       const history = [
         { date: '2024-01-01', nav: 1.0 },
@@ -1243,30 +1244,22 @@ describe('calculatePersonalReturnCurve', () => {
 
       expect(result).toBeDefined();
 
-      // 加权平均成本 = (5万*1.0 + 5万*2.0) / 10万份 = 1.5
-      // 注意：由于交易在同一天处理，01-03当天的成本价会被第二笔交易影响
-      // 所以最终的成本价是 1.5
-      expect(result!.averageCost).toBeCloseTo(1.5, 2);
+      // 01-01：成本价 = 1.0，单位盈利 = 1.0 - 1.0 = 0
+      // 01-02：成本价 = 1.0，单位盈利 = 1.5 - 1.0 = 0.5
+      // 01-03：成本价 = (50000*1.0 + 50000*2.0) / 100000 = 1.5，单位盈利 = 2.0 - 1.5 = 0.5
+      // 01-04：成本价 = 1.5，单位盈利 = 1.5 - 1.5 = 0
+      expect(result!.maxUnitProfit).toBeCloseTo(0.5, 1);
+      expect(result!.currentUnitProfit).toBeCloseTo(0, 1);
 
-      // maxReturn 是在整个收益率曲线上的最大值
-      // 01-02时：成本1.0，净值1.5，收益率 = 50%
-      // 01-03时（交易后）：成本变为1.5，净值2.0，收益率 = (2.0-1.5)/1.5 = 33.3%
-      // 所以 maxReturn = 50%
-      expect(result!.maxReturn).toBeCloseTo(50, 1);
-
-      // 当前收益率（净值1.5时，成本1.5）≈ 0%
-      expect(result!.currentReturn).toBeCloseTo(0, 1);
-
-      // 个人最大回撤
-      // 从峰值50%到当前0%，回撤 = (0-50)/(100+50) * 100 = -33.33%
-      // 取绝对值 ≈ 33.33%
-      expect(result!.maxDrawdown).toBeCloseTo(33.33, 1);
+      // 最大回撤（基于净值）：峰值净值 2.0，低点净值 1.5
+      // 回撤 = (2.0 - 1.5) / 2.0 × 100 = 25%
+      expect(result!.maxDrawdown).toBeCloseTo(25, 0);
     });
   });
 
-  // 测试3：赎回后的收益率计算
+  // 测试3：赎回后的单位盈利计算
   describe('赎回情况', () => {
-    it('赎回不影响持仓成本价（加权平均成本法）', () => {
+    it('赎回后单位盈利按实际成本计算', () => {
       // 净值从1.0涨到1.5，买入后部分赎回
       const history = [
         { date: '2024-01-01', nav: 1.0 },
@@ -1285,13 +1278,12 @@ describe('calculatePersonalReturnCurve', () => {
 
       expect(result).toBeDefined();
 
-      // 买入成本价 = 1.0
-      // 赎回后成本价保持不变（加权平均成本法）
-      expect(result!.averageCost).toBeCloseTo(1.0, 2);
-
-      // 剩余份额5000份，市值5000*1.3=6500，成本5000*1.0=5000
-      // 收益率 = (6500-5000)/5000 = 30%
-      expect(result!.currentReturn).toBeCloseTo(30, 1);
+      // 01-01：成本价 = 1.0，单位盈利 = 0
+      // 01-02：成本价 = 1.0，单位盈利 = 0.2
+      // 01-03：卖出后成本价 = (10000 - 7500) / 5000 = 0.5，单位盈利 = 1.5 - 0.5 = 1.0
+      // 01-04：成本价 = 0.5，单位盈利 = 1.3 - 0.5 = 0.8
+      expect(result!.maxUnitProfit).toBeCloseTo(1.0, 1);
+      expect(result!.currentUnitProfit).toBeCloseTo(0.8, 1);
     });
   });
 
@@ -1313,14 +1305,13 @@ describe('calculatePersonalReturnCurve', () => {
 
   // 测试5：回撤公式验证
   describe('回撤公式验证', () => {
-    it('应正确计算个人收益率回撤', () => {
-      // 收益率从峰值50%跌到当前-10%
-      // 个人最大回撤 = (-10 - 50) / (1 + 50%) = -60 / 1.5 = -40%
-      // 取绝对值 = 40%
+    it('应正确计算单位盈利回撤', () => {
+      // 单位盈利从峰值0.5跌到当前-0.1
+      // 最大回撤 = (0.5 - (-0.1)) / 0.5 = 1.2 = 120%
       const history = [
         { date: '2024-01-01', nav: 1.0 },
-        { date: '2024-01-02', nav: 1.5 }, // 收益率峰值
-        { date: '2024-01-03', nav: 0.9 }, // 收益率谷底
+        { date: '2024-01-02', nav: 1.5 }, // 单位盈利峰值
+        { date: '2024-01-03', nav: 0.9 }, // 单位盈利谷底
       ];
       const trades: any[] = [];
       const initialShares = 10000;
@@ -1329,12 +1320,14 @@ describe('calculatePersonalReturnCurve', () => {
       const result = calculatePersonalReturnCurve(history, trades, initialShares, initialPrice);
 
       expect(result).toBeDefined();
-      // 收益率峰值 = (1.5-1.0)/1.0 = 50%
-      expect(result!.maxReturn).toBeCloseTo(50, 1);
-      // 当前收益率 = (0.9-1.0)/1.0 = -10%
-      expect(result!.currentReturn).toBeCloseTo(-10, 1);
-      // 个人最大回撤 = (-10-50)/(1+0.5) = -40%
-      expect(result!.maxDrawdown).toBeCloseTo(40, 1);
+      // 成本价 = 1.0
+      // 单位盈利峰值 = 1.5 - 1.0 = 0.5
+      expect(result!.maxUnitProfit).toBeCloseTo(0.5, 1);
+      // 当前单位盈利 = 0.9 - 1.0 = -0.1
+      expect(result!.currentUnitProfit).toBeCloseTo(-0.1, 1);
+      // 最大回撤（基于净值）：峰值净值 1.5，低点净值 0.9
+      // 回撤 = (1.5 - 0.9) / 1.5 × 100 = 40%
+      expect(result!.maxDrawdown).toBeCloseTo(40, 0);
     });
   });
 });
@@ -1428,9 +1421,13 @@ describe('calculateMaxDrawdownDetailsFromNav', () => {
 // 测试当前回撤计算
 describe('当前回撤计算', () => {
   describe('单个基金当前回撤', () => {
-    it('应正确计算当前回撤（基于历史最高净值）', () => {
+    it('应正确计算当前回撤（基于净值）', () => {
       // 净值：1.0 -> 1.5 -> 1.2 -> 1.4 -> 1.3
-      // 当前回撤 = (1.5 - 1.3) / 1.5 = 13.33%（基于历史最高净值1.5）
+      // 峰值净值 = 1.5
+      // 低点净值 = 1.2
+      // 当前净值 = 1.3
+      // 最大回撤 = (1.5 - 1.2) / 1.5 = 20%
+      // 当前回撤 = (1.5 - 1.3) / 1.5 = 13.33%
       const history = [
         { date: '2024-01-01', nav: 1.0 },
         { date: '2024-01-02', nav: 1.5 },
@@ -1445,8 +1442,9 @@ describe('当前回撤计算', () => {
       const result = calculatePersonalReturnCurve(history, trades, initialShares, initialPrice);
 
       expect(result).toBeDefined();
-      // 当前回撤基于历史最高净值1.5
+      // 当前回撤基于净值
       expect(result!.currentDrawdown).toBeCloseTo(13.33, 1);
+      expect(result!.maxDrawdown).toBeCloseTo(20, 1);
     });
 
     it('应正确计算当前回撤持续天数', () => {
@@ -1464,8 +1462,10 @@ describe('当前回撤计算', () => {
       const result = calculatePersonalReturnCurve(history, trades, initialShares, initialPrice);
 
       expect(result).toBeDefined();
-      // 当前回撤 = (1.5 - 1.2) / 1.5 = 20%
-      expect(result!.currentDrawdown).toBeCloseTo(20, 1);
+      // 净值峰值 = 1.5
+      // 净值低点 = 1.2
+      // 最大回撤 = (1.5 - 1.2) / 1.5 = 20%
+      expect(result!.maxDrawdown).toBeCloseTo(20, 1);
     });
 
     it('当前净值创新高时当前回撤应为0', () => {
@@ -1484,11 +1484,11 @@ describe('当前回撤计算', () => {
       expect(result!.currentDrawdown).toBe(0);
     });
 
-    it('当前回撤的峰值日期应为历史最高点日期', () => {
+    it('当前回撤的峰值日期应为历史最高净值日期', () => {
       // 净值在第二天达到最高
       const history = [
         { date: '2024-01-01', nav: 1.0 },
-        { date: '2024-01-02', nav: 1.6 }, // 历史最高
+        { date: '2024-01-02', nav: 1.6 }, // 历史最高净值
         { date: '2024-01-03', nav: 1.3 },
         { date: '2024-01-04', nav: 1.5 }, // 不是最高
         { date: '2024-01-05', nav: 1.4 },
@@ -1546,7 +1546,9 @@ describe('当前回撤计算', () => {
 // 测试负成本价和负初始价格的情况
 describe('负成本价和负初始价格场景', () => {
   describe('calculatePersonalReturnCurve - 负初始价格', () => {
-    it('当初始价格为负数时应返回null（无法计算）', () => {
+    it('当初始价格为负数时，单位盈利仍可计算', () => {
+      // 注意：单位盈利法允许成本价为负
+      // 当成本价为负时，单位盈利 = 净值 - 成本价 = 净值 - (-1) = 净值 + 1
       const history = [
         { date: '2024-01-01', nav: 1.0 },
         { date: '2024-01-02', nav: 1.1 },
@@ -1558,8 +1560,11 @@ describe('负成本价和负初始价格场景', () => {
 
       const result = calculatePersonalReturnCurve(history, trades, initialShares, initialPrice);
 
-      // 负成本价导致所有收益率计算点被过滤，返回null
-      expect(result).toBeNull();
+      // 成本价 = -1.0
+      // 单位盈利 = 净值 - 成本价
+      // 峰值单位盈利 = 1.2 - (-1.0) = 2.2
+      expect(result).toBeDefined();
+      expect(result!.maxUnitProfit).toBeCloseTo(2.2, 1);
     });
 
     it('当成本价因赎回变为负数时应正确处理', () => {

@@ -536,62 +536,6 @@ describe('riskCalculationService', () => {
       expect(fundDrawdown.peakValue).toBe(1.6);
     });
 
-    it('当前回撤应基于个人收益率计算，而非基金净值', async () => {
-      const portfolio = createMockPortfolio();
-      const marketData = createMockMarketData();
-
-      mockGetRiskThresholds.mockReturnValue(DEFAULT_RISK_THRESHOLDS);
-      mockComputeOverallProfit.mockResolvedValue(createMockSummary(10));
-
-      // 使用成本价 2.0 的场景，这样净值变化和收益率变化的关系更明显
-      // 净值 2.4 → 收益率 (2.4-2.0)/2.0 = 20%
-      // 净值 2.2 → 收益率 (2.2-2.0)/2.0 = 10%
-      // 净值 2.3 → 收益率 (2.3-2.0)/2.0 = 15%
-      const history = [
-        { date: new Date('2024-01-01').getTime(), value: 2.0, equityReturn: 0 },  // 成本价
-        { date: new Date('2024-01-02').getTime(), value: 2.3, equityReturn: 0 },  // +15%
-        { date: new Date('2024-01-03').getTime(), value: 2.4, equityReturn: 0 },  // +20% 峰值
-        { date: new Date('2024-01-04').getTime(), value: 2.2, equityReturn: 0 },  // +10% 低点
-        { date: new Date('2024-01-05').getTime(), value: 2.3, equityReturn: 0 },  // +15% 当前（恢复中）
-      ];
-
-      mockGetHistory.mockReturnValue(history);
-      mockGetPosition.mockReturnValue({
-        fullCapacity: 10000,
-        initialPosition: 1000,
-        startDate: '2024-01-01',
-        initialPrice: 2.0,  // 成本价 2.0
-      });
-      mockGetTradesForSymbol.mockReturnValue([]);
-
-      const snapshot = await computeRiskSnapshot(portfolio, marketData);
-      const fundDrawdown = snapshot.fundDrawdowns[0];
-
-      // 验证个人收益率字段存在
-      expect(fundDrawdown.peakReturnRate).toBeDefined();
-      expect(fundDrawdown.currentReturnRate).toBeDefined();
-
-      // 峰值个人收益率应该约为 +20%
-      expect(fundDrawdown.peakReturnRate).toBeCloseTo(20, 0);
-      // 当前个人收益率应该约为 +15%
-      expect(fundDrawdown.currentReturnRate).toBeCloseTo(15, 0);
-
-      // 当前回撤深度（基于个人收益率）：
-      // 峰值收益率 +20%，当前收益率 +15%，中间低点 +10%
-      // 恢复进度 = (15 - 10) / (20 - 10) = 50%
-      // 当前回撤深度 = (20 - 15) / (100 + 20) * 100 ≈ 4.17%
-      //
-      // 注意：如果错误地基于基金净值计算：
-      // 净值峰值 2.4，当前净值 2.3，回撤 = (2.4 - 2.3) / 2.4 ≈ 4.17%
-      //
-      // 虽然数值巧合相同，但峰值日期应该不同：
-      // - 基于净值：峰值日期应该是 2024-01-03（净值 2.4）
-      // - 基于收益率：峰值日期也应该是 2024-01-03（收益率 20%）
-      //
-      // 我们通过验证 peakReturnRate 来确认使用的是个人收益率
-      expect(fundDrawdown.peakReturnRate).toBeCloseTo(20, 1);
-    });
-
     it('当前回撤低点应正确计算并传递', async () => {
       const portfolio = createMockPortfolio();
       const marketData = createMockMarketData();

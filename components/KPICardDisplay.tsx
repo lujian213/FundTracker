@@ -258,10 +258,10 @@ const KPI_CONFIGS: KPIConfig[] = [
  */
 interface DrawdownDetails {
   peakDate: string | null;
-  peakReturn: number;
+  peakUnitProfit: number;
   peakNav: number;
   troughDate: string | null;
-  troughReturn: number;
+  troughUnitProfit: number;
   troughNav: number;
 }
 
@@ -283,26 +283,18 @@ const KPICard: React.FC<{
       return null;
     }
 
-    // 判断是单个基金还是整体组合：
-    // 单个基金有收益率数据，整体组合只有净值数据
-    const isSingleFund = drawdownDetails.peakReturn !== 0 || drawdownDetails.troughReturn !== 0;
-
     return (
       <div className="absolute top-full left-1/2 -translate-x-1/2 mt-2 px-4 py-3 bg-gray-800 text-white text-xs rounded-lg opacity-0 group-hover:opacity-100 transition-opacity z-10 w-60 pointer-events-none">
         <div className="text-gray-400">
           <span className="text-green-300">波峰</span> {formatDateDisplay(drawdownDetails.peakDate)}
           <div className="pl-4 text-gray-300">
-            {isSingleFund
-              ? `收益率: ${drawdownDetails.peakReturn.toFixed(2)}%`
-              : `净值: ${drawdownDetails.peakNav.toFixed(4)}`}
+            {`净值: ${drawdownDetails.peakNav.toFixed(4)}`}
           </div>
         </div>
         <div className="text-gray-400 mt-1">
           <span className="text-red-300">波谷</span> {formatDateDisplay(drawdownDetails.troughDate)}
           <div className="pl-4 text-gray-300">
-            {isSingleFund
-              ? `收益率: ${drawdownDetails.troughReturn.toFixed(2)}%`
-              : `净值: ${drawdownDetails.troughNav.toFixed(4)}`}
+            {`净值: ${drawdownDetails.troughNav.toFixed(4)}`}
           </div>
         </div>
       </div>
@@ -346,10 +338,10 @@ export const KPICardDisplay: React.FC<KPICardDisplayProps> = ({ kpiData, fundNam
   // 准备最大回撤的详细信息
   const drawdownDetails: DrawdownDetails | undefined = kpiData?.drawdownPeakDate && kpiData?.drawdownTroughDate ? {
     peakDate: kpiData.drawdownPeakDate,
-    peakReturn: kpiData.drawdownPeakReturn ?? 0,
+    peakUnitProfit: kpiData.drawdownPeakUnitProfit ?? 0,
     peakNav: kpiData.drawdownPeakNav ?? 0,
     troughDate: kpiData.drawdownTroughDate ?? null,
-    troughReturn: kpiData.drawdownTroughReturn ?? 0,
+    troughUnitProfit: kpiData.drawdownTroughUnitProfit ?? 0,
     troughNav: kpiData.drawdownTroughNav ?? 0,
   } : undefined;
 
