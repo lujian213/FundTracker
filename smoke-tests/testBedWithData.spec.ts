@@ -1925,7 +1925,103 @@ test.describe('testBedWithData', () => {
     console.log('绩效分析视图测试完成');
 
     // ══════════════════════════════════════════════════════════════════════════════
-    // 24. 关闭窗口（使用 JavaScript 绕过视口问题）
+    // 25. 行为回顾视图测试
+    // ══════════════════════════════════════════════════════════════════════════════
+    // 点击"行为回顾"按钮（大脑图标）
+    await page.locator('button[aria-label="显示行为回顾"]').click();
+    await page.waitForTimeout(500);
+
+    // 验证模式指示器显示"整体组合"
+    const modeIndicator = page.locator('text=当前显示：整体组合的行为分析');
+    await expect(modeIndicator).toBeVisible({ timeout: 3000 });
+    console.log('行为回顾视图验证完成：模式指示器');
+
+    // 验证四个卡片显示
+    // 使用行为回顾视图特有的选择器（包含"行为评分"的卡片容器）
+    const cardContainer = page.locator('div.space-y-4').filter({ has: page.locator('text=行为评分') }).first();
+    await expect(cardContainer).toBeVisible({ timeout: 2000 });
+
+    // 验证行为评分卡片（使用更精确的选择器）
+    await expect(cardContainer.locator('div.flex.gap-3 > div.flex-1').first()).toContainText('行为评分');
+
+    // 验证交易频率卡片
+    await expect(cardContainer.locator('div.flex.gap-3 > div.flex-1').nth(1)).toContainText('交易频率');
+
+    // 验证情绪化交易卡片
+    await expect(cardContainer.locator('div.flex.gap-3 > div.flex-1').nth(2)).toContainText('情绪化交易');
+
+    // 验证时机评分卡片
+    await expect(cardContainer.locator('div.flex.gap-3 > div.flex-1').nth(3)).toContainText('时机评分');
+    console.log('行为回顾视图验证完成：四个卡片');
+
+    // 点击行为评分卡片，验证详情窗口
+    await cardContainer.locator('div.flex.gap-3 > div.flex-1').first().click();
+    const behaviorDetailModal = page.locator('h3:has-text("行为评分详情")');
+    await expect(behaviorDetailModal).toBeVisible({ timeout: 3000 });
+
+    // 验证评分维度显示
+    await expect(page.locator('text=时机选择')).toBeVisible();
+    await expect(page.locator('text=情绪控制')).toBeVisible();
+    await expect(page.locator('text=交易纪律')).toBeVisible();
+    console.log('行为评分详情验证完成');
+
+    // 关闭详情窗口
+    await page.locator('h3:has-text("行为评分详情")').locator('xpath=following::button').first().click();
+    await expect(behaviorDetailModal).not.toBeVisible({ timeout: 2000 });
+
+    // 点击交易频率卡片
+    await cardContainer.locator('div.flex.gap-3 > div.flex-1').nth(1).click();
+    const frequencyDetailModal = page.locator('h3:has-text("交易频率详情")');
+    await expect(frequencyDetailModal).toBeVisible({ timeout: 3000 });
+    console.log('交易频率详情验证完成');
+
+    // 关闭详情窗口
+    await page.locator('h3:has-text("交易频率详情")').locator('xpath=following::button').first().click();
+    await expect(frequencyDetailModal).not.toBeVisible({ timeout: 2000 });
+
+    // 点击情绪化交易卡片
+    await cardContainer.locator('div.flex.gap-3 > div.flex-1').nth(2).click();
+    const emotionDetailModal = page.locator('h3:has-text("情绪化交易详情")');
+    await expect(emotionDetailModal).toBeVisible({ timeout: 3000 });
+    console.log('情绪化交易详情验证完成');
+
+    // 关闭详情窗口
+    await page.locator('h3:has-text("情绪化交易详情")').locator('xpath=following::button').first().click();
+    await expect(emotionDetailModal).not.toBeVisible({ timeout: 2000 });
+
+    // 点击时机评分卡片
+    await cardContainer.locator('div.flex.gap-3 > div.flex-1').nth(3).click();
+    const timingDetailModal = page.locator('h3:has-text("时机评分详情")');
+    await expect(timingDetailModal).toBeVisible({ timeout: 3000 });
+    console.log('时机评分详情验证完成');
+
+    // 关闭详情窗口
+    await page.locator('h3:has-text("时机评分详情")').locator('xpath=following::button').first().click();
+    await expect(timingDetailModal).not.toBeVisible({ timeout: 2000 });
+
+    // 验证表格中的"?"按钮可以进入单个基金模式
+    const questionButtonInTable = page.locator('table tbody tr').first().locator('button:has-text("?")');
+    await questionButtonInTable.click();
+    await page.waitForTimeout(500);
+
+    // 验证模式指示器更新为单个基金
+    const singleFundIndicator = page.locator('text=的行为分析');
+    await expect(singleFundIndicator).toBeVisible({ timeout: 3000 });
+    console.log('单个基金模式验证完成');
+
+    // 点击重置按钮返回整体组合
+    const behaviorResetButton = page.locator('button:has-text("重置")').first();
+    await behaviorResetButton.click();
+    await page.waitForTimeout(500);
+
+    // 验证返回整体组合模式
+    await expect(modeIndicator).toBeVisible({ timeout: 3000 });
+    console.log('重置到整体组合验证完成');
+
+    console.log('行为回顾视图测试完成');
+
+    // ══════════════════════════════════════════════════════════════════════════════
+    // 26. 关闭窗口（使用 JavaScript 绕过视口问题）
     // ══════════════════════════════════════════════════════════════════════════════
     await page.evaluate(() => {
       const modal = document.querySelector('.fixed.inset-0.z-\\[130\\]');
@@ -1938,7 +2034,7 @@ test.describe('testBedWithData', () => {
     });
     await expect(profitModal).not.toBeVisible();
 
-    console.log('整体盈亏测试完成（含日历功能）');
+    console.log('整体盈亏测试完成（含日历功能、行为回顾）');
   });
 
   // ═══════════════════════════════════════════════════════════════════════════════

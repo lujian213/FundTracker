@@ -328,6 +328,8 @@ export interface TradeRecord {
   fee: number;
   // total is not persisted anymore; kept optional for backward compatibility
   total?: number;
+  // symbol is used internally for behavior analysis, not persisted
+  symbol?: string;
 }
 
 // 批量交易输入记录
@@ -620,4 +622,62 @@ export interface RiskIncrementalState {
   portfolioHash: string;            // 投资组合数据指纹
   historyHash: string;              // 历史数据指纹
   lastUpdated: number;              // 上次更新时间戳（毫秒）
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// 行为回顾系统类型定义
+// ═══════════════════════════════════════════════════════════════════════════════
+
+// 行为评分
+export interface BehaviorScore {
+  total: number;           // 总分 0-100
+  timing: number;          // 时机选择分
+  emotion: number;         // 情绪控制分
+  discipline: number;      // 交易纪律分
+}
+
+// 交易时机评分（单笔交易）
+export interface TimingScore {
+  trade: TradeRecord;
+  score: number;          // 0-100
+  percentile: number;     // 净值百分位 0-100
+  reason: string;         // 原因说明
+}
+
+// 行为分析结果
+export interface BehaviorAnalysis {
+  // 评分
+  score: BehaviorScore;
+
+  // 交易频率
+  frequency: {
+    buyCount: number;
+    sellCount: number;
+    avgHoldingDays: number;
+    feeRate: number;
+    trades: TradeRecord[];
+  };
+
+  // 情绪化交易（带理由）
+  emotion: {
+    chaseHighSellLow: Array<TradeRecord & { reason: string }>;  // 追涨杀跌
+    frequentLossTrade: Array<TradeRecord & { reason: string }>;  // 亏损的频繁调仓
+    fomoBuy: Array<TradeRecord & { reason: string }>;            // FOMO买入
+  };
+
+  // 时机评分
+  timing: {
+    avgScore: number;
+    good: TradeRecord[];    // 好时机
+    normal: TradeRecord[];  // 一般时机
+    bad: TradeRecord[];     // 差时机
+    details: TimingScore[]; // 详细评分
+  };
+
+  // 进步趋势
+  trend?: {
+    previousScore: number;
+    diff: number;         // 正数表示进步，负数表示退步
+    label: string;        // "较前一期" 或 "较去年同期"
+  };
 }

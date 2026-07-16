@@ -22,6 +22,7 @@ import PerformanceAnalysisChart from './PerformanceAnalysisChart';
 import KPICardDisplay from './KPICardDisplay';
 import { useModalBodyStyle } from '../hooks/useModalBodyStyle';
 import usePositionTrend from '../hooks/usePositionTrend';
+import BehaviorReviewTab from './BehaviorReviewTab';
 
 /**
  * 计算夏普比率和卡玛比率
@@ -51,7 +52,7 @@ interface Props {
   onSelectFund?: (symbol: string) => void;
 }
 
-type ViewMode = 'chart' | 'calendar' | 'performance';
+type ViewMode = 'chart' | 'calendar' | 'performance' | 'behavior';
 type CalendarMode = 'day' | 'week' | 'month' | 'year';
 
 const OverallProfitModal: React.FC<Props> = ({ symbols, onClose, onSelectFund }) => {
@@ -76,6 +77,22 @@ const OverallProfitModal: React.FC<Props> = ({ symbols, onClose, onSelectFund })
   const [selectedFund, setSelectedFund] = useState<string | null>(null);
   const [performanceData, setPerformanceData] = useState<AttributionResult | null>(null);
   const [kpiData, setKpiData] = useState<KPIResult | null>(null);
+
+  // 行为回顾状态
+  const [behaviorSelectedFund, setBehaviorSelectedFund] = useState<string | null>(null);
+
+  // 完整的基金列表（用于行为回顾显示基金名称，不受时间范围过滤）
+  const allFundRows = useMemo(() => {
+    if (!summary || !summary.perFund) return [];
+    return summary.perFund.map(p => ({
+      symbol: p.symbol,
+      name: p.name,
+      startDate: p.startDate,
+      profitFrom: 0,
+      profitTo: 0,
+      profitDiff: 0
+    }));
+  }, [summary]);
 
   const chartWrapRef = useRef<HTMLDivElement | null>(null);
   const chartSvgRef = useRef<SVGSVGElement | null>(null);
@@ -918,11 +935,6 @@ const OverallProfitModal: React.FC<Props> = ({ symbols, onClose, onSelectFund })
     calculateKPI();
   }, [selectedFund, symbols, summary, chartTimeline, chartFromDate]);
 
-  // 日期变化时重置选中基金
-  useEffect(() => {
-    setSelectedFund(null);
-  }, [fromDate, toDate]);
-
   // 处理列排序点击：点击某列时，该列启用排序，循环切换排序方向
   const handleSortClick = useCallback((column: 'from' | 'to' | 'diff') => {
     if (sortColumn === column) {
@@ -995,6 +1007,19 @@ const OverallProfitModal: React.FC<Props> = ({ symbols, onClose, onSelectFund })
               title="绩效分析"
             >
               <i className="fas fa-chart-pie" />
+            </button>
+            <button
+              type="button"
+              onClick={() => setViewMode('behavior')}
+              className={`w-10 h-10 rounded-full flex items-center justify-center transition-colors ${
+                viewMode === 'behavior'
+                  ? 'bg-blue-100 text-blue-700'
+                  : 'bg-gray-50 text-gray-500 hover:bg-gray-100'
+              }`}
+              aria-label="显示行为回顾"
+              title="行为回顾"
+            >
+              <i className="fas fa-brain" />
             </button>
             <button aria-label="关闭整体盈亏窗口" className="w-8 h-8 rounded-full bg-gray-50 flex items-center justify-center text-gray-400 hover:bg-gray-100" onClick={onClose}><i className="fas fa-times"></i></button>
           </div>
@@ -1234,6 +1259,19 @@ const OverallProfitModal: React.FC<Props> = ({ symbols, onClose, onSelectFund })
                     </div>
                   </div>
                 </div>
+              ) : viewMode === 'behavior' ? (
+                <div className="bg-gradient-to-b from-gray-50 to-white rounded-xl p-4 relative shadow-inner overflow-y-auto" style={{ height: 232 }}>
+                  <BehaviorReviewTab
+                    symbols={symbols}
+                    fromDate={fromDate}
+                    toDate={toDate}
+                    tableRows={tableRows}
+                    allFundRows={allFundRows}
+                    onSelectFund={onSelectFund}
+                    selectedFund={behaviorSelectedFund}
+                    onSelectedFundChange={setBehaviorSelectedFund}
+                  />
+                </div>
               ) : (
               <div className="bg-gradient-to-b from-gray-50 to-white rounded-xl p-2 relative shadow-inner" style={{ height: 232 }}>
                 <div className="flex h-full">
@@ -1470,7 +1508,7 @@ const OverallProfitModal: React.FC<Props> = ({ symbols, onClose, onSelectFund })
                             : 0;
 
                           return (
-                            <tr key={p.symbol} className={`border-b border-gray-50 hover:bg-gray-50 transition-colors ${viewMode === 'performance' && selectedFund === p.symbol ? 'bg-blue-50' : ''}`}>
+                            <tr key={p.symbol} className={`border-b border-gray-50 hover:bg-gray-50 transition-colors ${(viewMode === 'performance' && selectedFund === p.symbol) || (viewMode === 'behavior' && behaviorSelectedFund === p.symbol) ? 'bg-blue-50' : ''}`}>
                               <td className="px-2 py-2 text-left text-xs text-gray-700" style={{ maxWidth: '140px' }}>
                                 <div className="flex items-center gap-1">
                                   <div className="truncate flex-1">
@@ -1486,15 +1524,19 @@ const OverallProfitModal: React.FC<Props> = ({ symbols, onClose, onSelectFund })
                                       (p.name && p.name.trim()) ? p.name : `(${String(p.symbol).padStart(6,'0')})`
                                     )}
                                   </div>
-                                  {/* 绩效分析tab：显示问号图标，点击选中该基金 */}
-                                  {viewMode === 'performance' && (
+                                  {/* 绩效分析tab和行为回顾tab：显示问号图标，点击选中该基金 */}
+                                  {(viewMode === 'performance' || viewMode === 'behavior') && (
                                     <button
                                       className="w-3.5 h-3.5 rounded-full bg-blue-100 hover:bg-blue-200 text-blue-600 flex items-center justify-center transition-colors cursor-pointer flex-shrink-0"
                                       style={{ fontSize: '10px', lineHeight: 1 }}
-                                      title={`查看 ${p.name || p.symbol} 的绩效分析`}
+                                      title={viewMode === 'performance' ? `查看 ${p.name || p.symbol} 的绩效分析` : `查看 ${p.name || p.symbol} 的行为分析`}
                                       onClick={(e) => {
                                         e.stopPropagation();
-                                        setSelectedFund(selectedFund === p.symbol ? null : p.symbol);
+                                        if (viewMode === 'performance') {
+                                          setSelectedFund(selectedFund === p.symbol ? null : p.symbol);
+                                        } else {
+                                          setBehaviorSelectedFund(behaviorSelectedFund === p.symbol ? null : p.symbol);
+                                        }
                                       }}
                                     >
                                       ?
