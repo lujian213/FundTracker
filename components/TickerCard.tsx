@@ -148,12 +148,13 @@ export const TickerCard: React.FC<TickerCardProps> = ({
     }
   }, [history, data]);
 
-  const statusDotClass = status === 'ok'
-    ? 'bg-green-500'
-    : status === 'error'
-      ? 'bg-red-500'
-      : 'bg-gray-400';
-  const statusDotTitle = status === 'ok' ? '正常' : status === 'error' ? '错误' : '未知';
+  const STATUS_CONFIG: Record<CardStatus, { className: string; title: string }> = {
+    ok: { className: 'bg-green-500', title: '正常' },
+    error: { className: 'bg-red-500', title: '错误' },
+    warning: { className: 'bg-yellow-500', title: '警告' },
+    unknown: { className: 'bg-gray-400', title: '未知' },
+  };
+  const { className: statusDotClass, title: statusDotTitle } = STATUS_CONFIG[status];
 
   return (
     <div

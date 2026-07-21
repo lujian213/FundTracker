@@ -3948,6 +3948,11 @@ test.describe('testBedWithData', () => {
       const initialPositionInput = configWindow?.querySelector('input[aria-label="modal-initial"]') as HTMLInputElement | null;
       const startDateInput = configWindow?.querySelector('input[type="date"]') as HTMLInputElement | null;
       const initialPriceInput = configWindow?.querySelector('input[aria-label="modal-price"]') as HTMLInputElement | null;
+      const aliasNameInput = configWindow?.querySelector('input[aria-label="modal-alias-name"]') as HTMLInputElement | null;
+      const trackingIndexInput = configWindow?.querySelector('input[aria-label="modal-tracking-index"]') as HTMLInputElement | null;
+
+      // 检查跟踪指数格式提示是否存在
+      const trackingIndexHint = configWindow?.textContent?.includes('格式如: 2.H50036') || false;
 
       return {
         positionInfo,
@@ -3956,6 +3961,9 @@ test.describe('testBedWithData', () => {
         initialPosition: initialPositionInput?.value || '',
         startDate: startDateInput?.value || '',
         initialPrice: initialPriceInput?.value || '',
+        aliasName: aliasNameInput?.value || '',
+        trackingIndex: trackingIndexInput?.value || '',
+        trackingIndexHint,
       };
     });
 
@@ -3971,7 +3979,10 @@ test.describe('testBedWithData', () => {
       expect(configInfo.startDate).toMatch(/^\d{4}-\d{2}-\d{2}$/);
     }
 
-    console.log(`基金设置验证完成: 满仓=${configInfo?.fullCapacity}, 初始=${configInfo?.initialPosition}`);
+    // 验证跟踪指数格式提示存在
+    expect(configInfo?.trackingIndexHint).toBe(true);
+
+    console.log(`基金设置验证完成: 满仓=${configInfo?.fullCapacity}, 初始=${configInfo?.initialPosition}, 跟踪指数提示=${configInfo?.trackingIndexHint}`);
 
     // ══════════════════════════════════════════════════════════════════════════════
     // 4. 关闭配置窗口（点击"取消"按钮）

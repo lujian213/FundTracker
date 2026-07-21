@@ -69,6 +69,7 @@ export const FundDetailsModal: React.FC<FundDetailsModalProps> = ({ data, onClos
   const [tmpStartDate, setTmpStartDate] = useState<string>('');
   const [tmpInitialPrice, setTmpInitialPrice] = useState<string>('');
   const [tmpAliasName, setTmpAliasName] = useState<string>('');
+  const [tmpTrackingIndex, setTmpTrackingIndex] = useState<string>('');
   const [showTrade, setShowTrade] = useState(false);
   const [showProfit, setShowProfit] = useState(false);
   const [showVirtual, setShowVirtual] = useState(false);
@@ -694,6 +695,7 @@ export const FundDetailsModal: React.FC<FundDetailsModalProps> = ({ data, onClos
     // 初始化常用名称
     const position = marketFundService.getPosition(data.symbol);
     setTmpAliasName(position?.aliasName || '');
+    setTmpTrackingIndex(position?.trackingIndex || '');
     // clear previous errors when opening
     setTmpFullError(null);
     setTmpInitialError(null);
@@ -788,6 +790,7 @@ export const FundDetailsModal: React.FC<FundDetailsModalProps> = ({ data, onClos
         startDate: s || null,
         initialPrice: finalInitialPrice,
         aliasName: tmpAliasName.trim() || undefined,
+        trackingIndex: tmpTrackingIndex.trim() || undefined,
       });
     } else {
       setStartDate(null);
@@ -799,6 +802,7 @@ export const FundDetailsModal: React.FC<FundDetailsModalProps> = ({ data, onClos
         startDate: null,
         initialPrice: null,
         aliasName: tmpAliasName.trim() || undefined,
+        trackingIndex: tmpTrackingIndex.trim() || undefined,
       });
     }
     setShowConfig(false);
@@ -808,6 +812,7 @@ export const FundDetailsModal: React.FC<FundDetailsModalProps> = ({ data, onClos
     setInitialPosition(0);
     setStartDate(null);
     setInitialPrice(null);
+    setTmpTrackingIndex('');
     // 使用 marketFundService 清除 position
     marketFundService.updatePosition(data.symbol, {
       fullCapacity: 0,
@@ -815,6 +820,7 @@ export const FundDetailsModal: React.FC<FundDetailsModalProps> = ({ data, onClos
       startDate: null,
       initialPrice: null,
       aliasName: undefined,
+      trackingIndex: undefined,
     });
     setShowConfig(false);
   };
@@ -1616,6 +1622,22 @@ export const FundDetailsModal: React.FC<FundDetailsModalProps> = ({ data, onClos
                            onChange={e => { setTmpAliasName(e.target.value); }}
                            placeholder="可选"
                          />
+                       </div>
+                       <div className="flex items-center justify-between">
+                         <label className="text-sm text-gray-600">跟踪指数</label>
+                         <div className="flex flex-col items-end">
+                           <input
+                             aria-label="modal-tracking-index"
+                             type="text"
+                             className="w-46 px-2 py-1 border rounded text-right"
+                             value={tmpTrackingIndex}
+                             onChange={e => { setTmpTrackingIndex(e.target.value); }}
+                             placeholder="可选"
+                           />
+                           <span className="text-[10px] text-gray-400 mt-0.5">
+                             格式如: 2.H50036
+                           </span>
+                         </div>
                        </div>
                        <div className="flex items-center justify-between">
                          <label className="text-sm text-gray-600">满仓额度</label>

@@ -1,0 +1,168 @@
+/**
+ * trackingIndexService.ts
+ *
+ * 跟踪指数服务
+ * - 解析跟踪指数配置
+ * - 获取指数实时行情
+ * - 计算基金估值
+ */
+
+import { ValuationData, CardStatus } from '../types';
+import { formatDateISO, formatTime } from '../utils/dateFormat';
+
+const UT = 'fa1a66105171779fbdd067425f38a7c2';
+
+interface CardStatusInfo {
+  status: CardStatus;
+  message?: string;
+}
+
+/**
+ * 解析跟踪指数配置
+ * @param config 格式如 "2.H50036"
+ * @returns { market: number; code: string } 或 null（格式无效）
+ */
+export function parseTrackingIndex(config: string): { market: number; code: string } | null {
+  if (!config || typeof config !== 'string') return null;
+
+  const match = config.match(/^(\d+)\.([A-Za-z0-9]+)$/);
+  if (!match) return null;
+
+  const market = parseInt(match[1], 10);
+  const code = match[2];
+
+  // market 有效范围检查（0, 1, 2 是常见的市场代码）
+  if (market < 0 || market > 9) return null;
+  if (!code) return null;
+
+  return { market, code };
+}
+
+/**
+ * 获取跟踪指数的实时涨跌幅（内部函数，接收已解析的参数）
+ */
+async function fetchTrackingIndexChangePercentInternal(
+  parsed: { market: number; code: string }
+): Promise<{ changePercent: number; fetchDate: string } | null> {
+  const { market, code } = parsed;
+  const url = `https://push2delay.eastmoney.com/api/qt/stock/get?ut=${UT}&fltt=2&invt=2&secid=${market}.${code}&fields=f12,f14,f2,f3,f43,f170`;
+
+  try {
+    const response = await fetch(url, {
+      headers: { 'User-Agent': 'Mozilla/5.0' }
+    });
+
+    if (!response.ok) {
+      return null;
+    }
+
+    const json = await response.json();
+
+    if (!json.data) {
+      return null;
+    }
+
+    // 优先使用 f170（估算涨跌幅），否则使用 f3（实际涨跌幅）
+    const changePercent = json.data.f170 ?? json.data.f3 ?? null;
+    if (changePercent === null || changePercent === '-' || changePercent === '') {
+      return null;
+    }
+
+    const fetchDate = formatDateISO(new Date());
+
+    return {
+      changePercent: parseFloat(changePercent),
+      fetchDate
+    };
+  } catch (error) {
+    console.error('[fetchTrackingIndexChangePercent] 获取失败:', error);
+    return null;
+  }
+}
+
+/**
+ * 获取跟踪指数的实时涨跌幅
+ * @param config 跟踪指数配置 "market.code"
+ * @returns 指数涨跌幅和获取日期，或 null（获取失败）
+ */
+export async function fetchTrackingIndexChangePercent(
+  config: string
+): Promise<{ changePercent: number; fetchDate: string } | null> {
+  const parsed = parseTrackingIndex(config);
+  if (!parsed) return null;
+  return fetchTrackingIndexChangePercentInternal(parsed);
+}
+
+/**
+ * 获取跟踪指数实时行情并计算基金估值
+ * @param config 跟踪指数配置
+ * @param previousPrice 前一日净值（估值计算基准）
+ * @param fundSymbol 基金代码
+ * @param fundName 基金名称
+ * @returns 估值数据和状态信息
+ */
+export async function fetchValuationByTrackingIndex(
+  config: string,
+  previousPrice: number,
+  fundSymbol: string,
+  fundName: string
+): Promise<{ valuation: ValuationData | null; statusInfo: CardStatusInfo }> {
+  // 格式校验
+  const parsed = parseTrackingIndex(config);
+  if (!parsed) {
+    return {
+      valuation: null,
+      statusInfo: { status: 'warning', message: '跟踪指数格式无效' }
+    };
+  }
+
+  // 前一日净值检查
+  if (previousPrice <= 0) {
+    return {
+      valuation: null,
+      statusInfo: { status: 'warning', message: '缺少前一日净值，无法计算估值' }
+    };
+  }
+
+  // 获取指数行情（传递已解析的参数，避免重复解析）
+  const result = await fetchTrackingIndexChangePercentInternal(parsed);
+  if (!result) {
+    return {
+      valuation: null,
+      statusInfo: { status: 'warning', message: '跟踪指数代码不存在' }
+    };
+  }
+
+  const { changePercent, fetchDate } = result;
+
+  // 计算估值
+  const currentPrice = previousPrice * (1 + changePercent / 100);
+
+  // 构建估值数据
+  const now = new Date();
+  const lastUpdated = `${fetchDate} ${formatTime(now)}`;
+
+  // 计算 previousPrice 对应的日期（前一天）
+  // previousPrice 是前一天的净值，所以 netWorthDate 应该是前一天
+  const fetchDateObj = new Date(fetchDate);
+  fetchDateObj.setDate(fetchDateObj.getDate() - 1);
+  const netWorthDate = formatDateISO(fetchDateObj);
+
+  const valuation: ValuationData = {
+    symbol: fundSymbol,
+    name: fundName,
+    currentPrice,
+    previousPrice,
+    changePercentage: changePercent,
+    lastUpdated,
+    realtimeDate: fetchDate,
+    netWorthDate, // previousPrice 对应的日期（前一天）
+    valuationDate: fetchDate,
+    sourceUrl: `https://quote.eastmoney.com/unify/r/${parsed.market}.${parsed.code}`
+  };
+
+  return {
+    valuation,
+    statusInfo: { status: 'ok', message: '正常' }
+  };
+}

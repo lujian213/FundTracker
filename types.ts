@@ -3,8 +3,8 @@ export enum MarketType {
   INDEX = 'Index'
 }
 
-// Card data-fetch status: 'ok' = success, 'error' = failure, 'unknown' = not yet fetched / in-progress
-export type CardStatus = 'ok' | 'error' | 'unknown';
+// Card data-fetch status: 'ok' = success, 'error' = failure, 'unknown' = not yet fetched / in-progress, 'warning' = config error
+export type CardStatus = 'ok' | 'error' | 'unknown' | 'warning';
 
 export type ManageItemType = 'fund' | 'index' | 'global_index';
 export type ManageSelectionKey = `${ManageItemType}:${string}`;
@@ -120,6 +120,7 @@ export interface FundPosition {
   startDate: string | null;   // 开始日期 YYYY-MM-DD
   initialPrice: number | null; // 初始价格
   aliasName?: string;         // 别名（用于OCR匹配，可选）
+  trackingIndex?: string;     // 跟踪指数，格式 "market.code"，如 "2.H50036"
 }
 
 // 基金信息（统一存储）：包含 Ticker、持仓、估值

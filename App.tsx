@@ -4,6 +4,7 @@ import { SortableContext, verticalListSortingStrategy, arrayMove } from '@dnd-ki
 import { Ticker, ValuationData, MarketType, MarketIndex, BackupData, CardStatus, ManageItemType, ManageSelectionKey, JobResult, HistoricalPoint, FundInfo, IndexInfo } from './types';
 import { FastNewsItem } from './types/fastNewsTypes';
 import { fetchFundData, fetchFundDatas, forceFetchFundHistories, fetchMarketIndices, fetchIndexHistories, maybeTriggerHistoryRefresh, normalizeIndexSymbol } from './services/fundService';
+import { fetchValuationByTrackingIndex } from './services/trackingIndexService';
 import { toLocalDateKey } from './utils/priceResolver';
 import { calculateTotalTasks, createProgressCallback, incrementTaskCount } from './utils/taskCounter';
 import * as marketFundService from './services/marketFundService';
@@ -516,28 +517,47 @@ const AppContent: React.FC = () => {
     skipHistoryRefresh?: boolean
   ): Promise<ValuationData | null> => {
     try {
-      const data = await fetchFundData(symbol);
+      // 获取持仓配置
+      const position = marketFundService.getPosition(symbol);
+      const existingValuation = marketFundService.getValuation(symbol);
+      const previousPrice = existingValuation?.previousPrice ?? 0;
+      const fundName = existingValuation?.name ?? symbol;
+
+      let data: ValuationData | null = null;
+      let status: CardStatus = 'ok';
+
+      // 优先使用跟踪指数获取估值
+      if (position?.trackingIndex) {
+        const result = await fetchValuationByTrackingIndex(
+          position.trackingIndex,
+          previousPrice,
+          symbol,
+          fundName
+        );
+        data = result.valuation;
+        status = result.statusInfo.status;
+      } else {
+        // Legacy 方式：使用天天基金 API
+        data = await fetchFundData(symbol);
+        status = data ? 'ok' : 'error';
+      }
+
       if (data) {
         marketFundService.updateValuation(symbol, data);
-        // Append intraday point based on this valuation (lastUpdated preferred inside append)
         try { marketFundService.appendIntradayPoint(symbol, data.currentPrice, data.changePercentage, data.lastUpdated, data.realtimeDate); } catch (e) { /* swallow */ }
-        // Use getValuation to get enhanced data with accuracy adjustments
         const enhancedData = marketFundService.getValuation(symbol) || data;
+
         setMarketData(prev => ({ ...prev, [symbol]: enhancedData }));
         setPortfolio(prev => prev.map(item =>
           item.symbol === symbol && !item.name ? { ...item, name: enhancedData.name } : item
         ));
-        setFundStatuses(prev => ({ ...prev, [symbol]: 'ok' }));
+        setFundStatuses(prev => ({ ...prev, [symbol]: status }));
 
-        // 自动历史补全：当估值返回的 netWorthDate 比本地缓存的历史最后日期更新时，触发对该 symbol 的强制历史刷新
-        // 注意：这个历史刷新是独立任务，不计入 refreshAll 的总任务数
-        // 在 refreshAll 场景下跳过，因为 runBatchHistoryUpdate 已在并行执行
         if (!skipHistoryRefresh) {
           try {
             incrementTaskCount(setBackgroundTasks, 1);
             maybeTriggerHistoryRefresh(symbol, enhancedData.netWorthDate).finally(() => {
               createProgressCallback(setBackgroundTasks)();
-              // 历史数据可能已更新，触发 fundHistories 重新计算
               setHistoryUpdateCount(prev => prev + 1);
             });
           } catch (e) {
@@ -546,11 +566,10 @@ const AppContent: React.FC = () => {
           }
         }
 
-        // 调用进度回调（如果提供）
         if (onProgress) onProgress();
         return enhancedData;
       } else {
-        setFundStatuses(prev => ({ ...prev, [symbol]: 'error' }));
+        setFundStatuses(prev => ({ ...prev, [symbol]: status }));
         if (onProgress) onProgress();
         return null;
       }
