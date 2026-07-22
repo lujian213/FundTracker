@@ -1,4 +1,9 @@
 import { parseTrackingIndex, fetchTrackingIndexChangePercent, fetchValuationByTrackingIndex } from '../../services/trackingIndexService';
+import * as marketFundService from '../../services/marketFundService';
+
+jest.mock('../../services/marketFundService', () => ({
+  getHistory: jest.fn(),
+}));
 
 describe('trackingIndexService', () => {
   describe('parseTrackingIndex', () => {
@@ -25,26 +30,45 @@ describe('trackingIndexService', () => {
   });
 
   describe('fetchValuationByTrackingIndex', () => {
+    beforeEach(() => {
+      jest.clearAllMocks();
+    });
+
     it('should return warning for invalid format', async () => {
-      const result = await fetchValuationByTrackingIndex('invalid', 1.0, '000001', '测试基金');
+      const result = await fetchValuationByTrackingIndex('invalid', '000001', '测试基金');
       expect(result.valuation).toBeNull();
       expect(result.statusInfo.status).toBe('warning');
       expect(result.statusInfo.message).toBe('跟踪指数格式无效');
     });
 
-    it('should return warning when previousPrice is zero or negative', async () => {
-      const result = await fetchValuationByTrackingIndex('2.931743', 0, '000001', '测试基金');
+    it('should return warning when history is empty', async () => {
+      (marketFundService.getHistory as jest.Mock).mockReturnValue([]);
+
+      const result = await fetchValuationByTrackingIndex('2.931743', '000001', '测试基金');
       expect(result.valuation).toBeNull();
       expect(result.statusInfo.status).toBe('warning');
-      expect(result.statusInfo.message).toBe('缺少前一日净值，无法计算估值');
+      expect(result.statusInfo.message).toBe('缺少历史净值数据，无法计算估值');
+    });
 
-      const resultNegative = await fetchValuationByTrackingIndex('2.931743', -1.0, '000001', '测试基金');
-      expect(resultNegative.valuation).toBeNull();
-      expect(resultNegative.statusInfo.status).toBe('warning');
-      expect(resultNegative.statusInfo.message).toBe('缺少前一日净值，无法计算估值');
+    it('should return warning when latest net worth is zero or negative', async () => {
+      // Mock history with zero value
+      (marketFundService.getHistory as jest.Mock).mockReturnValue([
+        { date: 1784563200000, value: 0, equityReturn: 0 }
+      ]);
+
+      const result = await fetchValuationByTrackingIndex('2.931743', '000001', '测试基金');
+      expect(result.valuation).toBeNull();
+      expect(result.statusInfo.status).toBe('warning');
+      expect(result.statusInfo.message).toBe('净值数据无效，无法计算估值');
     });
 
     it('should calculate valuation correctly', async () => {
+      // Mock history
+      (marketFundService.getHistory as jest.Mock).mockReturnValue([
+        { date: 1784476800000, value: 1.9, equityReturn: 0 },
+        { date: 1784563200000, value: 2.0, equityReturn: 5.26 }
+      ]);
+
       // Mock fetch for successful response
       const originalFetch = global.fetch;
       global.fetch = jest.fn().mockResolvedValue({
@@ -54,18 +78,24 @@ describe('trackingIndexService', () => {
         })
       });
 
-      const result = await fetchValuationByTrackingIndex('2.931743', 2.0, '020640', '测试基金');
+      const result = await fetchValuationByTrackingIndex('2.931743', '020640', '测试基金');
 
       expect(result.valuation).not.toBeNull();
       expect(result.valuation!.currentPrice).toBeCloseTo(2.0 * 1.055, 4);
       expect(result.valuation!.changePercentage).toBe(5.5);
       expect(result.valuation!.symbol).toBe('020640');
+      expect(result.valuation!.previousPrice).toBe(2.0); // 来自历史数据最新一条
       expect(result.statusInfo.status).toBe('ok');
 
       global.fetch = originalFetch;
     });
 
     it('should return warning when index code not found', async () => {
+      // Mock history
+      (marketFundService.getHistory as jest.Mock).mockReturnValue([
+        { date: 1784563200000, value: 1.0, equityReturn: 0 }
+      ]);
+
       const originalFetch = global.fetch;
       global.fetch = jest.fn().mockResolvedValue({
         ok: true,
@@ -74,7 +104,7 @@ describe('trackingIndexService', () => {
         })
       });
 
-      const result = await fetchValuationByTrackingIndex('2.999999', 1.0, '000001', '测试基金');
+      const result = await fetchValuationByTrackingIndex('2.999999', '000001', '测试基金');
       expect(result.valuation).toBeNull();
       expect(result.statusInfo.status).toBe('warning');
       expect(result.statusInfo.message).toBe('跟踪指数代码不存在');
