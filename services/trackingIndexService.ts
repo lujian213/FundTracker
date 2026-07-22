@@ -9,6 +9,7 @@
 
 import { ValuationData, CardStatus } from '../types';
 import { formatDateISO, formatTime } from '../utils/dateFormat';
+import * as marketFundService from './marketFundService';
 
 const UT = 'fa1a66105171779fbdd067425f38a7c2';
 
@@ -95,15 +96,17 @@ export async function fetchTrackingIndexChangePercent(
 
 /**
  * 获取跟踪指数实时行情并计算基金估值
+ *
+ * 该函数会从历史数据中获取最新的净值和日期，确保返回的估值数据完整且正确。
+ * 这与 legacy 估值 API 的行为一致：返回的数据包含正确的 previousPrice 和 netWorthDate。
+ *
  * @param config 跟踪指数配置
- * @param previousPrice 前一日净值（估值计算基准）
  * @param fundSymbol 基金代码
  * @param fundName 基金名称
  * @returns 估值数据和状态信息
  */
 export async function fetchValuationByTrackingIndex(
   config: string,
-  previousPrice: number,
   fundSymbol: string,
   fundName: string
 ): Promise<{ valuation: ValuationData | null; statusInfo: CardStatusInfo }> {
@@ -116,11 +119,23 @@ export async function fetchValuationByTrackingIndex(
     };
   }
 
-  // 前一日净值检查
+  // 从历史数据中获取最新净值和日期
+  const history = marketFundService.getHistory(fundSymbol);
+  if (!history || history.length === 0) {
+    return {
+      valuation: null,
+      statusInfo: { status: 'warning', message: '缺少历史净值数据，无法计算估值' }
+    };
+  }
+
+  const latestPoint = history[history.length - 1];
+  const previousPrice = latestPoint.value;
+  const netWorthDate = formatDateISO(new Date(latestPoint.date));
+
   if (previousPrice <= 0) {
     return {
       valuation: null,
-      statusInfo: { status: 'warning', message: '缺少前一日净值，无法计算估值' }
+      statusInfo: { status: 'warning', message: '净值数据无效，无法计算估值' }
     };
   }
 
@@ -142,12 +157,6 @@ export async function fetchValuationByTrackingIndex(
   const now = new Date();
   const lastUpdated = `${fetchDate} ${formatTime(now)}`;
 
-  // 计算 previousPrice 对应的日期（前一天）
-  // previousPrice 是前一天的净值，所以 netWorthDate 应该是前一天
-  const fetchDateObj = new Date(fetchDate);
-  fetchDateObj.setDate(fetchDateObj.getDate() - 1);
-  const netWorthDate = formatDateISO(fetchDateObj);
-
   const valuation: ValuationData = {
     symbol: fundSymbol,
     name: fundName,
@@ -156,7 +165,7 @@ export async function fetchValuationByTrackingIndex(
     changePercentage: changePercent,
     lastUpdated,
     realtimeDate: fetchDate,
-    netWorthDate, // previousPrice 对应的日期（前一天）
+    netWorthDate, // 使用历史数据中的净值日期
     valuationDate: fetchDate,
     sourceUrl: `https://quote.eastmoney.com/unify/r/${parsed.market}.${parsed.code}`
   };

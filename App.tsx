@@ -530,7 +530,6 @@ const AppContent: React.FC = () => {
       if (position?.trackingIndex) {
         const result = await fetchValuationByTrackingIndex(
           position.trackingIndex,
-          previousPrice,
           symbol,
           fundName
         );
