@@ -1,4 +1,4 @@
-import { parseTrackingIndex, fetchTrackingIndexChangePercent, fetchValuationByTrackingIndex } from '../../services/trackingIndexService';
+import { parseTrackingIndex, fetchTrackingIndexChangePercent, fetchValuationByTrackingIndex, fetchSectorQuote, isSectorConfig, MARKET_CODE } from '../../services/trackingIndexService';
 import * as marketFundService from '../../services/marketFundService';
 
 jest.mock('../../services/marketFundService', () => ({
@@ -13,6 +13,11 @@ describe('trackingIndexService', () => {
       expect(parseTrackingIndex('1.518880')).toEqual({ market: 1, code: '518880' });
     });
 
+    it('should parse sector format (market=90)', () => {
+      expect(parseTrackingIndex('90.BK0877')).toEqual({ market: 90, code: 'BK0877' });
+      expect(parseTrackingIndex('90.BK0477')).toEqual({ market: 90, code: 'BK0477' });
+    });
+
     it('should return null for invalid format', () => {
       expect(parseTrackingIndex('')).toBeNull();
       expect(parseTrackingIndex('H50036')).toBeNull();
@@ -24,8 +29,95 @@ describe('trackingIndexService', () => {
     });
 
     it('should return null for edge cases', () => {
-      expect(parseTrackingIndex('10.H50036')).toBeNull();  // market 超出范围（>9）
+      expect(parseTrackingIndex('10.H50036')).toBeNull();  // market 超出范围（>9 且 != 90）
       expect(parseTrackingIndex('2.')).toBeNull();          // code 为空
+    });
+  });
+
+  describe('isSectorConfig', () => {
+    it('should return true for sector config', () => {
+      expect(isSectorConfig('90.BK0877')).toBe(true);
+      expect(isSectorConfig('90.BK0477')).toBe(true);
+    });
+
+    it('should return false for non-sector config', () => {
+      expect(isSectorConfig('2.H50036')).toBe(false);
+      expect(isSectorConfig('0.980017')).toBe(false);
+      expect(isSectorConfig('invalid')).toBe(false);
+    });
+  });
+
+  describe('MARKET_CODE', () => {
+    it('should have correct values', () => {
+      expect(MARKET_CODE.SZSE_INDEX).toBe(0);
+      expect(MARKET_CODE.SSE_ETF).toBe(1);
+      expect(MARKET_CODE.CSI_INDEX).toBe(2);
+      expect(MARKET_CODE.SECTOR).toBe(90);
+    });
+  });
+
+  describe('fetchSectorQuote', () => {
+    it('should return null for non-sector config', async () => {
+      const result = await fetchSectorQuote('2.H50036');
+      expect(result).toBeNull();
+    });
+
+    it('should return null for invalid config', async () => {
+      const result = await fetchSectorQuote('invalid');
+      expect(result).toBeNull();
+    });
+
+    it('should fetch sector quote successfully', async () => {
+      const originalFetch = global.fetch;
+      global.fetch = jest.fn().mockResolvedValue({
+        ok: true,
+        json: () => Promise.resolve({
+          data: {
+            f12: 'BK0877',
+            f14: 'PCB',
+            f43: 3668.36,
+            f170: 0.73
+          }
+        })
+      });
+
+      const result = await fetchSectorQuote('90.BK0877');
+
+      expect(result).not.toBeNull();
+      expect(result!.code).toBe('BK0877');
+      expect(result!.name).toBe('PCB');
+      expect(result!.changePercent).toBe(0.73);
+      expect(result!.indexValue).toBe(3668.36);
+      expect(result!.fetchDate).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+
+      global.fetch = originalFetch;
+    });
+
+    it('should return null when API returns no data', async () => {
+      const originalFetch = global.fetch;
+      global.fetch = jest.fn().mockResolvedValue({
+        ok: true,
+        json: () => Promise.resolve({
+          data: null
+        })
+      });
+
+      const result = await fetchSectorQuote('90.BK9999');
+      expect(result).toBeNull();
+
+      global.fetch = originalFetch;
+    });
+
+    it('should return null when fetch fails', async () => {
+      const originalFetch = global.fetch;
+      global.fetch = jest.fn().mockResolvedValue({
+        ok: false
+      });
+
+      const result = await fetchSectorQuote('90.BK0877');
+      expect(result).toBeNull();
+
+      global.fetch = originalFetch;
     });
   });
 

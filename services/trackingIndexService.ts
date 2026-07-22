@@ -4,6 +4,7 @@
  * 跟踪指数服务
  * - 解析跟踪指数配置
  * - 获取指数实时行情
+ * - 获取板块实时行情
  * - 计算基金估值
  */
 
@@ -13,14 +14,33 @@ import * as marketFundService from './marketFundService';
 
 const UT = 'fa1a66105171779fbdd067425f38a7c2';
 
+// 市场代码常量
+export const MARKET_CODE = {
+  SZSE_INDEX: 0,      // 深交所指数（国证指数）
+  SSE_ETF: 1,         // 上交所ETF
+  CSI_INDEX: 2,       // 中证指数
+  SECTOR: 90,         // 板块（行业/概念）
+} as const;
+
 interface CardStatusInfo {
   status: CardStatus;
   message?: string;
 }
 
 /**
- * 解析跟踪指数配置
- * @param config 格式如 "2.H50036"
+ * 板块行情数据
+ */
+export interface SectorQuote {
+  code: string;           // 板块代码（如 BK0877）
+  name?: string;          // 板块名称
+  changePercent: number;  // 涨跌幅（%）
+  indexValue?: number;    // 板块指数点位
+  fetchDate: string;      // 获取日期
+}
+
+/**
+ * 解析跟踪指数/板块配置
+ * @param config 格式如 "2.H50036"（指数）或 "90.BK0877"（板块）
  * @returns { market: number; code: string } 或 null（格式无效）
  */
 export function parseTrackingIndex(config: string): { market: number; code: string } | null {
@@ -32,15 +52,23 @@ export function parseTrackingIndex(config: string): { market: number; code: stri
   const market = parseInt(match[1], 10);
   const code = match[2];
 
-  // market 有效范围检查（0, 1, 2 是常见的市场代码）
-  if (market < 0 || market > 9) return null;
+  // market 有效范围检查（0-2, 90 是有效的市场代码）
+  if (market !== 90 && (market < 0 || market > 9)) return null;
   if (!code) return null;
 
   return { market, code };
 }
 
 /**
- * 获取跟踪指数的实时涨跌幅（内部函数，接收已解析的参数）
+ * 判断是否为板块配置
+ */
+export function isSectorConfig(config: string): boolean {
+  const parsed = parseTrackingIndex(config);
+  return parsed?.market === MARKET_CODE.SECTOR;
+}
+
+/**
+ * 获取跟踪指数/板块的实时涨跌幅（内部函数，接收已解析的参数）
  */
 async function fetchTrackingIndexChangePercentInternal(
   parsed: { market: number; code: string }
@@ -92,6 +120,59 @@ export async function fetchTrackingIndexChangePercent(
   const parsed = parseTrackingIndex(config);
   if (!parsed) return null;
   return fetchTrackingIndexChangePercentInternal(parsed);
+}
+
+/**
+ * 获取板块实时行情
+ * @param config 板块配置，格式如 "90.BK0877"
+ * @returns 板块行情数据，或 null（获取失败）
+ */
+export async function fetchSectorQuote(config: string): Promise<SectorQuote | null> {
+  const parsed = parseTrackingIndex(config);
+  if (!parsed || parsed.market !== MARKET_CODE.SECTOR) {
+    return null;
+  }
+
+  const { market, code } = parsed;
+  const url = `https://push2delay.eastmoney.com/api/qt/stock/get?ut=${UT}&fltt=2&invt=2&secid=${market}.${code}&fields=f12,f14,f2,f3,f43,f170`;
+
+  try {
+    const response = await fetch(url, {
+      headers: { 'User-Agent': 'Mozilla/5.0' }
+    });
+
+    if (!response.ok) {
+      return null;
+    }
+
+    const json = await response.json();
+
+    if (!json.data) {
+      return null;
+    }
+
+    // f12: 代码, f14: 名称, f43: 最新价, f170: 估算涨跌幅, f3: 实际涨跌幅
+    const name = json.data.f14 ?? undefined;
+    const indexValue = json.data.f43 ?? undefined;
+    const changePercent = json.data.f170 ?? json.data.f3 ?? null;
+
+    if (changePercent === null || changePercent === '-' || changePercent === '') {
+      return null;
+    }
+
+    const fetchDate = formatDateISO(new Date());
+
+    return {
+      code,
+      name,
+      changePercent: parseFloat(changePercent),
+      indexValue,
+      fetchDate
+    };
+  } catch (error) {
+    console.error('[fetchSectorQuote] 获取失败:', error);
+    return null;
+  }
 }
 
 /**
