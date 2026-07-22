@@ -1,4 +1,4 @@
-import { parseTrackingIndex, fetchTrackingIndexChangePercent, fetchValuationByTrackingIndex, fetchSectorQuote, isSectorConfig, MARKET_CODE } from '../../services/trackingIndexService';
+import { parseTrackingIndex, fetchTrackingIndexChangePercent, fetchValuationByTrackingIndex, fetchSectorQuote, isSectorConfig, isGlobalIndexConfig, isHKIndexConfig, IndexMarket, SECTOR_MARKET_CODE } from '../../services/trackingIndexService';
 import * as marketFundService from '../../services/marketFundService';
 
 jest.mock('../../services/marketFundService', () => ({
@@ -18,6 +18,18 @@ describe('trackingIndexService', () => {
       expect(parseTrackingIndex('90.BK0477')).toEqual({ market: 90, code: 'BK0477' });
     });
 
+    it('should parse global index format (market=100)', () => {
+      expect(parseTrackingIndex('100.NDX100')).toEqual({ market: 100, code: 'NDX100' });
+      expect(parseTrackingIndex('100.DJIA')).toEqual({ market: 100, code: 'DJIA' });
+      expect(parseTrackingIndex('100.SPX')).toEqual({ market: 100, code: 'SPX' });
+      expect(parseTrackingIndex('100.HSI')).toEqual({ market: 100, code: 'HSI' });
+    });
+
+    it('should parse HK index format (market=124)', () => {
+      expect(parseTrackingIndex('124.hstech')).toEqual({ market: 124, code: 'hstech' });
+      expect(parseTrackingIndex('124.HSTECH')).toEqual({ market: 124, code: 'HSTECH' });
+    });
+
     it('should return null for invalid format', () => {
       expect(parseTrackingIndex('')).toBeNull();
       expect(parseTrackingIndex('H50036')).toBeNull();
@@ -29,7 +41,7 @@ describe('trackingIndexService', () => {
     });
 
     it('should return null for edge cases', () => {
-      expect(parseTrackingIndex('10.H50036')).toBeNull();  // market 超出范围（>9 且 != 90）
+      expect(parseTrackingIndex('11.H50036')).toBeNull();  // market 超出范围
       expect(parseTrackingIndex('2.')).toBeNull();          // code 为空
     });
   });
@@ -42,17 +54,55 @@ describe('trackingIndexService', () => {
 
     it('should return false for non-sector config', () => {
       expect(isSectorConfig('2.H50036')).toBe(false);
-      expect(isSectorConfig('0.980017')).toBe(false);
+      expect(isSectorConfig('100.NDX100')).toBe(false);
+      expect(isSectorConfig('124.hstech')).toBe(false);
       expect(isSectorConfig('invalid')).toBe(false);
     });
   });
 
-  describe('MARKET_CODE', () => {
+  describe('isGlobalIndexConfig', () => {
+    it('should return true for global index config', () => {
+      expect(isGlobalIndexConfig('100.NDX100')).toBe(true);
+      expect(isGlobalIndexConfig('100.DJIA')).toBe(true);
+      expect(isGlobalIndexConfig('100.SPX')).toBe(true);
+    });
+
+    it('should return false for non-global index config', () => {
+      expect(isGlobalIndexConfig('2.H50036')).toBe(false);  // 国内指数
+      expect(isGlobalIndexConfig('90.BK0877')).toBe(false); // 板块
+      expect(isGlobalIndexConfig('100.HSI')).toBe(false);   // 恒生指数是国内指数
+      expect(isGlobalIndexConfig('124.hstech')).toBe(false); // 恒生科技是国内指数
+      expect(isGlobalIndexConfig('invalid')).toBe(false);
+    });
+  });
+
+  describe('isHKIndexConfig', () => {
+    it('should return true for HK index config', () => {
+      expect(isHKIndexConfig('124.hstech')).toBe(true);
+      expect(isHKIndexConfig('124.HSTECH')).toBe(true);
+      expect(isHKIndexConfig('100.HSI')).toBe(true);  // 恒生指数
+    });
+
+    it('should return false for non-HK index config', () => {
+      expect(isHKIndexConfig('2.H50036')).toBe(false);
+      expect(isHKIndexConfig('100.NDX100')).toBe(false);
+      expect(isHKIndexConfig('90.BK0877')).toBe(false);
+      expect(isHKIndexConfig('invalid')).toBe(false);
+    });
+  });
+
+  describe('IndexMarket', () => {
     it('should have correct values', () => {
-      expect(MARKET_CODE.SZSE_INDEX).toBe(0);
-      expect(MARKET_CODE.SSE_ETF).toBe(1);
-      expect(MARKET_CODE.CSI_INDEX).toBe(2);
-      expect(MARKET_CODE.SECTOR).toBe(90);
+      expect(IndexMarket.SZSE).toBe(0);
+      expect(IndexMarket.SHSE).toBe(1);
+      expect(IndexMarket.GLOBAL_INDEX).toBe(100);
+      expect(IndexMarket.HKEX_TECH).toBe(124);
+    });
+  });
+
+  describe('SECTOR_MARKET_CODE', () => {
+    it('should be 90', () => {
+      expect(SECTOR_MARKET_CODE).toBe(90);
     });
   });
 

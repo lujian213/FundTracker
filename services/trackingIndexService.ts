@@ -11,16 +11,12 @@
 import { ValuationData, CardStatus } from '../types';
 import { formatDateISO, formatTime } from '../utils/dateFormat';
 import * as marketFundService from './marketFundService';
+import { IndexMarket, parseIndexCode, isDomesticIndex, isGlobalIndex } from '../src/utils/indexUrlHelper';
 
 const UT = 'fa1a66105171779fbdd067425f38a7c2';
 
-// 市场代码常量
-export const MARKET_CODE = {
-  SZSE_INDEX: 0,      // 深交所指数（国证指数）
-  SSE_ETF: 1,         // 上交所ETF
-  CSI_INDEX: 2,       // 中证指数
-  SECTOR: 90,         // 板块（行业/概念）
-} as const;
+// 板块市场代码（东方财富特有，不在 IndexMarket 中）
+export const SECTOR_MARKET_CODE = 90;
 
 interface CardStatusInfo {
   status: CardStatus;
@@ -40,7 +36,7 @@ export interface SectorQuote {
 
 /**
  * 解析跟踪指数/板块配置
- * @param config 格式如 "2.H50036"（指数）或 "90.BK0877"（板块）
+ * @param config 格式如 "2.H50036"（指数）、"90.BK0877"（板块）、"100.NDX100"（全球指数）或 "124.HSTECH"（港股指数）
  * @returns { market: number; code: string } 或 null（格式无效）
  */
 export function parseTrackingIndex(config: string): { market: number; code: string } | null {
@@ -52,8 +48,23 @@ export function parseTrackingIndex(config: string): { market: number; code: stri
   const market = parseInt(match[1], 10);
   const code = match[2];
 
-  // market 有效范围检查（0-2, 90 是有效的市场代码）
-  if (market !== 90 && (market < 0 || market > 9)) return null;
+  // 使用 indexUrlHelper 中定义的市场代码范围
+  // 额外支持板块市场代码 90
+  const validMarketCodes = [
+    IndexMarket.SHSE,           // 0
+    IndexMarket.SZSE,           // 1
+    IndexMarket.GLOBAL_INDEX,   // 100
+    IndexMarket.HKEX_TECH,      // 124
+    IndexMarket.GLOBAL_FUTURE_COMMEX, // 101
+    IndexMarket.GLOBAL_FUTURE_NYMEX,  // 102
+    SECTOR_MARKET_CODE,         // 90 (板块)
+  ];
+
+  // 也支持 2-9 的中证指数等其他市场代码
+  if (!validMarketCodes.includes(market) && (market < 2 || market > 9)) {
+    return null;
+  }
+
   if (!code) return null;
 
   return { market, code };
@@ -64,7 +75,45 @@ export function parseTrackingIndex(config: string): { market: number; code: stri
  */
 export function isSectorConfig(config: string): boolean {
   const parsed = parseTrackingIndex(config);
-  return parsed?.market === MARKET_CODE.SECTOR;
+  return parsed?.market === SECTOR_MARKET_CODE;
+}
+
+/**
+ * 判断是否为全球指数配置
+ *
+ * 注意：这里使用更严格的定义，只有市场代码 100, 101, 102 才是全球指数。
+ * 港股指数（100.HSI, 124.*）虽然市场代码是 100/124，但在 indexUrlHelper 中被归类为国内指数。
+ */
+export function isGlobalIndexConfig(config: string): boolean {
+  const parsed = parseTrackingIndex(config);
+  if (!parsed) return false;
+
+  // 板块不是全球指数
+  if (parsed.market === SECTOR_MARKET_CODE) return false;
+
+  // 恒生指数（100.HSI）是国内指数
+  if (parsed.market === IndexMarket.GLOBAL_INDEX && parsed.code === 'HSI') return false;
+
+  // 恒生科技指数（124）是国内指数
+  if (parsed.market === IndexMarket.HKEX_TECH) return false;
+
+  // 市场代码 100, 101, 102 是全球指数（排除港股恒生指数）
+  if ([IndexMarket.GLOBAL_INDEX, IndexMarket.GLOBAL_FUTURE_COMMEX, IndexMarket.GLOBAL_FUTURE_NYMEX].includes(parsed.market)) {
+    return true;
+  }
+
+  return false;
+}
+
+/**
+ * 判断是否为港股指数配置
+ */
+export function isHKIndexConfig(config: string): boolean {
+  const parsed = parseTrackingIndex(config);
+  // 恒生科技指数 (124) 或恒生指数 (100.HSI)
+  if (parsed?.market === IndexMarket.HKEX_TECH) return true;
+  if (parsed?.market === IndexMarket.GLOBAL_INDEX && parsed.code === 'HSI') return true;
+  return false;
 }
 
 /**
@@ -129,7 +178,7 @@ export async function fetchTrackingIndexChangePercent(
  */
 export async function fetchSectorQuote(config: string): Promise<SectorQuote | null> {
   const parsed = parseTrackingIndex(config);
-  if (!parsed || parsed.market !== MARKET_CODE.SECTOR) {
+  if (!parsed || parsed.market !== SECTOR_MARKET_CODE) {
     return null;
   }
 
@@ -256,3 +305,6 @@ export async function fetchValuationByTrackingIndex(
     statusInfo: { status: 'ok', message: '正常' }
   };
 }
+
+// 重新导出 IndexMarket 枚举，方便使用
+export { IndexMarket };
