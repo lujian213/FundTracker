@@ -3033,10 +3033,113 @@ test.describe('testBedWithData', () => {
     }
 
     // ══════════════════════════════════════════════════════════════════════════════
-    // 21. 关闭窗口
+    // 21. 数据失准告警测试
     // ══════════════════════════════════════════════════════════════════════════════
+    // 获取第一行的基金代码
+    const rowSymbol = await page.evaluate(() => {
+      const row = document.querySelector('table tbody tr');
+      if (!row) return null;
+      // 代码在第二列（索引1），在 p.font-mono 元素中
+      const codeEl = row.querySelector('td:nth-child(3) p.font-mono');
+      return codeEl?.textContent?.trim() || null;
+    });
+
+    // 右键点击第一行
+    const anyRow = page.locator('table tbody tr').first();
+    await anyRow.click({ button: 'right' });
+
+    // 等待上下文菜单出现
+    const contextMenu = page.locator('.fixed.bg-white.rounded-lg.shadow-lg');
+    await expect(contextMenu).toBeVisible({ timeout: 2000 });
+
+    // 验证菜单项为"数据失准告警"
+    const alertMenuItem = contextMenu.locator('button:has-text("数据失准告警")');
+    await expect(alertMenuItem).toBeVisible();
+
+    // 点击"数据失准告警"
+    await alertMenuItem.click();
+
+    // 等待菜单关闭
+    await expect(contextMenu).not.toBeVisible({ timeout: 2000 });
+
+    // 验证该行背景色变为橙黄色
+    await expect(anyRow).toHaveClass(/bg-orange-50/);
+
+    // 再次右键点击该行
+    await anyRow.click({ button: 'right' });
+    await expect(contextMenu).toBeVisible({ timeout: 2000 });
+
+    // 验证菜单项变为"解除数据失准告警"
+    const removeAlertMenuItem = contextMenu.locator('button:has-text("解除数据失准告警")');
+    await expect(removeAlertMenuItem).toBeVisible();
+
+    // 点击"解除数据失准告警"
+    await removeAlertMenuItem.click();
+    await expect(contextMenu).not.toBeVisible({ timeout: 2000 });
+
+    // 验证该行背景色恢复
+    await expect(anyRow).not.toHaveClass(/bg-orange-50/);
+
+    // 再次设置告警状态
+    await anyRow.click({ button: 'right' });
+    await expect(contextMenu).toBeVisible({ timeout: 2000 });
+    await alertMenuItem.click();
+    await expect(contextMenu).not.toBeVisible({ timeout: 2000 });
+
+    // 等待状态更新和保存
+    await page.waitForTimeout(600);
+
+    // 验证主界面基金卡片上显示小问号图标
     await page.click('button[aria-label="关闭投资计划窗口"]');
     await expect(draftModal).not.toBeVisible();
+
+    // 等待事件同步
+    await page.waitForTimeout(200);
+
+    // 验证基金卡片上有小问号图标
+    if (rowSymbol) {
+      const fundCard = page.locator(`div.bg-white.rounded-2xl`).filter({ has: page.locator(`span.font-mono:has-text("${rowSymbol}")`) });
+      const questionIcon = fundCard.locator('i.fa-question-circle.text-orange-500');
+      await expect(questionIcon).toBeVisible({ timeout: 5000 });
+
+      // 验证鼠标悬停显示tooltip
+      await questionIcon.hover();
+      const tooltip = page.locator('text=数据失准告警');
+      await expect(tooltip).toBeVisible({ timeout: 2000 });
+
+      // 再次打开草稿窗口，解除告警
+      await page.click('button:has-text("草稿")');
+      await expect(draftModal).toBeVisible({ timeout: 5000 });
+
+      // 右键点击之前的行
+      await anyRow.click({ button: 'right' });
+      await expect(contextMenu).toBeVisible({ timeout: 2000 });
+
+      // 点击"解除数据失准告警"
+      const removeAlertItem = contextMenu.locator('button:has-text("解除数据失准告警")');
+      await removeAlertItem.click();
+      await expect(contextMenu).not.toBeVisible({ timeout: 2000 });
+
+      // 等待状态更新
+      await page.waitForTimeout(600);
+
+      // 关闭草稿窗口
+      await page.click('button[aria-label="关闭投资计划窗口"]');
+      await expect(draftModal).not.toBeVisible();
+
+      // 等待事件同步
+      await page.waitForTimeout(200);
+
+      // 验证主界面小问号图标消失
+      await expect(questionIcon).not.toBeVisible({ timeout: 2000 });
+
+      console.log('数据失准告警测试完成');
+    }
+
+    // ══════════════════════════════════════════════════════════════════════════════
+    // 22. 关闭窗口
+    // ══════════════════════════════════════════════════════════════════════════════
+    // 窗口已在前面的测试中关闭
 
     console.log('草稿窗口测试完成');
   });

@@ -5,6 +5,7 @@ import { computeRatingFromHistory } from '../utils/ratingHelper';
 import { getPreviousDayChange } from '../utils/historyHelper';
 import RatingTooltip from './RatingTooltip';
 import ManageSelectButton from './ManageSelectButton';
+import SimpleTooltip from './SimpleTooltip';
 import { getIntraday } from '../services/marketFundService';
 import { buildSparklinePath } from '../utils/sparklineUtils';
 
@@ -20,6 +21,8 @@ interface TickerCardProps {
   historyUpdateTrigger?: number;
   // optional injection for easier testing
   fetchHistory?: (symbol: string) => Promise<{ date: number; value: number; equityReturn: number }[]>;
+  // 数据失准告警是否启用
+  dataAlertEnabled?: boolean;
 }
 
 export const TickerCard: React.FC<TickerCardProps> = ({
@@ -31,7 +34,8 @@ export const TickerCard: React.FC<TickerCardProps> = ({
   isSelected = false,
   onSelect,
   historyUpdateTrigger,
-  fetchHistory
+  fetchHistory,
+  dataAlertEnabled = false,
 }) => {
   const [history, setHistory] = useState<{ date: number; value: number; equityReturn: number }[]>([]);
   const [ratingTooltipOpen, setRatingTooltipOpen] = useState(false);
@@ -241,7 +245,15 @@ export const TickerCard: React.FC<TickerCardProps> = ({
         <div className="text-right">
           <div className="flex flex-col items-end">
             <div className="flex items-end gap-1.5">
-              <div className={`inline-flex items-center px-3 py-1 rounded-xl text-sm transition-all duration-300 ${getChangeStyles()}`}>
+              <div className={`inline-flex items-center px-3 py-1 rounded-xl text-sm transition-all duration-300 ${getChangeStyles()}`} style={{ position: 'relative' }}>
+                {/* 小问号 - 数据失准告警 */}
+                {dataAlertEnabled && (
+                  <div className="absolute -top-2 -right-1 w-4 h-4 flex items-center justify-center">
+                    <SimpleTooltip content="数据失准告警">
+                      <i className="fas fa-question-circle text-orange-500 text-xs"></i>
+                    </SimpleTooltip>
+                  </div>
+                )}
                 {hasData && !isNoValuation && change !== 0 && !isNaN(change) && (
                   <i className={`fas fa-caret-${isUp ? 'up' : 'down'} mr-1.5`} />
                 )}

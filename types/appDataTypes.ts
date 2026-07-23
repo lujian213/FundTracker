@@ -30,6 +30,8 @@ export interface DraftEntry {
   // AI 建议相关字段（可选）
   aiReason?: string;
   aiScore?: number;
+  // 数据失准告警状态（可选，默认 false）
+  dataAlertEnabled?: boolean;
 }
 
 export interface ComboTrades {

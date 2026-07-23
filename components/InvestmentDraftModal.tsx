@@ -10,6 +10,7 @@ import { DraftEntry, AIAdviceWithScore, AIAdviceIterationResult, generateAIAdvic
 import { getActiveAIConfig, hasUsableAIConfig } from '../services/aiConfigService';
 import { ConfirmDialog } from './ConfirmDialog';
 import SimpleTooltip from './SimpleTooltip';
+import ContextMenu from './ContextMenu';
 import { formatMoneyWithSeparators } from '../utils/format';
 import { getDraftModalHeight, saveDraftModalHeight } from '../services/userPreferenceService';
 import { loadInvestmentDraft, saveInvestmentDraft, saveAllDraftsToStorage, cleanOldDrafts } from '../services/appDataService';
@@ -56,6 +57,17 @@ const InvestmentDraftModal: React.FC<InvestmentDraftModalProps> = ({
   const [aiAdviceLoading, setAIAdviceLoading] = useState(false);
   const [showResultDialog, setShowResultDialog] = useState(false);
   const [resultSummary, setResultSummary] = useState('');
+
+  // 右键菜单状态
+  const [contextMenu, setContextMenu] = useState<{
+    isOpen: boolean;
+    position: { x: number; y: number };
+    fundSymbol: string | null;
+  }>({
+    isOpen: false,
+    position: { x: 0, y: 0 },
+    fundSymbol: null
+  });
 
   const [modalHeight, setModalHeight] = useState<number | null>(() => getDraftModalHeight());
   const [showAIAnalysis, setShowAIAnalysis] = useState(false);
@@ -180,7 +192,6 @@ const InvestmentDraftModal: React.FC<InvestmentDraftModalProps> = ({
           note: ''
         };
 
-        // 如果存在 AI 建议信息，恢复到 aiAdvice 状态
         if (existing?.aiReason !== undefined && existing?.aiScore !== undefined) {
           restoredAIAdvice[fund.symbol] = {
             fundCode: fund.symbol,
@@ -460,6 +471,41 @@ const InvestmentDraftModal: React.FC<InvestmentDraftModalProps> = ({
       delete newAdvice[fundSymbol];
       return newAdvice;
     });
+  };
+
+  // 右键点击处理
+  const handleContextMenu = (e: React.MouseEvent, fundSymbol: string) => {
+    e.preventDefault();
+    setContextMenu({
+      isOpen: true,
+      position: { x: e.clientX, y: e.clientY },
+      fundSymbol
+    });
+  };
+
+  // 关闭菜单
+  const closeContextMenu = () => {
+    setContextMenu({ isOpen: false, position: { x: 0, y: 0 }, fundSymbol: null });
+  };
+
+  // 切换告警状态
+  const toggleDataAlert = (fundSymbol: string) => {
+    const newAlertState = !draftData[fundSymbol]?.dataAlertEnabled;
+
+    setDraftData(prev => ({
+      ...prev,
+      [fundSymbol]: {
+        ...prev[fundSymbol],
+        dataAlertEnabled: newAlertState
+      }
+    }));
+
+    // 触发自定义事件，通知主界面更新
+    window.dispatchEvent(new CustomEvent('draftDataAlertChange', {
+      detail: { fundSymbol, dataAlertEnabled: newAlertState }
+    }));
+
+    closeContextMenu();
   };
 
   // 切换单个基金的选中状态
@@ -1037,10 +1083,24 @@ const InvestmentDraftModal: React.FC<InvestmentDraftModalProps> = ({
                 <tbody>
                   {fundsWithPositions.length > 0 ? (
                     fundsWithPositions.map((fund, index) => {
-                      const entry = draftData[fund.symbol] || { operation: '不操作', amount: '' };
+                      const entry = draftData[fund.symbol] || {
+                        fundSymbol: fund.symbol,
+                        operation: '不操作',
+                        amount: '',
+                        note: ''
+                      };
 
                       return (
-                        <tr key={fund.symbol} className={`border-b border-gray-50 hover:bg-gray-50 transition-colors ${index % 2 === 0 ? 'bg-white' : 'bg-gray-25'}`} style={{ height: '40px' }}>
+                        <tr
+                          key={fund.symbol}
+                          className={`border-b border-gray-50 transition-colors ${
+                            entry.dataAlertEnabled
+                              ? 'bg-orange-50'
+                              : `hover:bg-gray-50 ${index % 2 === 0 ? 'bg-white' : 'bg-gray-25'}`
+                          }`}
+                          style={{ height: '40px' }}
+                          onContextMenu={(e) => handleContextMenu(e, fund.symbol)}
+                        >
                           {/* 复选框列 - 只有有金额的行才能选中 */}
                           <td className="px-1 py-1 text-center">
                             {entry.operation !== '不操作' && entry.amount ? (
@@ -1313,6 +1373,24 @@ const InvestmentDraftModal: React.FC<InvestmentDraftModalProps> = ({
           singleButton
           type="success"
         />,
+        document.body
+      )}
+      {createPortal(
+        contextMenu.isOpen && (
+          <ContextMenu
+            isOpen={contextMenu.isOpen}
+            position={contextMenu.position}
+            onClose={closeContextMenu}
+            items={[
+              {
+                label: draftData[contextMenu.fundSymbol!]?.dataAlertEnabled
+                  ? '解除数据失准告警'
+                  : '数据失准告警',
+                onClick: () => toggleDataAlert(contextMenu.fundSymbol!),
+              },
+            ]}
+          />
+        ),
         document.body
       )}
     </>

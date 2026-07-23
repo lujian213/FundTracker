@@ -6,6 +6,7 @@ import { FastNewsItem } from './types/fastNewsTypes';
 import { fetchFundData, fetchFundDatas, forceFetchFundHistories, fetchMarketIndices, fetchIndexHistories, maybeTriggerHistoryRefresh, normalizeIndexSymbol } from './services/fundService';
 import { fetchValuationByTrackingIndex } from './services/trackingIndexService';
 import { toLocalDateKey } from './utils/priceResolver';
+import { loadInvestmentDraft } from './services/appDataService';
 import { calculateTotalTasks, createProgressCallback, incrementTaskCount } from './utils/taskCounter';
 import * as marketFundService from './services/marketFundService';
 import * as indexService from './services/indexService';
@@ -324,6 +325,9 @@ const AppContent: React.FC = () => {
   const [isNewsSidebarVisible, setIsNewsSidebarVisible] = useState<boolean>(false);
   const [showSectorHeatmap, setShowSectorHeatmap] = useState<boolean>(false);
 
+  // 告警状态管理
+  const [alertStates, setAlertStates] = useState<Record<string, boolean>>({});
+
   const manageableItemCount = portfolio.length + indicesConfig.length;
 
   const clearSelectionMode = useCallback(() => {
@@ -465,6 +469,19 @@ const AppContent: React.FC = () => {
     verifyStorageMigration(true);
   }, []);
 
+  // 初始化告警状态
+  useEffect(() => {
+    const today = toLocalDateKey(new Date());
+    const drafts = loadInvestmentDraft(today);
+    const alerts: Record<string, boolean> = {};
+    Object.entries(drafts).forEach(([symbol, entry]) => {
+      if (entry.dataAlertEnabled) {
+        alerts[symbol] = true;
+      }
+    });
+    setAlertStates(alerts);
+  }, []);
+
   // 初始化模板服务
   useEffect(() => {
     loadAllTemplates();
@@ -483,6 +500,21 @@ const AppContent: React.FC = () => {
     return () => {
       window.removeEventListener('backup-import', handleBackupImport);
     };
+  }, []);
+
+  // 监听草稿窗口的告警状态变化事件
+  useEffect(() => {
+    const handleAlertChange = (e: Event) => {
+      const customEvent = e as CustomEvent;
+      const { fundSymbol, dataAlertEnabled } = customEvent.detail;
+      setAlertStates(prev => ({
+        ...prev,
+        [fundSymbol]: dataAlertEnabled
+      }));
+    };
+
+    window.addEventListener('draftDataAlertChange', handleAlertChange as EventListener);
+    return () => window.removeEventListener('draftDataAlertChange', handleAlertChange as EventListener);
   }, []);
 
   // portfolio 由 marketFundService 管理，不需要单独同步到 localStorage
@@ -1334,6 +1366,7 @@ const AppContent: React.FC = () => {
                   key={ticker.id}
                   ticker={ticker}
                   data={marketData[ticker.symbol]}
+                  dataAlertEnabled={alertStates[ticker.symbol] || false}
                   status={fundStatuses[ticker.symbol] ?? 'unknown'}
                   onClick={() => marketData[ticker.symbol] && setViewingFund({ symbol: ticker.symbol, fromDraft: false })}
                   isSelectionMode={isSelectionMode}
