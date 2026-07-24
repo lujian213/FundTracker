@@ -7,6 +7,7 @@ __tests__/
 .claude/
 debug/
 docs/
+scripts/
 # scripts/ 目录保留，prepare-tesseract.cjs 需要提交
 .superpowers/
 # Playwright test outputs

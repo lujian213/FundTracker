@@ -965,10 +965,27 @@ export function computeTradingDateAndTime(
 
   // 非交易日或不在交易时段内
   const lastPeriod = periods[periods.length - 1];
+  const firstPeriod = periods[0];
 
-  // 如果是交易日但不在时段内（如午休时段），返回最近的收盘时间
+  // 如果是交易日但不在时段内
   if (isTradingDay && !inTradingHours) {
-    // 找距离当前时间最近的收盘时间
+    const isFirstPeriodCrossDay = firstPeriod.beginHHMM > firstPeriod.endHHMM;
+
+    // 统一处理：开盘前或跨日收盘后场景
+    // 都返回最后一个交易时段的收盘时间
+    const isPreOpen = nowTimeNum < firstPeriod.beginHHMM;
+    const isAfterCrossDayClose = isFirstPeriodCrossDay &&
+      currentDate === lastPeriod.endDate &&
+      nowTimeNum > lastPeriod.endHHMM;
+
+    if (isPreOpen || isAfterCrossDayClose) {
+      return {
+        tradeDate: lastPeriod.endDate,
+        lastUpdated: formatHHMM(lastPeriod.endHHMM),
+      };
+    }
+
+    // 收盘后或午休时段：找距离当前时间最近的收盘时间
     const allEndTimes = periods.map(p => p.endHHMM);
     const nearestClose = allEndTimes.reduce((nearest, t) => {
       const diff = Math.abs(t - nowTimeNum);

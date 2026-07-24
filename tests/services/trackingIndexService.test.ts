@@ -5,6 +5,41 @@ jest.mock('../../services/marketFundService', () => ({
   getHistory: jest.fn(),
 }));
 
+// Mock fundService 的交易时段解析函数
+jest.mock('../../services/fundService', () => ({
+  parseF80TradingPeriods: (f80: string) => {
+    if (!f80) return [];
+    const beginMatches = [...f80.matchAll(/"b":(\d{12})/g)] as RegExpMatchArray[];
+    const endMatches = [...f80.matchAll(/"e":(\d{12})/g)] as RegExpMatchArray[];
+    const periods: { beginDate: string; endDate: string; beginHHMM: number; endHHMM: number }[] = [];
+    for (let i = 0; i < beginMatches.length && i < endMatches.length; i++) {
+      const beginNum = beginMatches[i][1];
+      const endNum = endMatches[i][1];
+      periods.push({
+        beginDate: `${beginNum.substring(0, 4)}-${beginNum.substring(4, 6)}-${beginNum.substring(6, 8)}`,
+        endDate: `${endNum.substring(0, 4)}-${endNum.substring(4, 6)}-${endNum.substring(6, 8)}`,
+        beginHHMM: parseInt(beginNum.substring(8, 12)),
+        endHHMM: parseInt(endNum.substring(8, 12)),
+      });
+    }
+    return periods;
+  },
+  computeTradingDateAndTime: (periods: { beginDate: string; endDate: string; beginHHMM: number; endHHMM: number }[]) => {
+    if (!periods || periods.length === 0) {
+      const now = new Date();
+      return {
+        tradeDate: `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`,
+        lastUpdated: `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}:00`,
+      };
+    }
+    const lastPeriod = periods[periods.length - 1];
+    return {
+      tradeDate: lastPeriod.endDate,
+      lastUpdated: `${String(Math.floor(lastPeriod.endHHMM / 100)).padStart(2, '0')}:${String(lastPeriod.endHHMM % 100).padStart(2, '0')}:00`,
+    };
+  },
+}));
+
 describe('trackingIndexService', () => {
   describe('parseTrackingIndex', () => {
     it('should parse valid format', () => {
@@ -192,41 +227,62 @@ describe('trackingIndexService', () => {
       expect(result.statusInfo.message).toBe('缺少历史净值数据，无法计算估值');
     });
 
-    it('should return warning when latest net worth is zero or negative', async () => {
+    it('should return warning when net worth is zero or negative', async () => {
       // Mock history with zero value
       (marketFundService.getHistory as jest.Mock).mockReturnValue([
-        { date: 1784563200000, value: 0, equityReturn: 0 }
+        { date: new Date('2026-07-21').getTime(), value: 0, equityReturn: 0 }
       ]);
 
-      const result = await fetchValuationByTrackingIndex('2.931743', '000001', '测试基金');
-      expect(result.valuation).toBeNull();
-      expect(result.statusInfo.status).toBe('warning');
-      expect(result.statusInfo.message).toBe('净值数据无效，无法计算估值');
-    });
-
-    it('should calculate valuation correctly', async () => {
-      // Mock history
-      (marketFundService.getHistory as jest.Mock).mockReturnValue([
-        { date: 1784476800000, value: 1.9, equityReturn: 0 },
-        { date: 1784563200000, value: 2.0, equityReturn: 5.26 }
-      ]);
-
-      // Mock fetch for successful response
+      // Mock API return
       const originalFetch = global.fetch;
       global.fetch = jest.fn().mockResolvedValue({
         ok: true,
         json: () => Promise.resolve({
-          data: { f170: 5.5, f3: 5.5 }
+          data: {
+            f170: 1.5,
+            f80: '[{"b":202607220930,"e":202607221130}]'
+          }
         })
       });
 
-      const result = await fetchValuationByTrackingIndex('2.931743', '020640', '测试基金');
+      const result = await fetchValuationByTrackingIndex('2.H50036', '000001', '测试基金');
+      expect(result.valuation).toBeNull();
+      expect(result.statusInfo.status).toBe('warning');
+      expect(result.statusInfo.message).toBe('净值数据无效，无法计算估值');
 
+      global.fetch = originalFetch;
+    });
+
+    it('should calculate valuation correctly', async () => {
+      // Mock history - 2026-07-21 和 2026-07-22 的净值
+      (marketFundService.getHistory as jest.Mock).mockReturnValue([
+        { date: new Date('2026-07-21').getTime(), value: 1.9, equityReturn: 0 },
+        { date: new Date('2026-07-22').getTime(), value: 2.0, equityReturn: 5.26 }
+      ]);
+
+      // Mock fetch - API f80 收盘日期为 2026-07-23
+      const originalFetch = global.fetch;
+      global.fetch = jest.fn().mockResolvedValue({
+        ok: true,
+        json: () => Promise.resolve({
+          data: {
+            f170: 5.5,
+            f80: '[{"b":202607230930,"e":202607231130},{"b":202607231300,"e":202607231500}]'
+          }
+        })
+      });
+
+      const result = await fetchValuationByTrackingIndex('2.H50036', '020640', '测试基金');
+
+      // API 收盘日期 = 2026-07-23
+      // 查找第一个 date < 2026-07-23 的记录 → 2026-07-22 的净值 2.0
       expect(result.valuation).not.toBeNull();
       expect(result.valuation!.currentPrice).toBeCloseTo(2.0 * 1.055, 4);
       expect(result.valuation!.changePercentage).toBe(5.5);
       expect(result.valuation!.symbol).toBe('020640');
-      expect(result.valuation!.previousPrice).toBe(2.0); // 来自历史数据最新一条
+      expect(result.valuation!.previousPrice).toBe(2.0);  // 来自 2026-07-22
+      expect(result.valuation!.realtimeDate).toBe('2026-07-23');  // API 收盘日期
+      expect(result.valuation!.netWorthDate).toBe('2026-07-22');  // 净值日期
       expect(result.statusInfo.status).toBe('ok');
 
       global.fetch = originalFetch;
@@ -250,6 +306,125 @@ describe('trackingIndexService', () => {
       expect(result.valuation).toBeNull();
       expect(result.statusInfo.status).toBe('warning');
       expect(result.statusInfo.message).toBe('跟踪指数代码不存在');
+
+      global.fetch = originalFetch;
+    });
+
+    it('should handle f170 equals 0 (zero change percent)', async () => {
+      // Mock history - 净值日期为 2026-07-21
+      (marketFundService.getHistory as jest.Mock).mockReturnValue([
+        { date: new Date('2026-07-21').getTime(), value: 2.0, equityReturn: 0 }
+      ]);
+
+      const originalFetch = global.fetch;
+      global.fetch = jest.fn().mockResolvedValue({
+        ok: true,
+        json: () => Promise.resolve({
+          data: {
+            f170: 0,  // 涨跌幅为 0% 是正常情况
+            f80: '[{"b":202607220930,"e":202607221130},{"b":202607221300,"e":202607221500}]'
+          }
+        })
+      });
+
+      const result = await fetchValuationByTrackingIndex('2.H50036', '000001', '测试基金');
+
+      // 涨跌幅为 0% 应该正常处理，不是返回 null
+      expect(result.valuation).not.toBeNull();
+      expect(result.valuation!.changePercentage).toBe(0);
+      expect(result.valuation!.currentPrice).toBe(2.0);  // 2.0 * (1 + 0/100) = 2.0
+
+      global.fetch = originalFetch;
+    });
+
+    it('should use history point before API trade date', async () => {
+      // API f80 收盘日期 = 2026-07-22
+      // 历史净值：2026-07-20, 2026-07-21
+      // 应查找第一个 date < 2026-07-22 的记录 → 2026-07-21
+      (marketFundService.getHistory as jest.Mock).mockReturnValue([
+        { date: new Date('2026-07-20').getTime(), value: 1.9, equityReturn: 0 },
+        { date: new Date('2026-07-21').getTime(), value: 2.0, equityReturn: 0 }
+      ]);
+
+      const originalFetch = global.fetch;
+      global.fetch = jest.fn().mockResolvedValue({
+        ok: true,
+        json: () => Promise.resolve({
+          data: {
+            f170: 1.5,
+            f80: '[{"b":202607220930,"e":202607221130},{"b":202607221300,"e":202607221500}]'
+          }
+        })
+      });
+
+      const result = await fetchValuationByTrackingIndex('2.H50036', '000001', '测试基金');
+
+      expect(result.valuation).not.toBeNull();
+      expect(result.valuation!.previousPrice).toBe(2.0);  // 来自 2026-07-21 的净值
+      expect(result.valuation!.realtimeDate).toBe('2026-07-22');  // API 收盘日期
+      expect(result.valuation!.netWorthDate).toBe('2026-07-21');  // 净值日期
+      expect(result.valuation!.currentPrice).toBeCloseTo(2.0 * 1.015, 4);
+      expect(result.valuation!.changePercentage).toBe(1.5);
+
+      global.fetch = originalFetch;
+    });
+
+    it('should handle US stock index (cross-day trading period)', async () => {
+      // 美股场景：API f80 收盘日期 = 2026-07-24（跨日时段 07-23 21:30 ~ 07-24 04:00）
+      // 历史净值：2026-07-22
+      // 应查找第一个 date < 2026-07-24 的记录 → 2026-07-22
+      (marketFundService.getHistory as jest.Mock).mockReturnValue([
+        { date: new Date('2026-07-22').getTime(), value: 2.0, equityReturn: 0 }
+      ]);
+
+      const originalFetch = global.fetch;
+      global.fetch = jest.fn().mockResolvedValue({
+        ok: true,
+        json: () => Promise.resolve({
+          data: {
+            f170: -1.87,
+            f80: '[{"b":202607232130,"e":202607240400}]'  // 美股跨日时段：21:30-04:00
+          }
+        })
+      });
+
+      const result = await fetchValuationByTrackingIndex('100.NDX100', '000001', '测试基金');
+
+      // 使用 API 返回的收盘日期和时间
+      expect(result.valuation).not.toBeNull();
+      expect(result.valuation!.previousPrice).toBe(2.0);  // 来自 2026-07-22 的净值
+      expect(result.valuation!.realtimeDate).toBe('2026-07-24');  // API 收盘日期
+      expect(result.valuation!.netWorthDate).toBe('2026-07-22');  // 净值日期
+      expect(result.valuation!.changePercentage).toBe(-1.87);
+
+      global.fetch = originalFetch;
+    });
+
+    it('should return warning when no history point before API date', async () => {
+      // API f80 收盘日期 = 2026-07-20
+      // 历史净值最新 = 2026-07-22（比 API 日期还新）
+      // 找不到 date < 2026-07-20 的记录
+      (marketFundService.getHistory as jest.Mock).mockReturnValue([
+        { date: new Date('2026-07-21').getTime(), value: 2.0, equityReturn: 0 },
+        { date: new Date('2026-07-22').getTime(), value: 2.1, equityReturn: 0 }
+      ]);
+
+      const originalFetch = global.fetch;
+      global.fetch = jest.fn().mockResolvedValue({
+        ok: true,
+        json: () => Promise.resolve({
+          data: {
+            f170: 1.5,
+            f80: '[{"b":202607200930,"e":202607201130}]'
+          }
+        })
+      });
+
+      const result = await fetchValuationByTrackingIndex('2.H50036', '000001', '测试基金');
+
+      expect(result.valuation).toBeNull();
+      expect(result.statusInfo.status).toBe('warning');
+      expect(result.statusInfo.message).toBe('找不到早于API日期的历史净值数据');
 
       global.fetch = originalFetch;
     });

@@ -12,6 +12,7 @@ import { ValuationData, CardStatus } from '../types';
 import { formatDateISO, formatTime } from '../utils/dateFormat';
 import * as marketFundService from './marketFundService';
 import { IndexMarket, parseIndexCode, isDomesticIndex, isGlobalIndex } from '../src/utils/indexUrlHelper';
+import { parseF80TradingPeriods, computeTradingDateAndTime } from './fundService';
 
 const UT = 'fa1a66105171779fbdd067425f38a7c2';
 
@@ -121,9 +122,10 @@ export function isHKIndexConfig(config: string): boolean {
  */
 async function fetchTrackingIndexChangePercentInternal(
   parsed: { market: number; code: string }
-): Promise<{ changePercent: number; fetchDate: string } | null> {
+): Promise<{ changePercent: number; tradeDate: string; lastUpdated: string } | null> {
   const { market, code } = parsed;
-  const url = `https://push2delay.eastmoney.com/api/qt/stock/get?ut=${UT}&fltt=2&invt=2&secid=${market}.${code}&fields=f12,f14,f2,f3,f43,f170`;
+  // 增加 f80 字段用于解析交易时段
+  const url = `https://push2delay.eastmoney.com/api/qt/stock/get?ut=${UT}&fltt=2&invt=2&secid=${market}.${code}&fields=f12,f14,f2,f3,f43,f170,f80`;
 
   try {
     const response = await fetch(url, {
@@ -142,15 +144,19 @@ async function fetchTrackingIndexChangePercentInternal(
 
     // 优先使用 f170（估算涨跌幅），否则使用 f3（实际涨跌幅）
     const changePercent = json.data.f170 ?? json.data.f3 ?? null;
+    // 开盘前 f170 可能为 0%，这是正常情况，不应该返回 null
     if (changePercent === null || changePercent === '-' || changePercent === '') {
       return null;
     }
 
-    const fetchDate = formatDateISO(new Date());
+    // 解析交易时段，计算正确的交易日期和时间
+    const tradingPeriods = parseF80TradingPeriods(json.data.f80);
+    const { tradeDate, lastUpdated } = computeTradingDateAndTime(tradingPeriods);
 
     return {
       changePercent: parseFloat(changePercent),
-      fetchDate
+      tradeDate,
+      lastUpdated
     };
   } catch (error) {
     console.error('[fetchTrackingIndexChangePercent] 获取失败:', error);
@@ -161,11 +167,11 @@ async function fetchTrackingIndexChangePercentInternal(
 /**
  * 获取跟踪指数的实时涨跌幅
  * @param config 跟踪指数配置 "market.code"
- * @returns 指数涨跌幅和获取日期，或 null（获取失败）
+ * @returns 指数涨跌幅、交易日期和更新时间，或 null（获取失败）
  */
 export async function fetchTrackingIndexChangePercent(
   config: string
-): Promise<{ changePercent: number; fetchDate: string } | null> {
+): Promise<{ changePercent: number; tradeDate: string; lastUpdated: string } | null> {
   const parsed = parseTrackingIndex(config);
   if (!parsed) return null;
   return fetchTrackingIndexChangePercentInternal(parsed);
@@ -258,17 +264,6 @@ export async function fetchValuationByTrackingIndex(
     };
   }
 
-  const latestPoint = history[history.length - 1];
-  const previousPrice = latestPoint.value;
-  const netWorthDate = formatDateISO(new Date(latestPoint.date));
-
-  if (previousPrice <= 0) {
-    return {
-      valuation: null,
-      statusInfo: { status: 'warning', message: '净值数据无效，无法计算估值' }
-    };
-  }
-
   // 获取指数行情（传递已解析的参数，避免重复解析）
   const result = await fetchTrackingIndexChangePercentInternal(parsed);
   if (!result) {
@@ -278,14 +273,44 @@ export async function fetchValuationByTrackingIndex(
     };
   }
 
-  const { changePercent, fetchDate } = result;
+  const { changePercent, tradeDate: apiTradeDate, lastUpdated: apiLastUpdated } = result;
+
+  // 查找历史净值中第一个早于 API 收盘日期的记录
+  // 估值 = 该记录的净值 × (1 + API涨跌幅)
+  // 注意：与 marketFundService 中使用 toLocalDateKey 字符串比较不同，
+  // 这里使用时间戳比较，因为 apiTradeDate 是 ISO 格式字符串
+  const apiTradeDateTs = new Date(apiTradeDate).getTime();
+  let prevPoint = null;
+  for (let i = history.length - 1; i >= 0; i--) {
+    if (history[i].date < apiTradeDateTs) {
+      prevPoint = history[i];
+      break;
+    }
+  }
+
+  if (!prevPoint) {
+    return {
+      valuation: null,
+      statusInfo: { status: 'warning', message: '找不到早于API日期的历史净值数据' }
+    };
+  }
+
+  const previousPrice = prevPoint.value;
+  const netWorthDate = formatDateISO(new Date(prevPoint.date));
+
+  if (previousPrice <= 0) {
+    return {
+      valuation: null,
+      statusInfo: { status: 'warning', message: '净值数据无效，无法计算估值' }
+    };
+  }
 
   // 计算估值
   const currentPrice = previousPrice * (1 + changePercent / 100);
 
-  // 构建估值数据
-  const now = new Date();
-  const lastUpdated = `${fetchDate} ${formatTime(now)}`;
+  // realtimeDate 使用 API 收盘日期，表示估值数据所属日期
+  const realtimeDate = apiTradeDate;
+  const lastUpdated = `${apiTradeDate} ${apiLastUpdated.substring(0, 5)}`;
 
   const valuation: ValuationData = {
     symbol: fundSymbol,
@@ -294,9 +319,9 @@ export async function fetchValuationByTrackingIndex(
     previousPrice,
     changePercentage: changePercent,
     lastUpdated,
-    realtimeDate: fetchDate,
-    netWorthDate, // 使用历史数据中的净值日期
-    valuationDate: fetchDate,
+    realtimeDate,
+    netWorthDate,
+    valuationDate: apiTradeDate,
     sourceUrl: `https://quote.eastmoney.com/unify/r/${parsed.market}.${parsed.code}`
   };
 

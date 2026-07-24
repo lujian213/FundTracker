@@ -739,7 +739,7 @@ describe('computeTradingDateAndTime', () => {
       expect(result.lastUpdated).toBe('04:00:00'); // 上一个交易日收盘时间（5月6日凌晨4点）
     });
 
-    test('开盘前（A股多时段）- 当前时间早于开盘时间，函数返回最近的收盘时间（需要上层逻辑用历史数据覆盖）', () => {
+    test('开盘前（A股多时段）- 当前时间早于开盘时间，返回最后一个交易时段的收盘时间', () => {
       // A股：上午 09:30-11:30，下午 13:00-15:00
       // 周一早上08:30，开盘前
       const periods = [
@@ -748,12 +748,10 @@ describe('computeTradingDateAndTime', () => {
       ];
       const now = createDate('2026-05-06', '08:30:00'); // 08:30 在开盘前
       const result = computeTradingDateAndTime(periods, now);
-      // computeTradingDateAndTime 只能根据 f80 判断，无法获取上一个交易日信息
-      // 当前时间08:30距离最近的收盘时间是11:30（上午收盘），距离更近
-      // 所以返回11:30，这是函数层面的结果（但这是未来的时间）
-      // 上层逻辑（fetchSingleIndex）会判断开盘前状态，从历史数据获取上一个交易日信息并覆盖
-      expect(result.tradeDate).toBe('2026-05-06'); // 函数层面返回当天日期
-      expect(result.lastUpdated).toBe('11:30:00'); // 函数层面返回最近的收盘时间（上午收盘）
+      // 开盘前：当前时间 08:30 < 第一个交易时段开始时间 09:30
+      // 应返回最后一个交易时段的收盘时间（15:00），而不是最近的收盘时间（11:30）
+      expect(result.tradeDate).toBe('2026-05-06');
+      expect(result.lastUpdated).toBe('15:00:00'); // 最后一个交易时段的收盘时间
     });
 
     // 新增测试：验证用户报告的问题场景
