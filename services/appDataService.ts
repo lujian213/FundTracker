@@ -134,21 +134,36 @@ export function saveAllDraftsToStorage(): void {
  * 清理过期草稿，只保留指定日期的草稿
  *
  * @param keepDate 要保留的日期（YYYY-MM-DD格式）
+ * @returns 被清理的告警基金代码列表
  */
-export function cleanOldDrafts(keepDate: string): void {
+export function cleanOldDrafts(keepDate: string): string[] {
   const data = getAppDataCache();
   if (!data.investmentDrafts || Object.keys(data.investmentDrafts).length === 0) {
-    return;
+    return [];
   }
 
-  // 删除不是保留日期的所有草稿
+  // 收集被清理的告警基金代码
+  const clearedAlertSymbols: string[] = [];
+
+  // 删除不是保留日期的所有草稿，并收集告警状态
   const keysToDelete = Object.keys(data.investmentDrafts).filter(date => date !== keepDate);
   keysToDelete.forEach(date => {
-    delete data.investmentDrafts[date];
+    const draft = data.investmentDrafts![date];
+    if (draft) {
+      // 收集该日期中所有启用了告警的基金代码
+      Object.values(draft).forEach((entry: any) => {
+        if (entry?.dataAlertEnabled && entry?.fundSymbol) {
+          clearedAlertSymbols.push(entry.fundSymbol);
+        }
+      });
+    }
+    delete data.investmentDrafts![date];
   });
 
   // 同步到 localStorage
   saveAllDraftsToStorage();
+
+  return clearedAlertSymbols;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════

@@ -6,7 +6,7 @@ import { FastNewsItem } from './types/fastNewsTypes';
 import { fetchFundData, fetchFundDatas, forceFetchFundHistories, fetchMarketIndices, fetchIndexHistories, maybeTriggerHistoryRefresh, normalizeIndexSymbol } from './services/fundService';
 import { fetchValuationByTrackingIndex } from './services/trackingIndexService';
 import { toLocalDateKey } from './utils/priceResolver';
-import { loadInvestmentDraft } from './services/appDataService';
+import { loadInvestmentDraft, cleanOldDrafts } from './services/appDataService';
 import { calculateTotalTasks, createProgressCallback, incrementTaskCount } from './utils/taskCounter';
 import * as marketFundService from './services/marketFundService';
 import * as indexService from './services/indexService';
@@ -328,6 +328,11 @@ const AppContent: React.FC = () => {
   // 告警状态管理
   const [alertStates, setAlertStates] = useState<Record<string, boolean>>({});
 
+  // 应用初始化时清理过期草稿
+  useEffect(() => {
+    cleanOldDrafts(toLocalDateKey(new Date()));
+  }, []);
+
   const manageableItemCount = portfolio.length + indicesConfig.length;
 
   const clearSelectionMode = useCallback(() => {
@@ -515,6 +520,26 @@ const AppContent: React.FC = () => {
 
     window.addEventListener('draftDataAlertChange', handleAlertChange as EventListener);
     return () => window.removeEventListener('draftDataAlertChange', handleAlertChange as EventListener);
+  }, []);
+
+  // 监听草稿窗口清空过期告警的事件
+  useEffect(() => {
+    const handleAlertsClear = (e: Event) => {
+      const customEvent = e as CustomEvent;
+      const { symbols } = customEvent.detail;
+      if (symbols && symbols.length > 0) {
+        setAlertStates(prev => {
+          const newStates = { ...prev };
+          symbols.forEach((symbol: string) => {
+            delete newStates[symbol];
+          });
+          return newStates;
+        });
+      }
+    };
+
+    window.addEventListener('draftDataAlertsClear', handleAlertsClear as EventListener);
+    return () => window.removeEventListener('draftDataAlertsClear', handleAlertsClear as EventListener);
   }, []);
 
   // portfolio 由 marketFundService 管理，不需要单独同步到 localStorage

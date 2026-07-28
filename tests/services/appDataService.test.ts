@@ -165,6 +165,37 @@ describe('appDataService', () => {
       const parsed = JSON.parse(stored!);
       expect(Object.keys(parsed)).toEqual(['2026-04-13']);
     });
+
+    test('cleanOldDrafts 返回被清理的告警基金列表', () => {
+      // 设置包含告警状态的过期草稿
+      const yesterdayDraft = {
+        '000001': { fundSymbol: '000001', operation: '不操作', amount: '', note: '', dataAlertEnabled: true },
+        '000002': { fundSymbol: '000002', operation: '买入', amount: '500', note: '', dataAlertEnabled: false },
+      };
+
+      saveInvestmentDraft('2026-04-12', yesterdayDraft);
+      saveAllDraftsToStorage();
+
+      // 清理并获取返回值
+      const clearedSymbols = cleanOldDrafts('2026-04-13');
+
+      // 验证返回值包含启用了告警的基金
+      expect(clearedSymbols).toContain('000001');
+      expect(clearedSymbols).not.toContain('000002');
+    });
+
+    test('cleanOldDrafts 返回空数组当无告警被清理', () => {
+      const yesterdayDraft = {
+        '000001': { fundSymbol: '000001', operation: '买入', amount: '1000', note: '', dataAlertEnabled: false },
+      };
+
+      saveInvestmentDraft('2026-04-12', yesterdayDraft);
+      saveAllDraftsToStorage();
+
+      const clearedSymbols = cleanOldDrafts('2026-04-13');
+
+      expect(clearedSymbols).toEqual([]);
+    });
   });
 
   describe('迁移', () => {

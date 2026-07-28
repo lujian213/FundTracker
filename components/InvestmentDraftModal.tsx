@@ -167,7 +167,14 @@ const InvestmentDraftModal: React.FC<InvestmentDraftModalProps> = ({
 
     try {
       // 清理过期草稿，只保留当天的
-      cleanOldDrafts(today);
+      const clearedAlertSymbols = cleanOldDrafts(today);
+
+      // 如果有告警状态被清理，通知主界面清空这些告警
+      if (clearedAlertSymbols.length > 0) {
+        window.dispatchEvent(new CustomEvent('draftDataAlertsClear', {
+          detail: { symbols: clearedAlertSymbols }
+        }));
+      }
 
       const existingData = loadInvestmentDraft(today);
 

@@ -437,6 +437,134 @@ describe('InvestmentDraftModal', () => {
       });
     });
   });
+
+  describe('数据失准告警清理', () => {
+    test('清理过期草稿时触发 draftDataAlertsClear 事件', async () => {
+      // 准备前一天的数据（包含告警状态）
+      const yesterdayDate = '2026-03-16';
+
+      // 重置缓存和 localStorage
+      appDataService.resetCache();
+      localStorage.clear();
+
+      // 设置 localStorage，模拟前一天有告警的草稿（只有昨天的数据）
+      const yesterdayDraft = {
+        '000001': {
+          fundSymbol: '000001',
+          operation: '不操作',
+          amount: '',
+          note: '',
+          dataAlertEnabled: true  // 启用告警
+        }
+      };
+
+      localStorage.setItem(STORAGE_KEYS.INVESTMENT_DRAFT, JSON.stringify({
+        [yesterdayDate]: yesterdayDraft
+      }));
+
+      // 监听自定义事件
+      const eventHandler = jest.fn();
+      window.addEventListener('draftDataAlertsClear', eventHandler);
+
+      render(
+        <InvestmentDraftModal
+          portfolio={mockPortfolio}
+          onClose={mockOnClose}
+          marketData={mockMarketData}
+        />
+      );
+
+      // 等待组件初始化完成
+      await waitFor(() => {
+        expect(screen.getByText('华夏成长混合')).toBeInTheDocument();
+      });
+
+      // 验证事件被触发，携带被清理的告警基金代码
+      expect(eventHandler).toHaveBeenCalled();
+      const eventDetail = eventHandler.mock.calls[0][0].detail;
+      expect(eventDetail.symbols).toContain('000001');
+
+      // 清理事件监听
+      window.removeEventListener('draftDataAlertsClear', eventHandler);
+    });
+
+    test('当天草稿不会被清理', async () => {
+      const todayDate = '2026-03-17';
+
+      // 设置 localStorage，只有今天的草稿
+      const todayDraft = {
+        '000001': {
+          fundSymbol: '000001',
+          operation: '买入',
+          amount: '1000',
+          note: '',
+          dataAlertEnabled: true
+        }
+      };
+
+      localStorage.setItem(STORAGE_KEYS.INVESTMENT_DRAFT, JSON.stringify({
+        [todayDate]: todayDraft
+      }));
+
+      // 监听自定义事件
+      const eventHandler = jest.fn();
+      window.addEventListener('draftDataAlertsClear', eventHandler);
+
+      render(
+        <InvestmentDraftModal
+          portfolio={mockPortfolio}
+          onClose={mockOnClose}
+          marketData={mockMarketData}
+        />
+      );
+
+      await waitFor(() => {
+        expect(screen.getByText('华夏成长混合')).toBeInTheDocument();
+      });
+
+      // 验证事件未被触发（没有过期数据）
+      expect(eventHandler).not.toHaveBeenCalled();
+
+      window.removeEventListener('draftDataAlertsClear', eventHandler);
+    });
+
+    test('cleanOldDrafts 返回被清理的告警基金列表', () => {
+      // 重置缓存
+      appDataService.resetCache();
+
+      const yesterdayDate = '2026-03-16';
+      const todayDate = '2026-03-17';
+
+      // 设置 localStorage，包含告警状态的草稿
+      const yesterdayDraft = {
+        '000001': {
+          fundSymbol: '000001',
+          operation: '不操作',
+          amount: '',
+          note: '',
+          dataAlertEnabled: true
+        },
+        '000002': {
+          fundSymbol: '000002',
+          operation: '买入',
+          amount: '500',
+          note: '',
+          dataAlertEnabled: false  // 未启用告警
+        }
+      };
+
+      localStorage.setItem(STORAGE_KEYS.INVESTMENT_DRAFT, JSON.stringify({
+        [yesterdayDate]: yesterdayDraft
+      }));
+
+      // 调用清理函数
+      const clearedSymbols = cleanOldDrafts(todayDate);
+
+      // 验证返回的告警基金列表
+      expect(clearedSymbols).toContain('000001');
+      expect(clearedSymbols).not.toContain('000002');
+    });
+  });
 });
 
 describe('InvestmentDraftModal AI Advice', () => {
