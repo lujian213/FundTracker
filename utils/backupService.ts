@@ -148,7 +148,7 @@ export async function buildBackupData(
 // ─── Download ─────────────────────────────────────────────────────────────────
 
 /** Format a local Date as "yyyy-MM-dd_HH-mm-ss" */
-function localTimestamp(d: Date): string {
+export function localTimestamp(d: Date): string {
   const pad = (n: number, len = 2) => String(n).padStart(len, '0');
   return [
     `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`,

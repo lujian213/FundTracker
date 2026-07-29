@@ -1126,6 +1126,74 @@ test.describe('testBedWithData', () => {
     console.log('导出备份验证完成');
 
     // ══════════════════════════════════════════════════════════════════════════════
+    // 7.5. 验证"基金配置分享"区块并测试导入导出功能
+    // ══════════════════════════════════════════════════════════════════════════════
+
+    // 验证"基金配置分享"区块显示
+    const configShareSection = page.locator('h3:has-text("基金配置分享")');
+    await expect(configShareSection).toBeVisible({ timeout: 2000 });
+
+    // 验证说明文字显示
+    await expect(page.locator('text=导出持仓配置信息')).toBeVisible();
+
+    // 验证"导出配置"和"导入配置"按钮存在
+    const exportConfigButton = page.locator('button:has-text("导出配置")');
+    await expect(exportConfigButton).toBeVisible();
+    const importConfigButton = page.locator('button:has-text("导入配置")');
+    await expect(importConfigButton).toBeVisible();
+
+    // 点击"导出配置"按钮
+    const configDownloadPromise = page.waitForEvent('download');
+    await exportConfigButton.click();
+    const configDownload = await configDownloadPromise;
+
+    // 验证文件名格式正确
+    const configFilename = configDownload.suggestedFilename();
+    expect(configFilename).toMatch(/fund_config_\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2}\.json/);
+
+    // 读取导出的配置文件内容
+    const configDownloadPath = await configDownload.path();
+    const configContent = fs.readFileSync(configDownloadPath, 'utf-8');
+    const fundConfig = JSON.parse(configContent);
+
+    // 验证JSON文件格式正确
+    expect(fundConfig.version).toBe('1.0');
+    expect(fundConfig.exportedAt).toBeDefined();
+    expect(Array.isArray(fundConfig.funds)).toBe(true);
+    expect(fundConfig.funds.length).toBeGreaterThan(0);
+
+    // 验证每个基金配置包含必要的字段
+    const fundSample = fundConfig.funds[0];
+    expect(fundSample.symbol).toBeDefined();
+    expect(fundSample.name).toBeDefined();
+
+    console.log(`导出配置验证完成，共${fundConfig.funds.length}个基金`);
+
+    // 等待文件选择器并选择刚才导出的配置文件
+    // 使用更具体的定位器，避免与其他文件输入框冲突
+    // 注意：必须先设置waitForEvent，然后才能点击按钮
+    const fileChooserPromise = page.waitForEvent('filechooser');
+
+    // 点击"导入配置"按钮
+    // 注意：需要先设置dialog事件处理器，因为window.confirm()在Playwright中默认会被自动处理
+    page.once('dialog', async dialog => {
+      // 验证确认对话框内容
+      expect(dialog.message()).toContain('导入基金配置将覆盖现有持仓配置');
+      await dialog.accept();
+    });
+
+    await importConfigButton.click();
+
+    // 等待文件选择器并设置文件
+    const fileChooser = await fileChooserPromise;
+    await fileChooser.setFiles(configDownloadPath);
+
+    // 验证成功提示显示
+    await expect(page.locator('text=导入成功')).toBeVisible({ timeout: 3000 });
+
+    console.log('基金配置导入导出测试完成');
+
+    // ══════════════════════════════════════════════════════════════════════════════
     // 8. 关闭系统配置窗口
     // ══════════════════════════════════════════════════════════════════════════════
     const closeButton = page.locator('button[aria-label="关闭"]');

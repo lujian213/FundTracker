@@ -97,6 +97,13 @@
   * 如果服务异常，验证显示错误信息（红色背景区域）。
   * 点击"关闭"按钮关闭详情窗口。
   * 点击"备份管理"，在右边点击"导出备份"，在导出的文件中验证ocrConcurrency的值是3，initialPriceAdjustmentEnabled的值是true，jobLogEnabled的值是false，ocrDebugPanelEnabled的值是false，strategyParams的值是空对象{}。
+  * 验证"基金配置分享"区块显示，包含说明文字、"导出配置"和"导入配置"两个按钮。
+  * 点击"导出配置"按钮，验证文件下载成功。文件名格式为 fund_config_<YYYY-MM-DD_HH-mm-ss>.json。
+  * 验证导出的JSON文件格式正确，包含version、exportedAt和funds数组。
+  * 验证funds数组包含所有基金的配置（symbol、name、aliasName、trackingIndex）。
+  * 点击"导入配置"按钮，选择刚才导出的配置文件。
+  * 验证确认对话框显示"将更新 X 个基金的配置（常用名称和跟踪指数）"。
+  * 点击确认按钮，验证显示"已更新 X 个基金的配置"提示。
   * 最后关闭窗口。验证主界面上，看不到后台任务日志的入口了。
 5. 基金持仓测试
   * 点击主界面上的基金持仓按钮，弹出基金持仓窗口。

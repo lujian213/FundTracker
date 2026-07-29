@@ -6,6 +6,7 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { readBackupConfig, writeBackupConfig, buildBackupData, downloadBackupFile } from '../../utils/backupService';
+import { exportFundConfig, downloadFundConfig, importFundConfig } from '../../utils/fundConfigExportService';
 import { secondsUntilNext, formatCountdown } from '../../utils/dateTimeUtils';
 import { Ticker, MarketIndex } from '../../types';
 
@@ -29,8 +30,10 @@ const BackupPanel: React.FC<BackupPanelProps> = ({
   const [error, setError] = useState('');
   const [countdown, setCountdown] = useState(() => tmpEnabled ? secondsUntilNext(tmpTime) : 0);
   const [isExporting, setIsExporting] = useState(false);
+  const [isImportingConfig, setIsImportingConfig] = useState(false);
   const [saveMessage, setSaveMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const fundConfigFileInputRef = useRef<HTMLInputElement>(null);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const isMountedRef = useRef(true);
 
@@ -134,6 +137,76 @@ const BackupPanel: React.FC<BackupPanelProps> = ({
     };
     reader.readAsText(file);
     event.target.value = '';
+  };
+
+  // ═══════════════════════════════════════════════════════════════════════════════
+  // 基金配置分享功能
+  // ═══════════════════════════════════════════════════════════════════════════════
+
+  /**
+   * 导出基金配置
+   */
+  const handleExportFundConfig = () => {
+    try {
+      const data = exportFundConfig();
+
+      // 检查是否有数据导出
+      if (data.funds.length === 0) {
+        setSaveMessage({ type: 'error', text: '没有可导出的基金配置（需要先设置持仓配置）' });
+        return;
+      }
+
+      downloadFundConfig(data);
+      setSaveMessage({ type: 'success', text: `导出成功，共 ${data.funds.length} 只基金配置` });
+    } catch (err) {
+      console.error('导出基金配置失败:', err);
+      setSaveMessage({ type: 'error', text: '导出基金配置失败' });
+    }
+  };
+
+  /**
+   * 点击导入基金配置按钮
+   */
+  const handleFundConfigImportClick = () => {
+    fundConfigFileInputRef.current?.click();
+  };
+
+  /**
+   * 导入基金配置
+   */
+  const handleFundConfigImport = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    setIsImportingConfig(true);
+    setSaveMessage(null);
+
+    try {
+      const content = await file.text();
+      const data = JSON.parse(content);
+
+      // 执行导入
+      const result = importFundConfig(data);
+
+      if (result.errors.length > 0) {
+        console.error('导入基金配置错误:', result.errors);
+        setSaveMessage({
+          type: 'error',
+          text: `导入失败：${result.errors[0]}`
+        });
+      } else {
+        const message = result.skipped > 0
+          ? `导入成功 ${result.imported} 只，跳过 ${result.skipped} 只（无持仓配置或系统中不存在）`
+          : `导入成功，共 ${result.imported} 只基金配置`;
+        setSaveMessage({ type: 'success', text: message });
+      }
+    } catch (err) {
+      console.error('导入基金配置失败:', err);
+      setSaveMessage({ type: 'error', text: '导入文件格式错误' });
+    } finally {
+      setIsImportingConfig(false);
+      event.target.value = '';
+    }
   };
 
   return (
@@ -259,6 +332,51 @@ const BackupPanel: React.FC<BackupPanelProps> = ({
             type="file"
             accept=".json"
             onChange={handleImport}
+            className="hidden"
+          />
+        </div>
+      </div>
+
+      {/* 基金配置分享 */}
+      <div className="bg-white rounded-xl border border-gray-200 p-5">
+        <h3 className="font-semibold text-gray-800 mb-4 flex items-center">
+          <i className="fas fa-share-alt text-green-500 mr-2"></i>
+          基金配置分享
+        </h3>
+
+        <div className="space-y-3">
+          <p className="text-sm text-gray-500">
+            导出基金配置（基金代码、名称、常用名称、跟踪指数），分享给其他用户导入使用。
+          </p>
+
+          <div className="flex space-x-3">
+            <button
+              onClick={handleExportFundConfig}
+              className="flex-1 py-2.5 text-sm font-bold rounded-xl transition-colors flex items-center justify-center space-x-2 bg-green-50 text-green-600 hover:bg-green-100"
+            >
+              <i className="fas fa-file-export"></i>
+              <span>导出配置</span>
+            </button>
+
+            <button
+              onClick={handleFundConfigImportClick}
+              disabled={isImportingConfig}
+              className={`flex-1 py-2.5 text-sm font-bold rounded-xl transition-colors flex items-center justify-center space-x-2 ${
+                isImportingConfig
+                  ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                  : 'bg-gray-50 text-gray-600 hover:bg-gray-100'
+              }`}
+            >
+              <i className={`fas ${isImportingConfig ? 'fa-spinner fa-spin' : 'fa-file-import'}`}></i>
+              <span>{isImportingConfig ? '导入中...' : '导入配置'}</span>
+            </button>
+          </div>
+
+          <input
+            ref={fundConfigFileInputRef}
+            type="file"
+            accept=".json"
+            onChange={handleFundConfigImport}
             className="hidden"
           />
         </div>
