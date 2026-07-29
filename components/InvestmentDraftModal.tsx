@@ -349,12 +349,14 @@ const InvestmentDraftModal: React.FC<InvestmentDraftModalProps> = ({
 
   const handleReset = (fundSymbol: string) => {
     setDraftData(prev => {
+      const prevEntry = prev[fundSymbol];
       const resetEntry: DraftEntry = {
         fundSymbol,
         operation: '不操作',
         amount: '',
-        note: ''
-        // 重置时清除 AI 建议信息
+        note: '',
+        // 重置时保留数据失准告警状态，只清除操作相关字段
+        dataAlertEnabled: prevEntry?.dataAlertEnabled
       };
 
       return {

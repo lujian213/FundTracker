@@ -894,6 +894,69 @@ describe('InvestmentDraftModal AI 建议持久化', () => {
     }, { timeout: 1000 });
   });
 
+  test('重置功能保留数据失准告警状态', async () => {
+    const mockPortfolio: Ticker[] = [
+      { id: '1', symbol: '000001', name: '测试基金', market: MarketType.FUND }
+    ];
+
+    marketFundService.addFund('000001', '测试基金');
+    marketFundService.updatePosition('000001', {
+      fullCapacity: 10000,
+      initialPosition: 0,
+      startDate: '2026-01-01',
+      initialPrice: 2.0
+    });
+
+    // 预设带有数据失准告警的草稿数据
+    const draftEntry = {
+      fundSymbol: '000001',
+      operation: '买入' as const,
+      amount: '1000',
+      note: '+2.50%',
+      dataAlertEnabled: true  // 启用数据失准告警
+    };
+    appDataService.saveInvestmentDraft('2026-03-17', { '000001': draftEntry });
+    appDataService.saveAllDraftsToStorage();
+    // 清除缓存以强制从 localStorage 加载
+    appDataService.resetCache();
+
+    render(
+      <InvestmentDraftModal
+        portfolio={mockPortfolio}
+        onClose={jest.fn()}
+      />
+    );
+
+    // 等待表格渲染完成，验证告警背景色
+    await waitFor(() => {
+      const row = screen.getByTitle('测试基金').closest('tr');
+      expect(row).toHaveClass('bg-orange-50'); // 告警状态显示为橙色背景
+    });
+
+    // 点击重置按钮
+    const resetButton = screen.getByTitle('重置');
+    fireEvent.click(resetButton);
+
+    // 等待防抖后验证 localStorage 中数据失准告警状态被保留
+    await waitFor(() => {
+      const savedData = localStorage.getItem(STORAGE_KEYS.INVESTMENT_DRAFT);
+      expect(savedData).not.toBeNull();
+      const parsedData = JSON.parse(savedData!);
+      // 操作字段被重置
+      expect(parsedData['2026-03-17']['000001'].operation).toBe('不操作');
+      expect(parsedData['2026-03-17']['000001'].amount).toBe('');
+      expect(parsedData['2026-03-17']['000001'].note).toBe('');
+      // 数据失准告警状态被保留
+      expect(parsedData['2026-03-17']['000001'].dataAlertEnabled).toBe(true);
+    }, { timeout: 1000 });
+
+    // 验证界面上的告警背景色仍然存在
+    await waitFor(() => {
+      const row = screen.getByTitle('测试基金').closest('tr');
+      expect(row).toHaveClass('bg-orange-50'); // 告警状态仍然显示
+    });
+  });
+
   describe('上一交易日涨跌幅 hovertip', () => {
     test('有历史数据时显示上一交易日涨跌幅 hovertip', async () => {
       const mockPortfolio: Ticker[] = [
