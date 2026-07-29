@@ -1134,7 +1134,7 @@ test.describe('testBedWithData', () => {
     await expect(configShareSection).toBeVisible({ timeout: 2000 });
 
     // 验证说明文字显示
-    await expect(page.locator('text=导出持仓配置信息')).toBeVisible();
+    await expect(page.locator('text=导出基金配置')).toBeVisible();
 
     // 验证"导出配置"和"导入配置"按钮存在
     const exportConfigButton = page.locator('button:has-text("导出配置")');
@@ -4156,7 +4156,43 @@ test.describe('testBedWithData', () => {
     console.log(`基金设置验证完成: 满仓=${configInfo?.fullCapacity}, 初始=${configInfo?.initialPosition}, 跟踪指数提示=${configInfo?.trackingIndexHint}`);
 
     // ══════════════════════════════════════════════════════════════════════════════
-    // 4. 关闭配置窗口（点击"取消"按钮）
+    // 4. 验证跟踪指数搜索按钮并打开搜索窗口
+    // ══════════════════════════════════════════════════════════════════════════════
+    // 验证搜索按钮存在
+    const searchButton = page.locator('button[aria-label="搜索指数/板块"]');
+    await expect(searchButton).toBeVisible({ timeout: 5000 });
+
+    // 验证搜索按钮有 hover 提示
+    await searchButton.hover();
+    await page.waitForTimeout(300);
+
+    // 点击搜索按钮
+    await searchButton.click();
+
+    // 验证弹出搜索窗口
+    const searchModal = page.locator('text=搜索指数/板块').first();
+    await expect(searchModal).toBeVisible({ timeout: 5000 });
+
+    // 验证窗口内有关键字输入框
+    const keywordInput = page.locator('input[placeholder="如: 有色金属"]');
+    await expect(keywordInput).toBeVisible();
+
+    // 验证窗口内有参考涨跌幅输入框
+    const percentInput = page.locator('input[placeholder="如: 1.68"]');
+    await expect(percentInput).toBeVisible();
+
+    // 验证窗口内有搜索按钮
+    const searchBtn = page.locator('button:has-text("搜索")');
+    await expect(searchBtn).toBeVisible();
+
+    // 关闭搜索窗口（点击关闭按钮）
+    await page.click('button:has-text("关闭")');
+    await expect(searchModal).not.toBeVisible({ timeout: 2000 });
+
+    console.log('跟踪指数搜索按钮验证完成');
+
+    // ══════════════════════════════════════════════════════════════════════════════
+    // 5. 关闭配置窗口（点击"取消"按钮）
     // ══════════════════════════════════════════════════════════════════════════════
     // 基金设置弹窗没有 X 按钮，只有"取消"按钮 - 使用 JavaScript 直接点击
     await page.evaluate(() => {
@@ -4175,7 +4211,7 @@ test.describe('testBedWithData', () => {
     await expect(configModal).not.toBeVisible({ timeout: 2000 });
 
     // ══════════════════════════════════════════════════════════════════════════════
-    // 5. 关闭基金详情窗口
+    // 6. 关闭基金详情窗口
     // ══════════════════════════════════════════════════════════════════════════════
     await page.click('#fund-details-modal button:has(i.fa-times)');
     await expect(fundModal).not.toBeVisible();

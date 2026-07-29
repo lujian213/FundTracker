@@ -25,6 +25,7 @@ import { smartPrepareChartData } from '../utils/chartDataHelper';
 import { computePositionSharesByDate, prepareVolumeBars, computeCostPricesByDate } from '../utils/tradeVolumeHelper';
 import { isFeatureEnabled } from '../services/systemConfigService';
 import InitialPriceAdjustModal from './InitialPriceAdjustModal';
+import TrackingIndexSearchModal from './TrackingIndexSearchModal';
 import { buildCashFlows, computeXIRR, computeSimpleAnnualizedReturn } from '../utils/xirrHelper';
 import { calculateFundAnnualizedReturn } from '../utils/fundReturnCalculator';
 import { useModalBodyStyle } from '../hooks/useModalBodyStyle';
@@ -80,6 +81,8 @@ export const FundDetailsModal: React.FC<FundDetailsModalProps> = ({ data, onClos
   const [showPriceAdjust, setShowPriceAdjust] = useState(false);
   // 基金详情弹窗控制
   const [showProfileModal, setShowProfileModal] = useState(false);
+  // 跟踪指数搜索弹窗控制
+  const [showTrackingIndexSearch, setShowTrackingIndexSearch] = useState(false);
 
   // 两点对比功能处理函数
   const toggleCompareMode = () => {
@@ -1626,14 +1629,25 @@ export const FundDetailsModal: React.FC<FundDetailsModalProps> = ({ data, onClos
                        <div className="flex items-center justify-between">
                          <label className="text-sm text-gray-600">跟踪指数</label>
                          <div className="flex flex-col items-end">
-                           <input
-                             aria-label="modal-tracking-index"
-                             type="text"
-                             className="w-46 px-2 py-1 border rounded text-right"
-                             value={tmpTrackingIndex}
-                             onChange={e => { setTmpTrackingIndex(e.target.value); }}
-                             placeholder="可选"
-                           />
+                           <div className="relative flex items-center">
+                             <input
+                               aria-label="modal-tracking-index"
+                               type="text"
+                               className="w-46 px-2 py-1 pr-8 border rounded text-right"
+                               value={tmpTrackingIndex}
+                               onChange={e => { setTmpTrackingIndex(e.target.value); }}
+                               placeholder="可选"
+                             />
+                             <button
+                               type="button"
+                               onClick={() => setShowTrackingIndexSearch(true)}
+                               className="absolute right-1 px-1.5 py-1 text-gray-400 hover:text-blue-500 transition-colors"
+                               title="搜索指数/板块"
+                               aria-label="搜索指数/板块"
+                             >
+                               <i className="fas fa-search text-xs"></i>
+                             </button>
+                           </div>
                            <span className="text-[10px] text-gray-400 mt-0.5">
                              格式如: 2.H50036
                            </span>
@@ -1713,6 +1727,17 @@ export const FundDetailsModal: React.FC<FundDetailsModalProps> = ({ data, onClos
                      </div>
                    </div>
                  </div>
+               )}
+               {/* 跟踪指数搜索弹窗 */}
+               {showTrackingIndexSearch && (
+                 <TrackingIndexSearchModal
+                   onSelect={(code) => {
+                     setTmpTrackingIndex(code);
+                     setShowTrackingIndexSearch(false);
+                   }}
+                   onClose={() => setShowTrackingIndexSearch(false)}
+                   zIndex={SUBMODAL_Z_INDEX}
+                 />
                )}
                {/* Trade manager modal rendered into document.body to avoid z-index issues */}
                {showTrade && (typeof document !== 'undefined' && document.body ? createPortal(
