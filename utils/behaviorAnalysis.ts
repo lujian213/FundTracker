@@ -2,6 +2,16 @@ import { TradeRecord, HistoricalPoint, BehaviorAnalysis, BehaviorScore, TimingSc
 import { formatDateISO } from './dateFormat';
 
 // ═══════════════════════════════════════════════════════════════════════════════
+// 常量定义
+// ═══════════════════════════════════════════════════════════════════════════════
+
+/** 频繁调仓判断：持有天数阈值 */
+const FREQUENT_TRADE_THRESHOLD_DAYS = 7;
+
+/** 频繁调仓判断：收益率阈值（百分比） */
+const LOW_RETURN_THRESHOLD_PERCENT = 0.5;
+
+// ═══════════════════════════════════════════════════════════════════════════════
 // 净值索引（用于快速查找）
 // ═══════════════════════════════════════════════════════════════════════════════
 
@@ -340,72 +350,59 @@ export function identifyFrequentLossTrade(
   trades: TradeRecord[]
 ): Array<TradeRecord & { reason: string }> {
   const result: Array<TradeRecord & { reason: string }> = [];
-  const buyStack: { date: string; price: number; shares: number }[] = [];
+  const buyStack: { date: string; price: number; shares: number; fee: number }[] = [];
 
   for (const trade of trades) {
     if (trade.type === 'buy') {
       buyStack.push({
         date: trade.date,
         price: trade.price,
-        shares: trade.shares
+        shares: trade.shares,
+        fee: trade.fee ?? 0 // 兼容null/undefined
       });
     } else {
-      // 卖出：从栈顶（最新买入）开始匹配（LIFO）
-      const totalSellShares = trade.shares;
+      // 卖出：计算整体收益率并更新栈（单次遍历优化）
+      const sellFee = trade.fee ?? 0; // 兼容null/undefined
       let remaining = trade.shares;
 
-      // 记录匹配的盈亏情况
-      let profitShares = 0;  // 盈利匹配的份额
-      let lossShares = 0;    // 亏损匹配的份额
-      let lossHoldingDays = 0;  // 亏损部分的持有天数
-      let lossPercent = '';     // 亏损比例
+      // 收集持有<7天的匹配信息
+      let totalCost = 0;
+      let totalRevenue = trade.shares * trade.price - sellFee;
+      let holdingDays = 0;
+      let matchedShares = 0;
 
-      const tempBuyStack = [...buyStack]; // 复制栈用于匹配
-
-      while (remaining > 0 && tempBuyStack.length > 0) {
-        const buy = tempBuyStack[tempBuyStack.length - 1]; // 栈顶
-        const matchedShares = Math.min(remaining, buy.shares);
-        const holdingDays = daysBetween(buy.date, trade.date);
-
-        // 只有持有<7天才计入频繁调仓判断
-        if (holdingDays < 7) {
-          if (trade.price < buy.price) {
-            // 亏损匹配
-            lossShares += matchedShares;
-            lossHoldingDays = holdingDays;
-            lossPercent = ((buy.price - trade.price) / buy.price * 100).toFixed(2);
-          } else {
-            // 盈利匹配
-            profitShares += matchedShares;
-          }
-        }
-
-        remaining -= matchedShares;
-        buy.shares -= matchedShares;
-        if (buy.shares <= 0) tempBuyStack.pop();
-      }
-
-      // 如果有亏损匹配，识别为频繁调仓
-      if (lossShares > 0) {
-        let reason: string;
-        if (profitShares > 0) {
-          // 部分亏损卖出
-          reason = `持有${lossHoldingDays}天<7天，部分亏损卖出：共${totalSellShares.toFixed(0)}份中${lossShares.toFixed(0)}份亏损${lossPercent}%（其余${profitShares.toFixed(0)}份盈利）`;
-        } else {
-          // 全部亏损卖出
-          reason = `持有${lossHoldingDays}天<7天，亏损${lossPercent}%卖出`;
-        }
-        result.push({ ...trade, reason });
-      }
-
-      // 更新实际的买入栈（完成匹配）
-      remaining = trade.shares;
+      // 单次遍历：同时计算收益率和更新栈
       while (remaining > 0 && buyStack.length > 0) {
-        const buy = buyStack[buyStack.length - 1];
-        const matchedShares = Math.min(remaining, buy.shares);
-        remaining -= matchedShares;
-        buy.shares -= matchedShares;
+        const buy = buyStack[buyStack.length - 1]; // 栈顶
+        const matched = Math.min(remaining, buy.shares);
+        const days = daysBetween(buy.date, trade.date);
+
+        // 只计算持有<7天的部分
+        if (days < FREQUENT_TRADE_THRESHOLD_DAYS) {
+          // 买入成本
+          const buyCost = matched * buy.price;
+
+          // 手续费按比例分摊（保留2位小数）
+          const proportionalFee = Math.round(buy.fee * (matched / buy.shares) * 100) / 100;
+
+          totalCost += buyCost + proportionalFee;
+          holdingDays = days;
+          matchedShares += matched;
+        }
+
+        remaining -= matched;
+        buy.shares -= matched;
         if (buy.shares <= 0) buyStack.pop();
+      }
+
+      // 判断是否识别为频繁调仓
+      if (matchedShares > 0 && totalCost > 0) {
+        const returnRate = Math.round((totalRevenue - totalCost) / totalCost * 10000) / 100;
+
+        if (returnRate <= LOW_RETURN_THRESHOLD_PERCENT) {
+          const reason = `持有${holdingDays}天<7天，收益率${returnRate.toFixed(2)}% ≤ 0.5%`;
+          result.push({ ...trade, reason });
+        }
       }
     }
   }

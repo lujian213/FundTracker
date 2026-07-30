@@ -176,14 +176,17 @@ describe('behaviorAnalysis', () => {
   });
 
   describe('identifyFrequentLossTrade', () => {
-    it('应该识别持有<7天且亏损的交易', () => {
+    it('应该识别持有<7天且收益率≤0.5%的交易', () => {
       const trades: TradeRecord[] = [
-        { id: '1', date: '2024-03-01', type: 'buy', shares: 100, price: 1.50, fee: 0 },
-        { id: '2', date: '2024-03-05', type: 'sell', shares: 100, price: 1.40, fee: 0 }
+        { id: '1', date: '2024-03-01', type: 'buy', shares: 100, price: 1.50, fee: 1 },
+        { id: '2', date: '2024-03-05', type: 'sell', shares: 100, price: 1.40, fee: 1 }
       ];
 
       const result = identifyFrequentLossTrade(trades);
 
+      // 总成本 = 100×1.50 + 1 = 151
+      // 总收入 = 100×1.40 - 1 = 139
+      // 收益率 = (139 - 151) / 151 × 100% = -7.95% < 0.5%
       expect(result.length).toBe(1);
       expect(result[0].id).toBe('2');
     });
@@ -199,7 +202,7 @@ describe('behaviorAnalysis', () => {
       expect(result.length).toBe(0);
     });
 
-    it('不应该识别盈利的交易', () => {
+    it('不应该识别收益率>0.5%的交易', () => {
       const trades: TradeRecord[] = [
         { id: '1', date: '2024-03-01', type: 'buy', shares: 100, price: 1.50, fee: 0 },
         { id: '2', date: '2024-03-05', type: 'sell', shares: 100, price: 1.60, fee: 0 }
@@ -207,6 +210,9 @@ describe('behaviorAnalysis', () => {
 
       const result = identifyFrequentLossTrade(trades);
 
+      // 总成本 = 100×1.50 + 0 = 150
+      // 总收入 = 100×1.60 - 0 = 160
+      // 收益率 = (160 - 150) / 150 × 100% = 6.67% > 0.5%
       expect(result.length).toBe(0);
     });
 
@@ -226,47 +232,206 @@ describe('behaviorAnalysis', () => {
       expect(result.length).toBe(0);
     });
 
-    it('使用LIFO匹配：多次买入后部分卖出亏损应识别', () => {
-      const trades: TradeRecord[] = [
-        // 第一次买入
-        { id: '1', date: '2024-03-01', type: 'buy', shares: 100, price: 1.50, fee: 0 },
-        // 第二次买入（较晚，高价）
-        { id: '2', date: '2024-03-05', type: 'buy', shares: 100, price: 1.60, fee: 0 },
-        // 卖出（价格低于第二次买入）
-        { id: '3', date: '2024-03-08', type: 'sell', shares: 100, price: 1.45, fee: 0 }
-      ];
-
-      const result = identifyFrequentLossTrade(trades);
-
-      // LIFO：卖出匹配第二次买入（价格1.60），卖出价1.45 < 1.60，亏损，算频繁调仓
-      expect(result.length).toBe(1);
-      expect(result[0].id).toBe('3');
-      expect(result[0].reason).toContain('持有3天');
-      expect(result[0].reason).toContain('亏损9.38%');
-    });
-
-    it('应该识别部分亏损卖出的情况', () => {
+    
+    it('应该识别部分份额卖出-整体收益率≤0.5%的情况', () => {
       const trades: TradeRecord[] = [
         // 第一次买入（低价，持有天数=5天）
-        { id: '1', date: '2024-03-03', type: 'buy', shares: 100, price: 1.50, fee: 0 },
+        { id: '1', date: '2024-03-03', type: 'buy', shares: 100, price: 1.50, fee: 2 },
         // 第二次买入（高价，持有天数=3天）
-        { id: '2', date: '2024-03-05', type: 'buy', shares: 100, price: 1.60, fee: 0 },
-        // 卖出200份（超过第二次买入的100份，会匹配到第一次买入）
-        { id: '3', date: '2024-03-08', type: 'sell', shares: 200, price: 1.55, fee: 0 }
+        { id: '2', date: '2024-03-05', type: 'buy', shares: 100, price: 1.60, fee: 2 },
+        // 卖出200份
+        { id: '3', date: '2024-03-08', type: 'sell', shares: 200, price: 1.55, fee: 3 }
       ];
 
       const result = identifyFrequentLossTrade(trades);
 
-      // LIFO：卖出200份
-      // 先匹配第二次买入100份@1.60（持有3天<7天，卖出价1.55 < 1.60，亏损）
-      // 再匹配第一次买入100份@1.50（持有5天<7天，卖出价1.55 > 1.50，盈利）
-      // 应该识别为频繁调仓，并标注"部分亏损卖出"
+      // LIFO匹配：卖出200份
+      // 匹配第二次买入：100份
+      //   成本 = 100×1.60 = 160
+      //   手续费 = 2×(100/100) = 2
+      // 匹配第一次买入：100份
+      //   成本 = 100×1.50 = 150
+      //   手续费 = 2×(100/100) = 2
+      // 总成本 = 160 + 2 + 150 + 2 = 314
+      // 总收入 = 200×1.55 - 3 = 307
+      // 收益率 = (307 - 314) / 314 × 100% = -2.23% < 0.5%
+      // 应识别为频繁调仓
+      // 持有天数取最后一次匹配的买入（最早的那次），即5天
       expect(result.length).toBe(1);
       expect(result[0].id).toBe('3');
-      expect(result[0].reason).toContain('部分亏损卖出');
-      expect(result[0].reason).toContain('共200份');
-      expect(result[0].reason).toContain('100份亏损');
-      expect(result[0].reason).toContain('100份盈利');
+      expect(result[0].reason).toContain('持有5天');
+      expect(result[0].reason).toContain('-2.23%');
+    });
+
+    it('整体盈利>0.5%不应识别为频繁调仓', () => {
+      const trades: TradeRecord[] = [
+        { id: '1', date: '2024-03-01', type: 'buy', shares: 100, price: 1.50, fee: 1 },
+        { id: '2', date: '2024-03-05', type: 'sell', shares: 100, price: 1.60, fee: 1 }
+      ];
+
+      const result = identifyFrequentLossTrade(trades);
+
+      // 总成本 = 100×1.50 + 1 = 151
+      // 总收入 = 100×1.60 - 1 = 159
+      // 收益率 = (159 - 151) / 151 × 100% = 5.3% > 0.5%
+      // 不应识别为频繁调仓
+      expect(result.length).toBe(0);
+    });
+
+    it('整体亏损应识别为频繁调仓', () => {
+      const trades: TradeRecord[] = [
+        { id: '1', date: '2024-03-01', type: 'buy', shares: 100, price: 1.60, fee: 1 },
+        { id: '2', date: '2024-03-05', type: 'sell', shares: 100, price: 1.50, fee: 1 }
+      ];
+
+      const result = identifyFrequentLossTrade(trades);
+
+      // 总成本 = 100×1.60 + 1 = 161
+      // 总收入 = 100×1.50 - 1 = 149
+      // 收益率 = (149 - 161) / 161 × 100% = -7.45% < 0.5%
+      // 应识别为频繁调仓
+      expect(result.length).toBe(1);
+      expect(result[0].id).toBe('2');
+      expect(result[0].reason).toContain('持有4天');
+      expect(result[0].reason).toContain('-7.45%');
+    });
+
+    it('微利急卖（收益率<0.5%）应识别为频繁调仓', () => {
+      const trades: TradeRecord[] = [
+        { id: '1', date: '2024-03-01', type: 'buy', shares: 100, price: 1.50, fee: 1 },
+        { id: '2', date: '2024-03-05', type: 'sell', shares: 100, price: 1.51, fee: 1 }
+      ];
+
+      const result = identifyFrequentLossTrade(trades);
+
+      // 总成本 = 100×1.50 + 1 = 151
+      // 总收入 = 100×1.51 - 1 = 150
+      // 收益率 = (150 - 151) / 151 × 100% = -0.66% < 0.5%
+      // 应识别为频繁调仓
+      expect(result.length).toBe(1);
+      expect(result[0].id).toBe('2');
+      expect(result[0].reason).toContain('-0.66%');
+    });
+
+    it('部分份额卖出-整体盈利>0.5%不应识别', () => {
+      const trades: TradeRecord[] = [
+        { id: '1', date: '2024-03-01', type: 'buy', shares: 200, price: 1.50, fee: 2 },
+        { id: '2', date: '2024-03-05', type: 'sell', shares: 100, price: 1.55, fee: 1 }
+      ];
+
+      const result = identifyFrequentLossTrade(trades);
+
+      // 匹配买入：100份（部分）
+      // 总成本 = 100×1.50 + 2×(100/200) = 151
+      // 总收入 = 100×1.55 - 1 = 154
+      // 收益率 = (154 - 151) / 151 × 100% = 1.99% > 0.5%
+      // 不应识别为频繁调仓
+      expect(result.length).toBe(0);
+    });
+
+    it('部分份额卖出-整体亏损应识别为频繁调仓', () => {
+      const trades: TradeRecord[] = [
+        { id: '1', date: '2024-03-01', type: 'buy', shares: 200, price: 1.60, fee: 2 },
+        { id: '2', date: '2024-03-05', type: 'sell', shares: 100, price: 1.50, fee: 1 }
+      ];
+
+      const result = identifyFrequentLossTrade(trades);
+
+      // 匹配买入：100份（部分）
+      // 总成本 = 100×1.60 + 2×(100/200) = 161
+      // 总收入 = 100×1.50 - 1 = 149
+      // 收益率 = (149 - 161) / 161 × 100% = -7.45% < 0.5%
+      // 应识别为频繁调仓
+      expect(result.length).toBe(1);
+      expect(result[0].id).toBe('2');
+      expect(result[0].reason).toContain('-7.45%');
+    });
+
+    it('手续费为null时应按0处理', () => {
+      const trades: TradeRecord[] = [
+        { id: '1', date: '2024-03-01', type: 'buy', shares: 100, price: 1.50, fee: null as any },
+        { id: '2', date: '2024-03-05', type: 'sell', shares: 100, price: 1.55, fee: null as any }
+      ];
+
+      const result = identifyFrequentLossTrade(trades);
+
+      // 手续费按0处理
+      // 总成本 = 100×1.50 + 0 = 150
+      // 总收入 = 100×1.55 - 0 = 155
+      // 收益率 = (155 - 150) / 150 × 100% = 3.33% > 0.5%
+      // 不应识别为频繁调仓
+      expect(result.length).toBe(0);
+    });
+
+    it('总成本≤0时应跳过判断', () => {
+      const trades: TradeRecord[] = [
+        { id: '1', date: '2024-03-01', type: 'buy', shares: 100, price: 0, fee: 0 },
+        { id: '2', date: '2024-03-05', type: 'sell', shares: 100, price: 1.50, fee: 0 }
+      ];
+
+      const result = identifyFrequentLossTrade(trades);
+
+      // 总成本 = 100×0 + 0 = 0
+      // 跳过判断（避免除零）
+      expect(result.length).toBe(0);
+    });
+
+    it('手续费应按比例分摊', () => {
+      const trades: TradeRecord[] = [
+        { id: '1', date: '2024-03-01', type: 'buy', shares: 100, price: 1.50, fee: 15 },
+        { id: '2', date: '2024-03-02', type: 'buy', shares: 100, price: 1.60, fee: 16 },
+        { id: '3', date: '2024-03-05', type: 'sell', shares: 150, price: 1.55, fee: 10 }
+      ];
+
+      const result = identifyFrequentLossTrade(trades);
+
+      // LIFO匹配：
+      // 匹配第二次买入：100份
+      //   成本 = 100×1.60 = 160
+      //   手续费 = 16×(100/100) = 16
+      // 匹配第一次买入：50份
+      //   成本 = 50×1.50 = 75
+      //   手续费 = Math.round(15×(50/100)×100)/100 = 7.5
+      // 总成本 = 160 + 16 + 75 + 7.5 = 258.5
+      // 总收入 = 150×1.55 - 10 = 222.5
+      // 收益率 = Math.round((222.5 - 258.5) / 258.5 × 10000) / 100 = -13.93%
+      // 应识别为频繁调仓
+      expect(result.length).toBe(1);
+      expect(result[0].id).toBe('3');
+      expect(result[0].reason).toContain('-13.93%');
+    });
+
+    it('收益率恰好=0.5%时应识别为频繁调仓', () => {
+      // 边界测试：收益率恰好为0.5%（≤0.5%的临界值）
+      const trades: TradeRecord[] = [
+        { id: '1', date: '2024-03-01', type: 'buy', shares: 100, price: 1.50, fee: 0 },
+        { id: '2', date: '2024-03-05', type: 'sell', shares: 100, price: 1.5075, fee: 0 }
+      ];
+
+      const result = identifyFrequentLossTrade(trades);
+
+      // 总成本 = 100×1.50 + 0 = 150
+      // 总收入 = 100×1.5075 - 0 = 150.75
+      // 收益率 = (150.75 - 150) / 150 × 100% = 0.5%
+      // 应识别为频繁调仓（≤0.5%）
+      expect(result.length).toBe(1);
+      expect(result[0].reason).toContain('0.50%');
+    });
+
+    it('手续费为undefined时应按0处理', () => {
+      const trades: TradeRecord[] = [
+        { id: '1', date: '2024-03-01', type: 'buy', shares: 100, price: 1.50, fee: undefined as any },
+        { id: '2', date: '2024-03-05', type: 'sell', shares: 100, price: 1.55, fee: undefined as any }
+      ];
+
+      const result = identifyFrequentLossTrade(trades);
+
+      // 手续费按0处理
+      // 总成本 = 100×1.50 + 0 = 150
+      // 总收入 = 100×1.55 - 0 = 155
+      // 收益率 = (155 - 150) / 150 × 100% = 3.33% > 0.5%
+      // 不应识别为频繁调仓
+      expect(result.length).toBe(0);
     });
   });
 
