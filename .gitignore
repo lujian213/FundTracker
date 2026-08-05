@@ -19,3 +19,4 @@ public/tesseract/
 public/tesseract-core/
 chi_sim.traineddata
 eng.traineddata
+.playwright-cli/

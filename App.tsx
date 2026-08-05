@@ -74,6 +74,8 @@ import NewsAIAnalysisModal from './components/NewsAIAnalysisModal';
 // 动态导入热力图组件（懒加载ECharts）
 import { lazy } from 'react';
 const SectorHeatmapModal = lazy(() => import('./components/SectorHeatmapModal'));
+import ScreenshotProgressModal from './components/ScreenshotProgressModal';
+import { smartScreenshot } from './utils/screenshotUtils';
 
 const createPlaceholderIndex = (symbol: string): MarketIndex => {
   const normalized = normalizeIndexSymbol(symbol);
@@ -322,6 +324,12 @@ const AppContent: React.FC = () => {
   const [autoBackupStatus, setAutoBackupStatus] = useState<'pending' | 'done' | null>(null);
   const [deepToast, setDeepToast] = useState<{ message: string, visible: boolean } | undefined>(undefined);
   const [screenshotToast, setScreenshotToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
+  const [screenshotProgress, setScreenshotProgress] = useState<{ current: number; total: number; visible: boolean }>({
+    current: 0,
+    total: 0,
+    visible: false
+  });
+  const screenshotCancelledRef = useRef<boolean>(false); // Use ref for cancel state (avoids closure staleness)
   const [isNewsSidebarVisible, setIsNewsSidebarVisible] = useState<boolean>(false);
   const [showSectorHeatmap, setShowSectorHeatmap] = useState<boolean>(false);
 
@@ -1133,7 +1141,7 @@ const AppContent: React.FC = () => {
 
   return (
     <div className={`min-h-screen pb-32 transition-colors duration-300 ${isSelectionMode ? 'bg-blue-50/50' : 'bg-gray-50'}`}>
-      <header className="bg-white border-b sticky top-0 z-50 shadow-sm overflow-visible">
+      <header className="bg-white border-b sticky top-0 z-50 shadow-sm overflow-visible" data-screenshot-ignore="true">
         <div className="max-w-6xl mx-auto px-4 py-2 flex justify-between items-center">
           <div className="flex items-center space-x-2">
             <div className={`p-2 rounded-lg shadow-inner transition-colors ${isSelectionMode ? 'bg-blue-600' : 'bg-red-600'}`}>
@@ -1212,36 +1220,33 @@ const AppContent: React.FC = () => {
             {/* 截屏按钮 */}
             <button
               onClick={async () => {
-                try {
-                  // 使用类型断言以支持 Chrome 的实验性 preferCurrentTab 属性
-                  const stream = await navigator.mediaDevices.getDisplayMedia({
-                    video: { displaySurface: 'browser' },
-                    // @ts-expect-error Chrome 实验性属性
-                    preferCurrentTab: true,
-                    audio: false
-                  });
-                  const video = document.createElement('video');
-                  video.srcObject = stream;
-                  await video.play();
-                  const canvas = document.createElement('canvas');
-                  canvas.width = video.videoWidth;
-                  canvas.height = video.videoHeight;
-                  const ctx = canvas.getContext('2d');
-                  ctx?.drawImage(video, 0, 0);
-                  const blob = await new Promise<Blob>((resolve, reject) => {
-                    canvas.toBlob((b) => b ? resolve(b) : reject(new Error('Failed to create blob')), 'image/png');
-                  });
-                  await navigator.clipboard.write([
-                    new ClipboardItem({ 'image/png': blob })
-                  ]);
-                  stream.getTracks().forEach(track => track.stop());
-                  setScreenshotToast({ message: '已复制到剪切板', type: 'success' });
-                  setTimeout(() => setScreenshotToast(null), 3000);
-                } catch (err) {
-                  console.error('截屏失败:', err);
-                  setScreenshotToast({ message: '截屏失败', type: 'error' });
-                  setTimeout(() => setScreenshotToast(null), 3000);
-                }
+                screenshotCancelledRef.current = false;
+
+                await smartScreenshot({
+                  onProgress: (current, total) => {
+                    setScreenshotProgress({ current, total, visible: true });
+                  },
+                  onCancel: () => screenshotCancelledRef.current,
+                  maxScreens: 10,
+                  onSuccess: (isScroll, screenCount) => {
+                    setScreenshotProgress(prev => ({ ...prev, visible: false }));
+                    if (isScroll && screenCount) {
+                      setScreenshotToast({ message: `已复制到剪切板（滚动截屏 ${screenCount}屏）`, type: 'success' });
+                    } else {
+                      setScreenshotToast({ message: '已复制到剪切板', type: 'success' });
+                    }
+                    setTimeout(() => setScreenshotToast(null), 3000);
+                  },
+                  onError: (error) => {
+                    setScreenshotProgress(prev => ({ ...prev, visible: false }));
+                    if (error.message === 'Screenshot cancelled') {
+                      setScreenshotToast({ message: '截图已取消', type: 'error' });
+                    } else {
+                      setScreenshotToast({ message: '截屏失败', type: 'error' });
+                    }
+                    setTimeout(() => setScreenshotToast(null), 3000);
+                  }
+                });
               }}
               title="截屏"
               aria-label="截屏"
@@ -1265,6 +1270,16 @@ const AppContent: React.FC = () => {
                 </div>
               </div>
             )}
+            {/* 截屏进度提示 */}
+            <ScreenshotProgressModal
+              visible={screenshotProgress.visible}
+              current={screenshotProgress.current}
+              total={screenshotProgress.total}
+              onCancel={() => {
+                screenshotCancelledRef.current = true;
+                setScreenshotProgress(prev => ({ ...prev, visible: false }));
+              }}
+            />
           </div>
         </div>
         {/* Auto-backup Banner */}
@@ -1464,6 +1479,7 @@ const AppContent: React.FC = () => {
           <button
             onClick={() => setIsModalOpen(true)}
             className="fixed bottom-8 right-8 bg-red-600 text-white w-14 h-14 rounded-full shadow-2xl flex items-center justify-center hover:scale-110 active:scale-90 transition-all z-30 group"
+            data-screenshot-ignore="true"
           >
             <i className="fas fa-plus text-xl"></i>
             {/* 上方提示 */}
@@ -1735,6 +1751,7 @@ const AppContent: React.FC = () => {
       {/* 快讯侧边栏触发区域 - 带视觉提示 */}
       <div
         className="fixed right-0 top-1/2 -translate-y-1/2 z-[9997] flex items-center cursor-pointer group"
+        data-screenshot-ignore="true"
         onMouseEnter={() => setIsNewsSidebarVisible(true)}
         aria-label="打开财经快讯侧边栏"
       >
