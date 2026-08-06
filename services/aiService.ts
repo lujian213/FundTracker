@@ -125,6 +125,7 @@ async function processStreamResponse(
 
   const decoder = new TextDecoder();
   let fullContent = '';
+  let reasoningContent = ''; // 累积推理过程（备用）
 
   try {
     while (true) {
@@ -140,13 +141,25 @@ async function processStreamResponse(
           if (data === '[DONE]') continue;
           try {
             const json = JSON.parse(data);
-            const content = json.choices?.[0]?.delta?.content;
+            const delta = json.choices?.[0]?.delta;
+
+            // 支持 DeepSeek V4 的两种响应字段：
+            // - content: 最终结论（优先使用）
+            // - reasoning_content: 推理过程（仅作为备用）
+            const content = delta?.content;
+            const reasoning = delta?.reasoning_content;
+
             if (content) {
+              // 一旦有最终结论，丢弃推理过程，只使用结论
               fullContent += content;
+              reasoningContent = ''; // 清空推理过程
               // 调用流式回调
               if (onChunk) {
                 onChunk(content, fullContent);
               }
+            } else if (reasoning && !fullContent) {
+              // 只有在没有结论的情况下，才累积推理过程作为备用
+              reasoningContent += reasoning;
             }
           } catch {
             // 忽略解析错误
@@ -156,18 +169,22 @@ async function processStreamResponse(
     }
   } catch (streamError: any) {
     // 如果已有部分内容，返回它
-    if (fullContent) {
+    const finalContent = fullContent || reasoningContent;
+    if (finalContent) {
       return {
-        content: fullContent,
+        content: finalContent,
         success: true
       };
     }
     throw streamError;
   }
 
-  if (fullContent) {
+  // 优先返回结论，如果没有结论才返回推理过程
+  const finalContent = fullContent || reasoningContent;
+
+  if (finalContent) {
     return {
-      content: fullContent,
+      content: finalContent,
       success: true
     };
   } else {
@@ -195,6 +212,11 @@ export async function queryAI(
     const maxTokens = request.maxTokens ?? 2000;
     const enableWebSearch = request.enableWebSearch ?? false;
 
+    // DeepSeek V4 Flash 模型需要禁用推理过程
+    const modelName = config.model || 'gpt-4';
+    const isDeepSeekV4Flash = modelName.includes('deepseek-v4') || modelName.includes('deepseek-v3');
+    const reasoningEffort = isDeepSeekV4Flash ? { reasoning_effort: 'none' as const } : {};
+
     // 情况1：AI 模型支持内置联网搜索（如智谱 GLM-4）
     if (enableWebSearch && (config as AIConfigurationWithWebSearch).webSearch) {
       const webSearchConfig = config as AIConfigurationWithWebSearch;
@@ -204,13 +226,15 @@ export async function queryAI(
         stream: boolean;
         temperature: number;
         max_tokens: number;
+        reasoning_effort?: 'none';
         tools?: Array<{ type: string; web_search: Record<string, any> }>;
       } = {
-        model: config.model || 'gpt-4',
+        model: modelName,
         messages: request.messages,
         stream: true,
         temperature,
         max_tokens: maxTokens,
+        ...reasoningEffort,
       };
 
       const webSearchParams = webSearchConfig.webSearch?.params || {};
@@ -254,11 +278,12 @@ export async function queryAI(
         });
 
         const requestBody = {
-          model: config.model || 'gpt-4',
+          model: modelName,
           messages: enhancedMessages,
           stream: true,
           temperature,
           max_tokens: maxTokens,
+          ...reasoningEffort,
         };
 
         const response = await fetchWithRetry(config.apiEndpoint, {
@@ -279,11 +304,12 @@ export async function queryAI(
 
     // 情况3：普通请求（无联网搜索或搜索失败降级）
     const requestBody = {
-      model: config.model || 'gpt-4',
+      model: modelName,
       messages: request.messages,
       stream: true,
       temperature,
       max_tokens: maxTokens,
+      ...reasoningEffort,
     };
 
     const response = await fetchWithRetry(config.apiEndpoint, {
