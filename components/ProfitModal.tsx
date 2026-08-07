@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { fetchFundHistory as defaultFetchFundHistory, prepareHistoryForProfitCalculation } from '../services/fundService';
+import * as marketFundService from '../services/marketFundService';
 import useTrades from '../hooks/useTrades';
 import { useModalBodyStyle } from '../hooks/useModalBodyStyle';
 import { computeProfitTimeline } from '../utils/profitCalculator';
@@ -74,6 +75,32 @@ const ProfitModal: React.FC<ProfitModalProps> = ({ symbol, fundName, currentPric
         let pts = await fetchFn(symbol);
         if (!mounted) return;
 
+        // 获取当前基金的持仓配置和净值类型
+        const position = marketFundService.getPosition(symbol);
+        const navType = position?.navType;
+
+        // 获取所有基金的净值日期信息（用于T+2基金日期校准）
+        // 优先使用估值数据中的净值日期，如果没有则从历史数据中获取
+        const allSymbols = marketFundService.getAllFundSymbols();
+        const allFundNavDates = allSymbols.map(sym => {
+          const pos = marketFundService.getPosition(sym);
+          const val = marketFundService.getValuation(sym);
+          const hist = marketFundService.getHistory(sym);
+
+          // 从历史数据中获取最新净值日期
+          let netWorthDate: string | null = val?.netWorthDate || null;
+          if (!netWorthDate && hist && hist.length > 0) {
+            const sortedHist = [...hist].sort((a, b) => (a.date as number) - (b.date as number));
+            netWorthDate = toLocalDateKey(sortedHist[sortedHist.length - 1].date);
+          }
+
+          return {
+            symbol: sym,
+            navType: pos?.navType || 'T+1',
+            netWorthDate,
+          };
+        });
+
         // 使用公共函数准备历史数据（与 computeOverallProfit 一致）
         pts = prepareHistoryForProfitCalculation({
           history: pts || [],
@@ -83,14 +110,26 @@ const ProfitModal: React.FC<ProfitModalProps> = ({ symbol, fundName, currentPric
           realtimeDate,
           previousPrice,
           netWorthDate,
+          navType,
+          allFundNavDates,
         });
 
         setHistory(pts);
         if (pts.length > 0) {
           const first = toLocalDateKey(pts[0].date);
-          // 找到有有效数据的最后一天：优先用 realtimeDate，否则用原始历史数据的最后一天
-          // realtimeDate 是当前实际价格的日期，应该作为"有数据的最后一天"
-          const lastWithData = realtimeDate && realtimeDate <= todayLocal ? realtimeDate : toLocalDateKey(pts[pts.length - 1].date);
+
+          // 找到有有效数据的最后一天
+          // 对于T+2基金：使用校准后的最后一个日期（因为净值日期已校准）
+          // 对于T+1基金：优先用 realtimeDate（估值日期），否则用历史数据最后一天
+          let lastWithData: string;
+          if (navType === 'T+2') {
+            // T+2基金：使用校准后的最后一个日期
+            lastWithData = toLocalDateKey(pts[pts.length - 1].date);
+          } else {
+            // T+1基金：优先用估值日期
+            lastWithData = realtimeDate && realtimeDate <= todayLocal ? realtimeDate : toLocalDateKey(pts[pts.length - 1].date);
+          }
+
           setHistoryEndDate(lastWithData);
           const defaultFrom = initialStartDate && initialStartDate > first ? initialStartDate : first;
           setFromDate(defaultFrom);

@@ -166,7 +166,8 @@ export function useSmartAddFunds(): {
         startDate: positionResult.newPosition.startDate,
         initialPrice: positionResult.newPosition.initialPrice,
       };
-      marketFundService.updatePosition(fundCode, position);
+      // 添加新基金时自动检测净值类型
+      marketFundService.updatePosition(fundCode, position, { autoDetectNavType: true });
     }
   }, []);
 

@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { createPortal } from 'react-dom';
-import { ValuationData, HistoricalPoint, IntradayPoint, KlinePoint, TradeRecord, RecommendedStrategy, FundProfile } from '../types';
+import { ValuationData, HistoricalPoint, IntradayPoint, KlinePoint, TradeRecord, RecommendedStrategy, FundProfile, FundNavType } from '../types';
 import { fetchFundHistory as defaultFetchFundHistory } from '../services/fundService';
 import * as marketFundService from '../services/marketFundService';
 import { MA_COLORS } from '../utils/movingAverage';
@@ -71,6 +71,7 @@ export const FundDetailsModal: React.FC<FundDetailsModalProps> = ({ data, onClos
   const [tmpInitialPrice, setTmpInitialPrice] = useState<string>('');
   const [tmpAliasName, setTmpAliasName] = useState<string>('');
   const [tmpTrackingIndex, setTmpTrackingIndex] = useState<string>('');
+  const [tmpNavType, setTmpNavType] = useState<FundNavType>('T+1');
   const [showTrade, setShowTrade] = useState(false);
   const [showProfit, setShowProfit] = useState(false);
   const [showVirtual, setShowVirtual] = useState(false);
@@ -695,10 +696,11 @@ export const FundDetailsModal: React.FC<FundDetailsModalProps> = ({ data, onClos
     setTmpInitial(initialPosition.toString());
     setTmpStartDate(startDate ?? (valuationData.realtimeDate && valuationData.realtimeDate !== '---' ? valuationData.realtimeDate : ''));
     setTmpInitialPrice(initialPrice !== null ? initialPrice.toFixed(4) : '');
-    // 初始化常用名称
+    // 初始化常用名称和净值类型
     const position = marketFundService.getPosition(data.symbol);
     setTmpAliasName(position?.aliasName || '');
     setTmpTrackingIndex(position?.trackingIndex || '');
+    setTmpNavType(position?.navType || 'T+1');
     // clear previous errors when opening
     setTmpFullError(null);
     setTmpInitialError(null);
@@ -794,6 +796,7 @@ export const FundDetailsModal: React.FC<FundDetailsModalProps> = ({ data, onClos
         initialPrice: finalInitialPrice,
         aliasName: tmpAliasName.trim() || undefined,
         trackingIndex: tmpTrackingIndex.trim() || undefined,
+        navType: tmpNavType,
       });
     } else {
       setStartDate(null);
@@ -806,6 +809,7 @@ export const FundDetailsModal: React.FC<FundDetailsModalProps> = ({ data, onClos
         initialPrice: null,
         aliasName: tmpAliasName.trim() || undefined,
         trackingIndex: tmpTrackingIndex.trim() || undefined,
+        navType: tmpNavType,
       });
     }
     setShowConfig(false);
@@ -1651,6 +1655,36 @@ export const FundDetailsModal: React.FC<FundDetailsModalProps> = ({ data, onClos
                            <span className="text-[10px] text-gray-400 mt-0.5">
                              格式如: 2.H50036
                            </span>
+                         </div>
+                       </div>
+                       <div className="flex items-start justify-between">
+                         <label className="text-sm text-gray-600 mt-1">净值类型</label>
+                         <div className="flex flex-col items-end gap-1">
+                           <div className="flex gap-4">
+                             <label className="flex items-center gap-1.5 cursor-pointer">
+                               <input
+                                 type="radio"
+                                 name="navType"
+                                 value="T+1"
+                                 checked={tmpNavType === 'T+1'}
+                                 onChange={() => setTmpNavType('T+1')}
+                                 className="w-4 h-4 text-blue-600"
+                               />
+                               <span className="text-sm">T+1</span>
+                             </label>
+                             <label className="flex items-center gap-1.5 cursor-pointer">
+                               <input
+                                 type="radio"
+                                 name="navType"
+                                 value="T+2"
+                                 checked={tmpNavType === 'T+2'}
+                                 onChange={() => setTmpNavType('T+2')}
+                                 className="w-4 h-4 text-blue-600"
+                               />
+                               <span className="text-sm">T+2（美股QDII）</span>
+                             </label>
+                           </div>
+                           <span className="text-[10px] text-gray-400">美股QDII基金净值更新晚1天</span>
                          </div>
                        </div>
                        <div className="flex items-center justify-between">

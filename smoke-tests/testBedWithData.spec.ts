@@ -4156,7 +4156,25 @@ test.describe('testBedWithData', () => {
     console.log(`基金设置验证完成: 满仓=${configInfo?.fullCapacity}, 初始=${configInfo?.initialPosition}, 跟踪指数提示=${configInfo?.trackingIndexHint}`);
 
     // ══════════════════════════════════════════════════════════════════════════════
-    // 4. 验证跟踪指数搜索按钮并打开搜索窗口
+    // 4. 验证净值类型选项
+    // ══════════════════════════════════════════════════════════════════════════════
+    // 验证净值类型单选按钮存在
+    const navTypeT1 = page.locator('input[type="radio"][value="T+1"]');
+    const navTypeT2 = page.locator('input[type="radio"][value="T+2"]');
+    await expect(navTypeT1).toBeVisible({ timeout: 3000 });
+    await expect(navTypeT2).toBeVisible();
+
+    // 验证默认选中 T+1
+    await expect(navTypeT1).toBeChecked();
+
+    // 验证提示文字存在
+    const navTypeHint = page.locator('text=美股QDII基金净值更新晚1天');
+    await expect(navTypeHint).toBeVisible();
+
+    console.log('净值类型验证完成');
+
+    // ══════════════════════════════════════════════════════════════════════════════
+    // 5. 验证跟踪指数搜索按钮并打开搜索窗口
     // ══════════════════════════════════════════════════════════════════════════════
     // 验证搜索按钮存在
     const searchButton = page.locator('button[aria-label="搜索指数/板块"]');
@@ -4192,7 +4210,7 @@ test.describe('testBedWithData', () => {
     console.log('跟踪指数搜索按钮验证完成');
 
     // ══════════════════════════════════════════════════════════════════════════════
-    // 5. 关闭配置窗口（点击"取消"按钮）
+    // 6. 关闭配置窗口（点击"取消"按钮）
     // ══════════════════════════════════════════════════════════════════════════════
     // 基金设置弹窗没有 X 按钮，只有"取消"按钮 - 使用 JavaScript 直接点击
     await page.evaluate(() => {
@@ -4211,7 +4229,7 @@ test.describe('testBedWithData', () => {
     await expect(configModal).not.toBeVisible({ timeout: 2000 });
 
     // ══════════════════════════════════════════════════════════════════════════════
-    // 6. 关闭基金详情窗口
+    // 7. 关闭基金详情窗口
     // ══════════════════════════════════════════════════════════════════════════════
     await page.click('#fund-details-modal button:has(i.fa-times)');
     await expect(fundModal).not.toBeVisible();

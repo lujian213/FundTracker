@@ -358,6 +358,37 @@ const AppContent: React.FC = () => {
     setOriginalIndexOrder(currentOrder);
   }, []);
 
+  // 截屏处理函数（使用 useCallback 避免重复创建）
+  const handleScreenshot = useCallback(async () => {
+    screenshotCancelledRef.current = false;
+
+    await smartScreenshot({
+      onProgress: (current, total) => {
+        setScreenshotProgress({ current, total, visible: true });
+      },
+      onCancel: () => screenshotCancelledRef.current,
+      maxScreens: 10,
+      onSuccess: (isScroll, screenCount) => {
+        setScreenshotProgress(prev => ({ ...prev, visible: false }));
+        if (isScroll && screenCount) {
+          setScreenshotToast({ message: `已复制到剪切板（滚动截屏 ${screenCount}屏）`, type: 'success' });
+        } else {
+          setScreenshotToast({ message: '已复制到剪切板', type: 'success' });
+        }
+        setTimeout(() => setScreenshotToast(null), 3000);
+      },
+      onError: (error) => {
+        setScreenshotProgress(prev => ({ ...prev, visible: false }));
+        if (error.message === 'Screenshot cancelled') {
+          setScreenshotToast({ message: '截图已取消', type: 'error' });
+        } else {
+          setScreenshotToast({ message: '截屏失败', type: 'error' });
+        }
+        setTimeout(() => setScreenshotToast(null), 3000);
+      }
+    });
+  }, []); // screenshotCancelledRef 是 ref，不需要作为依赖项
+
   const handleIndexDragEnd = useCallback((event: DragEndEvent) => {
     const { active, over } = event;
     if (!over || active.id === over.id) return;
@@ -1111,8 +1142,8 @@ const AppContent: React.FC = () => {
     return allIndices.find(idx => normalizeIndexSymbol(idx.info.symbol) === viewingIndexSymbol) || null;
   }, [viewingIndexSymbol, displayDomesticIndices, displayGlobalIndices]);
 
-  // 获取即将到来的日历事件（每次渲染都获取最新数据）
-  const upcomingCalendarEvents = getFirstEventInWorkdays(4);
+  // 获取即将到来的日历事件（日历数据更新频率低，使用 useMemo 缓存）
+  const upcomingCalendarEvents = useMemo(() => getFirstEventInWorkdays(4), []);
 
   // 从 marketFundService 获取基金历史数据
   const fundHistories = useMemo(() => {
@@ -1219,35 +1250,7 @@ const AppContent: React.FC = () => {
             )}
             {/* 截屏按钮 */}
             <button
-              onClick={async () => {
-                screenshotCancelledRef.current = false;
-
-                await smartScreenshot({
-                  onProgress: (current, total) => {
-                    setScreenshotProgress({ current, total, visible: true });
-                  },
-                  onCancel: () => screenshotCancelledRef.current,
-                  maxScreens: 10,
-                  onSuccess: (isScroll, screenCount) => {
-                    setScreenshotProgress(prev => ({ ...prev, visible: false }));
-                    if (isScroll && screenCount) {
-                      setScreenshotToast({ message: `已复制到剪切板（滚动截屏 ${screenCount}屏）`, type: 'success' });
-                    } else {
-                      setScreenshotToast({ message: '已复制到剪切板', type: 'success' });
-                    }
-                    setTimeout(() => setScreenshotToast(null), 3000);
-                  },
-                  onError: (error) => {
-                    setScreenshotProgress(prev => ({ ...prev, visible: false }));
-                    if (error.message === 'Screenshot cancelled') {
-                      setScreenshotToast({ message: '截图已取消', type: 'error' });
-                    } else {
-                      setScreenshotToast({ message: '截屏失败', type: 'error' });
-                    }
-                    setTimeout(() => setScreenshotToast(null), 3000);
-                  }
-                });
-              }}
+              onClick={handleScreenshot}
               title="截屏"
               aria-label="截屏"
               className="p-2 w-10 h-10 rounded-full hover:bg-gray-100 text-gray-400 transition-all"

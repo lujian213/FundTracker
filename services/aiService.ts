@@ -51,8 +51,8 @@ export interface AIRequest {
 }
 
 /**
- * 带重试的 fetch 请求，处理 HTTP/2 协议错误等网络问题
- * 返回 Response 对象，由调用方处理流式响应
+ * 带重试和超时的 fetch 请求
+ * 使用通用的 withRetry 工具处理网络错误重试
  */
 async function fetchWithRetry(
   url: string,
@@ -61,49 +61,49 @@ async function fetchWithRetry(
   retryDelay: number = 1000,
   timeout: number = 60000
 ): Promise<Response> {
-  let lastError: Error | null = null;
-
-  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+  // 内部函数：执行带超时的单次 fetch
+  const fetchOnce = async (): Promise<Response> => {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), timeout);
+    const startTime = Date.now();
 
     try {
-      const startTime = Date.now();
       const response = await fetch(url, {
         ...options,
         signal: controller.signal
       });
-      const elapsed = Date.now() - startTime;
 
       if (!response.ok) {
-        clearTimeout(timeoutId);
         throw new Error(`HTTP ${response.status}: ${response.statusText}`);
       }
 
-      // 清除超时，返回 Response 对象让调用方处理流
       clearTimeout(timeoutId);
       return response;
     } catch (error: any) {
       clearTimeout(timeoutId);
-      lastError = error;
-
-      const isRetryable =
-        error.name === 'TypeError' ||
-        error.name === 'AbortError' ||
-        error.message?.includes('ERR_HTTP2') ||
-        error.message?.includes('Failed to fetch') ||
-        error.message?.includes('NetworkError');
-
-      if (isRetryable && attempt < maxRetries) {
-        await new Promise(resolve => setTimeout(resolve, retryDelay * (attempt + 1)));
-        continue;
-      }
-
       throw error;
     }
-  }
+  };
 
-  throw lastError;
+  // 使用 withRetry 处理重试逻辑
+  const retryOptions: RetryOptions = {
+    maxRetries,
+    baseDelayMs: retryDelay,
+    operationName: 'AI API 请求',
+    isRetryable: (error: Error) => {
+      // 网络错误、超时、HTTP/2 协议错误等可重试
+      return error.name === 'TypeError' ||
+             error.name === 'AbortError' ||
+             error.message?.includes('ERR_HTTP2') ||
+             error.message?.includes('Failed to fetch') ||
+             error.message?.includes('NetworkError');
+    },
+    onRetry: (attempt: number, error: Error) => {
+      console.warn(`[AI API 请求] 第 ${attempt} 次尝试失败，将重试: ${error.message}`);
+    }
+  };
+
+  return withRetry(fetchOnce, retryOptions);
 }
 
 /**

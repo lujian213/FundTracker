@@ -58,7 +58,7 @@ const BASE_BACKUP: BackupData = {
     { symbol: '100.NDX', name: '纳斯达克', current: 18000, change: -50, changePercent: -0.28, lastUpdated: '22:00' }
   ],
   positions: {
-    '000001': { fullCapacity: 10000, initialPosition: 2000, startDate: '2025-01-01', initialPrice: 1.48 },
+    '000001': { fullCapacity: 10000, initialPosition: 2000, startDate: '2025-01-01', initialPrice: 1.48, navType: 'T+1' },
   },
   trades: {
     '000001': [
@@ -207,7 +207,7 @@ describe('buildBackupData', () => {
     });
     const result = await bs.buildBackupData([], [], []);
     expect(result.positions['000001']).toEqual({
-      fullCapacity: 10000, initialPosition: 2000, startDate: '2025-01-01', initialPrice: 1.48,
+      fullCapacity: 10000, initialPosition: 2000, startDate: '2025-01-01', initialPrice: 1.48, navType: 'T+1',
     });
   });
 

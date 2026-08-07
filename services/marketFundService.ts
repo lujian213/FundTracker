@@ -9,7 +9,7 @@
 
 import {
   MarketFund, FundInfo, FundPosition, TradeRecord,
-  HistoricalPoint, IntradayPoint, ValuationData, Ticker, MarketType
+  HistoricalPoint, IntradayPoint, ValuationData, Ticker, MarketType, FundNavType
 } from '../types';
 import { STORAGE_KEYS, OLD_STORAGE_KEYS } from './storageKeys';
 import {
@@ -18,6 +18,34 @@ import {
 import { toLocalDateKey } from '../utils/priceResolver';
 import { compressConsecutiveSameValues } from '../utils/intradayCompression';
 import { compressToStorage, decompressFromStorage, truncateHistory, truncateArray, MAX_HISTORY_POINTS } from '../utils/storageCompression';
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// 辅助函数
+// ═══════════════════════════════════════════════════════════════════════════════
+
+/**
+ * 检测基金净值类型
+ * 通过基金名称中的关键词识别是否为美股相关QDII基金
+ *
+ * 识别规则：
+ * 1. 必须包含"QDII"
+ * 2. 且包含以下关键词之一：纳斯达克、标普、美股、美国、全球
+ *
+ * 注：华安恒生科技、天弘恒生科技虽然是QDII，但投资港股，不需要日期校准
+ *
+ * @param name 基金名称
+ * @returns 基金净值类型，'T+2' 表示美股QDII，'T+1' 表示正常基金
+ */
+export function detectFundNavType(name: string): FundNavType {
+  // 必须包含 QDII
+  if (!name.includes('QDII')) {
+    return 'T+1';
+  }
+
+  // 美股关键词（包括全球）
+  const usKeywords = ['纳斯达克', '标普', '美股', '美国', '全球'];
+  return usKeywords.some(kw => name.includes(kw)) ? 'T+2' : 'T+1';
+}
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // 内存缓存
@@ -553,9 +581,31 @@ export function getPosition(symbol: string): FundPosition | undefined {
 
 /**
  * 更新基金持仓配置
+ * @param symbol 基金代码
+ * @param position 持仓配置
+ * @param options 可选参数
+ *   - autoDetectNavType: 是否自动检测净值类型（默认 false）
+ *                        true: 添加新基金时自动检测（根据名称关键词）
+ *                        false: 从备份恢复时使用默认值 T+1
  */
-export function updatePosition(symbol: string, position: FundPosition): void {
+export function updatePosition(
+  symbol: string,
+  position: FundPosition,
+  options?: { autoDetectNavType?: boolean }
+): void {
   const existing = funds.get(symbol);
+
+  // 只有明确指定 autoDetectNavType: true 时才自动检测
+  if (!position.navType && options?.autoDetectNavType) {
+    const fundName = existing?.info.ticker.name || existing?.info.valuation?.name || '';
+    const detectedNavType = detectFundNavType(fundName);
+    position = { ...position, navType: detectedNavType };
+  }
+  // 否则，如果没有 navType，使用默认值 T+1
+  else if (!position.navType) {
+    position = { ...position, navType: 'T+1' };
+  }
+
   if (existing) {
     existing.info.position = position;
     saveToStorage();

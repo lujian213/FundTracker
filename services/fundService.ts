@@ -1,4 +1,4 @@
-import { ValuationData, MarketIndex, IndexInfo, HistoricalPoint, OverallProfitSummary, OverallFundRow, ProfitPoint, JobResult, KlinePoint } from "../types";
+import { ValuationData, MarketIndex, IndexInfo, HistoricalPoint, OverallProfitSummary, OverallFundRow, ProfitPoint, JobResult, KlinePoint, FundNavType } from "../types";
 import { computeProfitTimeline } from '../utils/profitCalculator';
 import { toLocalDateKey, resolvePreferredPrice, ResolvedPrice } from '../utils/priceResolver';
 import { getTradesForSymbol } from '../hooks/useTrades';
@@ -8,11 +8,85 @@ import * as marketFundService from './marketFundService';
 import * as indexService from './indexService';
 import { fetchWithProxy } from './proxyService';
 
+// ═══════════════════════════════════════════════════════════════════════════════
+// T+2 基金日期校准辅助函数
+// ═══════════════════════════════════════════════════════════════════════════════
+
+/**
+ * 基金净值日期信息（用于日期校准）
+ */
+interface FundNavDateInfo {
+  symbol: string;
+  navType: FundNavType;
+  netWorthDate: string | null;    // 确认净值日期
+  realtimeDate?: string | null;   // 估值日期（实时日期）
+}
+
+/**
+ * 计算T+2基金的日期校准映射
+ *
+ * 规则：找在T+2基金净值日期之后的最早的T+1基金净值日期，找不到就不校准
+ *
+ * @param t2NetWorthDate T+2基金的净值日期
+ * @param allFundNavDates 所有基金的净值日期信息
+ * @returns 校准后的日期，如果不需要校准则返回原日期
+ */
+function adjustT2FundDate(
+  t2NetWorthDate: string,
+  allFundNavDates: FundNavDateInfo[]
+): string {
+  // 找到所有T+1基金的净值日期（>T+2基金净值日期）
+  const t1Dates = allFundNavDates
+    .filter(f => f.navType === 'T+1' && f.netWorthDate && f.netWorthDate > t2NetWorthDate)
+    .map(f => f.netWorthDate!)
+    .sort();
+
+  // 如果找不到T+1基金作为参考，不校准
+  if (t1Dates.length === 0) {
+    return t2NetWorthDate;
+  }
+
+  // 返回最早的净值日期
+  return t1Dates[0];
+}
+
+/**
+ * 获取所有基金的净值日期信息
+ *
+ * @param symbols 基金代码列表
+ * @returns 基金净值日期信息数组
+ */
+function getAllFundNavDateInfo(symbols: string[]): FundNavDateInfo[] {
+  return symbols.map(symbol => {
+    const position = marketFundService.getPosition(symbol);
+    const valuation = marketFundService.getValuation(symbol);
+    const history = marketFundService.getHistory(symbol);
+
+    // 优先使用估值数据中的净值日期，如果没有则从历史数据中获取
+    let netWorthDate: string | null = valuation?.netWorthDate || null;
+    if (!netWorthDate && history && history.length > 0) {
+      const sortedHistory = [...history].sort((a, b) => (a.date as number) - (b.date as number));
+      netWorthDate = toLocalDateKey(sortedHistory[sortedHistory.length - 1].date);
+    }
+
+    // 获取估值日期（realtimeDate）
+    const realtimeDate = valuation?.realtimeDate || null;
+
+    return {
+      symbol,
+      navType: position?.navType || 'T+1',
+      netWorthDate,
+      realtimeDate,
+    };
+  });
+}
+
 /**
  * 准备用于盈亏计算的历史数据
  * - 使用优选价格（估值/确认净值）覆盖同日期的历史点
  * - 去重同日期的数据点
  * - 确保目标日期有数据点
+ * - 对T+2基金进行日期校准（与T+1基金对齐）
  *
  * 此函数被 ProfitModal 和 computeOverallProfit 共同使用，确保两者计算一致。
  *
@@ -23,6 +97,8 @@ import { fetchWithProxy } from './proxyService';
  * @param realtimeDate 估值日期
  * @param previousPrice 确认净值
  * @param netWorthDate 净值日期
+ * @param navType 基金净值类型（可选）
+ * @param allFundNavDates 所有基金的净值日期信息（用于T+2基金日期校准）
  * @returns 处理后的历史数据，可直接用于 computeProfitTimeline
  */
 export function prepareHistoryForProfitCalculation(params: {
@@ -33,8 +109,10 @@ export function prepareHistoryForProfitCalculation(params: {
   realtimeDate?: string | null;
   previousPrice?: number | null;
   netWorthDate?: string | null;
+  navType?: FundNavType;
+  allFundNavDates?: FundNavDateInfo[];
 }): HistoricalPoint[] {
-  const { history, targetDate, todayDate, currentPrice, realtimeDate, previousPrice, netWorthDate } = params;
+  const { history, targetDate, todayDate, currentPrice, realtimeDate, previousPrice, netWorthDate, navType, allFundNavDates } = params;
 
   if (!history || history.length === 0) return [];
 
@@ -52,23 +130,100 @@ export function prepareHistoryForProfitCalculation(params: {
     netWorthDate,
   });
 
-  // 按本地日期去重，并用优选价格覆盖
+  // 按本地日期去重
   const byDate = new Map<string, HistoricalPoint>();
   for (const p of sorted) {
     const localDate = toLocalDateKey(p.date);
-    // 如果已有同日期的点，保留时间戳更高的
     if (!byDate.has(localDate) || p.date > (byDate.get(localDate)?.date || 0)) {
       byDate.set(localDate, p);
     }
   }
 
-  // 用优选价格覆盖同日期的历史点
-  if (preferred) {
-    const preferredTs = new Date(`${preferred.date} 15:00`).getTime();
-    byDate.set(preferred.date, { date: preferredTs, value: preferred.price, equityReturn: 0 });
+  // 获取排序后的历史数据（不包括估值）
+  let result = Array.from(byDate.values()).sort((a, b) => a.date - b.date);
+
+  // T+2基金日期校准：净值日期偏移一天（净值发布日期）
+  // 规则：T+2基金的净值发布比T+1基金晚一天
+  //  实现：每个净值数据点使用下一个数据点的日期（整体偏移一天）
+  //  结果：盈利延后一天显示（8/5的盈利显示在8/6）
+  //  注意：只校准历史净值数据，不包括估值数据
+  if (navType === 'T+2' && result.length > 1) {
+    const adjusted: HistoricalPoint[] = [];
+
+    // 除了最后一个，每个数据点都使用下一个数据点的日期
+    for (let i = 0; i < result.length - 1; i++) {
+      const nextDate = toLocalDateKey(result[i + 1].date);
+      const adjustedTs = new Date(`${nextDate} 15:00`).getTime();
+      adjusted.push({
+        ...result[i],
+        date: adjustedTs
+      });
+    }
+
+    // 最后一个数据点（最新净值日期）：校准到T+1基金的日期
+    // 规则：
+    // 1. 优先找T+1基金的净值日期 > T+2净值日期（使用确认净值）
+    // 2. 如果找不到，找T+1基金的估值日期（realtimeDate）作为参考
+    // 3. 如果都找不到，计算下一个交易日
+    const lastPoint = result[result.length - 1];
+    const lastDate = toLocalDateKey(lastPoint.date);
+
+    let calibratedDate: string | null = null;
+
+    if (allFundNavDates && allFundNavDates.length > 0) {
+      // 方法1：优先找T+1基金的净值日期 > lastDate
+      const t1NetWorthDates = allFundNavDates
+        .filter(f => f.navType === 'T+1' && f.netWorthDate && f.netWorthDate > lastDate)
+        .map(f => f.netWorthDate!)
+        .sort();
+
+      if (t1NetWorthDates.length > 0) {
+        calibratedDate = t1NetWorthDates[0];
+      } else {
+        // 方法2：找T+1基金的估值日期作为参考
+        const t1RealtimeDates = allFundNavDates
+          .filter(f => f.navType === 'T+1' && f.realtimeDate && f.realtimeDate > lastDate)
+          .map(f => f.realtimeDate!)
+          .sort();
+
+        if (t1RealtimeDates.length > 0) {
+          calibratedDate = t1RealtimeDates[0];
+        }
+      }
+    }
+
+    // 方法3：如果都没有，计算下一个交易日
+    if (!calibratedDate) {
+      const lastDateObj = new Date(`${lastDate} 15:00`);
+      lastDateObj.setDate(lastDateObj.getDate() + 1);
+      calibratedDate = toLocalDateKey(lastDateObj.getTime());
+    }
+
+    const adjustedTs = new Date(`${calibratedDate} 15:00`).getTime();
+    adjusted.push({
+      ...lastPoint,
+      date: adjustedTs
+    });
+
+    result = adjusted;
   }
 
-  return Array.from(byDate.values()).sort((a, b) => a.date - b.date);
+  // 用优选价格覆盖同日期的历史点（估值不校准）
+  // 注意：T+2基金已校准，不应该用估值覆盖校准后的数据
+  if (preferred && navType !== 'T+2') {
+    const preferredTs = new Date(`${preferred.date} 15:00`).getTime();
+    // 直接添加或覆盖估值点
+    const existingIdx = result.findIndex(p => toLocalDateKey(p.date) === preferred.date);
+    if (existingIdx !== -1) {
+      result[existingIdx] = { date: preferredTs, value: preferred.price, equityReturn: 0 };
+    } else {
+      // 估值日期不在历史数据中，添加新点
+      result.push({ date: preferredTs, value: preferred.price, equityReturn: 0 });
+      result.sort((a, b) => a.date - b.date);
+    }
+  }
+
+  return result;
 }
 
 /**
@@ -1645,6 +1800,9 @@ export async function computeOverallProfit(opts: { symbols?: string[]; fromDate?
     } catch (e) { syms = []; }
   }
 
+  // 收集所有基金的净值日期信息（用于T+2基金日期校准）
+  const allFundNavDates = getAllFundNavDateInfo(syms);
+
   const includedFundTimelines: Record<string, ProfitPoint[]> = {};
   const perFundRows: OverallFundRow[] = [];
   const fundStartDates: Record<string, string> = {}; // 收集每个基金的建仓日期
@@ -1737,6 +1895,8 @@ export async function computeOverallProfit(opts: { symbols?: string[]; fromDate?
         realtimeDate: fd?.realtimeDate,
         previousPrice: fd?.previousPrice,
         netWorthDate: fd?.netWorthDate,
+        navType: position?.navType,
+        allFundNavDates,
       });
 
       const timeline = computeProfitTimeline({ history: preparedHistory, trades, initialPosition: initialPosition || 0, initialPrice: initialPrice ?? null, fromDate: fundStartDate, toDate: toDate ?? null });

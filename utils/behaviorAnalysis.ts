@@ -90,11 +90,16 @@ function getNavBeforeDate(navHistory: HistoricalPoint[], date: string, days: num
 
 /**
  * 获取指定日期的净值
+ * 优化：使用 NavIndex 进行 O(1) 查找，而非遍历整个数组
  */
-function getNavOnDate(navHistory: HistoricalPoint[], date: string): number | null {
-  const targetDateStr = date; // YYYY-MM-DD
+function getNavOnDate(navHistory: HistoricalPoint[] | NavIndex, date: string): number | null {
+  // 如果传入 NavIndex，直接从 Map 查找（O(1)）
+  if ('dateToNav' in navHistory) {
+    return navHistory.dateToNav.get(date) ?? null;
+  }
 
-  // 尝试日期字符串匹配
+  // 兼容旧版：遍历数组查找（O(n)）
+  const targetDateStr = date; // YYYY-MM-DD
   for (const h of navHistory) {
     const hDateStr = timestampToLocalDate(h.date as number);
     if (hDateStr === targetDateStr) {
@@ -107,9 +112,15 @@ function getNavOnDate(navHistory: HistoricalPoint[], date: string): number | nul
 
 /**
  * 获取指定日期的涨跌幅（百分比）
+ * 优化：使用 NavIndex 进行 O(1) 查找，而非遍历整个数组
  */
-function getReturnOnDate(navHistory: HistoricalPoint[], date: string): number {
-  // 先找到该日期对应的净值
+function getReturnOnDate(navHistory: HistoricalPoint[] | NavIndex, date: string): number {
+  // 如果传入 NavIndex，直接从 Map 查找（O(1)）
+  if ('dateToReturn' in navHistory) {
+    return navHistory.dateToReturn.get(date) ?? 0;
+  }
+
+  // 兼容旧版：遍历数组查找（O(n)）
   const targetDateStr = date;
   let idx = -1;
 
@@ -574,9 +585,13 @@ export function calculateBehaviorAnalysis(
     ? timingDetails.reduce((sum, t) => sum + t.score, 0) / timingDetails.length
     : 60;
 
-  const goodTiming = timingDetails.filter(t => t.score >= 80).map(t => t.trade);
-  const normalTiming = timingDetails.filter(t => t.score >= 40 && t.score < 80).map(t => t.trade);
-  const badTiming = timingDetails.filter(t => t.score < 40).map(t => t.trade);
+  // 单次遍历分类时机评分
+  const { good: goodTiming, normal: normalTiming, bad: badTiming } = timingDetails.reduce((acc, t) => {
+    if (t.score >= 80) acc.good.push(t.trade);
+    else if (t.score >= 40) acc.normal.push(t.trade);
+    else acc.bad.push(t.trade);
+    return acc;
+  }, { good: [] as TradeRecord[], normal: [] as TradeRecord[], bad: [] as TradeRecord[] });
 
   // 识别情绪化交易（使用索引）
   const chaseHighSellLow = identifyChaseHighSellLow(sortedTrades, navIndex);

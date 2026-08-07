@@ -113,6 +113,9 @@ export interface MarketIndex {
 // 基金相关类型
 // ═══════════════════════════════════════════════════════════════════════════════
 
+// 基金净值类型：T+1=正常国内基金，T+2=美股QDII基金
+export type FundNavType = 'T+1' | 'T+2';
+
 // 基金持仓配置
 export interface FundPosition {
   fullCapacity: number;       // 满仓金额
@@ -121,6 +124,7 @@ export interface FundPosition {
   initialPrice: number | null; // 初始价格
   aliasName?: string;         // 别名（用于OCR匹配，可选）
   trackingIndex?: string;     // 跟踪指数，格式 "market.code"，如 "2.H50036"
+  navType?: FundNavType;      // 基金净值类型，默认为 'T+1'
 }
 
 // 基金信息（统一存储）：包含 Ticker、持仓、估值
