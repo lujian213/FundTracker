@@ -210,6 +210,7 @@ export const CalendarModal: React.FC<CalendarModalProps> = ({
                 <span key={idx} className="flex items-center gap-1">
                   <span className={getEventDotColor(alert.type)}>●</span>
                   <span className="text-gray-700">
+                    {alert.market && <span className="text-gray-400 text-[9px] mr-0.5">{alert.market}</span>}
                     {alert.date.slice(5)} {alert.content}
                   </span>
                 </span>

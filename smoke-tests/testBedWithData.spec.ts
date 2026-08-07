@@ -2041,6 +2041,33 @@ test.describe('testBedWithData', () => {
     await cardContainer.locator('div.flex.gap-3 > div.flex-1').nth(1).click();
     const frequencyDetailModal = page.locator('h3:has-text("交易频率详情")');
     await expect(frequencyDetailModal).toBeVisible({ timeout: 3000 });
+
+    // 验证详情窗口显示2行3列共6个卡片
+    const frequencyContent = frequencyDetailModal.locator('xpath=following::div').first();
+
+    // 验证第一行：买入次数、卖出次数、总交易次数
+    const firstRow = frequencyContent.locator('div.grid.grid-cols-3').first();
+    await expect(firstRow.locator('div.bg-gray-50').nth(0).locator('div.text-xs:has-text("买入次数")')).toBeVisible();
+    await expect(firstRow.locator('div.bg-gray-50').nth(0).locator('div.text-xl')).toContainText('次');
+
+    await expect(firstRow.locator('div.bg-gray-50').nth(1).locator('div.text-xs:has-text("卖出次数")')).toBeVisible();
+    await expect(firstRow.locator('div.bg-gray-50').nth(1).locator('div.text-xl')).toContainText('次');
+
+    await expect(firstRow.locator('div.bg-gray-50').nth(2).locator('div.text-xs:has-text("总交易次数")')).toBeVisible();
+    await expect(firstRow.locator('div.bg-gray-50').nth(2).locator('div.text-lg')).toContainText('次');
+
+    // 验证第二行：买入金额、卖出金额、手续费率
+    const secondRow = frequencyContent.locator('div.grid.grid-cols-3').nth(1);
+    await expect(secondRow.locator('div.bg-gray-50').nth(0).locator('div.text-xs:has-text("买入金额")')).toBeVisible();
+    await expect(secondRow.locator('div.bg-gray-50').nth(0).locator('div.text-lg')).toBeVisible();
+
+    await expect(secondRow.locator('div.bg-gray-50').nth(1).locator('div.text-xs:has-text("卖出金额")')).toBeVisible();
+    await expect(secondRow.locator('div.bg-gray-50').nth(1).locator('div.text-lg')).toBeVisible();
+
+    await expect(secondRow.locator('div.bg-gray-50').nth(2).locator('div.text-xs:has-text("手续费率")')).toBeVisible();
+    const feeRateText = await secondRow.locator('div.bg-gray-50').nth(2).locator('div.text-lg').textContent();
+    expect(feeRateText).toMatch(/\d+\.\d+%\(.*\)/); // 验证格式为"0.07%(1234.56)"
+
     console.log('交易频率详情验证完成');
 
     // 关闭详情窗口
@@ -5461,35 +5488,89 @@ test.describe('testBedWithData', () => {
     }
 
     // ══════════════════════════════════════════════════════════════════════════════
-    // 16. 验证先进先出和后进先出视图没有编辑删除按钮
+    // 15.5. 验证合计行统计信息
     // ══════════════════════════════════════════════════════════════════════════════
-    // 切换到先进先出视图 - 使用 JavaScript 点击绕过拦截
+    // 确保回到普通视图
     await page.evaluate(() => {
       const modal = document.querySelector('[role="dialog"]');
       if (modal && modal.textContent?.includes('交易管理')) {
-        const fifoRadio = modal.querySelector('input[type="radio"][value="fifo"]');
-        if (fifoRadio) {
-          (fifoRadio as HTMLInputElement).click();
+        const normalRadio = modal.querySelector('input[type="radio"][value="normal"]');
+        if (normalRadio) {
+          (normalRadio as HTMLInputElement).click();
         }
       }
     });
-    await page.waitForTimeout(200);
+    await page.waitForTimeout(500);
+
+    // 使用 Playwright locator 查找合计行
+    const summaryRowLocator = tradeManagerModal.locator('.bg-gray-100').filter({ hasText: '合计' });
+
+    if (await summaryRowLocator.isVisible({ timeout: 2000 })) {
+      console.log('找到合计行');
+
+      // 验证操作列显示交易总次数
+      const operationCellLocator = summaryRowLocator.locator('div').nth(1);
+      const operationText = await operationCellLocator.textContent() || '';
+      const operationCount = parseInt(operationText.trim());
+      console.log(`操作列显示: ${operationText.trim()}`);
+      expect(operationCount).toBeGreaterThan(0);
+
+      // 验证操作列悬停提示
+      const operationSpanLocator = operationCellLocator.locator('span[title]');
+      if (await operationSpanLocator.count() > 0) {
+        const operationTitle = await operationSpanLocator.getAttribute('title') || '';
+        console.log(`操作列悬停提示: ${operationTitle}`);
+        expect(operationTitle).toMatch(/买入\/建仓 \d+ 次，卖出 \d+ 次/);
+      }
+
+      // 验证交易额列悬停提示
+      const tradeAmountCellLocator = summaryRowLocator.locator('div').nth(4);
+      const tradeAmountSpanLocator = tradeAmountCellLocator.locator('span[title]');
+      if (await tradeAmountSpanLocator.count() > 0) {
+        const tradeAmountTitle = await tradeAmountSpanLocator.getAttribute('title') || '';
+        console.log(`交易额列悬停提示: ${tradeAmountTitle}`);
+        expect(tradeAmountTitle).toMatch(/总买入 [\d,.]+, 总卖出 [\d,.]+, (净投入|净回收) [\d,.]+/);
+      }
+
+      console.log('合计行统计信息验证完成');
+    } else {
+      console.log('未找到合计行，跳过验证');
+    }
+
+    // ══════════════════════════════════════════════════════════════════════════════
+    // 16. 验证先进先出和后进先出视图没有编辑删除按钮，且操作列显示"-"
+    // ══════════════════════════════════════════════════════════════════════════════
+    // 切换到先进先出视图
+    const fifoRadioLocator = tradeManagerModal.locator('label:has-text("先进先出")');
+    await fifoRadioLocator.click();
+    await page.waitForTimeout(500);
+
+    // 验证FIFO视图操作列显示"-"
+    const fifoSummaryLocator = tradeManagerModal.locator('.bg-gray-100').filter({ hasText: '合计' });
+    if (await fifoSummaryLocator.isVisible({ timeout: 2000 })) {
+      const fifoOperationCell = fifoSummaryLocator.locator('div').nth(1);
+      const fifoOperationText = await fifoOperationCell.textContent() || '';
+      console.log(`FIFO视图操作列显示: ${fifoOperationText.trim()}`);
+      expect(fifoOperationText.trim()).toBe('-');
+    }
 
     // 验证没有编辑按钮
     const fifoEditBtn = tradeManagerModal.locator('button:has-text("编辑")');
     await expect(fifoEditBtn).toHaveCount(0, { timeout: 1000 });
 
     // 切换到后进先出视图
-    await page.evaluate(() => {
-      const modal = document.querySelector('[role="dialog"]');
-      if (modal && modal.textContent?.includes('交易管理')) {
-        const lifoRadio = modal.querySelector('input[type="radio"][value="lifo"]');
-        if (lifoRadio) {
-          (lifoRadio as HTMLInputElement).click();
-        }
-      }
-    });
-    await page.waitForTimeout(200);
+    const lifoRadioLocator = tradeManagerModal.locator('label:has-text("后进先出")');
+    await lifoRadioLocator.click();
+    await page.waitForTimeout(500);
+
+    // 验证LIFO视图操作列显示"-"
+    const lifoSummaryLocator = tradeManagerModal.locator('.bg-gray-100').filter({ hasText: '合计' });
+    if (await lifoSummaryLocator.isVisible({ timeout: 2000 })) {
+      const lifoOperationCell = lifoSummaryLocator.locator('div').nth(1);
+      const lifoOperationText = await lifoOperationCell.textContent() || '';
+      console.log(`LIFO视图操作列显示: ${lifoOperationText.trim()}`);
+      expect(lifoOperationText.trim()).toBe('-');
+    }
 
     // 验证没有编辑按钮
     const lifoEditBtn = tradeManagerModal.locator('button:has-text("编辑")');

@@ -138,6 +138,10 @@ export const TradeManager: React.FC<{
     let totalShares = 0;
     let totalTradeAmount = 0; // 交易额合计：买入+建仓交易额 - 卖出交易额
     let totalFee = 0; // 手续费合计：买入+建仓手续费 + 卖出手续费
+    let totalBuyAmount = 0; // 总买入：买入+建仓的交易额总和
+    let totalSellAmount = 0; // 总卖出：卖出的交易额总和
+    let buyCount = 0; // 买入/建仓次数
+    let sellCount = 0; // 卖出次数
 
     for (const record of matchedRecords) {
       const isSell = record.type === 'sell';
@@ -147,8 +151,10 @@ export const TradeManager: React.FC<{
       // 数量：买入和建仓为正，卖出为负
       if (isSell) {
         totalShares -= displayShares;
+        sellCount++;
       } else {
         totalShares += displayShares;
+        buyCount++;
       }
 
       // 交易额：买入为 数量*价格+手续费，卖出为 数量*价格-手续费
@@ -159,15 +165,17 @@ export const TradeManager: React.FC<{
       // 交易额合计：买入+建仓为正，卖出为负
       if (isSell) {
         totalTradeAmount -= tradeAmount;
+        totalSellAmount += tradeAmount;
       } else {
         totalTradeAmount += tradeAmount;
+        totalBuyAmount += tradeAmount;
       }
 
       // 手续费合计：所有记录的手续费相加（用于普通视图）
       totalFee += displayFee;
     }
 
-    return { totalShares, totalTradeAmount, totalFee };
+    return { totalShares, totalTradeAmount, totalFee, totalBuyAmount, totalSellAmount, buyCount, sellCount };
   }, [matchedRecords]);
 
   // 计算选中记录的统计信息（仅买入/建仓记录）
@@ -397,13 +405,27 @@ export const TradeManager: React.FC<{
     if (viewMode !== 'normal') return '-';
     if (summary.totalTradeAmount === 0) return '0.00';
     const isNetInflow = summary.totalTradeAmount > 0;
+    const netLabel = isNetInflow ? '净投入' : '净回收';
+    const tip = `总买入 ${formatNumber(summary.totalBuyAmount, 2)}, 总卖出 ${formatNumber(summary.totalSellAmount, 2)}, ${netLabel} ${formatNumber(Math.abs(summary.totalTradeAmount), 2)}`;
     return (
       <>
         {formatNumber(Math.abs(summary.totalTradeAmount), 2)}
-        <span title={isNetInflow ? '净投入' : '净收回'} className="ml-1 cursor-help">
+        <span title={tip} className="ml-1 cursor-help">
           <i className={`fas fa-arrow-${isNetInflow ? 'up' : 'down'} ${isNetInflow ? 'text-red-500' : 'text-green-500'}`}></i>
         </span>
       </>
+    );
+  };
+
+  // 渲染操作列统计
+  const renderOperationSummary = () => {
+    if (viewMode !== 'normal') return '-';
+    const totalCount = summary.buyCount + summary.sellCount;
+    const tip = `买入/建仓 ${summary.buyCount} 次，卖出 ${summary.sellCount} 次`;
+    return (
+      <span title={tip} className="cursor-help">
+        {totalCount}
+      </span>
     );
   };
 
@@ -701,7 +723,9 @@ export const TradeManager: React.FC<{
           {matchedRecords.length > 0 && (
             <div className="flex items-center px-2 py-1 border rounded bg-gray-100 mt-2">
               <div className="w-[12%] text-left text-xs font-medium">合计</div>
-              <div className="w-[8%] text-left text-xs text-gray-400">-</div>
+              <div className="w-[8%] text-left text-xs font-medium">
+                {renderOperationSummary()}
+              </div>
               <div className={`w-[12%] text-right text-xs font-medium ${summary.totalShares < 0 ? 'text-red-500' : ''}`}>
                 {formatNumber(summary.totalShares, 2)}
               </div>

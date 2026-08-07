@@ -346,7 +346,9 @@ describe('TradeManager summary row', () => {
     await waitFor(() => expect(fetchFundHistory).toHaveBeenCalled(), { timeout: 1000 });
 
     // 交易额合计：100*1.0+10 = 110（正数，显示箭头↑）
-    expect(screen.getByTitle('净投入')).toBeInTheDocument();
+    // 新的title格式：总买入 110.00, 总卖出 0.00, 净投入 110.00
+    const titleElement = screen.getByTitle(/总买入 110\.00, 总卖出 0\.00, 净投入 110\.00/);
+    expect(titleElement).toBeInTheDocument();
     expect(screen.getAllByText('110.00').length).toBeGreaterThanOrEqual(1);
   });
 
@@ -359,7 +361,9 @@ describe('TradeManager summary row', () => {
     await waitFor(() => expect(fetchFundHistory).toHaveBeenCalled(), { timeout: 1000 });
 
     // 交易额合计：买入50*1.0=50，卖出60*1.5=90，合计=50-90=-40（负数，显示箭头↓）
-    expect(screen.getByTitle('净收回')).toBeInTheDocument();
+    // 新的title格式：总买入 50.00, 总卖出 90.00, 净回收 40.00
+    const titleElement = screen.getByTitle(/总买入 50\.00, 总卖出 90\.00, 净回收 40\.00/);
+    expect(titleElement).toBeInTheDocument();
     expect(screen.getAllByText('40.00').length).toBeGreaterThanOrEqual(1);
   });
 
@@ -375,8 +379,9 @@ describe('TradeManager summary row', () => {
     // 合计行中交易额列显示"0.00"，不带图标
     const zeros = screen.getAllByText('0.00');
     expect(zeros.length).toBeGreaterThanOrEqual(1);
-    expect(screen.queryByTitle('净投入')).not.toBeInTheDocument();
-    expect(screen.queryByTitle('净收回')).not.toBeInTheDocument();
+    // 不应显示净投入或净回收的title（零值时不显示图标）
+    expect(screen.queryByTitle(/净投入/)).not.toBeInTheDocument();
+    expect(screen.queryByTitle(/净回收/)).not.toBeInTheDocument();
   });
 
   test('shows fee summary in normal view', async () => {
@@ -432,19 +437,20 @@ describe('TradeManager summary row', () => {
     await waitFor(() => expect(fetchFundHistory).toHaveBeenCalled(), { timeout: 1000 });
 
     // 普通视图：交易额合计 = 买入(100*1.0+10)=110 - 卖出(30*1.5-5)=40 = 70
-    expect(screen.getByTitle('净投入')).toBeInTheDocument();
+    // 新的title格式：总买入 110.00, 总卖出 40.00, 净投入 70.00
+    expect(screen.getByTitle(/总买入 110\.00, 总卖出 40\.00, 净投入 70\.00/)).toBeInTheDocument();
 
     // FIFO视图：交易额合计显示"-"
     fireEvent.click(screen.getByLabelText('先进先出'));
     await waitFor(() => expect((screen.getByLabelText('先进先出') as HTMLInputElement).checked).toBe(true), { timeout: 1000 });
     // 交易额合计不显示图标
-    expect(screen.queryByTitle('净投入')).not.toBeInTheDocument();
+    expect(screen.queryByTitle(/净投入/)).not.toBeInTheDocument();
 
     // LIFO视图：交易额合计显示"-"
     fireEvent.click(screen.getByLabelText('后进先出'));
     await waitFor(() => expect((screen.getByLabelText('后进先出') as HTMLInputElement).checked).toBe(true), { timeout: 1000 });
     // 交易额合计不显示图标
-    expect(screen.queryByTitle('净投入')).not.toBeInTheDocument();
+    expect(screen.queryByTitle(/净投入/)).not.toBeInTheDocument();
   });
 
   test('includes initial position in summary', async () => {
@@ -459,7 +465,8 @@ describe('TradeManager summary row', () => {
     expect(screen.getByText('150.00')).toBeInTheDocument();
 
     // 交易额合计：建仓100*1.0=100 + 买入50*1.2=60 = 160（显示箭头↑）
-    expect(screen.getByTitle('净投入')).toBeInTheDocument();
+    // 新的title格式：总买入 160.00, 总卖出 0.00, 净投入 160.00
+    expect(screen.getByTitle(/总买入 160\.00, 总卖出 0\.00, 净投入 160\.00/)).toBeInTheDocument();
     expect(screen.getAllByText('160.00').length).toBeGreaterThanOrEqual(1);
   });
 
@@ -471,8 +478,72 @@ describe('TradeManager summary row', () => {
     await waitFor(() => expect(fetchFundHistory).toHaveBeenCalled(), { timeout: 1000 });
 
     // 交易额合计：10000*1.0=10000（显示箭头↑）
-    expect(screen.getByTitle('净投入')).toBeInTheDocument();
+    // 新的title格式：总买入 10,000.00, 总卖出 0.00, 净投入 10,000.00
+    expect(screen.getByTitle(/总买入 10,000\.00, 总卖出 0\.00, 净投入 10,000\.00/)).toBeInTheDocument();
     expect(screen.getAllByText('10,000.00').length).toBeGreaterThanOrEqual(1);
+  });
+
+  test('shows operation count in summary row', async () => {
+    setTradesForSymbol('TEST001', [
+      { id: 'A', date: '2024-01-01', type: 'buy', shares: 100, price: 1.0, fee: 10 },
+      { id: 'B', date: '2024-01-02', type: 'sell', shares: 30, price: 1.5, fee: 5 },
+      { id: 'C', date: '2024-01-03', type: 'buy', shares: 50, price: 1.2, fee: 0 },
+    ] as any);
+    render(<TradeManager symbol="TEST001" currentPrice={1.5} onClose={jest.fn()} />);
+    await waitFor(() => expect(fetchFundHistory).toHaveBeenCalled(), { timeout: 1000 });
+
+    // 操作列统计：买入/建仓 2 次，卖出 1 次，总次数 3
+    const titleElement = screen.getByTitle('买入/建仓 2 次，卖出 1 次');
+    expect(titleElement).toBeInTheDocument();
+    expect(titleElement).toHaveTextContent('3');
+  });
+
+  test('operation count includes initial position', async () => {
+    setTradesForSymbol('TEST001', [
+      { id: 'A', date: '2024-01-02', type: 'sell', shares: 50, price: 1.5, fee: 0 },
+    ] as any);
+    render(<TradeManager symbol="TEST001" currentPrice={1.5} onClose={jest.fn()}
+      initialPosition={100} initialPrice={1.0} startDate="2024-01-01" />);
+    await waitFor(() => expect(fetchFundHistory).toHaveBeenCalled(), { timeout: 1000 });
+
+    // 操作列统计：建仓 1 次 + 卖出 1 次 = 2
+    const titleElement = screen.getByTitle('买入/建仓 1 次，卖出 1 次');
+    expect(titleElement).toBeInTheDocument();
+    expect(titleElement).toHaveTextContent('2');
+  });
+
+  test('hides operation count in FIFO view', async () => {
+    setTradesForSymbol('TEST001', [
+      { id: 'A', date: '2024-01-01', type: 'buy', shares: 100, price: 1.0, fee: 10 },
+      { id: 'B', date: '2024-01-02', type: 'sell', shares: 30, price: 1.5, fee: 5 },
+    ] as any);
+    render(<TradeManager symbol="TEST001" currentPrice={1.5} onClose={jest.fn()} />);
+    await waitFor(() => expect(fetchFundHistory).toHaveBeenCalled(), { timeout: 1000 });
+
+    // 普通视图显示操作统计
+    expect(screen.getByTitle('买入/建仓 1 次，卖出 1 次')).toBeInTheDocument();
+
+    // FIFO视图：操作列显示"-"
+    fireEvent.click(screen.getByLabelText('先进先出'));
+    await waitFor(() => expect((screen.getByLabelText('先进先出') as HTMLInputElement).checked).toBe(true), { timeout: 1000 });
+    expect(screen.queryByTitle(/买入\/建仓/)).not.toBeInTheDocument();
+  });
+
+  test('hides operation count in LIFO view', async () => {
+    setTradesForSymbol('TEST001', [
+      { id: 'A', date: '2024-01-01', type: 'buy', shares: 100, price: 1.0, fee: 10 },
+      { id: 'B', date: '2024-01-02', type: 'sell', shares: 30, price: 1.5, fee: 5 },
+    ] as any);
+    render(<TradeManager symbol="TEST001" currentPrice={1.5} onClose={jest.fn()} />);
+    await waitFor(() => expect(fetchFundHistory).toHaveBeenCalled(), { timeout: 1000 });
+
+    // 普通视图显示操作统计
+    expect(screen.getByTitle('买入/建仓 1 次，卖出 1 次')).toBeInTheDocument();
+
+    // LIFO视图：操作列显示"-"
+    fireEvent.click(screen.getByLabelText('后进先出'));
+    await waitFor(() => expect((screen.getByLabelText('后进先出') as HTMLInputElement).checked).toBe(true), { timeout: 1000 });
+    expect(screen.queryByTitle(/买入\/建仓/)).not.toBeInTheDocument();
   });
 });
 // ─── TradeManager selection stats tests ───────────────────────────────────

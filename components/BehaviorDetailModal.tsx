@@ -303,29 +303,54 @@ const BehaviorDetailModal: React.FC<BehaviorDetailModalProps> = ({
     );
   };
 
-  const renderFrequencyDetail = () => (
-    <div className="space-y-3">
-      <div className="grid grid-cols-2 gap-3">
-        <div className="bg-gray-50 border border-gray-200 rounded-lg p-3 text-center">
-          <div className="text-xs text-gray-500 mb-1">买入次数</div>
-          <div className="text-xl font-bold text-red-600">{analysis.frequency.buyCount}次</div>
-        </div>
-        <div className="bg-gray-50 border border-gray-200 rounded-lg p-3 text-center">
-          <div className="text-xs text-gray-500 mb-1">卖出次数</div>
-          <div className="text-xl font-bold text-green-600">{analysis.frequency.sellCount}次</div>
-        </div>
-      </div>
+  // 计算交易总额（单次遍历优化）
+  const tradeTotals = useMemo(() => {
+    return analysis.frequency.trades.reduce(
+      (acc, t) => {
+        const amount = t.shares * t.price;
+        if (t.type === 'buy') acc.totalBuyAmount += amount;
+        else acc.totalSellAmount += amount;
+        acc.totalFee += t.fee || 0;
+        return acc;
+      },
+      { totalBuyAmount: 0, totalSellAmount: 0, totalFee: 0 }
+    );
+  }, [analysis.frequency.trades]);
 
-      <div className="grid grid-cols-2 gap-3">
-        <div className="bg-gray-50 border border-gray-200 rounded-lg p-3 text-center">
-          <div className="text-xs text-gray-500 mb-1">总交易次数</div>
-          <div className="text-lg font-bold">{analysis.frequency.trades.length}次</div>
+  const renderFrequencyDetail = () => {
+    return (
+      <div className="space-y-3">
+        {/* 第一行：买入次数、卖出次数、总交易次数 */}
+        <div className="grid grid-cols-3 gap-3">
+          <div className="bg-gray-50 border border-gray-200 rounded-lg p-3 text-center">
+            <div className="text-xs text-gray-500 mb-1">买入次数</div>
+            <div className="text-xl font-bold text-red-600">{analysis.frequency.buyCount}次</div>
+          </div>
+          <div className="bg-gray-50 border border-gray-200 rounded-lg p-3 text-center">
+            <div className="text-xs text-gray-500 mb-1">卖出次数</div>
+            <div className="text-xl font-bold text-green-600">{analysis.frequency.sellCount}次</div>
+          </div>
+          <div className="bg-gray-50 border border-gray-200 rounded-lg p-3 text-center">
+            <div className="text-xs text-gray-500 mb-1">总交易次数</div>
+            <div className="text-lg font-bold">{analysis.frequency.trades.length}次</div>
+          </div>
         </div>
-        <div className="bg-gray-50 border border-gray-200 rounded-lg p-3 text-center">
-          <div className="text-xs text-gray-500 mb-1">手续费率</div>
-          <div className="text-lg font-bold">{analysis.frequency.feeRate.toFixed(2)}%</div>
+
+        {/* 第二行：买入金额、卖出金额、手续费率 */}
+        <div className="grid grid-cols-3 gap-3">
+          <div className="bg-gray-50 border border-gray-200 rounded-lg p-3 text-center">
+            <div className="text-xs text-gray-500 mb-1">买入金额</div>
+            <div className="text-lg font-bold text-red-600">{formatMoneyWithSeparators(tradeTotals.totalBuyAmount)}</div>
+          </div>
+          <div className="bg-gray-50 border border-gray-200 rounded-lg p-3 text-center">
+            <div className="text-xs text-gray-500 mb-1">卖出金额</div>
+            <div className="text-lg font-bold text-green-600">{formatMoneyWithSeparators(tradeTotals.totalSellAmount)}</div>
+          </div>
+          <div className="bg-gray-50 border border-gray-200 rounded-lg p-3 text-center">
+            <div className="text-xs text-gray-500 mb-1">手续费率</div>
+            <div className="text-lg font-bold">{analysis.frequency.feeRate.toFixed(2)}%({formatMoneyWithSeparators(tradeTotals.totalFee)})</div>
+          </div>
         </div>
-      </div>
 
       {analysis.frequency.trades.length > 0 && (
         <CollapsibleSection
@@ -339,6 +364,7 @@ const BehaviorDetailModal: React.FC<BehaviorDetailModalProps> = ({
       )}
     </div>
   );
+  };
 
   const renderEmotionDetail = () => {
     return (
