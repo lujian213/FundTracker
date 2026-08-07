@@ -6,6 +6,7 @@ import {
   getProfitColorClass,
   getNavigationButtonClass
 } from '../utils/calendarCommon';
+import { ExtremeIndicator } from './ExtremeIndicator';
 
 interface WeekCalendarProps {
   calendarYear: number;
@@ -18,6 +19,8 @@ interface WeekCalendarProps {
   onPrevMonth: () => void;
   onNextMonth: () => void;
   onWeekClick: (weekStart: string, weekEnd: string) => void;
+  maxProfitWeek?: string | null; // 全局最赚钱的周（格式：startDate_endDate）
+  minProfitWeek?: string | null; // 全局最亏钱的周（格式：startDate_endDate）
 }
 
 const WeekCalendar: React.FC<WeekCalendarProps> = (props) => {
@@ -31,7 +34,9 @@ const WeekCalendar: React.FC<WeekCalendarProps> = (props) => {
     canGoNextMonth,
     onPrevMonth,
     onNextMonth,
-    onWeekClick
+    onWeekClick,
+    maxProfitWeek,
+    minProfitWeek
   } = props;
 
   const weeks = getWeeksOfMonth(calendarYear, calendarMonth);
@@ -78,23 +83,32 @@ const WeekCalendar: React.FC<WeekCalendarProps> = (props) => {
 
       {/* 周格子网格：每行最多4个 */}
       <div className="grid grid-cols-4 gap-2">
-        {weeksWithProfit.map((week) => (
-          <div
-            key={`${week.startDate}-${week.endDate}`}
-            onClick={() => handleWeekClick(week)}
-            className={`text-center py-2 rounded border ${getProfitBgClass(week.profit, week.isInRange)} ${week.isInRange ? 'cursor-pointer hover:bg-opacity-80' : 'cursor-not-allowed'}`}
-          >
-            {/* 日期范围 */}
-            <div className="text-[10px] text-gray-600 font-medium">
-              {week.startDateDisplay}至{week.endDateDisplay}
-            </div>
+        {weeksWithProfit.map((week, i) => {
+          // 判断当前周是否为全局最赚/最亏的周
+          const currentWeekKey = `${week.startDate}_${week.endDate}`;
+          const isMaxProfit = currentWeekKey === maxProfitWeek;
+          const isMinProfit = currentWeekKey === minProfitWeek;
 
-            {/* 盈利金额 */}
-            <div className={`text-[10px] font-mono ${getProfitColorClass(week.profit)}`}>
-              {formatProfitDisplay(week.profit)}
+          return (
+            <div
+              key={`${week.startDate}-${week.endDate}`}
+              onClick={() => handleWeekClick(week)}
+              className={`text-center py-2 rounded border relative ${getProfitBgClass(week.profit, week.isInRange)} ${week.isInRange ? 'cursor-pointer hover:bg-opacity-80' : 'cursor-not-allowed'}`}
+            >
+              <ExtremeIndicator isMax={isMaxProfit} isMin={isMinProfit} />
+
+              {/* 日期范围 */}
+              <div className="text-[10px] text-gray-600 font-medium">
+                {week.startDateDisplay}至{week.endDateDisplay}
+              </div>
+
+              {/* 盈利金额 */}
+              <div className={`text-[10px] font-mono ${getProfitColorClass(week.profit)}`}>
+                {formatProfitDisplay(week.profit)}
+              </div>
             </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
     </div>
   );

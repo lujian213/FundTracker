@@ -14,10 +14,12 @@ import { calculateProfitAttribution, calculateKPIs, calculateTWR, calculateMaxDr
 import { calculateFundAnnualizedReturn } from '../utils/fundReturnCalculator';
 import { getTradesForSymbol } from '../hooks/useTrades';
 import { MoneyCell } from './MoneyCell';
+import { getWeeksOfMonth, calculateWeekProfit } from '../utils/calendarWeekUtils';
 import DayCalendar from './DayCalendar';
 import WeekCalendar from './WeekCalendar';
 import MonthCalendar from './MonthCalendar';
 import YearCalendar from './YearCalendar';
+import { findExtremeProfitIndexes } from '../utils/calendarCommon';
 import PerformanceAnalysisChart from './PerformanceAnalysisChart';
 import KPICardDisplay from './KPICardDisplay';
 import { useModalBodyStyle } from '../hooks/useModalBodyStyle';
@@ -548,6 +550,126 @@ const OverallProfitModal: React.FC<Props> = ({ symbols, onClose, onSelectFund })
       })
     );
   }, [calendarRange, calendarProfitMap]);
+
+  // 计算全局最赚/最亏的日期、周、月、年（用于日历组件标记）
+  const globalExtremeDates = useMemo(() => {
+    if (!calendarProfitMap || Object.keys(calendarProfitMap).length === 0) {
+      return { maxProfitDate: null, minProfitDate: null };
+    }
+
+    // 构建日期数组，只包含有效范围内的日期
+    const dateItems = Object.entries(calendarProfitMap)
+      .filter(([date]) => chartFromDate && chartEndDate && date >= chartFromDate && date <= chartEndDate)
+      .map(([date, profit]) => ({ date, profit }));
+
+    if (dateItems.length === 0) {
+      return { maxProfitDate: null, minProfitDate: null };
+    }
+
+    // 使用工具函数找出最赚和最亏的日期
+    const { maxIndex, minIndex } = findExtremeProfitIndexes(dateItems);
+
+    return {
+      maxProfitDate: maxIndex !== null ? dateItems[maxIndex].date : null,
+      minProfitDate: minIndex !== null ? dateItems[minIndex].date : null
+    };
+  }, [calendarProfitMap, chartFromDate, chartEndDate]);
+
+  const globalExtremeWeeks = useMemo(() => {
+    if (!calendarRange || !calendarProfitMap) {
+      return { maxProfitWeek: null, minProfitWeek: null };
+    }
+
+    // 计算所有周的盈利（全局范围）
+    const weekProfits: Array<{ weekStart: string; weekEnd: string; profit: number }> = [];
+
+    for (let year = calendarRange.minYear; year <= calendarRange.maxYear; year++) {
+      for (let month = 1; month <= 12; month++) {
+        // 使用calendarWeekUtils中的函数计算每周数据
+        const weeks = getWeeksOfMonth(year, month);
+        for (const week of weeks) {
+          const weekProfit = calculateWeekProfit(week.startDate, week.endDate, calendarProfitMap, chartFromDate, chartEndDate);
+          if (weekProfit.isInRange) {
+            weekProfits.push({
+              weekStart: week.startDate,
+              weekEnd: week.endDate,
+              profit: weekProfit.profit
+            });
+          }
+        }
+      }
+    }
+
+    if (weekProfits.length === 0) {
+      return { maxProfitWeek: null, minProfitWeek: null };
+    }
+
+    // 使用工具函数找出最赚和最亏的周
+    const { maxIndex, minIndex } = findExtremeProfitIndexes(weekProfits);
+
+    return {
+      maxProfitWeek: maxIndex !== null ? `${weekProfits[maxIndex].weekStart}_${weekProfits[maxIndex].weekEnd}` : null,
+      minProfitWeek: minIndex !== null ? `${weekProfits[minIndex].weekStart}_${weekProfits[minIndex].weekEnd}` : null
+    };
+  }, [calendarRange, calendarProfitMap, chartFromDate, chartEndDate]);
+
+  const globalExtremeMonths = useMemo(() => {
+    if (!calendarRange || !calendarProfitMap) {
+      return { maxProfitMonth: null, minProfitMonth: null };
+    }
+
+    // 计算所有月的盈利（全局范围）
+    const monthProfits: Array<{ month: string; profit: number }> = [];
+
+    for (let year = calendarRange.minYear; year <= calendarRange.maxYear; year++) {
+      for (let month = 1; month <= 12; month++) {
+        const monthStr = `${year}-${String(month).padStart(2, '0')}`;
+        let profit = 0;
+        const daysInMonth = new Date(year, month, 0).getDate();
+
+        for (let day = 1; day <= daysInMonth; day++) {
+          const dateStr = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+          if (calendarProfitMap[dateStr] !== undefined) {
+            profit += calendarProfitMap[dateStr];
+          }
+        }
+
+        // 检查月份是否在有效范围内
+        const monthStart = `${year}-${String(month).padStart(2, '0')}-01`;
+        const monthEnd = `${year}-${String(month).padStart(2, '0')}-${String(daysInMonth).padStart(2, '0')}`;
+        const isInRange = chartFromDate && chartEndDate && monthEnd >= chartFromDate && monthStart <= chartEndDate;
+
+        if (isInRange) {
+          monthProfits.push({ month: monthStr, profit });
+        }
+      }
+    }
+
+    if (monthProfits.length === 0) {
+      return { maxProfitMonth: null, minProfitMonth: null };
+    }
+
+    // 使用工具函数找出最赚和最亏的月
+    const { maxIndex, minIndex } = findExtremeProfitIndexes(monthProfits);
+
+    return {
+      maxProfitMonth: maxIndex !== null ? monthProfits[maxIndex].month : null,
+      minProfitMonth: minIndex !== null ? monthProfits[minIndex].month : null
+    };
+  }, [calendarRange, calendarProfitMap, chartFromDate, chartEndDate]);
+
+  const globalExtremeYears = useMemo(() => {
+    if (yearlyProfits.length === 0) {
+      return { maxProfitYear: null, minProfitYear: null };
+    }
+
+    const { maxIndex, minIndex } = findExtremeProfitIndexes(yearlyProfits);
+
+    return {
+      maxProfitYear: maxIndex !== null ? yearlyProfits[maxIndex].year : null,
+      minProfitYear: minIndex !== null ? yearlyProfits[minIndex].year : null
+    };
+  }, [yearlyProfits]);
 
   // 日历格子数据：当前月份的所有日期和盈利
   const calendarDays = useMemo(() => {
@@ -1365,6 +1487,8 @@ const OverallProfitModal: React.FC<Props> = ({ symbols, onClose, onSelectFund })
                     onPrevMonth={handlePrevMonth}
                     onNextMonth={handleNextMonth}
                     onDayClick={handleDayClick}
+                    maxProfitDate={globalExtremeDates.maxProfitDate}
+                    minProfitDate={globalExtremeDates.minProfitDate}
                   />
                 )}
                 {calendarMode === 'month' && (
@@ -1376,6 +1500,8 @@ const OverallProfitModal: React.FC<Props> = ({ symbols, onClose, onSelectFund })
                     onPrevYear={handlePrevYear}
                     onNextYear={handleNextYear}
                     onMonthClick={handleMonthClick}
+                    maxProfitMonth={globalExtremeMonths.maxProfitMonth}
+                    minProfitMonth={globalExtremeMonths.minProfitMonth}
                   />
                 )}
                 {calendarMode === 'week' && (
@@ -1390,6 +1516,8 @@ const OverallProfitModal: React.FC<Props> = ({ symbols, onClose, onSelectFund })
                     onPrevMonth={handlePrevMonth}
                     onNextMonth={handleNextMonth}
                     onWeekClick={handleWeekClick}
+                    maxProfitWeek={globalExtremeWeeks.maxProfitWeek}
+                    minProfitWeek={globalExtremeWeeks.minProfitWeek}
                   />
                 )}
                 {calendarMode === 'year' && (
@@ -1399,6 +1527,8 @@ const OverallProfitModal: React.FC<Props> = ({ symbols, onClose, onSelectFund })
                     chartEndDate={chartEndDate}
                     chartPeriodTotal={chartPeriodTotal}
                     onYearClick={handleYearClick}
+                    maxProfitYear={globalExtremeYears.maxProfitYear}
+                    minProfitYear={globalExtremeYears.minProfitYear}
                   />
                 )}
                   </div>

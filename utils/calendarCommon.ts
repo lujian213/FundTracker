@@ -50,3 +50,65 @@ export function getNavigationButtonClass(canNavigate: boolean): string {
     ? 'text-gray-600 hover:bg-gray-200'
     : 'text-gray-300 cursor-not-allowed';
 }
+
+/**
+ * 找出盈利数据中的最赚和最亏的索引
+ * @param items 盈利数组，包含profit和可选的isInRange
+ * @returns 最赚和最亏的索引，如果所有值相同则minIndex为null
+ */
+export function findExtremeProfitIndexes(
+  items: Array<{ profit: number; isInRange?: boolean }>
+): { maxIndex: number | null; minIndex: number | null } {
+  if (items.length === 0) {
+    return { maxIndex: null, minIndex: null };
+  }
+
+  // 找出第一个有效项作为初始值
+  let firstValidIndex = -1;
+  for (let i = 0; i < items.length; i++) {
+    if (items[i].isInRange !== false) {
+      firstValidIndex = i;
+      break;
+    }
+  }
+
+  // 如果没有有效项
+  if (firstValidIndex === -1) {
+    return { maxIndex: null, minIndex: null };
+  }
+
+  // 初始化最大和最小值
+  let maxProfit = items[firstValidIndex].profit;
+  let minProfit = items[firstValidIndex].profit;
+  let maxIndex = firstValidIndex;
+  let minIndex = firstValidIndex;
+
+  // 遍历所有项
+  for (let i = 0; i < items.length; i++) {
+    const item = items[i];
+
+    // 跳过无效项
+    if (item.isInRange === false) {
+      continue;
+    }
+
+    // 更新最大值索引（第一个达到最大值的）
+    if (item.profit > maxProfit) {
+      maxProfit = item.profit;
+      maxIndex = i;
+    }
+
+    // 更新最小值索引（第一个达到最小值的）
+    if (item.profit < minProfit) {
+      minProfit = item.profit;
+      minIndex = i;
+    }
+  }
+
+  // 如果所有值相同，minIndex返回null
+  if (maxProfit === minProfit) {
+    return { maxIndex, minIndex: null };
+  }
+
+  return { maxIndex, minIndex };
+}

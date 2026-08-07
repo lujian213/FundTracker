@@ -5,6 +5,7 @@ import {
   formatProfitDisplay,
   getNavigationButtonClass
 } from '../utils/calendarCommon';
+import { ExtremeIndicator } from './ExtremeIndicator';
 
 interface MonthCalendarProps {
   calendarYear: number;
@@ -14,6 +15,8 @@ interface MonthCalendarProps {
   onPrevYear: () => void;
   onNextYear: () => void;
   onMonthClick: (month: number) => void;
+  maxProfitMonth?: string | null; // 全局最赚钱的月（格式：YYYY-MM）
+  minProfitMonth?: string | null; // 全局最亏钱的月（格式：YYYY-MM）
 }
 
 const MonthCalendar: React.FC<MonthCalendarProps> = (props) => {
@@ -24,7 +27,9 @@ const MonthCalendar: React.FC<MonthCalendarProps> = (props) => {
     canGoNextYear,
     onPrevYear,
     onNextYear,
-    onMonthClick
+    onMonthClick,
+    maxProfitMonth,
+    minProfitMonth
   } = props;
 
   return (
@@ -56,18 +61,27 @@ const MonthCalendar: React.FC<MonthCalendarProps> = (props) => {
 
       {/* 月份格子 */}
       <div className="grid grid-cols-4 gap-2">
-        {monthlyProfits.map(mp => (
-          <div
-            key={mp.month}
-            onClick={() => mp.isInRange && onMonthClick(mp.month)}
-            className={`text-center py-2 rounded border ${mp.isInRange ? 'cursor-pointer' : ''} ${getProfitBgClass(mp.profit, mp.isInRange)} hover:bg-opacity-80`}
-          >
-            <div className="text-[10px] text-gray-600 font-medium">{mp.month}月</div>
-            <div className={`text-[10px] font-mono ${getProfitColorClass(mp.profit)}`}>
-              {formatProfitDisplay(mp.profit)}
+        {monthlyProfits.map((mp, i) => {
+          // 判断当前月是否为全局最赚/最亏的月
+          const currentMonthStr = `${calendarYear}-${String(mp.month).padStart(2, '0')}`;
+          const isMaxProfit = currentMonthStr === maxProfitMonth;
+          const isMinProfit = currentMonthStr === minProfitMonth;
+
+          return (
+            <div
+              key={mp.month}
+              onClick={() => mp.isInRange && onMonthClick(mp.month)}
+              className={`text-center py-2 rounded border relative ${mp.isInRange ? 'cursor-pointer' : ''} ${getProfitBgClass(mp.profit, mp.isInRange)} hover:bg-opacity-80`}
+            >
+              <ExtremeIndicator isMax={isMaxProfit} isMin={isMinProfit} />
+
+              <div className="text-[10px] text-gray-600 font-medium">{mp.month}月</div>
+              <div className={`text-[10px] font-mono ${getProfitColorClass(mp.profit)}`}>
+                {formatProfitDisplay(mp.profit)}
+              </div>
             </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
     </div>
   );

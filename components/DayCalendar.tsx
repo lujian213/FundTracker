@@ -5,6 +5,7 @@ import {
   formatProfitDisplay,
   getNavigationButtonClass
 } from '../utils/calendarCommon';
+import { ExtremeIndicator } from './ExtremeIndicator';
 
 interface DayCalendarProps {
   calendarYear: number;
@@ -15,6 +16,8 @@ interface DayCalendarProps {
   onPrevMonth: () => void;
   onNextMonth: () => void;
   onDayClick: (day: number) => void;
+  maxProfitDate?: string | null; // 全局最赚钱的日期（YYYY-MM-DD）
+  minProfitDate?: string | null; // 全局最亏钱的日期（YYYY-MM-DD）
 }
 
 const DayCalendar: React.FC<DayCalendarProps> = (props) => {
@@ -26,7 +29,9 @@ const DayCalendar: React.FC<DayCalendarProps> = (props) => {
     canGoNextMonth,
     onPrevMonth,
     onNextMonth,
-    onDayClick
+    onDayClick,
+    maxProfitDate,
+    minProfitDate
   } = props;
 
   return (
@@ -67,26 +72,36 @@ const DayCalendar: React.FC<DayCalendarProps> = (props) => {
 
       {/* 日期格子 */}
       <div className="grid grid-cols-7 gap-0.5">
-        {calendarDays.map((day, i) => (
-          <div
-            key={i}
-            onClick={() => day.date > 0 && day.isInRange && onDayClick(day.date)}
-            className={`text-center py-0.5 rounded border ${
-              day.date === 0
-                ? 'border-transparent'
-                : `${day.isInRange ? 'cursor-pointer' : ''} ${getProfitBgClass(day.profit, day.isInRange)} hover:bg-opacity-80`
-            }`}
-          >
-            {day.date > 0 && (
-              <>
-                <div className="text-[10px] text-gray-600">{day.date}</div>
-                <div className={`text-[10px] font-mono ${getProfitColorClass(day.profit)}`}>
-                  {formatProfitDisplay(day.profit)}
-                </div>
-              </>
-            )}
-          </div>
-        ))}
+        {calendarDays.map((day, i) => {
+          // 判断当前格子是否为全局最赚/最亏的日期
+          const currentDateStr = day.date > 0
+            ? `${calendarYear}-${String(calendarMonth).padStart(2, '0')}-${String(day.date).padStart(2, '0')}`
+            : null;
+          const isMaxProfit = currentDateStr !== null && currentDateStr === maxProfitDate;
+          const isMinProfit = currentDateStr !== null && currentDateStr === minProfitDate;
+
+          return (
+            <div
+              key={i}
+              onClick={() => day.date > 0 && day.isInRange && onDayClick(day.date)}
+              className={`text-center py-0.5 rounded border relative ${
+                day.date === 0
+                  ? 'border-transparent'
+                  : `${day.isInRange ? 'cursor-pointer' : ''} ${getProfitBgClass(day.profit, day.isInRange)} hover:bg-opacity-80`
+              }`}
+            >
+              {day.date > 0 && (
+                <>
+                  <ExtremeIndicator isMax={isMaxProfit} isMin={isMinProfit} />
+                  <div className="text-[10px] text-gray-600">{day.date}</div>
+                  <div className={`text-[10px] font-mono ${getProfitColorClass(day.profit)}`}>
+                    {formatProfitDisplay(day.profit)}
+                  </div>
+                </>
+              )}
+            </div>
+          );
+        })}
       </div>
     </div>
   );
