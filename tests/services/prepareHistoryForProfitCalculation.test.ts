@@ -39,77 +39,78 @@ describe('prepareHistoryForProfitCalculation', () => {
     });
 
     describe('preferred price handling', () => {
-    it('should override history with valuation data when targetDate is today', () => {
-      // When targetDate === todayDate, resolvePreferredPrice prioritizes valuation
-      const history: HistoricalPoint[] = [
-        { date: mkTsMorning('2026-03-23'), value: 1.4, equityReturn: 0 }, // history at 00:00
-        { date: mkTs('2026-03-22'), value: 1.5, equityReturn: 0 },
-      ];
+      it('should override history with valuation data when targetDate is today', () => {
+        // When targetDate === todayDate, resolvePreferredPrice prioritizes valuation
+        const history: HistoricalPoint[] = [
+          { date: mkTsMorning('2026-03-23'), value: 1.4, equityReturn: 0 }, // history at 00:00
+          { date: mkTs('2026-03-22'), value: 1.5, equityReturn: 0 },
+        ];
 
-      const result = prepareHistoryForProfitCalculation({
-        history,
-        targetDate: todayDate, // targetDate = todayDate
-        todayDate,
-        currentPrice: 1.45, // valuation price
-        realtimeDate: todayDate, // valuation date is today
+        const result = prepareHistoryForProfitCalculation({
+          history,
+          targetDate: todayDate, // targetDate = todayDate
+          todayDate,
+          currentPrice: 1.45, // valuation price
+          realtimeDate: todayDate, // valuation date is today
+        });
+
+        // Today should have valuation price, not history price
+        const pointToday = result.find(p => {
+          const d = new Date(p.date);
+          return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}` === todayDate;
+        });
+        expect(pointToday?.value).toBe(1.45); // valuation price overrides history
       });
 
-      // Today should have valuation price, not history price
-      const pointToday = result.find(p => {
-        const d = new Date(p.date);
-        return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}` === todayDate;
-      });
-      expect(pointToday?.value).toBe(1.45); // valuation price overrides history
-    });
+      it('should use confirmed NAV when targetDate is today and valuation is not available', () => {
+        const history: HistoricalPoint[] = [
+          { date: mkTs('2026-03-22'), value: 1.4, equityReturn: 0 },
+        ];
 
-    it('should use confirmed NAV when targetDate is today and valuation is not available', () => {
-      const history: HistoricalPoint[] = [
-        { date: mkTs('2026-03-22'), value: 1.4, equityReturn: 0 },
-      ];
+        const result = prepareHistoryForProfitCalculation({
+          history,
+          targetDate: todayDate,
+          todayDate,
+          currentPrice: 0, // no valuation
+          previousPrice: 1.42, // confirmed NAV
+          netWorthDate: todayDate, // netWorthDate is today
+        });
 
-      const result = prepareHistoryForProfitCalculation({
-        history,
-        targetDate: todayDate,
-        todayDate,
-        currentPrice: 0, // no valuation
-        previousPrice: 1.42, // confirmed NAV
-        netWorthDate: todayDate, // netWorthDate is today
-      });
-
-      // Today should have confirmed NAV price
-      const pointToday = result.find(p => {
-        const d = new Date(p.date);
-        return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}` === todayDate;
-      });
-      expect(pointToday?.value).toBe(1.42);
-    });
-
-    it('should use history when targetDate is not today', () => {
-      const targetDate = '2026-03-20';
-      const history: HistoricalPoint[] = [
-        { date: mkTsMorning('2026-03-20'), value: 1.4, equityReturn: 0 },
-        { date: mkTs('2026-03-19'), value: 1.3, equityReturn: 0 },
-      ];
-
-      const result = prepareHistoryForProfitCalculation({
-        history,
-        targetDate,
-        todayDate,
-        currentPrice: 1.45, // valuation for different date
-        realtimeDate: todayDate, // valuation date is today, not targetDate
+        // Today should have confirmed NAV price
+        const pointToday = result.find(p => {
+          const d = new Date(p.date);
+          return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}` === todayDate;
+        });
+        expect(pointToday?.value).toBe(1.42);
       });
 
-      // 2026-03-20 should have history price (deduplicated, higher timestamp wins)
-      const point20 = result.find(p => {
-        const d = new Date(p.date);
-        return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}` === '2026-03-20';
+      it('should use history when targetDate is not today', () => {
+        const targetDate = '2026-03-20';
+        const history: HistoricalPoint[] = [
+          { date: mkTsMorning('2026-03-20'), value: 1.4, equityReturn: 0 },
+          { date: mkTs('2026-03-19'), value: 1.3, equityReturn: 0 },
+        ];
+
+        const result = prepareHistoryForProfitCalculation({
+          history,
+          targetDate,
+          todayDate,
+          currentPrice: 1.45, // valuation for different date
+          realtimeDate: todayDate, // valuation date is today, not targetDate
+        });
+
+        // 2026-03-20 should have history price (deduplicated, higher timestamp wins)
+        const point20 = result.find(p => {
+          const d = new Date(p.date);
+          return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}` === '2026-03-20';
+        });
+        // When targetDate is not today, resolvePreferredPrice returns history data first
+        expect(point20?.value).toBe(1.4);
       });
-      // When targetDate is not today, resolvePreferredPrice returns history data first
-      expect(point20?.value).toBe(1.4);
     });
   });
 
-  describe('edge cases', () => {
+describe('edge cases', () => {
     it('should handle history with future dates', () => {
       const history: HistoricalPoint[] = [
         { date: mkTs('2026-03-25'), value: 1.5, equityReturn: 0 },
