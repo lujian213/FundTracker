@@ -10,7 +10,7 @@ import { toLocalDateKey } from '../utils/priceResolver';
 import { adjustProfitTimelineForDisplay } from '../utils/profitAdjustment';
 import { formatMoneyWithSeparators, fmtNav } from '../utils/format';
 import { formatDateDisplay } from '../utils/dateFormat';
-import { buildLinearPath, CHART_DIMENSIONS, mergeChartPoints, ChartPointWithData } from '../utils/chartUtils';
+import { buildLinearPath, CHART_DIMENSIONS, mergeChartPoints, ChartPointWithData, buildDisplayToOriginalMap } from '../utils/chartUtils';
 import { MoneyCell } from './MoneyCell';
 import { SymbolBadge } from './SymbolBadge';
 
@@ -38,7 +38,7 @@ const ProfitModal: React.FC<ProfitModalProps> = ({ symbol, fundName, currentPric
   const [fromDate, setFromDate] = useState<string | null>(null);
   const [toDate, setToDate] = useState<string | null>(null);
   const [validationError, setValidationError] = useState<string | null>(null);
-  const [hoverIndex, setHoverIndex] = useState<number | null>(null);
+  const [hoverDisplayIndex, setHoverDisplayIndex] = useState<number | null>(null);
 
   const chartWrapRef = useRef<HTMLDivElement | null>(null);
   const chartSvgRef = useRef<SVGSVGElement | null>(null);
@@ -237,10 +237,24 @@ const ProfitModal: React.FC<ProfitModalProps> = ({ symbol, fundName, currentPric
       data: { date: p.date, dailyProfit: p.dailyProfit || 0, cumulativeProfit: p.cumulativeProfit || 0 }
     }));
 
-    // 合并点用于显示（保持视觉清晰）
-    // 注意：合并后的点保留原始X坐标，不重新计算
-    // 这样确保显示的点位置与hover检测区域一致
-    const displayPts = mergeChartPoints(originalPts);
+    // 合并点用于显示
+    const mergedPts = mergeChartPoints(originalPts);
+
+    // 检查是否需要重新计算X坐标
+    const needsRecalculation = mergedPts.length < originalPts.length;
+
+    // 重新计算X坐标（均匀分布）
+    const displayPts = needsRecalculation
+      ? mergedPts.map((pt, i) => ({ ...pt, x: getX(i, mergedPts.length) }))
+      : mergedPts;
+
+    // 建立反向映射（用于hover检测）
+    const displayToOriginalMap = needsRecalculation
+      ? buildDisplayToOriginalMap(originalPts, mergedPts)
+      : new Map(Array.from({ length: displayPts.length }, (_, i) => [
+          i,
+          { startOrigIdx: i, endOrigIdx: i + 1, displayOrigIdx: i }
+        ]));
 
     const path = buildLinearPath(displayPts, { chartHeight: h, paddingBottom: padBottom });
     const areaPath = buildLinearPath(displayPts, { closePath: true, chartHeight: h, paddingBottom: padBottom });
@@ -260,7 +274,8 @@ const ProfitModal: React.FC<ProfitModalProps> = ({ symbol, fundName, currentPric
       path,
       areaPath,
       points: displayPts,        // 合并后的点，用于显示折线和圆点
-      originalPoints: originalPts, // 原始点，用于 hover 检测
+      originalPoints: originalPts, // 原始点，用于数据引用
+      displayToOriginalMap,       // 反向映射，用于hover检测
       xTicks,
       yTicks,
       padLeft,
@@ -334,7 +349,7 @@ const ProfitModal: React.FC<ProfitModalProps> = ({ symbol, fundName, currentPric
                 <>
                   {/* Chart */}
                   <div ref={chartWrapRef} className="bg-gradient-to-b from-gray-50 to-white rounded-xl p-4 relative shadow-inner">
-                    <svg ref={chartSvgRef} className="w-full drop-shadow-sm" viewBox={`0 0 ${chart.width ?? 960} ${chart.height ?? 200}`} style={{ height: chart.height ?? 200 }} onMouseLeave={() => setHoverIndex(null)}>
+                    <svg ref={chartSvgRef} className="w-full drop-shadow-sm" viewBox={`0 0 ${chart.width ?? 960} ${chart.height ?? 200}`} style={{ height: chart.height ?? 200 }} onMouseLeave={() => setHoverDisplayIndex(null)}>
                       {/* 背景渐变定义 */}
                       <defs>
                         <linearGradient id="profitAreaGradient" x1="0%" y1="0%" x2="0%" y2="100%">
@@ -425,21 +440,37 @@ const ProfitModal: React.FC<ProfitModalProps> = ({ symbol, fundName, currentPric
                         />
                       )}
 
-                      {/* 悬停检测区域：使用原始点覆盖全图表 */}
-                      {chart.originalPoints.map((pt, i) => (
-                        <rect
-                          key={i}
-                          x={pt.x - 5}
-                          y={0}
-                          width={10}
-                          height={Math.max(1, (chart.height ?? 200) - 40)}
-                          fill="transparent"
-                          onMouseEnter={() => setHoverIndex(i)}
-                          className="cursor-crosshair"
-                        />
-                      ))}
+                      {/* 悬停检测区域：使用displayToOriginalMap创建动态区域 */}
+                      {chart.displayToOriginalMap && Array.from(chart.displayToOriginalMap.entries()).map(([displayIdx, range]) => {
+                        const displayPt = chart.points[displayIdx];
+                        const prevDisplayPt = displayIdx > 0 ? chart.points[displayIdx - 1] : null;
+                        const nextDisplayPt = displayIdx < chart.points.length - 1 ? chart.points[displayIdx + 1] : null;
+
+                        // 区域左边界：与前一个点的中点，或图表左边界
+                        const rectX = prevDisplayPt
+                          ? (prevDisplayPt.x + displayPt.x) / 2
+                          : chart.padLeft;
+
+                        // 区域宽度：到下一个点的中点，或图表右边界
+                        const rectWidth = nextDisplayPt
+                          ? (displayPt.x + nextDisplayPt.x) / 2 - rectX
+                          : (chart.width - chart.padRight) - rectX;
+
+                        return (
+                          <rect
+                            key={displayIdx}
+                            x={rectX}
+                            y={0}
+                            width={rectWidth}
+                            height={Math.max(1, (chart.height ?? 200) - 40)}
+                            fill="transparent"
+                            onMouseEnter={() => setHoverDisplayIndex(displayIdx)}
+                            className="cursor-crosshair"
+                          />
+                        );
+                      })}
                     </svg>
-                    {hoverIndex !== null && chart.originalPoints[hoverIndex] && (() => {
+                    {hoverDisplayIndex !== null && chart.points[hoverDisplayIndex] && (() => {
                       // tooltip定位：优先放在点的一侧，避免遮挡点和超出边界
                       const containerRect = chartWrapRef.current?.getBoundingClientRect();
                       const svgRect = chartSvgRef.current?.getBoundingClientRect();
@@ -450,8 +481,8 @@ const ProfitModal: React.FC<ProfitModalProps> = ({ symbol, fundName, currentPric
                       // SVG坐标转换为像素坐标
                       const scaleX = svgRect.width / vbW;
                       const scaleY = svgRect.height / vbH;
-                      const ptX = chart.originalPoints[hoverIndex].x * scaleX;
-                      const ptY = chart.originalPoints[hoverIndex].y * scaleY;
+                      const ptX = chart.points[hoverDisplayIndex].x * scaleX;
+                      const ptY = chart.points[hoverDisplayIndex].y * scaleY;
 
                       // tooltip尺寸（固定宽度避免换行）
                       const tooltipWidth = 160;
@@ -469,20 +500,23 @@ const ProfitModal: React.FC<ProfitModalProps> = ({ symbol, fundName, currentPric
                       // 垂直定位：尽量与点Y对齐，确保不超出容器
                       const top = Math.max(margin, Math.min(containerRect.height - tooltipHeight - margin, ptY - tooltipHeight / 2));
 
+                      // 使用显示点的数据
+                      const tooltipData = chart.points[hoverDisplayIndex].data;
+
                       return (
                         <div
                           className="absolute z-20 bg-white/95 backdrop-blur-sm px-3 py-2 rounded-lg shadow-lg border border-gray-100 whitespace-nowrap"
                           style={{ left, top, width: tooltipWidth, pointerEvents: 'none' }}
                         >
-                          <div className="text-xs text-gray-400 font-mono">{formatDateDisplay(chart.originalPoints[hoverIndex].data.date)}</div>
+                          <div className="text-xs text-gray-400 font-mono">{formatDateDisplay(tooltipData.date)}</div>
                           <div className="text-xs font-mono mt-1">
                             <span className="text-gray-400">当日</span>
-                            <span className={`ml-2 font-medium ${chart.originalPoints[hoverIndex].data.dailyProfit > 0 ? 'text-red-600' : chart.originalPoints[hoverIndex].data.dailyProfit < 0 ? 'text-green-600' : 'text-gray-700'}`}>{chart.originalPoints[hoverIndex].data.dailyProfit === 0 ? '-' : (chart.originalPoints[hoverIndex].data.dailyProfit > 0 ? '+' : '') + formatMoneyWithSeparators(chart.originalPoints[hoverIndex].data.dailyProfit)}</span>
+                            <span className={`ml-2 font-medium ${tooltipData.dailyProfit > 0 ? 'text-red-600' : tooltipData.dailyProfit < 0 ? 'text-green-600' : 'text-gray-700'}`}>{tooltipData.dailyProfit === 0 ? '-' : (tooltipData.dailyProfit > 0 ? '+' : '') + formatMoneyWithSeparators(tooltipData.dailyProfit)}</span>
                           </div>
                           <div className="text-xs font-mono">
                             <span className="text-gray-400">累计</span>
-                            <span className={`ml-2 font-medium ${chart.originalPoints[hoverIndex].data.cumulativeProfit > 0 ? 'text-red-600' : chart.originalPoints[hoverIndex].data.cumulativeProfit < 0 ? 'text-green-600' : 'text-gray-700'}`}>
-                              {chart.originalPoints[hoverIndex].data.cumulativeProfit === 0 ? '-' : (chart.originalPoints[hoverIndex].data.cumulativeProfit > 0 ? '+' : '') + formatMoneyWithSeparators(chart.originalPoints[hoverIndex].data.cumulativeProfit)}
+                            <span className={`ml-2 font-medium ${tooltipData.cumulativeProfit > 0 ? 'text-red-600' : tooltipData.cumulativeProfit < 0 ? 'text-green-600' : 'text-gray-700'}`}>
+                              {tooltipData.cumulativeProfit === 0 ? '-' : (tooltipData.cumulativeProfit > 0 ? '+' : '') + formatMoneyWithSeparators(tooltipData.cumulativeProfit)}
                             </span>
                           </div>
                         </div>

@@ -191,4 +191,137 @@ describe('prepareHistoryForProfitCalculation', () => {
       expect(pointToday?.value).toBe(1.6977);
     });
   });
+
+  describe('T+2 fund date calibration', () => {
+    it('should calibrate T+2 fund dates using T+1 netWorthDate as reference', () => {
+      const history: HistoricalPoint[] = [
+        { date: mkTs('2026-08-04'), value: 2.2958, equityReturn: 0 },
+        { date: mkTs('2026-08-05'), value: 2.2701, equityReturn: 0 },
+        { date: mkTs('2026-08-06'), value: 2.2611, equityReturn: 0 },
+      ];
+
+      // T+1 基金的净值日期是 8/7，可以作为参考
+      const allFundNavDates = [
+        { symbol: '000001', navType: 'T+1' as const, netWorthDate: '2026-08-07', realtimeDate: '2026-08-07' },
+      ];
+
+      const result = prepareHistoryForProfitCalculation({
+        history,
+        targetDate: '2026-08-07',
+        todayDate: '2026-08-07',
+        navType: 'T+2',
+        allFundNavDates,
+      });
+
+      // 验证：每个历史点使用下一个点的日期
+      // 8/4 -> 8/5, 8/5 -> 8/6, 8/6 -> 8/7（校准到T+1的净值日期）
+      expect(result.length).toBe(3);
+      expect(new Date(result[0].date).getDate()).toBe(5); // 8/4 -> 8/5
+      expect(new Date(result[1].date).getDate()).toBe(6); // 8/5 -> 8/6
+      expect(new Date(result[2].date).getDate()).toBe(7); // 8/6 -> 8/7
+      expect(result[0].value).toBe(2.2958);
+      expect(result[1].value).toBe(2.2701);
+      expect(result[2].value).toBe(2.2611);
+    });
+
+    it('should calibrate T+2 fund using T+1 realtimeDate when netWorthDate unavailable', () => {
+      const history: HistoricalPoint[] = [
+        { date: mkTs('2026-08-04'), value: 2.2958, equityReturn: 0 },
+        { date: mkTs('2026-08-05'), value: 2.2701, equityReturn: 0 },
+        { date: mkTs('2026-08-06'), value: 2.2611, equityReturn: 0 },
+      ];
+
+      // T+1 基金净值日期也是 8/6，但估值日期是 8/7
+      const allFundNavDates = [
+        { symbol: '000001', navType: 'T+1' as const, netWorthDate: '2026-08-06', realtimeDate: '2026-08-07' },
+      ];
+
+      const result = prepareHistoryForProfitCalculation({
+        history,
+        targetDate: '2026-08-07',
+        todayDate: '2026-08-07',
+        navType: 'T+2',
+        allFundNavDates,
+      });
+
+      // 最后一个点应该校准到 8/7（使用T+1的估值日期）
+      expect(result.length).toBe(3);
+      expect(new Date(result[2].date).getDate()).toBe(7); // 8/6 -> 8/7
+      expect(result[2].value).toBe(2.2611);
+    });
+
+    it('should use next trading day when no reference date available', () => {
+      const history: HistoricalPoint[] = [
+        { date: mkTs('2026-08-04'), value: 2.2958, equityReturn: 0 },
+        { date: mkTs('2026-08-05'), value: 2.2701, equityReturn: 0 },
+        { date: mkTs('2026-08-06'), value: 2.2611, equityReturn: 0 },
+      ];
+
+      // 没有 T+1 基金作为参考
+      const allFundNavDates = [
+        { symbol: '017437', navType: 'T+2' as const, netWorthDate: '2026-08-06', realtimeDate: null },
+      ];
+
+      const result = prepareHistoryForProfitCalculation({
+        history,
+        targetDate: '2026-08-07',
+        todayDate: '2026-08-07',
+        navType: 'T+2',
+        allFundNavDates,
+      });
+
+      // 最后一个点应该校准到 8/7（下一个交易日）
+      expect(result.length).toBe(3);
+      expect(new Date(result[2].date).getDate()).toBe(7); // 8/6 -> 8/7
+      expect(result[2].value).toBe(2.2611);
+    });
+
+    it('should not calibrate T+1 funds', () => {
+      const history: HistoricalPoint[] = [
+        { date: mkTs('2026-08-04'), value: 1.5, equityReturn: 0 },
+        { date: mkTs('2026-08-05'), value: 1.6, equityReturn: 0 },
+        { date: mkTs('2026-08-06'), value: 1.7, equityReturn: 0 },
+      ];
+
+      const result = prepareHistoryForProfitCalculation({
+        history,
+        targetDate: '2026-08-07',
+        todayDate: '2026-08-07',
+        navType: 'T+1',
+        allFundNavDates: [],
+      });
+
+      // T+1 基金不校准，日期保持不变
+      expect(result.length).toBe(3);
+      expect(new Date(result[0].date).getDate()).toBe(4);
+      expect(new Date(result[1].date).getDate()).toBe(5);
+      expect(new Date(result[2].date).getDate()).toBe(6);
+    });
+
+    it('should skip valuation for T+2 funds to preserve calibrated data', () => {
+      const history: HistoricalPoint[] = [
+        { date: mkTs('2026-08-05'), value: 2.2701, equityReturn: 0 },
+        { date: mkTs('2026-08-06'), value: 2.2611, equityReturn: 0 },
+      ];
+
+      const allFundNavDates = [
+        { symbol: '000001', navType: 'T+1' as const, netWorthDate: '2026-08-07', realtimeDate: '2026-08-07' },
+      ];
+
+      const result = prepareHistoryForProfitCalculation({
+        history,
+        targetDate: '2026-08-07',
+        todayDate: '2026-08-07',
+        currentPrice: 2.2597, // 估值价格
+        realtimeDate: '2026-08-07',
+        navType: 'T+2',
+        allFundNavDates,
+      });
+
+      // T+2 基金不使用估值覆盖，保持校准后的数据
+      expect(result.length).toBe(2);
+      expect(new Date(result[1].date).getDate()).toBe(7); // 校准到 8/7
+      expect(result[1].value).toBe(2.2611); // 使用历史净值，不使用估值
+    });
+  });
 });

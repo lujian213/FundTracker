@@ -94,6 +94,80 @@ export function buildDisplayIndexMap(
 }
 
 /**
+ * Build reverse mapping: display index -> original index range
+ * Used for hover detection to determine which original points are represented by a display point
+ *
+ * Each display point represents a range of original indices [start, end)
+ * Boundaries are calculated as midpoints between adjacent display points
+ *
+ * Example:
+ *   display[0] represents orig[0, 5)
+ *   display[1] represents orig[5, 10)
+ *   display[2] represents orig[10, 15)
+ *
+ * Performance: O(n + m) where n = originalPoints.length, m = displayPoints.length
+ */
+export function buildDisplayToOriginalMap(
+  originalPoints: ChartPointWithData[],
+  displayPoints: ChartPointWithData[]
+): Map<number, {
+  startOrigIdx: number;
+  endOrigIdx: number;
+  displayOrigIdx: number;
+}> {
+  const mapping = new Map<number, {
+    startOrigIdx: number;
+    endOrigIdx: number;
+    displayOrigIdx: number;
+  }>();
+
+  if (displayPoints.length === 0) return mapping;
+
+  // Build date lookup for O(1) access
+  const dateToOrigIdx = new Map<string, number>();
+  for (let i = 0; i < originalPoints.length; i++) {
+    dateToOrigIdx.set(originalPoints[i].data.date, i);
+  }
+
+  // Find original indices for each display point and build ranges in single pass
+  let prevOrigIdx = -1;
+  for (let displayIdx = 0; displayIdx < displayPoints.length; displayIdx++) {
+    const origIdx = dateToOrigIdx.get(displayPoints[displayIdx].data.date);
+    if (origIdx === undefined) continue;
+
+    const currentOrigIdx = origIdx;
+    const nextOrigIdx = displayIdx < displayPoints.length - 1
+      ? (dateToOrigIdx.get(displayPoints[displayIdx + 1].data.date) ?? originalPoints.length)
+      : originalPoints.length;
+
+    // Start: middle between previous and current (or 0 for first point)
+    const startOrigIdx = displayIdx === 0
+      ? 0
+      : Math.ceil((prevOrigIdx + currentOrigIdx) / 2);
+
+    // End: middle between current and next (or originalPoints.length for last point)
+    let endOrigIdx = displayIdx === displayPoints.length - 1
+      ? originalPoints.length
+      : Math.floor((currentOrigIdx + nextOrigIdx) / 2);
+
+    // Ensure valid range (at least 1 point)
+    if (endOrigIdx <= startOrigIdx) {
+      endOrigIdx = startOrigIdx + 1;
+    }
+
+    mapping.set(displayIdx, {
+      startOrigIdx,
+      endOrigIdx,
+      displayOrigIdx: currentOrigIdx
+    });
+
+    prevOrigIdx = currentOrigIdx;
+  }
+
+  return mapping;
+}
+
+/**
  * Find indices of key points that should always be preserved
  * - First point (start)
  * - Last point (current)
@@ -217,30 +291,6 @@ export function mergeChartPoints(
  * Get the original index for a merged point
  * Used for hover interaction to map back to original data
  */
-export function getOriginalIndexMapping(
-  originalPoints: ChartPointWithData[],
-  mergedPoints: ChartPointWithData[]
-): Map<number, number> {
-  const mapping = new Map<number, number>();
-
-  for (let mergedIdx = 0; mergedIdx < mergedPoints.length; mergedIdx++) {
-    const mergedPoint = mergedPoints[mergedIdx];
-    // Find matching original point by date and values
-    for (let origIdx = 0; origIdx < originalPoints.length; origIdx++) {
-      const origPoint = originalPoints[origIdx];
-      if (
-        mergedPoint.data.date === origPoint.data.date &&
-        mergedPoint.data.cumulativeProfit === origPoint.data.cumulativeProfit
-      ) {
-        mapping.set(mergedIdx, origIdx);
-        break;
-      }
-    }
-  }
-
-  return mapping;
-}
-
 /**
  * Build a smooth SVG path using Catmull-Rom to Bezier curve conversion
  * Creates a smooth curve passing through all points

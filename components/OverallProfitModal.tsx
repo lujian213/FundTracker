@@ -9,7 +9,7 @@ import { toLocalDateKey } from '../utils/priceResolver';
 import { OVERALL_PROFIT_DATE_PRESETS, getOverallProfitPresetRange, OverallProfitDatePresetKey } from '../utils/overallProfitDatePresets';
 import { formatMoney, formatMoneyWithSeparators, formatSharePercent } from '../utils/format';
 import { formatDateDisplay, formatDateISO } from '../utils/dateFormat';
-import { buildLinearPath, CHART_DIMENSIONS, mergeChartPoints, ChartPointWithData, buildDisplayIndexMap } from '../utils/chartUtils';
+import { buildLinearPath, CHART_DIMENSIONS, mergeChartPoints, ChartPointWithData, buildDisplayIndexMap, buildDisplayToOriginalMap } from '../utils/chartUtils';
 import { calculateProfitAttribution, calculateKPIs, calculateTWR, calculateMaxDrawdownFromValue, calculateVolatilityFromValueWithTrades, calculateMaxDrawdownFromProfit, calculatePortfolioTWR, calculateAnnualizedReturnFromPositionTrend, calculateNavCurve, calculateMaxDrawdownFromNav, calculateMaxDrawdownDetailsFromNav, calculatePersonalReturnCurve, estimateVolatilityFromNav, estimateVolatilityFromReturnRates } from '../utils/performanceAttribution';
 import { calculateFundAnnualizedReturn } from '../utils/fundReturnCalculator';
 import { getTradesForSymbol } from '../hooks/useTrades';
@@ -62,7 +62,7 @@ const OverallProfitModal: React.FC<Props> = ({ symbols, onClose, onSelectFund })
   const [summary, setSummary] = useState<OverallProfitSummary | null>(null);
   const [fromDate, setFromDate] = useState<string | null>(null);
   const [toDate, setToDate] = useState<string | null>(null);
-  const [hoverIndex, setHoverIndex] = useState<number | null>(null);
+  const [hoverDisplayIndex, setHoverDisplayIndex] = useState<number | null>(null);
   // 图表 x 轴起始日期（= defaultFrom，即持仓最早 startDate），与表格日期选择器分离
   const [chartFromDate, setChartFromDate] = useState<string | null>(null);
   // 视图模式：图表或日历
@@ -197,10 +197,24 @@ const OverallProfitModal: React.FC<Props> = ({ symbols, onClose, onSelectFund })
       data: { date: p.date, dailyProfit: p.dailyProfit || 0, cumulativeProfit: p.cumulativeProfit || 0 }
     }));
 
-    // 合并点用于显示（保持视觉清晰）
-    // 注意：合并后的点保留原始X坐标，不重新计算
-    // 这样确保显示的点位置与hover检测区域一致
-    const displayPts = mergeChartPoints(originalPts);
+    // 合并点用于显示
+    const mergedPts = mergeChartPoints(originalPts);
+
+    // 检查是否需要重新计算X坐标
+    const needsRecalculation = mergedPts.length < originalPts.length;
+
+    // 重新计算X坐标（均匀分布）
+    const displayPts = needsRecalculation
+      ? mergedPts.map((pt, i) => ({ ...pt, x: getX(i, mergedPts.length) }))
+      : mergedPts;
+
+    // 建立反向映射（用于hover检测）
+    const displayToOriginalMap = needsRecalculation
+      ? buildDisplayToOriginalMap(originalPts, mergedPts)
+      : new Map(Array.from({ length: displayPts.length }, (_, i) => [
+          i,
+          { startOrigIdx: i, endOrigIdx: i + 1, displayOrigIdx: i }
+        ]));
 
     const path = buildLinearPath(displayPts, { chartHeight: h, paddingBottom: padBottom });
     const areaPath = buildLinearPath(displayPts, { closePath: true, chartHeight: h, paddingBottom: padBottom });
@@ -216,15 +230,16 @@ const OverallProfitModal: React.FC<Props> = ({ symbols, onClose, onSelectFund })
       yTicks.push({ y: getY(v), label: (v >= 0 ? '+' : '') + v, isZero: v === 0 });
     }
 
-    // 建立原始点到显示点的映射：用于hover时找到最近的显示点
+    // 建立原始点到显示点的映射（用于兼容点击处理）
     const originalToDisplayMap = buildDisplayIndexMap(originalPts, displayPts);
 
     return {
       path,
       areaPath,
       points: displayPts,        // 合并后的点，用于显示折线和圆点
-      originalPoints: originalPts, // 原始点，用于 hover 检测
-      originalToDisplayMap,       // 原始索引到显示索引的映射
+      originalPoints: originalPts, // 原始点，用于数据引用
+      displayToOriginalMap,       // 反向映射，用于hover检测
+      originalToDisplayMap,       // 兼容映射（用于点击处理）
       xTicks,
       yTicks,
       padLeft,
@@ -239,37 +254,34 @@ const OverallProfitModal: React.FC<Props> = ({ symbols, onClose, onSelectFund })
     };
   }, [chartTimeline]);
 
-  const handlePointClick = useCallback((idx: number, chartData?: any) => {
+  const handlePointClick = useCallback((displayIdx: number, chartData?: any) => {
     if (!chartTimeline || chartTimeline.length === 0) return;
 
-    // 使用映射后的显示点数据（如果提供了映射）
-    if (chartData && chartData.originalToDisplayMap) {
-      const displayIdx = chartData.originalToDisplayMap.get(idx);
-      if (displayIdx !== undefined && chartData.points[displayIdx]) {
-        const displayPoint = chartData.points[displayIdx];
-        // 根据显示点的日期在chartTimeline中找到对应的数据
-        const timelineIdx = chartTimeline.findIndex(p => p.date === displayPoint.data.date);
-        if (timelineIdx >= 0) {
-          const current = chartTimeline[timelineIdx];
-          const prevDate = timelineIdx > 0
-            ? chartTimeline[timelineIdx - 1].date
-            : (() => {
-                const d = new Date(current.date);
-                d.setDate(d.getDate() - 1);
-                return toLocalDateKey(d);
-              })();
-          setFromDate(prevDate);
-          setToDate(current.date);
-          return;
-        }
+    // 直接使用displayIdx获取显示点数据
+    if (chartData && chartData.points && chartData.points[displayIdx]) {
+      const displayPoint = chartData.points[displayIdx];
+      // 根据显示点的日期在chartTimeline中找到对应的数据
+      const timelineIdx = chartTimeline.findIndex(p => p.date === displayPoint.data.date);
+      if (timelineIdx >= 0) {
+        const current = chartTimeline[timelineIdx];
+        const prevDate = timelineIdx > 0
+          ? chartTimeline[timelineIdx - 1].date
+          : (() => {
+              const d = new Date(current.date);
+              d.setDate(d.getDate() - 1);
+              return toLocalDateKey(d);
+            })();
+        setFromDate(prevDate);
+        setToDate(current.date);
+        return;
       }
     }
 
-    // 兜底逻辑：直接使用原始索引（当映射不可用时）
-    const current = chartTimeline[idx];
+    // 兜底逻辑：直接使用displayIdx在chartTimeline中查找
+    const current = chartTimeline[displayIdx];
     if (!current) return;
-    const prevDate = idx > 0
-      ? chartTimeline[idx - 1].date
+    const prevDate = displayIdx > 0
+      ? chartTimeline[displayIdx - 1].date
       : (() => {
           const d = new Date(current.date);
           d.setDate(d.getDate() - 1);
@@ -1040,7 +1052,7 @@ const OverallProfitModal: React.FC<Props> = ({ symbols, onClose, onSelectFund })
             <div className="space-y-4">
               {viewMode === 'chart' ? (
                 <div ref={chartWrapRef} className="bg-gradient-to-b from-gray-50 to-white rounded-xl p-4 relative shadow-inner">
-                <svg ref={chartSvgRef} className="w-full drop-shadow-sm" viewBox={`0 0 ${chart.width ?? 960} ${chart.height ?? 200}`} style={{ height: chart.height ?? 200 }} onMouseLeave={() => setHoverIndex(null)}>
+                <svg ref={chartSvgRef} className="w-full drop-shadow-sm" viewBox={`0 0 ${chart.width ?? 960} ${chart.height ?? 200}`} style={{ height: chart.height ?? 200 }} onMouseLeave={() => setHoverDisplayIndex(null)}>
                   {/* 背景渐变定义 */}
                   <defs>
                     <linearGradient id="areaGradient" x1="0%" y1="0%" x2="0%" y2="100%">
@@ -1131,29 +1143,41 @@ const OverallProfitModal: React.FC<Props> = ({ symbols, onClose, onSelectFund })
                     />
                   )}
 
-                  {/* 悬停检测区域：使用原始点覆盖全图表 */}
-                  {chart.originalPoints.map((pt: any, i: number) => (
-                    <rect
-                      key={i}
-                      x={pt.x - 5}
-                      y={0}
-                      width={10}
-                      height={Math.max(1, (chart.height ?? 200) - 40)}
-                      fill="transparent"
-                      onMouseEnter={() => setHoverIndex(i)}
-                      onClick={() => handlePointClick(i, chart)}
-                      className="cursor-crosshair"
-                      data-testid={`overall-profit-point-${i}`}
-                    />
-                  ))}
-                </svg>
-                {hoverIndex !== null && chart.originalPoints[hoverIndex] && (() => {
-                  // 获取映射后的显示点索引和数据显示点数据用于tooltip显示
-                  const displayIdx = chart.originalToDisplayMap?.get(hoverIndex);
-                  const displayPoint = displayIdx !== undefined ? chart.points[displayIdx] : null;
+                  {/* 悬停检测区域：使用displayToOriginalMap创建动态区域 */}
+                  {chart.displayToOriginalMap && Array.from(chart.displayToOriginalMap.entries()).map(([displayIdx, range]) => {
+                    const displayPt = chart.points[displayIdx];
+                    const prevDisplayPt = displayIdx > 0 ? chart.points[displayIdx - 1] : null;
+                    const nextDisplayPt = displayIdx < chart.points.length - 1 ? chart.points[displayIdx + 1] : null;
 
-                  // 如果没有找到显示点，使用原始点数据
-                  const tooltipData = displayPoint ? displayPoint.data : chart.originalPoints[hoverIndex].data;
+                    // 区域左边界：与前一个点的中点，或图表左边界
+                    const rectX = prevDisplayPt
+                      ? (prevDisplayPt.x + displayPt.x) / 2
+                      : chart.padLeft;
+
+                    // 区域宽度：到下一个点的中点，或图表右边界
+                    const rectWidth = nextDisplayPt
+                      ? (displayPt.x + nextDisplayPt.x) / 2 - rectX
+                      : (chart.width - chart.padRight) - rectX;
+
+                    return (
+                      <rect
+                        key={displayIdx}
+                        x={rectX}
+                        y={0}
+                        width={rectWidth}
+                        height={Math.max(1, (chart.height ?? 200) - 40)}
+                        fill="transparent"
+                        onMouseEnter={() => setHoverDisplayIndex(displayIdx)}
+                        onClick={() => handlePointClick(displayIdx, chart)}
+                        className="cursor-crosshair"
+                        data-testid={`overall-profit-point-${displayIdx}`}
+                      />
+                    );
+                  })}
+                </svg>
+                {hoverDisplayIndex !== null && chart.points[hoverDisplayIndex] && (() => {
+                  // 使用显示点的数据
+                  const tooltipData = chart.points[hoverDisplayIndex].data;
 
                   // tooltip定位：优先放在点的一侧，避免遮挡点和超出边界
                   const containerRect = chartWrapRef.current?.getBoundingClientRect();
@@ -1165,9 +1189,8 @@ const OverallProfitModal: React.FC<Props> = ({ symbols, onClose, onSelectFund })
                   // SVG坐标转换为像素坐标
                   const scaleX = svgRect.width / vbW;
                   const scaleY = svgRect.height / vbH;
-                  // 使用显示点的X坐标来定位tooltip，确保与显示圆点对齐
-                  const ptX = displayPoint ? displayPoint.x * scaleX : chart.originalPoints[hoverIndex].x * scaleX;
-                  const ptY = displayPoint ? displayPoint.y * scaleY : chart.originalPoints[hoverIndex].y * scaleY;
+                  const ptX = chart.points[hoverDisplayIndex].x * scaleX;
+                  const ptY = chart.points[hoverDisplayIndex].y * scaleY;
 
                   // tooltip尺寸（固定宽度避免换行）
                   const tooltipWidth = 160;

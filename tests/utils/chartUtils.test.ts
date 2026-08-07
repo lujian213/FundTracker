@@ -4,6 +4,7 @@ import {
   mergeChartPoints,
   MAX_VISIBLE_POINTS,
   ChartPointWithData,
+  buildDisplayToOriginalMap,
 } from '../../utils/chartUtils';
 
 describe('chartUtils', () => {
@@ -184,6 +185,85 @@ describe('chartUtils', () => {
       const lastDate = points[points.length - 1].data.date;
       expect(merged[0].data.date).toBe(firstDate);
       expect(merged[merged.length - 1].data.date).toBe(lastDate);
+    });
+  });
+
+  describe('buildDisplayToOriginalMap', () => {
+    test('maps display indices to correct original ranges', () => {
+      // Create 100 original points, merge to ~80 points
+      const originalPoints = createTestPoints(100);
+      const displayPoints = mergeChartPoints(originalPoints);
+
+      const mapping = buildDisplayToOriginalMap(originalPoints, displayPoints);
+
+      // Check first point: should start from 0
+      expect(mapping.get(0)?.startOrigIdx).toBe(0);
+
+      // Check last point: should end at originalPoints.length
+      const lastIdx = displayPoints.length - 1;
+      expect(mapping.get(lastIdx)?.endOrigIdx).toBe(originalPoints.length);
+
+      // Check that ranges don't overlap
+      for (let i = 0; i < displayPoints.length - 1; i++) {
+        const current = mapping.get(i)!;
+        const next = mapping.get(i + 1)!;
+        expect(current.endOrigIdx).toBeLessThanOrEqual(next.startOrigIdx);
+      }
+    });
+
+    test('handles empty arrays', () => {
+      const mapping = buildDisplayToOriginalMap([], []);
+      expect(mapping.size).toBe(0);
+    });
+
+    test('handles single point', () => {
+      const points = createTestPoints(1);
+      const mapping = buildDisplayToOriginalMap(points, points);
+
+      expect(mapping.size).toBe(1);
+      expect(mapping.get(0)?.startOrigIdx).toBe(0);
+      expect(mapping.get(0)?.endOrigIdx).toBe(1);
+      expect(mapping.get(0)?.displayOrigIdx).toBe(0);
+    });
+
+    test('preserves displayOrigIdx correctly', () => {
+      const originalPoints = createTestPoints(100);
+      const displayPoints = mergeChartPoints(originalPoints);
+
+      const mapping = buildDisplayToOriginalMap(originalPoints, displayPoints);
+
+      // For each display point, verify displayOrigIdx is correct
+      for (let displayIdx = 0; displayIdx < displayPoints.length; displayIdx++) {
+        const range = mapping.get(displayIdx);
+        expect(range).toBeDefined();
+
+        // displayOrigIdx should match the original index for this display point
+        const displayDate = displayPoints[displayIdx].data.date;
+        const origIdx = originalPoints.findIndex(p => p.data.date === displayDate);
+        expect(range!.displayOrigIdx).toBe(origIdx);
+      }
+    });
+
+    test('ranges cover all original points', () => {
+      const originalPoints = createTestPoints(100);
+      const displayPoints = mergeChartPoints(originalPoints);
+
+      const mapping = buildDisplayToOriginalMap(originalPoints, displayPoints);
+
+      // Verify first range starts at 0
+      expect(mapping.get(0)?.startOrigIdx).toBe(0);
+
+      // Verify last range ends at originalPoints.length
+      const lastIdx = displayPoints.length - 1;
+      expect(mapping.get(lastIdx)?.endOrigIdx).toBe(originalPoints.length);
+
+      // Verify all ranges are valid (start < end)
+      for (let i = 0; i < displayPoints.length; i++) {
+        const range = mapping.get(i)!;
+        expect(range.startOrigIdx).toBeLessThan(range.endOrigIdx);
+        expect(range.startOrigIdx).toBeGreaterThanOrEqual(0);
+        expect(range.endOrigIdx).toBeLessThanOrEqual(originalPoints.length);
+      }
     });
   });
 });
