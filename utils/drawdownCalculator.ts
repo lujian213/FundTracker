@@ -95,14 +95,19 @@ function calculateDrawdownFromProfit(
     ? Math.round((new Date(maxTrough.date).getTime() - new Date(maxPeak.date).getTime()) / (1000 * 60 * 60 * 24))
     : 0;
 
+  // 计算当前回撤的低点
+  // 如果当前值低于峰值，则当前点是低点；否则无回撤，低点为null
+  const currentTroughDate = current.profit < peak.profit ? current.date || null : null;
+  const currentTroughValue = current.profit < peak.profit ? current.profit : 0;
+
   return {
     method: 'profit',
     currentDrawdown,
     currentDrawdownDays,
     currentPeakDate: peak.date || null,
     currentPeakValue: peak.profit,
-    currentTroughDate: null,
-    currentTroughValue: 0,
+    currentTroughDate,
+    currentTroughValue,
     currentValue: current.profit,
     maxDrawdown,
     maxDrawdownDays,
