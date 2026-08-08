@@ -1138,7 +1138,11 @@ const DrawdownTab: React.FC<{
             {/* Hover tip */}
             <div className="absolute bottom-full left-0 mb-2 px-3 py-2 bg-gray-800 text-white text-xs rounded-lg opacity-0 group-hover/low:opacity-100 transition-opacity z-50 w-36 pointer-events-none">
               <div className="text-gray-300">日期: {formatDateDisplay(troughDate) || '-'}</div>
-              <div className="text-gray-300">净值: {troughNav.toFixed(4)}</div>
+              <div className="text-gray-300">
+                {snapshot.drawdownMethod === 'profit'
+                  ? `累计盈亏: ${troughNav.toFixed(2)} 元`
+                  : `净值: ${troughNav.toFixed(4)}`}
+              </div>
             </div>
           </div>
 
@@ -1179,7 +1183,11 @@ const DrawdownTab: React.FC<{
             {/* Hover tip */}
             <div className="absolute bottom-full right-0 mb-2 px-3 py-2 bg-gray-800 text-white text-xs rounded-lg opacity-0 group-hover/high:opacity-100 transition-opacity z-50 w-36 pointer-events-none">
               <div className="text-gray-300">日期: {formatDateDisplay(snapshot.currentDrawdownPeakDate) || '-'}</div>
-              <div className="text-gray-300">净值: {peakNav.toFixed(4)}</div>
+              <div className="text-gray-300">
+                {snapshot.drawdownMethod === 'profit'
+                  ? `累计盈亏: ${peakNav.toFixed(2)} 元`
+                  : `净值: ${peakNav.toFixed(4)}`}
+              </div>
             </div>
           </div>
 
@@ -1203,7 +1211,11 @@ const DrawdownTab: React.FC<{
               }}
             >
               <div className="text-gray-300">日期: {formatDateDisplay(currentDate) || '-'}</div>
-              <div className="text-gray-300">净值: {currentNav.toFixed(4)}</div>
+              <div className="text-gray-300">
+                {snapshot.drawdownMethod === 'profit'
+                  ? `累计盈亏: ${currentNav.toFixed(2)} 元`
+                  : `净值: ${currentNav.toFixed(4)}`}
+              </div>
             </div>,
             document.body
           )}
@@ -1220,7 +1232,11 @@ const DrawdownTab: React.FC<{
                 <div className="text-gray-300 font-medium mb-1">历史最大回撤详情</div>
                 <div className="text-gray-400">
                   <span className="text-green-300">开始</span> {formatDateDisplay(snapshot.maxDrawdownPeakDate)}
-                  <div className="pl-4 text-gray-300">净值: {snapshot.maxDrawdownPeakProfit.toFixed(4)}</div>
+                  <div className="pl-4 text-gray-300">
+                    {snapshot.drawdownMethod === 'profit'
+                      ? `累计盈亏: ${snapshot.maxDrawdownPeakProfit.toFixed(2)} 元`
+                      : `净值: ${snapshot.maxDrawdownPeakProfit.toFixed(4)}`}
+                  </div>
                 </div>
                 {(() => {
                   const isCurrentDrawdown = snapshot.maxDrawdown === snapshot.currentDrawdown &&
@@ -1229,14 +1245,22 @@ const DrawdownTab: React.FC<{
                     return (
                       <div className="text-gray-400 mt-1">
                         <span className="text-yellow-300">当前</span> {formatDateDisplay(snapshot.currentDate)}
-                        <div className="pl-4 text-gray-300">净值: {snapshot.currentNav.toFixed(4)}</div>
+                        <div className="pl-4 text-gray-300">
+                          {snapshot.drawdownMethod === 'profit'
+                            ? `累计盈亏: ${snapshot.currentNav.toFixed(2)} 元`
+                            : `净值: ${snapshot.currentNav.toFixed(4)}`}
+                        </div>
                       </div>
                     );
                   } else if (snapshot.maxDrawdownTroughDate) {
                     return (
                       <div className="text-gray-400 mt-1">
                         <span className="text-red-300">结束</span> {formatDateDisplay(snapshot.maxDrawdownTroughDate)}
-                        <div className="pl-4 text-gray-300">净值: {snapshot.maxDrawdownTroughProfit.toFixed(4)}</div>
+                        <div className="pl-4 text-gray-300">
+                          {snapshot.drawdownMethod === 'profit'
+                            ? `累计盈亏: ${snapshot.maxDrawdownTroughProfit.toFixed(2)} 元`
+                            : `净值: ${snapshot.maxDrawdownTroughProfit.toFixed(4)}`}
+                        </div>
                       </div>
                     );
                   }
