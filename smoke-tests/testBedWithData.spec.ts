@@ -7471,6 +7471,11 @@ test.describe('testBedWithData', () => {
     // 验证恢复进度条
     await expect(page.locator('text=峰值')).toBeVisible();
     await expect(page.locator('text=低点')).toBeVisible();
+    await expect(page.locator('text=当前位置')).toBeVisible();
+
+    // 验证恢复天数显示
+    await expect(page.locator('text=历史最长恢复天数')).toBeVisible();
+    await expect(page.locator('text=预估剩余恢复天数')).toBeVisible();
 
     // 验证hovertip
     const drawdownElement = page.locator('.drawdown-value').first();
