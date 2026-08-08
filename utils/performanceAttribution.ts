@@ -1426,7 +1426,7 @@ export function calculateDrawdownGeneric(
   let currentTroughDate = currentPeakDate;
 
   for (let i = currentPeakIndex + 1; i <= lastIndex; i++) {
-    if (values[i].value < currentTroughValue) {
+    if (values[i].value <= currentTroughValue) {  // 使用 <= 取最新的低点
       currentTroughIndex = i;
       currentTroughValue = values[i].value;
       currentTroughDate = values[i].date;
@@ -1516,8 +1516,9 @@ export function calculateCurrentDrawdownDetails(
   const result = calculateDrawdownGeneric(values, percentDrawdownStrategy);
 
   // 计算恢复进度：从低点恢复了多少
+  // 无回撤时，恢复进度为 0
   let recoveryProgress = 0;
-  if (result.peakValue > result.troughValue) {
+  if (result.currentDrawdown > 0 && result.peakValue > result.troughValue) {
     recoveryProgress = (result.currentValue - result.troughValue) / (result.peakValue - result.troughValue) * 100;
     recoveryProgress = Math.max(0, Math.min(100, recoveryProgress));
   }
