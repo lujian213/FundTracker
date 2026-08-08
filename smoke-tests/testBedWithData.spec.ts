@@ -7448,7 +7448,7 @@ test.describe('testBedWithData', () => {
     await page.waitForTimeout(200);
 
     // 验证回撤状态显示
-    const drawdownTitle = page.locator('text=回撤追踪');
+    const drawdownTitle = page.locator('text=📉 回撤追踪').first();
     await expect(drawdownTitle).toBeVisible();
 
     // 验证恢复进度追踪
@@ -7465,27 +7465,50 @@ test.describe('testBedWithData', () => {
     await page.waitForTimeout(1000);
 
     // 验证回撤状态显示
-    await expect(page.locator('text=当前回撤')).toBeVisible();
-    await expect(page.locator('text=回撤持续天数')).toBeVisible();
+    // 验证显示"盈利回撤"标签（新版特征）
+    await expect(page.locator('text=盈利回撤')).toBeVisible();
 
-    // 验证恢复进度条
-    await expect(page.locator('text=峰值')).toBeVisible();
-    await expect(page.locator('text=低点')).toBeVisible();
-    await expect(page.locator('text=当前位置')).toBeVisible();
+    // 验证回撤值显示为金额格式（如"-500元"或"-62,343元"）
+    const drawdownValue = page.locator('.text-5xl').first();
+    const drawdownText = await drawdownValue.textContent();
+    expect(drawdownText).toMatch(/-[\d,]+元/);  // 格式如 "-500元" 或 "-62,343元"
 
-    // 验证恢复天数显示
-    await expect(page.locator('text=历史最长恢复天数')).toBeVisible();
-    await expect(page.locator('text=预估剩余恢复天数')).toBeVisible();
+    // 验证回撤持续天数显示（更健壮的匹配）
+    const durationText = page.locator('text=/持续时间:/').first();
+    await expect(durationText).toBeVisible();
 
-    // 验证hovertip
-    const drawdownElement = page.locator('.drawdown-value').first();
-    await drawdownElement.hover();
+    // 验证恢复进度条区域显示（验证整体区域存在即可）
+    await expect(page.locator('text=恢复进度追踪')).toBeVisible();
+
+    // 验证恢复统计显示（精确匹配）
+    await expect(page.locator('text=历史最长恢复').first()).toBeVisible();
+    await expect(page.locator('text=预估剩余恢复').first()).toBeVisible();
+
+    // 验证hovertip显示"累计盈亏"格式
+    const highMarker = page.locator('text=高点').first();
+    await highMarker.hover();
     await page.waitForTimeout(500);
 
-    // 验证tooltip内容（根据实际计算方法）
-    const tooltip = page.locator('.tooltip-content');
-    const tooltipText = await tooltip.textContent();
-    expect(['当前累计盈亏', '当前净值']).toContain(tooltipText?.includes('当前累计盈亏') ? '当前累计盈亏' : '当前净值');
+    // 验证tooltip内容包含"累计盈亏"（使用更精确的选择器）
+    const tooltip = page.locator('div.bg-gray-800:has-text("累计盈亏")').first();
+    await expect(tooltip).toBeVisible();
+
+    // 验证不显示预警阈值（盈利回撤的简化特征）
+    // "盈利回撤"标签应该显示为灰色背景
+    const drawdownLabel = page.locator('.bg-gray-100.text-gray-700');
+    await expect(drawdownLabel).toBeVisible();
+
+    // 验证各基金表格显示（使用列标题的精确匹配）
+    await expect(page.locator('th:has-text("基金名称")')).toBeVisible();
+    await expect(page.locator('th:has-text("当前回撤")')).toBeVisible();
+    await expect(page.locator('th:has-text("历史最大")')).toBeVisible();
+    await expect(page.locator('th:has-text("恢复进度")')).toBeVisible();
+    await expect(page.locator('th:has-text("状态")')).toBeVisible();
+
+    // 验证基金回撤显示为金额格式
+    const fundDrawdownValue = page.locator('tbody tr').first().locator('td').nth(1);
+    const fundDrawdownText = await fundDrawdownValue.textContent();
+    expect(fundDrawdownText).toMatch(/\d+元|\d+%/);  // 可能是金额或百分比
 
     console.log('回撤追踪（新）Tab验证完成');
 

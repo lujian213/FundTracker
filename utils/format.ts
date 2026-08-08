@@ -68,6 +68,32 @@ export function formatShares(v: number): string {
 }
 
 /**
+ * 格式化回撤值
+ * @param value 回撤值
+ * @param method 回撤方法 ('profit' | 'nav')
+ * @returns 格式化后的字符串
+ */
+export function formatDrawdownValue(value: number, method: 'profit' | 'nav'): string {
+  if (!Number.isFinite(value)) return '--';
+  return method === 'profit'
+    ? `${formatMoney(value, 0)}元`
+    : `${value.toFixed(2)}%`;
+}
+
+/**
+ * 格式化净值或累计盈亏值
+ * @param value 净值或累计盈亏
+ * @param method 回撤方法 ('profit' | 'nav')
+ * @returns 格式化后的字符串
+ */
+export function formatNavOrProfitValue(value: number, method: 'profit' | 'nav'): string {
+  if (!Number.isFinite(value)) return '--';
+  return method === 'profit'
+    ? formatMoney(value, 0)
+    : value.toFixed(4);
+}
+
+/**
  * 格式化成交量（手）
  * @param volume 成交量（手）
  */

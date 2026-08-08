@@ -11,7 +11,7 @@ import { Ticker, ValuationData, RiskSnapshot, RiskAlert, FundDrawdown } from '..
 import { computeRiskSnapshot, computeRiskSnapshotBeta } from '../services/riskCalculationService';
 import { KPICardDisplay } from './KPICardDisplay';
 import { useModalBodyStyle } from '../hooks/useModalBodyStyle';
-import { formatMoney, formatSharePercent } from '../utils/format';
+import { formatMoney, formatSharePercent, formatDrawdownValue, formatNavOrProfitValue } from '../utils/format';
 import { formatDateDisplay } from '../utils/dateFormat';
 import { getPosition } from '../services/marketFundService';
 import { computePositions } from '../utils/positionHelper';
@@ -1015,6 +1015,7 @@ const DrawdownTab: React.FC<{
   const currentDrawdown = snapshot.currentDrawdown;
   const maxDrawdown = snapshot.maxDrawdown;
   const maxRecoveryDays = snapshot.maxRecoveryDays;
+  const drawdownMethod = snapshot.drawdownMethod || 'nav'; // 默认净值法
 
   // 当前回撤详细信息
   const peakNav = snapshot.currentDrawdownPeakNav;
@@ -1022,6 +1023,18 @@ const DrawdownTab: React.FC<{
   const troughDate = snapshot.currentDrawdownTroughDate;
   const currentNav = snapshot.currentNav;
   const currentDate = snapshot.currentDate;
+
+  // 缓存排序后的基金列表，避免每次渲染重新排序
+  const sortedFundDrawdowns = useMemo(() => {
+    // 混合排序：金额组在前，百分比组在后
+    const profitFunds = snapshot.fundDrawdowns.filter(fd => fd.drawdownMethod === 'profit');
+    const navFunds = snapshot.fundDrawdowns.filter(fd => fd.drawdownMethod === 'nav');
+
+    profitFunds.sort((a, b) => b.currentDrawdown - a.currentDrawdown);  // 按金额降序
+    navFunds.sort((a, b) => b.currentDrawdown - a.currentDrawdown);     // 按百分比降序
+
+    return [...profitFunds, ...navFunds];
+  }, [snapshot.fundDrawdowns]);
 
   if (snapshot.fundDrawdowns.length === 0) {
     return (
@@ -1032,24 +1045,23 @@ const DrawdownTab: React.FC<{
     );
   }
 
-  // 计算恢复进度：(当前净值 - 低点净值) / (峰值净值 - 低点净值) * 100
-  // 简单的百分比计算，不需要特殊判断
+  // 计算恢复进度：根据method调整计算方式
   let recoveryProgress = 0;
   if (peakNav > troughNav) {
     recoveryProgress = (currentNav - troughNav) / (peakNav - troughNav) * 100;
     recoveryProgress = Math.max(0, Math.min(100, recoveryProgress));
   }
 
-  // 计算低点回撤深度（相对于峰值）
+  // 计算低点回撤深度（根据method调整显示）
   const troughDrawdown = peakNav > 0 && troughNav < peakNav
-    ? (peakNav - troughNav) / peakNav * 100
+    ? drawdownMethod === 'profit'
+      ? peakNav - troughNav  // 金额
+      : (peakNav - troughNav) / peakNav * 100  // 百分比
     : 0;
 
-  // 计算预估剩余恢复天数
-  // 基于历史恢复速度：如果历史最长恢复有值，用历史平均速度估算
+  // 计算预估剩余恢复天数（根据method调整）
   let estimatedRemainingDays = '--';
   if (currentDrawdown > 0 && maxRecoveryDays > 0 && maxDrawdown > 0) {
-    // 历史平均恢复速度：每天恢复的百分比
     const avgRecoveryRate = maxDrawdown / maxRecoveryDays;
     if (avgRecoveryRate > 0) {
       const remaining = Math.ceil(currentDrawdown / avgRecoveryRate);
@@ -1057,7 +1069,16 @@ const DrawdownTab: React.FC<{
     }
   }
 
-  // 判断当前点是否接近低点或高点（小于10%距离时显示到下方）
+  // 显示值：使用统一的格式化函数
+  const currentDrawdownDisplay = formatDrawdownValue(currentDrawdown, drawdownMethod);
+  const maxDrawdownDisplay = formatDrawdownValue(maxDrawdown, drawdownMethod);
+
+  // 恢复进度追踪：显示绝对值而不是相对值
+  const peakDisplay = formatNavOrProfitValue(peakNav, drawdownMethod);
+  const troughDisplay = formatNavOrProfitValue(troughNav, drawdownMethod);
+  const currentDisplay = formatNavOrProfitValue(currentNav, drawdownMethod);
+
+  // 判断当前点是否接近低点或高点
   const isNearLow = recoveryProgress < 10;
   const isNearHigh = recoveryProgress > 90;
 
@@ -1080,16 +1101,27 @@ const DrawdownTab: React.FC<{
           {/* 回撤大数字 */}
           <div>
             <div className="text-5xl font-extrabold text-red-600 leading-none">
-              -{currentDrawdown.toFixed(2)}%
+              -{currentDrawdownDisplay}
             </div>
             <div className="text-sm text-red-800 mt-1">当前回撤深度</div>
             <div className={`mt-2 inline-block px-3 py-1 rounded-full text-xs font-semibold ${
-              currentDrawdown >= thresholds.drawdown.high ? 'bg-red-200 text-red-800' :
-              currentDrawdown >= thresholds.drawdown.low ? 'bg-orange-200 text-orange-800' : 'bg-green-200 text-green-800'
+              drawdownMethod === 'profit'
+                ? 'bg-gray-100 text-gray-700'  // 金额策略不显示预警阈值
+                : currentDrawdown >= thresholds.drawdown.high
+                  ? 'bg-red-200 text-red-800'
+                  : currentDrawdown >= thresholds.drawdown.low
+                    ? 'bg-orange-200 text-orange-800'
+                    : 'bg-green-200 text-green-800'
             }`}>
-              {currentDrawdown >= thresholds.drawdown.high ? '🔴 超过重度预警阈值' :
-              currentDrawdown >= thresholds.drawdown.medium ? '🟠 超过中度预警阈值' :
-              currentDrawdown >= thresholds.drawdown.low ? '🟡 超过轻度预警阈值' : '✅ 正常范围'}
+              {drawdownMethod === 'profit'
+                ? '盈利回撤'  // 盈利策略的简单提示
+                : currentDrawdown >= thresholds.drawdown.high
+                  ? '🔴 超过重度预警阈值'
+                  : currentDrawdown >= thresholds.drawdown.medium
+                    ? '🟠 超过中度预警阈值'
+                    : currentDrawdown >= thresholds.drawdown.low
+                      ? '🟡 超过轻度预警阈值'
+                      : '✅ 正常范围'}
             </div>
           </div>
 
@@ -1134,14 +1166,14 @@ const DrawdownTab: React.FC<{
           {/* 低点标记 */}
           <div className="absolute top-0 left-0 transform -translate-y-full text-center bg-white px-1.5 py-0.5 rounded shadow-sm cursor-help group/low">
             <span className="block text-xs text-gray-500">低点</span>
-            <span className="block text-sm font-bold text-red-700">-{troughDrawdown.toFixed(2)}%</span>
+            <span className="block text-sm font-bold text-red-700">{troughDisplay}</span>
             {/* Hover tip */}
             <div className="absolute bottom-full left-0 mb-2 px-3 py-2 bg-gray-800 text-white text-xs rounded-lg opacity-0 group-hover/low:opacity-100 transition-opacity z-50 w-36 pointer-events-none">
               <div className="text-gray-300">日期: {formatDateDisplay(troughDate) || '-'}</div>
               <div className="text-gray-300">
-                {snapshot.drawdownMethod === 'profit'
-                  ? `累计盈亏: ${troughNav.toFixed(2)} 元`
-                  : `净值: ${troughNav.toFixed(4)}`}
+                {drawdownMethod === 'profit'
+                  ? `累计盈亏: ${formatNavOrProfitValue(troughNav, 'profit')}元`
+                  : `净值: ${formatNavOrProfitValue(troughNav, 'nav')}`}
               </div>
             </div>
           </div>
@@ -1166,12 +1198,12 @@ const DrawdownTab: React.FC<{
             {isNearLow || isNearHigh ? (
               <>
                 <span className="block text-xs text-gray-500">当前</span>
-                <span className="block text-sm font-bold text-orange-600">-{currentDrawdown.toFixed(2)}%</span>
+                <span className="block text-sm font-bold text-orange-600">{currentDisplay}</span>
               </>
             ) : (
               <>
                 <span className="block text-xs text-gray-500">当前</span>
-                <span className="block text-sm font-bold text-orange-600">-{currentDrawdown.toFixed(2)}%</span>
+                <span className="block text-sm font-bold text-orange-600">{currentDisplay}</span>
               </>
             )}
           </div>
@@ -1179,14 +1211,14 @@ const DrawdownTab: React.FC<{
           {/* 高点标记 */}
           <div className="absolute top-0 right-0 transform -translate-y-full text-center bg-white px-1.5 py-0.5 rounded shadow-sm cursor-help group/high">
             <span className="block text-xs text-gray-500">高点</span>
-            <span className="block text-sm font-bold text-green-700">0%</span>
+            <span className="block text-sm font-bold text-green-700">{peakDisplay}</span>
             {/* Hover tip */}
             <div className="absolute bottom-full right-0 mb-2 px-3 py-2 bg-gray-800 text-white text-xs rounded-lg opacity-0 group-hover/high:opacity-100 transition-opacity z-50 w-36 pointer-events-none">
               <div className="text-gray-300">日期: {formatDateDisplay(snapshot.currentDrawdownPeakDate) || '-'}</div>
               <div className="text-gray-300">
-                {snapshot.drawdownMethod === 'profit'
-                  ? `累计盈亏: ${peakNav.toFixed(2)} 元`
-                  : `净值: ${peakNav.toFixed(4)}`}
+                {drawdownMethod === 'profit'
+                  ? `累计盈亏: ${formatNavOrProfitValue(peakNav, 'profit')}元`
+                  : `净值: ${formatNavOrProfitValue(peakNav, 'nav')}`}
               </div>
             </div>
           </div>
@@ -1212,9 +1244,9 @@ const DrawdownTab: React.FC<{
             >
               <div className="text-gray-300">日期: {formatDateDisplay(currentDate) || '-'}</div>
               <div className="text-gray-300">
-                {snapshot.drawdownMethod === 'profit'
-                  ? `累计盈亏: ${currentNav.toFixed(2)} 元`
-                  : `净值: ${currentNav.toFixed(4)}`}
+                {drawdownMethod === 'profit'
+                  ? `累计盈亏: ${formatNavOrProfitValue(currentNav, 'profit')}元`
+                  : `净值: ${formatNavOrProfitValue(currentNav, 'nav')}`}
               </div>
             </div>,
             document.body
@@ -1224,7 +1256,7 @@ const DrawdownTab: React.FC<{
         {/* 恢复统计 */}
         <div className="grid grid-cols-3 gap-3 mt-5">
           <div className="bg-gray-50 rounded-lg p-3 text-center relative group cursor-help">
-            <div className="text-xl font-bold text-gray-800">-{maxDrawdown.toFixed(2)}%</div>
+            <div className="text-xl font-bold text-gray-800">-{maxDrawdownDisplay}</div>
             <div className="text-xs text-gray-500 mt-1">历史最大回撤</div>
             {/* Hover tip */}
             {snapshot.maxDrawdownPeakDate && (
@@ -1233,9 +1265,9 @@ const DrawdownTab: React.FC<{
                 <div className="text-gray-400">
                   <span className="text-green-300">开始</span> {formatDateDisplay(snapshot.maxDrawdownPeakDate)}
                   <div className="pl-4 text-gray-300">
-                    {snapshot.drawdownMethod === 'profit'
-                      ? `累计盈亏: ${snapshot.maxDrawdownPeakProfit.toFixed(2)} 元`
-                      : `净值: ${snapshot.maxDrawdownPeakProfit.toFixed(4)}`}
+                    {drawdownMethod === 'profit'
+                      ? `累计盈亏: ${formatNavOrProfitValue(snapshot.maxDrawdownPeakProfit, 'profit')}元`
+                      : `净值: ${formatNavOrProfitValue(snapshot.maxDrawdownPeakProfit, 'nav')}`}
                   </div>
                 </div>
                 {(() => {
@@ -1246,9 +1278,9 @@ const DrawdownTab: React.FC<{
                       <div className="text-gray-400 mt-1">
                         <span className="text-yellow-300">当前</span> {formatDateDisplay(snapshot.currentDate)}
                         <div className="pl-4 text-gray-300">
-                          {snapshot.drawdownMethod === 'profit'
-                            ? `累计盈亏: ${snapshot.currentNav.toFixed(2)} 元`
-                            : `净值: ${snapshot.currentNav.toFixed(4)}`}
+                          {drawdownMethod === 'profit'
+                            ? `累计盈亏: ${formatNavOrProfitValue(snapshot.currentNav, 'profit')}元`
+                            : `净值: ${formatNavOrProfitValue(snapshot.currentNav, 'nav')}`}
                         </div>
                       </div>
                     );
@@ -1257,9 +1289,9 @@ const DrawdownTab: React.FC<{
                       <div className="text-gray-400 mt-1">
                         <span className="text-red-300">结束</span> {formatDateDisplay(snapshot.maxDrawdownTroughDate)}
                         <div className="pl-4 text-gray-300">
-                          {snapshot.drawdownMethod === 'profit'
-                            ? `累计盈亏: ${snapshot.maxDrawdownTroughProfit.toFixed(2)} 元`
-                            : `净值: ${snapshot.maxDrawdownTroughProfit.toFixed(4)}`}
+                          {drawdownMethod === 'profit'
+                            ? `累计盈亏: ${formatNavOrProfitValue(snapshot.maxDrawdownTroughProfit, 'profit')}元`
+                            : `净值: ${formatNavOrProfitValue(snapshot.maxDrawdownTroughProfit, 'nav')}`}
                         </div>
                       </div>
                     );
@@ -1318,10 +1350,7 @@ const DrawdownTab: React.FC<{
             </tr>
           </thead>
           <tbody>
-            {snapshot.fundDrawdowns
-              .slice()
-              .sort((a, b) => b.currentDrawdown - a.currentDrawdown)
-              .map((fd) => {
+            {sortedFundDrawdowns.map((fd) => {
               // 计算恢复进度
               const progress = fd.maxDrawdown > 0
                 ? Math.max(0, Math.min(100, ((fd.maxDrawdown - fd.currentDrawdown) / fd.maxDrawdown) * 100))
@@ -1329,6 +1358,16 @@ const DrawdownTab: React.FC<{
 
               const status = fd.currentDrawdown >= thresholds.drawdown.high ? 'danger' :
                              fd.currentDrawdown >= thresholds.drawdown.low ? 'warning' : 'safe';
+
+              // 显示值：使用统一的格式化函数
+              const fdMethod = fd.drawdownMethod || 'nav';  // 默认净值法
+              const currentDrawdownDisplay = formatDrawdownValue(fd.currentDrawdown, fdMethod);
+              const maxDrawdownDisplay = formatDrawdownValue(fd.maxDrawdown, fdMethod);
+
+              // 恢复进度追踪：显示绝对值
+              const peakValueDisplay = formatNavOrProfitValue(fd.peakValue, fdMethod);
+              const troughValueDisplay = formatNavOrProfitValue(fd.troughValue || 0, fdMethod);
+              const currentValueDisplay = formatNavOrProfitValue(fd.currentValue, fdMethod);
 
               return (
                 <tr
@@ -1344,17 +1383,29 @@ const DrawdownTab: React.FC<{
                       <>
                         <div className="text-gray-300">
                           <span className="text-green-300">高点</span> {formatDateDisplay(fd.peakDate) || '-'}
-                          <div className="pl-4 text-gray-400">净值: {fd.peakValue.toFixed(4)}</div>
+                          <div className="pl-4 text-gray-400">
+                            {fdMethod === 'profit'
+                              ? `累计盈亏: ${formatNavOrProfitValue(fd.peakValue, 'profit')}元`
+                              : `净值: ${formatNavOrProfitValue(fd.peakValue, 'nav')}`}
+                          </div>
                         </div>
                         <div className="text-gray-300 mt-1">
                           <span className="text-red-300">低点</span> {formatDateDisplay(fd.troughDate || null) || '-'}
-                          {fd.troughValue !== undefined && (
-                            <div className="pl-4 text-gray-400">净值: {fd.troughValue.toFixed(4)}</div>
+                          {fd.troughValue !== undefined && fd.troughValue !== 0 && (
+                            <div className="pl-4 text-gray-400">
+                              {fdMethod === 'profit'
+                                ? `累计盈亏: ${formatNavOrProfitValue(fd.troughValue, 'profit')}元`
+                                : `净值: ${formatNavOrProfitValue(fd.troughValue, 'nav')}`}
+                            </div>
                           )}
                         </div>
                         <div className="text-gray-300 mt-1">
                           <span className="text-yellow-300">当前</span>
-                          <div className="pl-4 text-gray-400">净值: {fd.currentValue.toFixed(4)}</div>
+                          <div className="pl-4 text-gray-400">
+                            {fdMethod === 'profit'
+                              ? `累计盈亏: ${formatNavOrProfitValue(fd.currentValue, 'profit')}元`
+                              : `净值: ${formatNavOrProfitValue(fd.currentValue, 'nav')}`}
+                          </div>
                         </div>
                         <div className="text-gray-300 mt-1">持续: {fd.currentDrawdownDays}天</div>
                       </>
@@ -1364,7 +1415,7 @@ const DrawdownTab: React.FC<{
                       status === 'danger' ? 'text-red-600' :
                       status === 'warning' ? 'text-orange-600' : 'text-green-600'
                     }`}>
-                      {fd.currentDrawdown.toFixed(2)}%
+                      {currentDrawdownDisplay}
                     </span>
                   </TooltipCell>
                   {/* 历史最大列 - 带 tooltip */}
@@ -1375,41 +1426,53 @@ const DrawdownTab: React.FC<{
                         <div className="text-gray-300">
                           <span className="text-green-300">高点</span> {formatDateDisplay(fd.maxDrawdownPeakDate) || '-'}
                           {fd.maxDrawdownPeakNav !== undefined && (
-                            <div className="pl-4 text-gray-400">净值: {fd.maxDrawdownPeakNav.toFixed(4)}</div>
+                            <div className="pl-4 text-gray-400">
+                              {fdMethod === 'profit'
+                                ? `累计盈亏: ${formatNavOrProfitValue(fd.maxDrawdownPeakNav, 'profit')}元`
+                                : `净值: ${formatNavOrProfitValue(fd.maxDrawdownPeakNav, 'nav')}`}
+                            </div>
                           )}
                         </div>
                         {(() => {
-                          // 判断最大回撤是否还没结束（就是当前回撤）
-                          // 如果最大回撤峰值日期 = 当前回撤峰值日期，说明最大回撤就是当前回撤
                           const isCurrentDrawdown = fd.maxDrawdownPeakDate === fd.peakDate;
                           if (isCurrentDrawdown) {
-                            // 最大回撤还没结束，和当前回撤一样显示
                             return (
                               <>
                                 <div className="text-gray-300 mt-1">
                                   <span className="text-red-300">低点</span> {formatDateDisplay(fd.troughDate || null) || '-'}
-                                  {fd.troughValue !== undefined && (
-                                    <div className="pl-4 text-gray-400">净值: {fd.troughValue.toFixed(4)}</div>
+                                  {fd.troughValue !== undefined && fd.troughValue !== 0 && (
+                                    <div className="pl-4 text-gray-400">
+                                      {fdMethod === 'profit'
+                                        ? `累计盈亏: ${formatNavOrProfitValue(fd.troughValue, 'profit')}元`
+                                        : `净值: ${formatNavOrProfitValue(fd.troughValue, 'nav')}`}
+                                    </div>
                                   )}
                                 </div>
                                 <div className="text-gray-300 mt-1">
                                   <span className="text-yellow-300">当前</span>
                                   {fd.currentValue !== undefined && (
-                                    <div className="pl-4 text-gray-400">净值: {fd.currentValue.toFixed(4)}</div>
+                                    <div className="pl-4 text-gray-400">
+                                      {fdMethod === 'profit'
+                                        ? `累计盈亏: ${formatNavOrProfitValue(fd.currentValue, 'profit')}元`
+                                        : `净值: ${formatNavOrProfitValue(fd.currentValue, 'nav')}`}
+                                    </div>
                                   )}
                                 </div>
                                 <div className="text-gray-300 mt-1">持续: {fd.currentDrawdownDays}天</div>
                               </>
                             );
                           }
-                          // 最大回撤已结束，显示结束信息
                           return (
                             <>
                               <div className="text-gray-300 mt-1">
                                 <span className="text-red-300">低点</span> {formatDateDisplay(fd.maxDrawdownTroughDate || null) || '-'}
                               </div>
                               {fd.maxDrawdownTroughNav !== undefined && (
-                                <div className="pl-4 text-gray-400">净值: {fd.maxDrawdownTroughNav.toFixed(4)}</div>
+                                <div className="pl-4 text-gray-400">
+                                  {fdMethod === 'profit'
+                                    ? `累计盈亏: ${formatNavOrProfitValue(fd.maxDrawdownTroughNav, 'profit')}元`
+                                    : `净值: ${formatNavOrProfitValue(fd.maxDrawdownTroughNav, 'nav')}`}
+                                </div>
                               )}
                               <div className="text-gray-300 mt-1">持续: {fd.maxDrawdownDays}天</div>
                             </>
@@ -1418,7 +1481,7 @@ const DrawdownTab: React.FC<{
                       </>
                     }
                   >
-                    <span className="text-gray-500">{fd.maxDrawdown.toFixed(2)}%</span>
+                    <span className="text-gray-500">{maxDrawdownDisplay}</span>
                   </TooltipCell>
                   {/* 恢复进度列 - 带 tooltip */}
                   <TooltipCell
@@ -1427,19 +1490,33 @@ const DrawdownTab: React.FC<{
                       <>
                         <div className="text-gray-400">
                           <span className="text-green-300">高点</span>
-                          <span className="pl-4 text-gray-300">净值: {fd.peakValue.toFixed(4)}</span>
+                          <span className="pl-4 text-gray-300">
+                            {fdMethod === 'profit'
+                              ? `累计盈亏: ${formatNavOrProfitValue(fd.peakValue, 'profit')}元`
+                              : `净值: ${formatNavOrProfitValue(fd.peakValue, 'nav')}`}
+                          </span>
                         </div>
                         <div className="text-gray-400 mt-1">
                           <span className="text-red-300">低点</span>
-                          {fd.troughValue !== undefined ? (
-                            <span className="pl-4 text-gray-300">净值: {fd.troughValue.toFixed(4)}</span>
+                          {fd.troughValue !== undefined && fd.troughValue !== 0 ? (
+                            <span className="pl-4 text-gray-300">
+                              {fdMethod === 'profit'
+                                ? `累计盈亏: ${formatNavOrProfitValue(fd.troughValue, 'profit')}元`
+                                : `净值: ${formatNavOrProfitValue(fd.troughValue, 'nav')}`}
+                            </span>
                           ) : (
-                            <span className="pl-4 text-gray-300">净值: --</span>
+                            <span className="pl-4 text-gray-300">
+                              {fdMethod === 'profit' ? '累计盈亏: --' : '净值: --'}
+                            </span>
                           )}
                         </div>
                         <div className="text-gray-400 mt-1">
                           <span className="text-orange-300">当前</span>
-                          <span className="pl-4 text-gray-300">净值: {fd.currentValue.toFixed(4)}</span>
+                          <span className="pl-4 text-gray-300">
+                            {fdMethod === 'profit'
+                              ? `累计盈亏: ${formatNavOrProfitValue(fd.currentValue, 'profit')}元`
+                              : `净值: ${formatNavOrProfitValue(fd.currentValue, 'nav')}`}
+                          </span>
                         </div>
                       </>
                     }

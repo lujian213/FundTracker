@@ -60,6 +60,7 @@ utils/drawdownCalculator.ts              - 回撤计算工具（混合方案）
 services/riskCalculationService.ts       - 添加 computeRiskSnapshotBeta() 函数
 components/RiskMonitor.tsx                - 添加新的tab入口
 types/index.ts                            - 添加新的类型定义
+features/main-page/feature-risk-monitor.md - 添加回撤追踪（Beta）需求
 features/test/feature-test-data-prepare.md - 添加测试用例
 smoke-tests/testBedWithData.spec.ts       - 添加测试代码
 ```

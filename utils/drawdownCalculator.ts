@@ -1,7 +1,8 @@
 import { DrawdownResult, DrawdownMethod } from '../types';
 import {
-  calculateMaxDrawdownDetailsFromNav,
-  calculateCurrentDrawdownDetails,
+  calculateDrawdownGeneric,
+  percentDrawdownStrategy,
+  amountDrawdownStrategy,
 } from './performanceAttribution';
 
 /**
@@ -27,26 +28,8 @@ function createEmptyDrawdownResult(): DrawdownResult {
 }
 
 /**
- * 找到累计盈亏的峰值
- */
-function findMaxProfit(
-  cumulativeProfits: { date: string; profit: number }[]
-): { date: string; profit: number } {
-  if (!cumulativeProfits || cumulativeProfits.length === 0) {
-    return { date: '', profit: 0 };
-  }
-
-  let maxPoint = cumulativeProfits[0];
-  for (const point of cumulativeProfits) {
-    if (point.profit > maxPoint.profit) {
-      maxPoint = point;
-    }
-  }
-  return maxPoint;
-}
-
-/**
- * 基于累计盈亏计算回撤
+ * 基于累计盈亏计算回撤（复用通用函数）
+ * 使用金额策略，回撤值为金额
  */
 function calculateDrawdownFromProfit(
   cumulativeProfits: { date: string; profit: number }[]
@@ -55,71 +38,35 @@ function calculateDrawdownFromProfit(
     return createEmptyDrawdownResult();
   }
 
-  const peak = findMaxProfit(cumulativeProfits);
-  const current = cumulativeProfits[cumulativeProfits.length - 1];
+  // 转换为通用格式并调用通用函数（金额策略）
+  const values = cumulativeProfits.map(p => ({
+    date: p.date,
+    value: p.profit
+  }));
 
-  // 计算当前回撤
-  const currentDrawdown = peak.profit > 0
-    ? ((peak.profit - current.profit) / peak.profit) * 100
-    : 0;
-
-  // 计算最大回撤
-  let maxDrawdown = 0;
-  let maxPeak = cumulativeProfits[0];
-  let maxTrough = cumulativeProfits[0];
-
-  for (let i = 0; i < cumulativeProfits.length; i++) {
-    const point = cumulativeProfits[i];
-
-    // 更新峰值
-    if (point.profit > maxPeak.profit) {
-      maxPeak = point;
-    }
-
-    // 计算回撤
-    if (maxPeak.profit > 0) {
-      const drawdown = ((maxPeak.profit - point.profit) / maxPeak.profit) * 100;
-      if (drawdown > maxDrawdown) {
-        maxDrawdown = drawdown;
-        maxTrough = point;
-      }
-    }
-  }
-
-  // 计算天数
-  const currentDrawdownDays = peak.date && current.date
-    ? Math.round((new Date(current.date).getTime() - new Date(peak.date).getTime()) / (1000 * 60 * 60 * 24))
-    : 0;
-
-  const maxDrawdownDays = maxPeak.date && maxTrough.date
-    ? Math.round((new Date(maxTrough.date).getTime() - new Date(maxPeak.date).getTime()) / (1000 * 60 * 60 * 24))
-    : 0;
-
-  // 计算当前回撤的低点
-  // 如果当前值低于峰值，则当前点是低点；否则无回撤，低点为null
-  const currentTroughDate = current.profit < peak.profit ? current.date || null : null;
-  const currentTroughValue = current.profit < peak.profit ? current.profit : 0;
+  const result = calculateDrawdownGeneric(values, amountDrawdownStrategy);
 
   return {
     method: 'profit',
-    currentDrawdown,
-    currentDrawdownDays,
-    currentPeakDate: peak.date || null,
-    currentPeakValue: peak.profit,
-    currentTroughDate,
-    currentTroughValue,
-    currentValue: current.profit,
-    maxDrawdown,
-    maxDrawdownDays,
-    maxPeakDate: maxPeak.date || null,
-    maxTroughDate: maxTrough.date || null,
-    maxPeakValue: maxPeak.profit,
-    maxTroughValue: maxTrough.profit,
+    currentDrawdown: result.currentDrawdown,  // 金额
+    currentDrawdownDays: result.currentDrawdownDays,
+    currentPeakDate: result.peakDate || null,
+    currentPeakValue: result.peakValue,
+    currentTroughDate: result.troughDate || null,
+    currentTroughValue: result.troughValue,
+    currentValue: result.currentValue,
+    maxDrawdown: result.maxDrawdown,  // 金额
+    maxDrawdownDays: result.maxDrawdownDays,
+    maxPeakDate: result.maxDrawdownPeakDate || null,
+    maxTroughDate: result.maxDrawdownTroughDate || null,
+    maxPeakValue: result.maxDrawdownPeakValue || 0,
+    maxTroughValue: result.maxDrawdownTroughValue || 0,
   };
 }
 
 /**
- * 基于净值计算回撤（复用现有函数）
+ * 基于净值计算回撤（复用通用函数）
+ * 使用百分比策略，回撤值为百分比
  */
 function calculateDrawdownFromNav(
   navCurve: { date: string; nav: number }[]
@@ -128,49 +75,50 @@ function calculateDrawdownFromNav(
     return createEmptyDrawdownResult();
   }
 
-  // 调用现有的净值回撤计算函数
-  const currentDetails = calculateCurrentDrawdownDetails(navCurve);
-  const maxDetails = calculateMaxDrawdownDetailsFromNav(navCurve.map(p => ({ date: p.date, value: p.nav })));
+  // 转换为通用格式并调用通用函数（百分比策略）
+  const values = navCurve.map(p => ({
+    date: p.date,
+    value: p.nav
+  }));
+
+  const result = calculateDrawdownGeneric(values, percentDrawdownStrategy);
 
   return {
     method: 'nav',
-    currentDrawdown: currentDetails.currentDrawdown,
-    currentDrawdownDays: currentDetails.drawdownDays,
-    currentPeakDate: currentDetails.peakDate || null,
-    currentPeakValue: currentDetails.peakNav,
-    currentTroughDate: currentDetails.troughDate || null,
-    currentTroughValue: currentDetails.troughNav,
-    currentValue: currentDetails.currentNav,
-    maxDrawdown: maxDetails.maxDrawdown,
-    maxDrawdownDays: maxDetails.drawdownDays,
-    maxPeakDate: maxDetails.peakDate || null,
-    maxTroughDate: maxDetails.troughDate || null,
-    maxPeakValue: maxDetails.peakNav,
-    maxTroughValue: maxDetails.troughNav,
+    currentDrawdown: result.currentDrawdown,  // 百分比
+    currentDrawdownDays: result.currentDrawdownDays,
+    currentPeakDate: result.peakDate || null,
+    currentPeakValue: result.peakValue,
+    currentTroughDate: result.troughDate || null,
+    currentTroughValue: result.troughValue,
+    currentValue: result.currentValue,
+    maxDrawdown: result.maxDrawdown,  // 百分比
+    maxDrawdownDays: result.maxDrawdownDays,
+    maxPeakDate: result.maxDrawdownPeakDate || null,
+    maxTroughDate: result.maxDrawdownTroughDate || null,
+    maxPeakValue: result.maxDrawdownPeakValue || 0,
+    maxTroughValue: result.maxDrawdownTroughValue || 0,
   };
 }
 
 /**
- * 混合方案：基于累计盈亏计算回撤，峰值≤0时回退到净值法
+ * 混合方案：基于累计盈亏计算回撤，数据缺失时回退到净值法
+ *
+ * 简化后的逻辑：
+ * - 有累计盈亏数据 → 用累计盈亏法（金额策略）
+ * - 无累计盈亏数据 → 用净值法（百分比策略）
+ *
+ * 注意：不再需要判断峰值是否>0，因为金额策略在任何情况下都有意义
  */
 export function calculateDrawdownWithFallback(
   cumulativeProfits: { date: string; profit: number }[],
   navCurve: { date: string; nav: number }[]
 ): DrawdownResult {
-  // 1. 累计盈亏数据为空，回退到净值法
+  // 累计盈亏数据为空，回退到净值法
   if (!cumulativeProfits || cumulativeProfits.length === 0) {
     return calculateDrawdownFromNav(navCurve);
   }
 
-  // 2. 找到累计盈亏的峰值
-  const peak = findMaxProfit(cumulativeProfits);
-
-  // 3. 判断是否使用累计盈亏法
-  if (peak.profit > 0) {
-    // 基于累计盈亏计算回撤
-    return calculateDrawdownFromProfit(cumulativeProfits);
-  } else {
-    // 峰值≤0，回退到净值法
-    return calculateDrawdownFromNav(navCurve);
-  }
+  // 有累计盈亏数据，用累计盈亏法（金额策略）
+  return calculateDrawdownFromProfit(cumulativeProfits);
 }

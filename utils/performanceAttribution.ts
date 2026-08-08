@@ -1003,6 +1003,114 @@ export function calculateMaxRecoveryDays(
 }
 
 /**
+ * 计算历史最长恢复详细信息（策略模式）
+ *
+ * 恢复天数的定义：从回撤低点到创新高的天数
+ * 同时追踪回撤的峰值日期、低点日期和恢复日期
+ *
+ * @param values 值数组 [{ date, value }]，按日期排序
+ * @param strategy 回撤计算策略（用于判断是否创新高）
+ * @returns 历史最长恢复详细信息
+ */
+export function calculateMaxRecoveryGeneric(
+  values: { date: string; value: number }[],
+  strategy: DrawdownStrategy
+): MaxRecoveryDetails {
+  const emptyResult: MaxRecoveryDetails = {
+    maxRecoveryDays: 0,
+    peakDate: null,
+    troughDate: null,
+    recoveryDate: null,
+    isInProgress: false,
+  };
+
+  if (!values || values.length < 2) {
+    return emptyResult;
+  }
+
+  // 计算历史最高值
+  const historicalPeakValue = Math.max(...values.map(p => p.value));
+
+  if (historicalPeakValue <= 0) {
+    return emptyResult;
+  }
+
+  let maxRecoveryDays = 0;
+  let currentPeak = values[0].value;
+  let currentPeakIndex = 0;
+  let inDrawdown = false;
+  let troughIndex = 0;
+  let drawdownStartPeakIndex = 0; // 回撤开始时的峰值索引
+
+  // 追踪历史最长恢复的详细信息
+  let maxRecoveryPeakIndex = 0;
+  let maxRecoveryTroughIndex = 0;
+  let maxRecoveryRecoveryIndex = 0;
+
+  for (let i = 1; i < values.length; i++) {
+    const value = values[i].value;
+
+    // 使用策略判断是否创新高（回撤<=0表示创新高或回到峰值）
+    const drawdown = strategy(currentPeak, value);
+
+    if (drawdown <= 0 && value >= currentPeak) {
+      // 创新高或回到峰值，如果之前处于回撤状态，则完成一个恢复周期
+      if (inDrawdown) {
+        const recoveryDays = i - troughIndex;
+        if (recoveryDays > maxRecoveryDays) {
+          maxRecoveryDays = recoveryDays;
+          maxRecoveryPeakIndex = drawdownStartPeakIndex;
+          maxRecoveryTroughIndex = troughIndex;
+          maxRecoveryRecoveryIndex = i;
+        }
+        inDrawdown = false;
+      }
+      currentPeak = value;
+      currentPeakIndex = i;
+    } else if (drawdown > 0) {
+      // 处于回撤状态
+      if (!inDrawdown) {
+        inDrawdown = true;
+        troughIndex = i;
+        drawdownStartPeakIndex = currentPeakIndex;
+      } else {
+        // 更新低点位置
+        if (value < values[troughIndex].value) {
+          troughIndex = i;
+        }
+      }
+    }
+  }
+
+  // 判断当前是否有未恢复的回撤
+  const isInProgress = inDrawdown;
+
+  // 如果历史最长恢复天数为0，但当前有未恢复的回撤，则当前回撤可能成为历史最长
+  if (maxRecoveryDays === 0 && isInProgress) {
+    return {
+      maxRecoveryDays: 0,
+      peakDate: values[drawdownStartPeakIndex]?.date || null,
+      troughDate: values[troughIndex]?.date || null,
+      recoveryDate: null,
+      isInProgress: true,
+    };
+  }
+
+  // 如果有历史最长恢复记录
+  if (maxRecoveryDays > 0) {
+    return {
+      maxRecoveryDays,
+      peakDate: values[maxRecoveryPeakIndex]?.date || null,
+      troughDate: values[maxRecoveryTroughIndex]?.date || null,
+      recoveryDate: values[maxRecoveryRecoveryIndex]?.date || null,
+      isInProgress,
+    };
+  }
+
+  return emptyResult;
+}
+
+/**
  * 计算历史最长恢复详细信息（基于净值）
  *
  * 恢复天数的定义：从回撤低点到创新高的天数
@@ -1014,96 +1122,8 @@ export function calculateMaxRecoveryDays(
 export function calculateMaxRecoveryDaysDetails(
   navCurve: { date: string; nav: number }[]
 ): MaxRecoveryDetails {
-  const emptyResult: MaxRecoveryDetails = {
-    maxRecoveryDays: 0,
-    peakDate: null,
-    troughDate: null,
-    recoveryDate: null,
-    isInProgress: false,
-  };
-
-  if (!navCurve || navCurve.length < 2) {
-    return emptyResult;
-  }
-
-  // 计算历史最高净值
-  const historicalPeakNav = Math.max(...navCurve.map(p => p.nav));
-
-  if (historicalPeakNav <= 0) {
-    return emptyResult;
-  }
-
-  let maxRecoveryDays = 0;
-  let currentPeak = navCurve[0].nav;
-  let currentPeakIndex = 0;
-  let inDrawdown = false;
-  let troughIndex = 0;
-  let drawdownStartPeakIndex = 0; // 回撤开始时的峰值索引
-
-  // 追踪历史最长恢复的详细信息
-  let maxRecoveryPeakIndex = 0;
-  let maxRecoveryTroughIndex = 0;
-  let maxRecoveryRecoveryIndex = 0;
-
-  for (let i = 1; i < navCurve.length; i++) {
-    const nav = navCurve[i].nav;
-
-    if (nav >= currentPeak) {
-      // 创新高，如果之前处于回撤状态，则完成一个恢复周期
-      if (inDrawdown) {
-        const recoveryDays = i - troughIndex;
-        if (recoveryDays > maxRecoveryDays) {
-          maxRecoveryDays = recoveryDays;
-          maxRecoveryPeakIndex = drawdownStartPeakIndex; // 使用回撤开始时的峰值索引
-          maxRecoveryTroughIndex = troughIndex;
-          maxRecoveryRecoveryIndex = i;
-        }
-        inDrawdown = false;
-      }
-      currentPeak = nav;
-      currentPeakIndex = i;
-    } else if (nav < currentPeak) {
-      // 处于回撤状态
-      if (!inDrawdown) {
-        inDrawdown = true;
-        troughIndex = i;
-        drawdownStartPeakIndex = currentPeakIndex; // 记录回撤开始时的峰值索引
-      } else {
-        // 更新低点位置
-        if (nav < navCurve[troughIndex].nav) {
-          troughIndex = i;
-        }
-      }
-    }
-  }
-
-  // 判断当前是否有未恢复的回撤
-  const isInProgress = inDrawdown;
-
-  // 如果历史最长恢复天数为0，但当前有未恢复的回撤，则当前回撤可能成为历史最长
-  // 这种情况下，我们返回当前回撤的信息（峰值和低点日期）
-  if (maxRecoveryDays === 0 && isInProgress) {
-    return {
-      maxRecoveryDays: 0,
-      peakDate: navCurve[drawdownStartPeakIndex]?.date || null,
-      troughDate: navCurve[troughIndex]?.date || null,
-      recoveryDate: null,
-      isInProgress: true,
-    };
-  }
-
-  // 如果有历史最长恢复记录
-  if (maxRecoveryDays > 0) {
-    return {
-      maxRecoveryDays,
-      peakDate: navCurve[maxRecoveryPeakIndex]?.date || null,
-      troughDate: navCurve[maxRecoveryTroughIndex]?.date || null,
-      recoveryDate: navCurve[maxRecoveryRecoveryIndex]?.date || null,
-      isInProgress,
-    };
-  }
-
-  return emptyResult;
+  const values = navCurve.map(p => ({ date: p.date, value: p.nav }));
+  return calculateMaxRecoveryGeneric(values, percentDrawdownStrategy);
 }
 
 /**
@@ -1225,6 +1245,233 @@ export function calculateCurrentDrawdown(
 }
 
 /**
+ * 回撤计算策略
+ * 定义如何计算回撤深度
+ */
+export type DrawdownStrategy = (peak: number, current: number) => number;
+
+/**
+ * 常用策略：百分比回撤
+ * 用于净值法回撤计算
+ */
+export const percentDrawdownStrategy: DrawdownStrategy = (peak, current) =>
+  peak > 0 ? (peak - current) / peak * 100 : 0;
+
+/**
+ * 常用策略：盈利回撤
+ * 用于累计盈亏法回撤计算
+ */
+export const amountDrawdownStrategy: DrawdownStrategy = (peak, current) =>
+  peak - current;
+
+/**
+ * 通用回撤计算核心函数（策略模式）
+ *
+ * 采用正确的回撤计算逻辑：
+ * - 历史最大回撤：遍历所有点，记录相对于历史最高点的最大回撤
+ * - 当前回撤：从最近的峰值（最后一个比后面所有点都高的点）开始计算
+ *
+ * 策略模式：调用方传入策略函数决定如何计算回撤深度
+ * - 百分比策略：用于净值法，回撤值为百分比
+ * - 金额策略：用于累计盈亏法，回撤值为金额
+ *
+ * @param values 值数组 [{ date, value }]，按日期排序
+ * @param strategy 回撤计算策略
+ * @returns 回撤信息（峰值、谷底、回撤值等）
+ */
+export function calculateDrawdownGeneric(
+  values: { date: string; value: number }[],
+  strategy: DrawdownStrategy
+): {
+  peakIndex: number;
+  peakValue: number;
+  peakDate: string;
+  troughIndex: number;
+  troughValue: number;
+  troughDate: string;
+  currentDrawdown: number;
+  maxDrawdown: number;
+  currentDrawdownDays: number;
+  maxDrawdownDays: number;
+  currentValue: number;
+  currentDate: string;
+  maxDrawdownPeakIndex: number;
+  maxDrawdownPeakValue: number;
+  maxDrawdownPeakDate: string;
+  maxDrawdownTroughIndex: number;
+  maxDrawdownTroughValue: number;
+  maxDrawdownTroughDate: string;
+} {
+  const empty = {
+    peakIndex: 0,
+    peakValue: 0,
+    peakDate: '',
+    troughIndex: 0,
+    troughValue: 0,
+    troughDate: '',
+    currentDrawdown: 0,
+    maxDrawdown: 0,
+    currentDrawdownDays: 0,
+    maxDrawdownDays: 0,
+    currentValue: 0,
+    currentDate: '',
+    maxDrawdownPeakIndex: 0,
+    maxDrawdownPeakValue: 0,
+    maxDrawdownPeakDate: '',
+    maxDrawdownTroughIndex: 0,
+    maxDrawdownTroughValue: 0,
+    maxDrawdownTroughDate: '',
+  };
+
+  if (!values || values.length === 0) {
+    return empty;
+  }
+
+  const lastIndex = values.length - 1;
+  const currentValue = values[lastIndex].value;
+  const currentDate = values[lastIndex].date;
+
+  if (values.length === 1) {
+    return {
+      peakIndex: 0,
+      peakValue: currentValue,
+      peakDate: currentDate,
+      troughIndex: 0,
+      troughValue: currentValue,
+      troughDate: currentDate,
+      currentDrawdown: 0,
+      maxDrawdown: 0,
+      currentDrawdownDays: 0,
+      maxDrawdownDays: 0,
+      currentValue,
+      currentDate,
+      maxDrawdownPeakIndex: 0,
+      maxDrawdownPeakValue: currentValue,
+      maxDrawdownPeakDate: currentDate,
+      maxDrawdownTroughIndex: 0,
+      maxDrawdownTroughValue: currentValue,
+      maxDrawdownTroughDate: currentDate,
+    };
+  }
+
+  // ========================================
+  // 计算历史最大回撤（采用老版本的正确逻辑）
+  // ========================================
+  let historicalMaxPeakValue = values[0].value;
+  let historicalMaxPeakIndex = 0;
+  let historicalMaxPeakDate = values[0].date;
+
+  let maxDrawdown = 0;
+  let maxDrawdownPeakIndex = 0;
+  let maxDrawdownPeakValue = values[0].value;
+  let maxDrawdownPeakDate = values[0].date;
+  let maxDrawdownTroughIndex = 0;
+  let maxDrawdownTroughValue = values[0].value;
+  let maxDrawdownTroughDate = values[0].date;
+
+  // 遍历所有点，跟踪历史最高值，计算最大回撤
+  for (let i = 0; i < values.length; i++) {
+    const pointValue = values[i].value;
+
+    // 更新历史最高值
+    if (pointValue > historicalMaxPeakValue) {
+      historicalMaxPeakValue = pointValue;
+      historicalMaxPeakIndex = i;
+      historicalMaxPeakDate = values[i].date;
+    }
+
+    // 使用策略计算回撤
+    const drawdown = strategy(historicalMaxPeakValue, pointValue);
+
+    // 如果这个回撤更大，更新最大回撤记录
+    if (drawdown > maxDrawdown) {
+      maxDrawdown = drawdown;
+      maxDrawdownTroughIndex = i;
+      maxDrawdownTroughValue = pointValue;
+      maxDrawdownTroughDate = values[i].date;
+
+      // 记录产生最大回撤时的峰值
+      maxDrawdownPeakIndex = historicalMaxPeakIndex;
+      maxDrawdownPeakValue = historicalMaxPeakValue;
+      maxDrawdownPeakDate = historicalMaxPeakDate;
+    }
+  }
+
+  // ========================================
+  // 计算当前回撤（从最近的峰值开始）
+  // ========================================
+  // 找最近的峰值：从前往后找最后一个比它之后所有点都高的点
+  const suffixMax: number[] = new Array(values.length);
+  suffixMax[lastIndex] = values[lastIndex].value;
+  for (let i = lastIndex - 1; i >= 0; i--) {
+    suffixMax[i] = Math.max(values[i].value, suffixMax[i + 1]);
+  }
+
+  let currentPeakIndex = lastIndex;
+  let currentPeakValue = currentValue;
+  let currentPeakDate = currentDate;
+
+  for (let i = 0; i < lastIndex; i++) {
+    if (values[i].value > suffixMax[i + 1]) {
+      currentPeakIndex = i;
+      currentPeakValue = values[i].value;
+      currentPeakDate = values[i].date;
+      break;
+    }
+  }
+
+  // 找谷底：峰值之后的最低点（如果有多个相同最低值，取最新的那个）
+  let currentTroughIndex = currentPeakIndex;
+  let currentTroughValue = currentPeakValue;
+  let currentTroughDate = currentPeakDate;
+
+  for (let i = currentPeakIndex + 1; i <= lastIndex; i++) {
+    if (values[i].value < currentTroughValue) {
+      currentTroughIndex = i;
+      currentTroughValue = values[i].value;
+      currentTroughDate = values[i].date;
+    }
+  }
+
+  // 计算当前回撤
+  const currentDrawdown = strategy(currentPeakValue, currentValue);
+
+  // 如果没有回撤（当前值等于峰值），谷底应该是null
+  // 注意：返回结构中null用空字符串表示，调用方需要转换
+  if (currentDrawdown === 0) {
+    currentTroughIndex = currentPeakIndex;
+    currentTroughValue = 0;
+    currentTroughDate = '';
+  }
+
+  // 计算回撤天数
+  const currentDrawdownDays = currentDrawdown > 0 ? lastIndex - currentPeakIndex : 0;
+  const maxDrawdownDays = maxDrawdown > 0 ? maxDrawdownTroughIndex - maxDrawdownPeakIndex : 0;
+
+  return {
+    peakIndex: currentPeakIndex,
+    peakValue: currentPeakValue,
+    peakDate: currentPeakDate,
+    troughIndex: currentTroughIndex,
+    troughValue: currentTroughValue,
+    troughDate: currentTroughDate,
+    currentDrawdown,
+    maxDrawdown,
+    currentDrawdownDays,
+    maxDrawdownDays,
+    currentValue,
+    currentDate,
+    // 历史最大回撤的峰值和谷底信息
+    maxDrawdownPeakIndex,
+    maxDrawdownPeakValue,
+    maxDrawdownPeakDate,
+    maxDrawdownTroughIndex,
+    maxDrawdownTroughValue,
+    maxDrawdownTroughDate,
+  };
+}
+
+/**
  * 计算当前回撤详细信息（包括峰值和低点）
  *
  * 当前回撤的定义：从最近的峰值（未被后续数据超越的高点）到当前的状态
@@ -1240,15 +1487,15 @@ export function calculateCurrentDrawdown(
 export function calculateCurrentDrawdownDetails(
   navCurve: { date: string; nav: number }[]
 ): {
-  currentDrawdown: number;      // 当前回撤深度（相对于峰值）
-  peakDate: string | null;      // 峰值日期
-  peakNav: number;              // 峰值净值
-  troughDate: string | null;    // 低点日期
-  troughNav: number;            // 低点净值
-  currentNav: number;           // 当前净值
-  currentDate: string | null;   // 当前日期
-  recoveryProgress: number;     // 恢复进度（从低点恢复的百分比）
-  drawdownDays: number;         // 当前回撤持续天数（从峰值到当前）
+  currentDrawdown: number;
+  peakDate: string | null;
+  peakNav: number;
+  troughDate: string | null;
+  troughNav: number;
+  currentNav: number;
+  currentDate: string | null;
+  recoveryProgress: number;
+  drawdownDays: number;
 } {
   if (!navCurve || navCurve.length === 0) {
     return {
@@ -1264,92 +1511,27 @@ export function calculateCurrentDrawdownDetails(
     };
   }
 
-  const lastIndex = navCurve.length - 1;
-  const currentNav = navCurve[lastIndex].nav;
-  const currentDate = navCurve[lastIndex].date;
-
-  // 如果只有一个数据点，没有回撤
-  if (navCurve.length === 1) {
-    return {
-      currentDrawdown: 0,
-      peakDate: currentDate,
-      peakNav: currentNav,
-      troughDate: currentDate,
-      troughNav: currentNav,
-      currentNav,
-      currentDate,
-      recoveryProgress: 0,
-      drawdownDays: 0,
-    };
-  }
-
-  // 找峰值：从前往后找第一个比它之后所有点都高的点
-  // 这样的点之后的所有点都没有超过它，所以从这个点开始一直处于回撤状态
-  // 注意：最后一个点不算，因为它后面没有点了
-  //
-  // 优化：使用后缀最大值数组，将 O(n²) 优化为 O(n)
-  // suffixMax[i] = 从索引 i 到末尾的最大值
-  const suffixMax: number[] = new Array(navCurve.length);
-  suffixMax[lastIndex] = navCurve[lastIndex].nav;
-  for (let i = lastIndex - 1; i >= 0; i--) {
-    suffixMax[i] = Math.max(navCurve[i].nav, suffixMax[i + 1]);
-  }
-
-  let peakIndex = lastIndex;
-  let peakNav = currentNav;
-  let peakDate = currentDate;
-
-  // 找第一个点，其净值严格大于它后面所有点的最大值
-  for (let i = 0; i < lastIndex; i++) {
-    const nav = navCurve[i].nav;
-    // 如果当前点严格大于后面所有点的最大值（suffixMax[i+1]）
-    if (nav > suffixMax[i + 1]) {
-      peakIndex = i;
-      peakNav = nav;
-      peakDate = navCurve[i].date;
-      break;  // 找到第一个就停止
-    }
-  }
-
-  // 找低点：峰值之后的最低点（如果有多个相同最低值，取最新的那个）
-  let troughIndex = peakIndex;
-  let troughNav = peakNav;
-  let troughDate = peakDate;
-
-  for (let i = peakIndex + 1; i <= lastIndex; i++) {
-    if (navCurve[i].nav <= troughNav) {  // 使用 <= 取最新的低点
-      troughIndex = i;
-      troughNav = navCurve[i].nav;
-      troughDate = navCurve[i].date;
-    }
-  }
-
-  // 计算当前回撤深度（相对于峰值）
-  const currentDrawdown = peakNav > 0 && currentNav < peakNav
-    ? (peakNav - currentNav) / peakNav * 100
-    : 0;
+  // 调用通用回撤计算函数（百分比策略）
+  const values = navCurve.map(p => ({ date: p.date, value: p.nav }));
+  const result = calculateDrawdownGeneric(values, percentDrawdownStrategy);
 
   // 计算恢复进度：从低点恢复了多少
-  // 恢复进度 = (当前净值 - 低点净值) / (峰值净值 - 低点净值) * 100
   let recoveryProgress = 0;
-  if (peakNav > troughNav) {
-    recoveryProgress = (currentNav - troughNav) / (peakNav - troughNav) * 100;
+  if (result.peakValue > result.troughValue) {
+    recoveryProgress = (result.currentValue - result.troughValue) / (result.peakValue - result.troughValue) * 100;
     recoveryProgress = Math.max(0, Math.min(100, recoveryProgress));
   }
 
-  // 计算当前回撤持续天数（从峰值到当前的数据点数-1）
-  const drawdownDays = lastIndex - peakIndex;
-
   return {
-    currentDrawdown,
-    peakDate,
-    peakNav,
-    troughDate,
-    troughNav,
-    currentNav,
-    currentDate,
+    currentDrawdown: result.currentDrawdown,
+    peakDate: result.peakDate,
+    peakNav: result.peakValue,
+    troughDate: result.troughDate,
+    troughNav: result.troughValue,
+    currentNav: result.currentValue,
+    currentDate: result.currentDate,
     recoveryProgress,
-    drawdownDays,
+    drawdownDays: result.currentDrawdownDays,
   };
 }
 
