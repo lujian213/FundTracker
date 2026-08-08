@@ -44,6 +44,7 @@ import { computePositionTrend, PositionTrendPoint, Trade, ValuationPoint } from 
 import { computeOverallProfit, prepareHistoryForProfitCalculation } from './fundService';
 import { formatDateISO } from '../utils/dateFormat';
 import { toLocalDateKey } from '../utils/priceResolver';
+import { calculateDrawdownWithFallback } from '../utils/drawdownCalculator';
 
 /**
  * 计算两个日期字符串之间的日历天数差
@@ -205,6 +206,109 @@ export async function computeRiskSnapshot(
     alerts,
     fundDrawdowns,
     computedAt: now,
+  };
+}
+
+/**
+ * 计算风险快照（Beta版本）
+ * - 基于累计盈亏计算回撤（峰值>0时），峰值≤0时回退到净值法
+ */
+export async function computeRiskSnapshotBeta(
+  portfolio: Ticker[],
+  marketData: Record<string, ValuationData>
+): Promise<RiskSnapshot> {
+  const thresholds = getRiskThresholds();
+  const now = new Date().toISOString();
+
+  // 1. 并行获取累计盈利数据和持仓趋势数据
+  const symbols = portfolio.map(t => t.symbol);
+  const [summary, positionTrendData] = await Promise.all([
+    computeOverallProfit({ symbols }),
+    computePositionTrendData(symbols)
+  ]);
+
+  if (!summary || !summary.timeline || summary.timeline.length === 0) {
+    return createEmptySnapshot(now);
+  }
+
+  // 2. 计算净值曲线
+  const navCurve = calculateNavCurve(positionTrendData);
+
+  // 3. 使用混合方案计算回撤
+  const drawdownResult = calculateDrawdownWithFallback(
+    summary.timeline.map(p => ({ date: p.date, profit: p.cumulativeProfit })),
+    navCurve
+  );
+
+  // 4. 计算各基金回撤（使用混合方案）
+  const fundDrawdowns = computeFundDrawdownsWithFallback(portfolio, summary.perFundTimelines || {});
+
+  // 5. 计算其他指标（复用现有逻辑）
+  const volatility = estimateVolatilityFromNav(navCurve);
+  const annualizedReturn = calculateAnnualizedReturnFromPositionTrend(positionTrendData);
+  const sharpeRatio = volatility > 0 && annualizedReturn !== null
+    ? (annualizedReturn - 3) / volatility
+    : null;
+  const calmarRatio = drawdownResult.maxDrawdown > 0 && annualizedReturn !== null
+    ? annualizedReturn / drawdownResult.maxDrawdown
+    : null;
+
+  // 6. 计算集中度（HHI）
+  const hhi = computeHHI(portfolio, marketData);
+
+  // 7. 检测连续下跌天数
+  const continuousDecline = detectContinuousDeclineFromNav(navCurve);
+
+  // 8. 生成预警（使用当前回撤）
+  const alerts = generateAlerts(
+    portfolio,
+    marketData,
+    {
+      currentDrawdown: drawdownResult.currentDrawdown,
+      volatility,
+      hhi,
+      continuousDecline,
+      fundDrawdowns,
+    },
+    thresholds
+  );
+
+  // 9. 计算综合风险评分
+  const score = computeRiskScore(
+    { maxDrawdown: drawdownResult.maxDrawdown, volatility, hhi, sharpeRatio },
+    thresholds
+  );
+
+  return {
+    score,
+    maxDrawdown: drawdownResult.maxDrawdown,
+    maxDrawdownPeakDate: drawdownResult.maxPeakDate,
+    maxDrawdownPeakProfit: drawdownResult.maxPeakValue,
+    maxDrawdownTroughDate: drawdownResult.maxTroughDate,
+    maxDrawdownTroughProfit: drawdownResult.maxTroughValue,
+    maxDrawdownDays: drawdownResult.maxDrawdownDays,
+    currentDrawdown: drawdownResult.currentDrawdown,
+    currentDrawdownPeakDate: drawdownResult.currentPeakDate,
+    currentDrawdownPeakNav: drawdownResult.currentPeakValue,
+    currentDrawdownTroughDate: drawdownResult.currentTroughDate,
+    currentDrawdownTroughNav: drawdownResult.currentTroughValue,
+    currentNav: drawdownResult.currentValue,
+    currentDate: null,
+    currentDrawdownDays: drawdownResult.currentDrawdownDays,
+    maxRecoveryDays: 0,
+    maxRecoveryPeakDate: null,
+    maxRecoveryTroughDate: null,
+    maxRecoveryRecoveryDate: null,
+    maxRecoveryInProgress: false,
+    volatility,
+    sharpeRatio,
+    calmarRatio,
+    hhi,
+    continuousDecline,
+    alerts,
+    fundDrawdowns,
+    computedAt: now,
+    drawdownMethod: drawdownResult.method,
   };
 }
 
@@ -431,6 +535,78 @@ function computeFundDrawdownsFromPersonalReturn(
       });
     } catch (e) {
       // 单个基金计算失败，跳过
+      console.warn(`计算基金 ${symbol} 回撤失败:`, e);
+    }
+  }
+
+  return fundDrawdowns;
+}
+
+/**
+ * 计算各基金回撤（使用混合方案）
+ */
+function computeFundDrawdownsWithFallback(
+  portfolio: Ticker[],
+  perFundTimelines: Record<string, { date: string; cumulativeProfit: number }[]>
+): FundDrawdown[] {
+  const fundDrawdowns: FundDrawdown[] = [];
+  const today = new Date();
+  const todayStr = formatDateISO(today);
+
+  for (const ticker of portfolio) {
+    const symbol = ticker.symbol;
+    try {
+      const position = getPosition(symbol);
+      const history = getHistory(symbol) || [];
+      const valuation = getValuation(symbol);
+
+      if (history.length === 0) continue;
+
+      // 准备净值历史
+      const preparedHist = prepareHistoryForProfitCalculation({
+        history,
+        targetDate: todayStr,
+        todayDate: todayStr,
+        currentPrice: valuation?.currentPrice,
+        realtimeDate: valuation?.realtimeDate,
+        previousPrice: valuation?.previousPrice,
+        netWorthDate: valuation?.netWorthDate,
+      });
+
+      const navHistory = preparedHist.map(h => ({
+        date: formatDateISO(new Date(h.date)),
+        nav: h.value
+      })).sort((a, b) => a.date.localeCompare(b.date));
+
+      // 获取累计盈亏时间线
+      const profitTimeline = perFundTimelines[symbol];
+      if (!profitTimeline || profitTimeline.length === 0) continue;
+
+      // 使用混合方案计算回撤
+      const drawdownResult = calculateDrawdownWithFallback(
+        profitTimeline.map(p => ({ date: p.date, profit: p.cumulativeProfit })),
+        navHistory
+      );
+
+      fundDrawdowns.push({
+        symbol,
+        name: ticker.name,
+        currentDrawdown: drawdownResult.currentDrawdown,
+        currentDrawdownDays: drawdownResult.currentDrawdownDays,
+        maxDrawdown: drawdownResult.maxDrawdown,
+        maxDrawdownPeakDate: drawdownResult.maxPeakDate || '',
+        maxDrawdownTroughDate: drawdownResult.maxTroughDate || '',
+        maxDrawdownDays: drawdownResult.maxDrawdownDays,
+        maxDrawdownPeakNav: drawdownResult.maxPeakValue,
+        maxDrawdownTroughNav: drawdownResult.maxTroughValue,
+        peakDate: drawdownResult.currentPeakDate || '',
+        peakValue: drawdownResult.currentPeakValue,
+        troughDate: drawdownResult.currentTroughDate || '',
+        troughValue: drawdownResult.currentTroughValue,
+        currentValue: drawdownResult.currentValue,
+        drawdownMethod: drawdownResult.method,
+      });
+    } catch (e) {
       console.warn(`计算基金 ${symbol} 回撤失败:`, e);
     }
   }
