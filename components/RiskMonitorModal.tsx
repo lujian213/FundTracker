@@ -8,7 +8,7 @@
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { Ticker, ValuationData, RiskSnapshot, RiskAlert, FundDrawdown } from '../types';
-import { computeRiskSnapshot } from '../services/riskCalculationService';
+import { computeRiskSnapshot, computeRiskSnapshotBeta } from '../services/riskCalculationService';
 import { KPICardDisplay } from './KPICardDisplay';
 import { useModalBodyStyle } from '../hooks/useModalBodyStyle';
 import { formatMoney, formatSharePercent } from '../utils/format';
@@ -18,7 +18,7 @@ import { computePositions } from '../utils/positionHelper';
 import { getRiskThresholds } from '../services/riskThresholdService';
 import { getScoreColor, getRiskLevel, getAlertLevelStyle, getAlertBadgeStyle } from '../utils/riskLevelHelper';
 
-type RiskTab = 'overview' | 'alerts' | 'concentration' | 'drawdown';
+type RiskTab = 'overview' | 'alerts' | 'concentration' | 'drawdown' | 'drawdown-beta';
 
 /**
  * 表格行 Tooltip 组件
@@ -251,6 +251,7 @@ const RiskMonitorModal: React.FC<RiskMonitorModalProps> = ({
     { id: 'alerts', label: '🔔 预警列表', icon: 'fa-exclamation-triangle', badge: snapshot?.alerts.length || 0 },
     { id: 'concentration', label: '🥧 集中度分析', icon: 'fa-chart-bar' },
     { id: 'drawdown', label: '📉 回撤追踪', icon: 'fa-chart-line' },
+    { id: 'drawdown-beta', label: '📉 回撤追踪（新）', icon: 'fa-chart-line' },
   ];
 
   return createPortal(
@@ -333,6 +334,9 @@ const RiskMonitorModal: React.FC<RiskMonitorModalProps> = ({
               )}
               {activeTab === 'drawdown' && (
                 <DrawdownTab snapshot={snapshot} onSelectFund={onSelectFund} />
+              )}
+              {activeTab === 'drawdown-beta' && (
+                <DrawdownBetaTab portfolio={portfolio} marketData={marketData} onSelectFund={onSelectFund} />
               )}
             </div>
           )}
@@ -921,6 +925,77 @@ const ConcentrationTab: React.FC<{
       </div>
     </div>
   );
+};
+
+/**
+ * 回撤追踪（新）Tab - 使用混合方案计算回撤
+ */
+const DrawdownBetaTab: React.FC<{
+  portfolio: Ticker[];
+  marketData: Record<string, ValuationData>;
+  onSelectFund?: (symbol: string) => void;
+}> = ({ portfolio, marketData, onSelectFund }) => {
+  const [snapshot, setSnapshot] = useState<RiskSnapshot | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let mounted = true;
+
+    const loadSnapshot = async () => {
+      try {
+        setLoading(true);
+        setError(null);
+        const result = await computeRiskSnapshotBeta(portfolio, marketData);
+        if (mounted) {
+          setSnapshot(result);
+        }
+      } catch (e) {
+        console.error('加载风险快照（Beta）失败:', e);
+        if (mounted) {
+          setError('加载失败，请重试');
+        }
+      } finally {
+        if (mounted) {
+          setLoading(false);
+        }
+      }
+    };
+
+    loadSnapshot();
+
+    return () => {
+      mounted = false;
+    };
+  }, [portfolio, marketData]);
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-full">
+        <i className="fas fa-spinner fa-spin text-2xl text-gray-400" />
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="flex flex-col items-center justify-center h-full text-red-500">
+        <i className="fas fa-exclamation-circle text-4xl mb-2" />
+        <div>{error}</div>
+      </div>
+    );
+  }
+
+  if (!snapshot) {
+    return (
+      <div className="flex flex-col items-center justify-center h-full text-gray-400">
+        <i className="fas fa-chart-line text-4xl mb-2" />
+        <div>暂无回撤数据</div>
+      </div>
+    );
+  }
+
+  return <DrawdownTab snapshot={snapshot} onSelectFund={onSelectFund} />;
 };
 
 /**
