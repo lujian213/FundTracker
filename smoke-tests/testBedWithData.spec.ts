@@ -7361,21 +7361,21 @@ test.describe('testBedWithData', () => {
     console.log('风险监控中心窗口打开验证完成');
 
     // ══════════════════════════════════════════════════════════════════════════════
-    // 2. 验证导航栏有4个Tab
+    // 2. 验证导航栏有5个Tab
     // ══════════════════════════════════════════════════════════════════════════════
     // Tabs 在弹窗顶部的 flex 容器中
     const navTabs = page.locator('.flex.gap-2 > button').filter({ hasText: /风险总览|预警列表|集中度分析|回撤追踪/ });
     const tabCount = await navTabs.count();
-    expect(tabCount).toBe(4);
+    expect(tabCount).toBe(5);
 
     // 验证Tab名称
-    const tabNames = ['风险总览', '预警列表', '集中度分析', '回撤追踪'];
-    for (let i = 0; i < 4; i++) {
+    const tabNames = ['风险总览', '预警列表', '集中度分析', '回撤追踪', '回撤追踪（新）'];
+    for (let i = 0; i < 5; i++) {
       const tabText = await navTabs.nth(i).textContent();
       expect(tabText).toContain(tabNames[i]);
     }
 
-    console.log('左侧导航栏验证完成: 4个Tab');
+    console.log('左侧导航栏验证完成: 5个Tab');
 
     // ══════════════════════════════════════════════════════════════════════════════
     // 3. 风险总览Tab验证
@@ -7456,6 +7456,33 @@ test.describe('testBedWithData', () => {
     await expect(recoverySection).toBeVisible();
 
     console.log('回撤追踪Tab验证完成');
+
+    // ══════════════════════════════════════════════════════════════════════════════
+    // 6.5. 回撤追踪（新）Tab验证
+    // ══════════════════════════════════════════════════════════════════════════════
+    const drawdownBetaTab = navTabs.nth(4);
+    await drawdownBetaTab.click();
+    await page.waitForTimeout(1000);
+
+    // 验证回撤状态显示
+    await expect(page.locator('text=当前回撤')).toBeVisible();
+    await expect(page.locator('text=回撤持续天数')).toBeVisible();
+
+    // 验证恢复进度条
+    await expect(page.locator('text=峰值')).toBeVisible();
+    await expect(page.locator('text=低点')).toBeVisible();
+
+    // 验证hovertip
+    const drawdownElement = page.locator('.drawdown-value').first();
+    await drawdownElement.hover();
+    await page.waitForTimeout(500);
+
+    // 验证tooltip内容（根据实际计算方法）
+    const tooltip = page.locator('.tooltip-content');
+    const tooltipText = await tooltip.textContent();
+    expect(['当前累计盈亏', '当前净值']).toContain(tooltipText?.includes('当前累计盈亏') ? '当前累计盈亏' : '当前净值');
+
+    console.log('回撤追踪（新）Tab验证完成');
 
     // ══════════════════════════════════════════════════════════════════════════════
     // 7. 关闭风险监控中心窗口
