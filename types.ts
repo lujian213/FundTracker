@@ -562,6 +562,9 @@ export interface FundDrawdown {
   currentValue: number;             // 当前净值
   currentCostPrice?: number;        // 当前成本价
   currentUnitProfit?: number;       // 当前单位盈利
+
+  // Beta版本新增字段
+  drawdownMethod?: DrawdownMethod;  // 该基金回撤使用的计算方法
 }
 
 /** 风险阈值配置 */
@@ -618,6 +621,10 @@ export interface RiskSnapshot {
   maxRecoveryInProgress: boolean;   // 当前是否有未恢复的回撤
   alerts: RiskAlert[];              // 预警列表
   fundDrawdowns: FundDrawdown[];    // 各基金回撤
+
+  // Beta版本新增字段
+  drawdownMethod?: DrawdownMethod;  // 整体回撤使用的计算方法
+
   computedAt: string;               // 计算时间（ISO时间戳）
 }
 
@@ -685,4 +692,37 @@ export interface BehaviorAnalysis {
     diff: number;         // 正数表示进步，负数表示退步
     label: string;        // "较前一期" 或 "较去年同期"
   };
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// 回撤追踪（Beta版本）类型定义
+// ═══════════════════════════════════════════════════════════════════════════════
+
+/**
+ * 回撤计算方法
+ */
+export type DrawdownMethod = 'profit' | 'nav';
+
+/**
+ * 回撤计算结果（统一结构）
+ */
+export interface DrawdownResult {
+  method: DrawdownMethod;          // 实际使用的方法
+
+  // 当前回撤信息
+  currentDrawdown: number;
+  currentDrawdownDays: number;
+  currentPeakDate: string | null;
+  currentPeakValue: number;        // 峰值（根据method是累计盈亏或净值）
+  currentTroughDate: string | null;
+  currentTroughValue: number;
+  currentValue: number;            // 当前值（根据method是累计盈亏或净值）
+
+  // 最大回撤信息
+  maxDrawdown: number;
+  maxDrawdownDays: number;
+  maxPeakDate: string | null;
+  maxTroughDate: string | null;
+  maxPeakValue: number;
+  maxTroughValue: number;
 }
