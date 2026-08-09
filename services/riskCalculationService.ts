@@ -43,6 +43,7 @@ import {
   calculateMaxRecoveryGeneric,
   percentDrawdownStrategy,
   amountDrawdownStrategy,
+  calculateProfitRatioDrawdown,
 } from '../utils/performanceAttribution';
 import { computePositions } from '../utils/positionHelper';
 import { computePositionTrend, PositionTrendPoint, Trade, ValuationPoint } from '../utils/positionTrend';
@@ -257,36 +258,58 @@ export async function computeRiskSnapshotBeta(
 ): Promise<RiskSnapshot> {
   const now = new Date().toISOString();
 
-  // 1. 获取累计盈利数据
+  // 1. 并行获取累计盈利数据和持仓趋势数据
   const symbols = portfolio.map(t => t.symbol);
-  const summary = await computeOverallProfit({ symbols });
+  const [summary, positionTrendData] = await Promise.all([
+    computeOverallProfit({ symbols }),
+    computePositionTrendData(symbols)
+  ]);
 
   if (!summary || !summary.timeline || summary.timeline.length === 0) {
     return createEmptySnapshot(now);
   }
 
-  // 2. 使用累计盈亏计算回撤
+  // 2. 准备盈利和持仓数据
   const profitValues = summary.timeline.map(p => ({
     date: p.date,
     value: p.cumulativeProfit
   }));
+  const positionValues = positionTrendData.map(p => ({
+    date: p.date,
+    value: p.value
+  }));
+
+  // 3. 计算盈利占比回撤（新增）
+  const profitRatioResult = calculateProfitRatioDrawdown(profitValues, positionValues);
+
+  // 4. 使用累计盈亏计算回撤（保持原有逻辑）
   const drawdownResult = calculateDrawdownGeneric(profitValues, amountDrawdownStrategy);
   const maxRecoveryDetails = calculateMaxRecoveryGeneric(profitValues, amountDrawdownStrategy);
 
-  // 3. 计算各基金回撤（使用统一函数）
+  // 5. 计算各基金回撤（保持原有逻辑）
   const fundDrawdowns = computeFundDrawdowns(portfolio, {
     perFundTimelines: summary.perFundTimelines || {},
     method: 'profit'
   });
 
-  // 4. 使用公共函数组装结果
-  return buildDrawdownSnapshot(
+  // 6. 使用公共函数组装结果
+  const snapshot = buildDrawdownSnapshot(
     drawdownResult,
     maxRecoveryDetails,
     fundDrawdowns,
     now,
     'profit'
   );
+
+  // 7. 添加盈利占比回撤信息（新增）
+  snapshot.profitRatioDrawdown = {
+    currentDrawdown: profitRatioResult.currentDrawdown,
+    peakRatio: profitRatioResult.peakRatio,
+    peakDate: profitRatioResult.peakDate,
+    currentRatio: profitRatioResult.currentRatio,
+  };
+
+  return snapshot;
 }
 
 /**

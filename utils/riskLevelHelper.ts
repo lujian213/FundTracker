@@ -67,3 +67,72 @@ export function getAlertBadgeStyle(level: 'low' | 'medium' | 'high'): string {
       return 'bg-green-200 text-green-800';
   }
 }
+
+/**
+ * 回撤预警等级类型
+ */
+export type DrawdownLevel = 'normal' | 'low' | 'medium' | 'high';
+
+/**
+ * 回撤状态信息
+ */
+export interface DrawdownStatusInfo {
+  level: DrawdownLevel;
+  style: string;
+  icon: string;
+  text: string;
+}
+
+/**
+ * 根据回撤值获取预警等级
+ * @param drawdown 回撤值（百分比）
+ * @param thresholds 阈值配置
+ * @returns 预警等级
+ */
+export function getDrawdownLevel(
+  drawdown: number,
+  thresholds: { low: number; medium: number; high: number }
+): DrawdownLevel {
+  if (drawdown >= thresholds.high) return 'high';
+  if (drawdown >= thresholds.medium) return 'medium';
+  if (drawdown >= thresholds.low) return 'low';
+  return 'normal';
+}
+
+/**
+ * 根据回撤等级获取状态信息
+ * @param level 回撤等级
+ * @returns 完整的状态信息（样式、图标、文本）
+ */
+export function getDrawdownStatusInfo(level: DrawdownLevel): DrawdownStatusInfo {
+  switch (level) {
+    case 'high':
+      return {
+        level: 'high',
+        style: 'bg-red-200 text-red-800',
+        icon: '🔴',
+        text: '超过重度预警阈值'
+      };
+    case 'medium':
+      return {
+        level: 'medium',
+        style: 'bg-orange-200 text-orange-800',
+        icon: '🟠',
+        text: '超过中度预警阈值'
+      };
+    case 'low':
+      return {
+        level: 'low',
+        style: 'bg-yellow-200 text-yellow-800',
+        icon: '🟡',
+        text: '超过轻度预警阈值'
+      };
+    case 'normal':
+      return {
+        level: 'normal',
+        style: 'bg-green-200 text-green-800',
+        icon: '✅',
+        text: '正常范围'
+      };
+  }
+}

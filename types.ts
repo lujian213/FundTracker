@@ -625,6 +625,14 @@ export interface RiskSnapshot {
   // Beta版本新增字段
   drawdownMethod?: DrawdownMethod;  // 整体回撤使用的计算方法
 
+  // 盈利占比回撤新增字段（新版回撤追踪）
+  profitRatioDrawdown?: {
+    currentDrawdown: number;      // 当前回撤（百分比）
+    peakRatio: number;            // 峰值盈利占比
+    peakDate: string | null;       // 峰值日期
+    currentRatio: number;         // 当前盈利占比
+  };
+
   computedAt: string;               // 计算时间（ISO时间戳）
 }
 

@@ -16,7 +16,7 @@ import { formatDateDisplay } from '../utils/dateFormat';
 import { getPosition } from '../services/marketFundService';
 import { computePositions } from '../utils/positionHelper';
 import { getRiskThresholds } from '../services/riskThresholdService';
-import { getScoreColor, getRiskLevel, getAlertLevelStyle, getAlertBadgeStyle } from '../utils/riskLevelHelper';
+import { getScoreColor, getRiskLevel, getAlertLevelStyle, getAlertBadgeStyle, getDrawdownLevel, getDrawdownStatusInfo } from '../utils/riskLevelHelper';
 
 type RiskTab = 'overview' | 'alerts' | 'concentration' | 'drawdown' | 'drawdown-beta';
 
@@ -196,6 +196,7 @@ const RiskMonitorModal: React.FC<RiskMonitorModalProps> = ({
   const [activeTab, setActiveTab] = useState<RiskTab>('overview');
   const [loading, setLoading] = useState(false);
   const [snapshot, setSnapshot] = useState<RiskSnapshot | null>(null);
+  const [snapshotBeta, setSnapshotBeta] = useState<RiskSnapshot | null>(null);
 
   // 使用 ref 跟踪是否已经计算过，避免重复计算
   const calculatedRef = useRef(false);
@@ -217,9 +218,14 @@ const RiskMonitorModal: React.FC<RiskMonitorModalProps> = ({
 
     const compute = async () => {
       try {
-        const result = await computeRiskSnapshot(portfolio, marketData);
+        // 并行计算两个版本的风险快照
+        const [result, resultBeta] = await Promise.all([
+          computeRiskSnapshot(portfolio, marketData),
+          computeRiskSnapshotBeta(portfolio, marketData)
+        ]);
         if (mounted) {
           setSnapshot(result);
+          setSnapshotBeta(resultBeta);
         }
       } catch (error) {
         console.error('计算风险快照失败:', error);
@@ -335,8 +341,8 @@ const RiskMonitorModal: React.FC<RiskMonitorModalProps> = ({
               {activeTab === 'drawdown' && (
                 <DrawdownTab snapshot={snapshot} onSelectFund={onSelectFund} />
               )}
-              {activeTab === 'drawdown-beta' && (
-                <DrawdownBetaTab portfolio={portfolio} marketData={marketData} onSelectFund={onSelectFund} />
+              {activeTab === 'drawdown-beta' && snapshotBeta && (
+                <DrawdownTab snapshot={snapshotBeta} onSelectFund={onSelectFund} />
               )}
             </div>
           )}
@@ -930,74 +936,6 @@ const ConcentrationTab: React.FC<{
 /**
  * 回撤追踪（新）Tab - 使用混合方案计算回撤
  */
-const DrawdownBetaTab: React.FC<{
-  portfolio: Ticker[];
-  marketData: Record<string, ValuationData>;
-  onSelectFund?: (symbol: string) => void;
-}> = ({ portfolio, marketData, onSelectFund }) => {
-  const [snapshot, setSnapshot] = useState<RiskSnapshot | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    let mounted = true;
-
-    const loadSnapshot = async () => {
-      try {
-        setLoading(true);
-        setError(null);
-        const result = await computeRiskSnapshotBeta(portfolio, marketData);
-        if (mounted) {
-          setSnapshot(result);
-        }
-      } catch (e) {
-        console.error('加载风险快照（Beta）失败:', e);
-        if (mounted) {
-          setError('加载失败，请重试');
-        }
-      } finally {
-        if (mounted) {
-          setLoading(false);
-        }
-      }
-    };
-
-    loadSnapshot();
-
-    return () => {
-      mounted = false;
-    };
-  }, [portfolio, marketData]);
-
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center h-full">
-        <i className="fas fa-spinner fa-spin text-2xl text-gray-400" />
-      </div>
-    );
-  }
-
-  if (error) {
-    return (
-      <div className="flex flex-col items-center justify-center h-full text-red-500">
-        <i className="fas fa-exclamation-circle text-4xl mb-2" />
-        <div>{error}</div>
-      </div>
-    );
-  }
-
-  if (!snapshot) {
-    return (
-      <div className="flex flex-col items-center justify-center h-full text-gray-400">
-        <i className="fas fa-chart-line text-4xl mb-2" />
-        <div>暂无回撤数据</div>
-      </div>
-    );
-  }
-
-  return <DrawdownTab snapshot={snapshot} onSelectFund={onSelectFund} />;
-};
-
 /**
  * 回撤追踪Tab
  */
@@ -1104,24 +1042,33 @@ const DrawdownTab: React.FC<{
               -{currentDrawdownDisplay}
             </div>
             <div className="text-sm text-red-800 mt-1">当前回撤深度</div>
-            <div className={`mt-2 inline-block px-3 py-1 rounded-full text-xs font-semibold ${
-              drawdownMethod === 'profit'
-                ? 'bg-gray-100 text-gray-700'  // 金额策略不显示预警阈值
-                : currentDrawdown >= thresholds.drawdown.high
-                  ? 'bg-red-200 text-red-800'
-                  : currentDrawdown >= thresholds.drawdown.low
-                    ? 'bg-orange-200 text-orange-800'
-                    : 'bg-green-200 text-green-800'
-            }`}>
-              {drawdownMethod === 'profit'
-                ? '盈利回撤'  // 盈利策略的简单提示
-                : currentDrawdown >= thresholds.drawdown.high
-                  ? '🔴 超过重度预警阈值'
-                  : currentDrawdown >= thresholds.drawdown.medium
-                    ? '🟠 超过中度预警阈值'
-                    : currentDrawdown >= thresholds.drawdown.low
-                      ? '🟡 超过轻度预警阈值'
-                      : '✅ 正常范围'}
+            {/* 盈利占比回撤百分比 + 状态标签 */}
+            <div className="mt-2 flex items-center gap-2 flex-wrap">
+              {(() => {
+                // 统一计算有效的回撤值
+                const effectiveDrawdown = drawdownMethod === 'profit' && snapshot.profitRatioDrawdown
+                  ? snapshot.profitRatioDrawdown.currentDrawdown
+                  : currentDrawdown;
+
+                const level = getDrawdownLevel(effectiveDrawdown, thresholds.drawdown);
+                const statusInfo = getDrawdownStatusInfo(level);
+
+                return (
+                  <>
+                    {/* 盈利占比回撤百分比 */}
+                    {drawdownMethod === 'profit' && snapshot.profitRatioDrawdown && (
+                      <span className={`px-3 py-1 rounded-full text-xs font-semibold ${statusInfo.style}`}>
+                        -{snapshot.profitRatioDrawdown.currentDrawdown.toFixed(2)}%
+                      </span>
+                    )}
+
+                    {/* 状态标签 */}
+                    <span className={`px-3 py-1 rounded-full text-xs font-semibold ${statusInfo.style}`}>
+                      {statusInfo.icon} {statusInfo.text}
+                    </span>
+                  </>
+                );
+              })()}
             </div>
           </div>
 

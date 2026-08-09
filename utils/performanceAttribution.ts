@@ -1265,6 +1265,14 @@ export const amountDrawdownStrategy: DrawdownStrategy = (peak, current) =>
   peak - current;
 
 /**
+ * 专用策略：盈利占比回撤
+ * 直接计算差异（不除以峰值）
+ * 用于盈利占比回撤计算
+ */
+export const profitRatioDrawdownStrategy: DrawdownStrategy = (peak, current) =>
+  peak - current;
+
+/**
  * 通用回撤计算核心函数（策略模式）
  *
  * 采用正确的回撤计算逻辑：
@@ -1786,5 +1794,182 @@ export function calculatePersonalReturnCurve(
     troughNav: troughNav,
     troughUnitProfit: troughNavPoint?.unitProfit || 0,
     troughCostPrice: troughNavPoint?.costPrice || 0,
+  };
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// 盈利占比回撤计算（新版回撤追踪）
+// ═══════════════════════════════════════════════════════════════════════════════
+
+/**
+ * 对齐盈利和持仓数据
+ * 只使用两个数据源都有的日期（交集）
+ *
+ * @param profits 盈利时间线
+ * @param positions 持仓时间线
+ * @returns 对齐后的数据
+ */
+function alignProfitAndPositionData(
+  profits: { date: string; value: number }[],
+  positions: { date: string; value: number }[]
+): {
+  alignedProfits: { date: string; value: number }[];
+  alignedPositions: { date: string; value: number }[];
+} {
+  if (!profits || !positions || profits.length === 0 || positions.length === 0) {
+    return { alignedProfits: [], alignedPositions: [] };
+  }
+
+  // 优化：一次遍历同时构建 Map 和收集共同日期
+  const profitMap = new Map<string, number>();
+  const commonDates: string[] = [];
+
+  // 遍历 profits 构建 Map
+  for (const p of profits) {
+    profitMap.set(p.date, p.value);
+  }
+
+  // 遍历 positions，检查是否在 profitMap 中存在
+  const positionMap = new Map<string, number>();
+  for (const p of positions) {
+    positionMap.set(p.date, p.value);
+    if (profitMap.has(p.date)) {
+      commonDates.push(p.date);
+    }
+  }
+
+  // 排序共同日期
+  commonDates.sort();
+
+  if (commonDates.length === 0) {
+    return { alignedProfits: [], alignedPositions: [] };
+  }
+
+  // 构建对齐后的数组
+  const alignedProfits = commonDates.map(date => ({
+    date,
+    value: profitMap.get(date) || 0
+  }));
+
+  const alignedPositions = commonDates.map(date => ({
+    date,
+    value: positionMap.get(date) || 0
+  }));
+
+  return { alignedProfits, alignedPositions };
+}
+
+/**
+ * 计算盈利占比时间线
+ * 盈利占比 = 累计盈利 / 持仓市值
+ *
+ * @param profits 盈利时间线
+ * @param positions 持仓时间线
+ * @returns 盈利占比时间线
+ */
+function calculateProfitRatioTimeline(
+  profits: { date: string; value: number }[],
+  positions: { date: string; value: number }[]
+): { date: string; ratio: number }[] {
+  // 对齐数据
+  const { alignedProfits, alignedPositions } = alignProfitAndPositionData(profits, positions);
+
+  if (alignedProfits.length === 0 || alignedPositions.length === 0) {
+    return [];
+  }
+
+  const result: { date: string; ratio: number }[] = [];
+
+  for (let i = 0; i < alignedProfits.length; i++) {
+    const profit = alignedProfits[i].value;
+    const position = alignedPositions[i].value;
+
+    if (position <= 0) {
+      // 持仓为0时，盈利占比设为0
+      result.push({ date: alignedProfits[i].date, ratio: 0 });
+    } else {
+      // 正常计算盈利占比
+      const ratio = profit / position;
+      result.push({ date: alignedProfits[i].date, ratio });
+    }
+  }
+
+  return result;
+}
+
+/**
+ * 盈利占比回撤计算结果
+ */
+export interface ProfitRatioDrawdownResult {
+  currentDrawdown: number;      // 当前回撤（百分比）
+  peakRatio: number;            // 峰值盈利占比
+  peakDate: string | null;       // 峰值日期
+  currentRatio: number;         // 当前盈利占比
+  maxDrawdown: number;          // 历史最大回撤
+  maxDrawdownPeakDate: string | null;  // 历史最大回撤峰值日期
+  maxDrawdownPeakValue: number;  // 历史最大回撤峰值
+  maxDrawdownTroughDate: string | null;  // 历史最大回撤谷底日期
+  maxDrawdownTroughValue: number;  // 历史最大回撤谷底值
+  troughRatio: number;          // 当前回撤谷底盈利占比
+  troughDate: string | null;     // 当前回撤谷底日期
+  currentValue: number;          // 当前盈利占比值
+}
+
+/**
+ * 计算盈利占比回撤
+ *
+ * 计算公式：
+ * 盈利占比回撤 = 高位日期的盈利/高位日期的持仓 - 当前日期的盈利/当前日期的持仓
+ *
+ * @param profits 盈利时间线
+ * @param positions 持仓时间线
+ * @returns 盈利占比回撤结果
+ */
+export function calculateProfitRatioDrawdown(
+  profits: { date: string; value: number }[],
+  positions: { date: string; value: number }[]
+): ProfitRatioDrawdownResult {
+  // 计算盈利占比时间线
+  const profitRatioTimeline = calculateProfitRatioTimeline(profits, positions);
+
+  if (profitRatioTimeline.length === 0) {
+    return {
+      currentDrawdown: 0,
+      peakRatio: 0,
+      peakDate: null,
+      currentRatio: 0,
+      maxDrawdown: 0,
+      maxDrawdownPeakDate: null,
+      maxDrawdownPeakValue: 0,
+      maxDrawdownTroughDate: null,
+      maxDrawdownTroughValue: 0,
+      troughRatio: 0,
+      troughDate: null,
+      currentValue: 0,
+    };
+  }
+
+  // 转换为通用格式（盈利占比已经是小数形式）
+  const values = profitRatioTimeline.map(p => ({
+    date: p.date,
+    value: p.ratio
+  }));
+
+  // 使用盈利占比策略计算回撤（直接计算差异，再乘以100转换为百分比）
+  const drawdownResult = calculateDrawdownGeneric(values, profitRatioDrawdownStrategy);
+
+  return {
+    currentDrawdown: drawdownResult.currentDrawdown * 100,  // 转换为百分比
+    peakRatio: drawdownResult.peakValue,
+    peakDate: drawdownResult.peakDate || null,
+    currentRatio: drawdownResult.currentValue,
+    maxDrawdown: drawdownResult.maxDrawdown * 100,  // 转换为百分比
+    maxDrawdownPeakDate: drawdownResult.maxDrawdownPeakDate || null,
+    maxDrawdownPeakValue: drawdownResult.maxDrawdownPeakValue,
+    maxDrawdownTroughDate: drawdownResult.maxDrawdownTroughDate || null,
+    maxDrawdownTroughValue: drawdownResult.maxDrawdownTroughValue,
+    troughRatio: drawdownResult.troughValue,
+    troughDate: drawdownResult.troughDate || null,
+    currentValue: drawdownResult.currentValue,
   };
 }
