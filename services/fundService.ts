@@ -15,7 +15,7 @@ import { fetchWithProxy } from './proxyService';
 /**
  * 基金净值日期信息（用于日期校准）
  */
-interface FundNavDateInfo {
+export interface FundNavDateInfo {
   symbol: string;
   navType: FundNavType;
   netWorthDate: string | null;    // 确认净值日期
@@ -56,7 +56,7 @@ function adjustT2FundDate(
  * @param symbols 基金代码列表
  * @returns 基金净值日期信息数组
  */
-function getAllFundNavDateInfo(symbols: string[]): FundNavDateInfo[] {
+export function getAllFundNavDateInfo(symbols: string[]): FundNavDateInfo[] {
   return symbols.map(symbol => {
     const position = marketFundService.getPosition(symbol);
     const valuation = marketFundService.getValuation(symbol);

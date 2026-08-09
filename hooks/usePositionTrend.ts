@@ -1,8 +1,52 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { computePositionTrend, downsampleLTTB, PositionTrendSeries, PositionTrendInput, Trade, ValuationPoint } from '../utils/positionTrend';
 import { getAllTradeDates, readAll as readAllTrades, getTradesForSymbol } from './useTrades';
-import { Ticker } from '../types';
+import { Ticker, HistoricalPoint } from '../types';
 import * as marketFundService from '../services/marketFundService';
+import { prepareHistoryForProfitCalculation, getAllFundNavDateInfo, FundNavDateInfo } from '../services/fundService';
+import { toLocalDateKey } from '../utils/priceResolver';
+
+/**
+ * 准备估值历史数据（纯函数）
+ *
+ * @param history 历史净值数据
+ * @param valuation 当前估值数据
+ * @param position 持仓信息
+ * @param targetDate 目标日期
+ * @param allFundNavDates 所有基金的净值日期信息（用于T+2校准）
+ * @returns 估值历史数据点数组
+ */
+export function prepareValuationHistory(
+  history: HistoricalPoint[],
+  valuation: {
+    currentPrice?: number;
+    realtimeDate?: string | null;
+    previousPrice?: number;
+    netWorthDate?: string | null;
+  } | null,
+  position: {
+    navType?: 'T+1' | 'T+2';
+  } | null | undefined,
+  targetDate: string,
+  allFundNavDates: FundNavDateInfo[]
+): ValuationPoint[] {
+  const preparedHist = prepareHistoryForProfitCalculation({
+    history,
+    targetDate,
+    todayDate: targetDate,
+    currentPrice: valuation?.currentPrice,
+    realtimeDate: valuation?.realtimeDate,
+    previousPrice: valuation?.previousPrice,
+    netWorthDate: valuation?.netWorthDate,
+    navType: position?.navType,
+    allFundNavDates,
+  });
+
+  return preparedHist.map(h => ({
+    date: toLocalDateKey(h.date),
+    price: h.value
+  }));
+}
 
 interface UsePositionTrendParams {
   startDate?: string;
@@ -40,7 +84,7 @@ export default function usePositionTrend(params: UsePositionTrendParams = {}) {
   // determine date range defaulting to earliest position/trade to today
   const computedRange = useMemo(() => {
     const today = new Date();
-    const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+    const todayStr = toLocalDateKey(today);
     let start = startDate;
     let end = endDate || todayStr;
     if (!start) {
@@ -68,8 +112,7 @@ export default function usePositionTrend(params: UsePositionTrendParams = {}) {
             const hist = marketFundService.getHistory(s) || [];
             if (hist.length > 0) {
               const first = hist[0];
-              const dt = new Date(first.date);
-              const dstr = `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}`;
+              const dstr = toLocalDateKey(first.date);
               if (!earliest || dstr < earliest) earliest = dstr;
             }
           } catch (e) {}
@@ -84,6 +127,9 @@ export default function usePositionTrend(params: UsePositionTrendParams = {}) {
     setLoading(true);
     setError(null);
     try {
+      // Collect all fund nav date info for T+2 date calibration
+      const allFundNavDates = getAllFundNavDateInfo(portfolioSymbols);
+
       // prepare trades and valuationHistory structures
       const tradesMap: Record<string, Trade[]> = {};
       const valuationMap: Record<string, ValuationPoint[]> = {};
@@ -103,38 +149,20 @@ export default function usePositionTrend(params: UsePositionTrendParams = {}) {
           }));
         } catch (e) { tradesMap[s] = []; }
 
-        // valuations -> map history points to {date, price}
+        // valuations -> use prepareValuationHistory for consistency with overall profit
         try {
           const hist = marketFundService.getHistory(s) || [];
-          // hist items are HistoricalPoint with date as timestamp in ms
-          valuationMap[s] = hist.map(h => {
-            const d = new Date(h.date);
-            const dstr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-            return { date: dstr, price: h.value };
-          });
-        } catch (e) { valuationMap[s] = []; }
+          const vd = valuationsOverride?.[s] || marketFundService.getValuation(s);
+          const pos = marketFundService.getPosition(s);
 
-        // include latest realtime valuation (if any) as endDate price to ensure last point matches current market value
-        try {
-          // prefer override (from PositionsModal.marketData) so trend last point matches UI
-          const override = valuationsOverride && valuationsOverride[s];
-          const vd = override || marketFundService.getValuation(s);
-          if (vd) {
-            const price = (vd.currentPrice && vd.currentPrice > 0) ? vd.currentPrice : (vd.previousPrice || 0);
-            if (price > 0) {
-              // push or replace an entry for computedRange.endDate
-              const endD = computedRange.endDate;
-              const arr = valuationMap[s] || [];
-              // if last entry date is same as endD, replace; else push
-              if (arr.length > 0 && arr[arr.length - 1].date === endD) {
-                arr[arr.length - 1] = { date: endD, price };
-              } else {
-                arr.push({ date: endD, price });
-              }
-              valuationMap[s] = arr;
-            }
-          }
-        } catch (e) { /* ignore */ }
+          valuationMap[s] = prepareValuationHistory(
+            hist,
+            vd,
+            pos,
+            computedRange.endDate,
+            allFundNavDates
+          );
+        } catch (e) { valuationMap[s] = []; }
 
         // initial position from marketFundService
         try {
