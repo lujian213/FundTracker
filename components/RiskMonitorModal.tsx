@@ -16,7 +16,7 @@ import { formatDateDisplay } from '../utils/dateFormat';
 import { getPosition } from '../services/marketFundService';
 import { computePositions } from '../utils/positionHelper';
 import { getRiskThresholds } from '../services/riskThresholdService';
-import { getScoreColor, getRiskLevel, getAlertLevelStyle, getAlertBadgeStyle, getDrawdownLevel, getDrawdownStatusInfo } from '../utils/riskLevelHelper';
+import { getScoreColor, getRiskLevel, getAlertLevelStyle, getAlertBadgeStyle, getDrawdownLevel, getDrawdownStatusInfo, getRecoveryProgressStatus, getRecoveryProgressColor } from '../utils/riskLevelHelper';
 
 type RiskTab = 'overview' | 'alerts' | 'concentration' | 'drawdown' | 'drawdown-beta';
 
@@ -1081,14 +1081,14 @@ const DrawdownTab: React.FC<{
                 cy="60"
                 r="52"
                 fill="none"
-                stroke={recoveryProgress >= 70 ? '#22c55e' : recoveryProgress >= 35 ? '#f59e0b' : '#dc2626'}
+                stroke={getRecoveryProgressColor(getRecoveryProgressStatus(recoveryProgress))}
                 strokeWidth="10"
                 strokeDasharray={`${recoveryProgress * 3.27} 327`}
                 strokeDashoffset="0"
                 transform="rotate(-90 60 60)"
                 strokeLinecap="round"
               />
-              <text x="60" y="55" textAnchor="middle" fontSize="20" fontWeight="700" fill={recoveryProgress >= 70 ? '#22c55e' : recoveryProgress >= 35 ? '#f59e0b' : '#dc2626'}>
+              <text x="60" y="55" textAnchor="middle" fontSize="20" fontWeight="700" fill={getRecoveryProgressColor(getRecoveryProgressStatus(recoveryProgress))}>
                 {Math.round(recoveryProgress)}%
               </text>
               <text x="60" y="72" textAnchor="middle" fontSize="10" fill="#6b7280">恢复进度</text>
@@ -1303,8 +1303,11 @@ const DrawdownTab: React.FC<{
                 ? Math.max(0, Math.min(100, ((fd.maxDrawdown - fd.currentDrawdown) / fd.maxDrawdown) * 100))
                 : 100;
 
-              const status = fd.currentDrawdown >= thresholds.drawdown.high ? 'danger' :
-                             fd.currentDrawdown >= thresholds.drawdown.low ? 'warning' : 'safe';
+              // 判断状态：新版基于恢复进度，老版基于回撤值
+              const status = drawdownMethod === 'profit'
+                ? getRecoveryProgressStatus(progress)
+                : fd.currentDrawdown >= thresholds.drawdown.high ? 'danger' :
+                  fd.currentDrawdown >= thresholds.drawdown.low ? 'warning' : 'safe';
 
               // 显示值：使用统一的格式化函数
               const fdMethod = fd.drawdownMethod || 'nav';  // 默认净值法
@@ -1472,8 +1475,8 @@ const DrawdownTab: React.FC<{
                       <div className="w-20 h-1.5 bg-gray-200 rounded">
                         <div
                           className={`h-full rounded ${
-                            progress >= 70 ? 'bg-green-500' :
-                            progress >= 35 ? 'bg-orange-500' : 'bg-red-500'
+                            status === 'safe' ? 'bg-green-500' :
+                            status === 'warning' ? 'bg-orange-500' : 'bg-red-500'
                           }`}
                           style={{ width: `${progress}%` }}
                         />

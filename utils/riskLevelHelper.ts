@@ -136,3 +136,42 @@ export function getDrawdownStatusInfo(level: DrawdownLevel): DrawdownStatusInfo 
       };
   }
 }
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// 恢复进度状态判断
+// ═══════════════════════════════════════════════════════════════════════════════
+
+/**
+ * 恢复进度阈值常量
+ * 与整体回撤恢复进度使用相同的标准
+ */
+export const RECOVERY_PROGRESS_THRESHOLDS = {
+  /** >= 70% 为正常 */
+  safe: 70,
+  /** >= 35% 为中等，< 35% 为高风险 */
+  warning: 35,
+} as const;
+
+/**
+ * 根据恢复进度判断状态
+ * @param progress 恢复进度百分比 (0-100)
+ * @returns 状态等级 ('danger' | 'warning' | 'safe')
+ */
+export function getRecoveryProgressStatus(progress: number): 'danger' | 'warning' | 'safe' {
+  return progress < RECOVERY_PROGRESS_THRESHOLDS.warning ? 'danger'
+       : progress < RECOVERY_PROGRESS_THRESHOLDS.safe ? 'warning'
+       : 'safe';
+}
+
+/**
+ * 根据恢复进度状态获取颜色
+ * @param status 状态等级
+ * @returns 颜色值 (十六进制)
+ */
+export function getRecoveryProgressColor(status: 'danger' | 'warning' | 'safe'): string {
+  switch (status) {
+    case 'safe': return '#22c55e';    // green-500
+    case 'warning': return '#f59e0b'; // amber-500
+    case 'danger': return '#dc2626';  // red-600
+  }
+}
