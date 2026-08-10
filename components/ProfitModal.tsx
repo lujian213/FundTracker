@@ -98,6 +98,7 @@ const ProfitModal: React.FC<ProfitModalProps> = ({ symbol, fundName, currentPric
             symbol: sym,
             navType: pos?.navType || 'T+1',
             netWorthDate,
+            realtimeDate: val?.realtimeDate || null,
           };
         });
 

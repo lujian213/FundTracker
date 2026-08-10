@@ -101,6 +101,37 @@ export function getAllFundNavDateInfo(symbols: string[]): FundNavDateInfo[] {
  * @param allFundNavDates 所有基金的净值日期信息（用于T+2基金日期校准）
  * @returns 处理后的历史数据，可直接用于 computeProfitTimeline
  */
+/**
+ * 查找晚于指定日期的最早 T+1 日期
+ * @param allFundNavDates 所有基金净值日期信息
+ * @param targetDate 目标日期
+ * @param includeRealtime 是否包含估值日期（默认true）
+ * @returns 校准后的日期，找不到返回 null
+ */
+function findEarliestT1DateAfter(
+  allFundNavDates: FundNavDateInfo[],
+  targetDate: string,
+  includeRealtime: boolean = true
+): string | null {
+  let earliest: string | null = null;
+
+  for (const f of allFundNavDates) {
+    if (f.navType === 'T+1') {
+      const dates: string[] = [];
+      if (includeRealtime && f.realtimeDate) dates.push(f.realtimeDate);
+      if (f.netWorthDate) dates.push(f.netWorthDate);
+
+      for (const d of dates) {
+        if (d > targetDate && (!earliest || d < earliest)) {
+          earliest = d;
+        }
+      }
+    }
+  }
+
+  return earliest;
+}
+
 export function prepareHistoryForProfitCalculation(params: {
   history: HistoricalPoint[];
   targetDate: string;
@@ -161,38 +192,14 @@ export function prepareHistoryForProfitCalculation(params: {
     }
 
     // 最后一个数据点（最新净值日期）：校准到T+1基金的日期
-    // 规则：
-    // 1. 优先找T+1基金的净值日期 > T+2净值日期（使用确认净值）
-    // 2. 如果找不到，找T+1基金的估值日期（realtimeDate）作为参考
-    // 3. 如果都找不到，计算下一个交易日
     const lastPoint = result[result.length - 1];
     const lastDate = toLocalDateKey(lastPoint.date);
 
-    let calibratedDate: string | null = null;
+    let calibratedDate = allFundNavDates && allFundNavDates.length > 0
+      ? findEarliestT1DateAfter(allFundNavDates, lastDate, false) // 只用净值日期
+      : null;
 
-    if (allFundNavDates && allFundNavDates.length > 0) {
-      // 方法1：优先找T+1基金的净值日期 > lastDate
-      const t1NetWorthDates = allFundNavDates
-        .filter(f => f.navType === 'T+1' && f.netWorthDate && f.netWorthDate > lastDate)
-        .map(f => f.netWorthDate!)
-        .sort();
-
-      if (t1NetWorthDates.length > 0) {
-        calibratedDate = t1NetWorthDates[0];
-      } else {
-        // 方法2：找T+1基金的估值日期作为参考
-        const t1RealtimeDates = allFundNavDates
-          .filter(f => f.navType === 'T+1' && f.realtimeDate && f.realtimeDate > lastDate)
-          .map(f => f.realtimeDate!)
-          .sort();
-
-        if (t1RealtimeDates.length > 0) {
-          calibratedDate = t1RealtimeDates[0];
-        }
-      }
-    }
-
-    // 方法3：如果都没有，计算下一个交易日
+    // 如果找不到，计算下一个交易日
     if (!calibratedDate) {
       const lastDateObj = new Date(`${lastDate} 15:00`);
       lastDateObj.setDate(lastDateObj.getDate() + 1);
@@ -208,18 +215,45 @@ export function prepareHistoryForProfitCalculation(params: {
     result = adjusted;
   }
 
-  // 用优选价格覆盖同日期的历史点（估值不校准）
-  // 注意：T+2基金已校准，不应该用估值覆盖校准后的数据
-  if (preferred && navType !== 'T+2') {
-    const preferredTs = new Date(`${preferred.date} 15:00`).getTime();
-    // 直接添加或覆盖估值点
-    const existingIdx = result.findIndex(p => toLocalDateKey(p.date) === preferred.date);
-    if (existingIdx !== -1) {
-      result[existingIdx] = { date: preferredTs, value: preferred.price, equityReturn: 0 };
+  // 处理估值数据
+  if (preferred) {
+    // 只有当 preferred 是真正的估值或确认净值时，才需要添加
+    // 如果 preferred 来自历史数据（source === 'history'），说明已经在 result 中了，不需要添加
+    if (preferred.source === 'history') {
+      // 历史数据已经包含在 result 中，无需处理
+      return result;
+    }
+
+    if (navType === 'T+2') {
+      // T+2基金：需要校准估值日期到对应的T+1日期
+      // 规则：找第一个晚于T+2估值日期的T+1日期，如果找到就校准，否则跳过
+
+      if (allFundNavDates && allFundNavDates.length > 0) {
+        const t2ValuationDate = preferred.date; // T+2估值日期
+
+        const calibratedDate = findEarliestT1DateAfter(allFundNavDates, t2ValuationDate, true);
+
+        if (calibratedDate) {
+          // 找到了，将估值校准到这个日期
+          const calibratedTs = new Date(`${calibratedDate} 15:00`).getTime();
+          result.push({ date: calibratedTs, value: preferred.price, equityReturn: 0 });
+          result.sort((a, b) => a.date - b.date);
+        }
+        // 如果找不到，跳过这个估值
+      }
+      // 如果没有allFundNavDates，跳过T+2基金的估值
     } else {
-      // 估值日期不在历史数据中，添加新点
-      result.push({ date: preferredTs, value: preferred.price, equityReturn: 0 });
-      result.sort((a, b) => a.date - b.date);
+      // T+1基金：直接添加估值（无需校准）
+      const preferredTs = new Date(`${preferred.date} 15:00`).getTime();
+      // 直接添加或覆盖估值点
+      const existingIdx = result.findIndex(p => toLocalDateKey(p.date) === preferred.date);
+      if (existingIdx !== -1) {
+        result[existingIdx] = { date: preferredTs, value: preferred.price, equityReturn: 0 };
+      } else {
+        // 估值日期不在历史数据中，添加新点
+        result.push({ date: preferredTs, value: preferred.price, equityReturn: 0 });
+        result.sort((a, b) => a.date - b.date);
+      }
     }
   }
 
