@@ -195,22 +195,25 @@ export function prepareHistoryForProfitCalculation(params: {
     const lastPoint = result[result.length - 1];
     const lastDate = toLocalDateKey(lastPoint.date);
 
-    let calibratedDate = allFundNavDates && allFundNavDates.length > 0
-      ? findEarliestT1DateAfter(allFundNavDates, lastDate, false) // 只用净值日期
-      : null;
+    // 查找合适的T+1日期进行校准（优先使用净值日期，其次使用估值日期）
+    if (allFundNavDates && allFundNavDates.length > 0) {
+      let calibratedDate = findEarliestT1DateAfter(allFundNavDates, lastDate, false);
 
-    // 如果找不到，计算下一个交易日
-    if (!calibratedDate) {
-      const lastDateObj = new Date(`${lastDate} 15:00`);
-      lastDateObj.setDate(lastDateObj.getDate() + 1);
-      calibratedDate = toLocalDateKey(lastDateObj.getTime());
+      // 如果找不到，再尝试包含估值日期（应对T+1基金净值日期等于T+2基金净值日期的情况）
+      if (!calibratedDate) {
+        calibratedDate = findEarliestT1DateAfter(allFundNavDates, lastDate, true);
+      }
+
+      // 如果找到合适的T+1日期，添加校准后的数据点
+      if (calibratedDate) {
+        const adjustedTs = new Date(`${calibratedDate} 15:00`).getTime();
+        adjusted.push({
+          ...lastPoint,
+          date: adjustedTs
+        });
+      }
+      // 如果找不到，跳过这个数据点（不添加到最后结果中）
     }
-
-    const adjustedTs = new Date(`${calibratedDate} 15:00`).getTime();
-    adjusted.push({
-      ...lastPoint,
-      date: adjustedTs
-    });
 
     result = adjusted;
   }

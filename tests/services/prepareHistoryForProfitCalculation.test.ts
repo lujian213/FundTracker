@@ -251,7 +251,7 @@ describe('edge cases', () => {
       expect(result[2].value).toBe(2.2611);
     });
 
-    it('should use next trading day when no reference date available', () => {
+    it('should skip last data point when no reference date available', () => {
       const history: HistoricalPoint[] = [
         { date: mkTs('2026-08-04'), value: 2.2958, equityReturn: 0 },
         { date: mkTs('2026-08-05'), value: 2.2701, equityReturn: 0 },
@@ -271,10 +271,13 @@ describe('edge cases', () => {
         allFundNavDates,
       });
 
-      // 最后一个点应该校准到 8/7（下一个交易日）
-      expect(result.length).toBe(3);
-      expect(new Date(result[2].date).getDate()).toBe(7); // 8/6 -> 8/7
-      expect(result[2].value).toBe(2.2611);
+      // 最后一个点（8/6）找不到T+1参考日期，应该被忽略
+      // 只保留前面两个点：8/4 -> 8/5, 8/5 -> 8/6
+      expect(result.length).toBe(2);
+      expect(new Date(result[0].date).getDate()).toBe(5); // 8/4 -> 8/5
+      expect(new Date(result[1].date).getDate()).toBe(6); // 8/5 -> 8/6
+      expect(result[0].value).toBe(2.2958);
+      expect(result[1].value).toBe(2.2701);
     });
 
     it('should not calibrate T+1 funds', () => {
