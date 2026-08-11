@@ -316,6 +316,7 @@ export function padSymbol(symbol: string): string {
  */
 export function parseJsonpgzResponse(data: any): ValuationData | null {
   if (!data || !data.fundcode) return null;
+
   return {
     symbol: data.fundcode,
     name: data.name || "未知基金",
@@ -1973,7 +1974,14 @@ export async function computeOverallProfit(opts: { symbols?: string[]; fromDate?
         allFundNavDates,
       });
 
-      const timeline = computeProfitTimeline({ history: preparedHistory, trades, initialPosition: initialPosition || 0, initialPrice: initialPrice ?? null, fromDate: fundStartDate, toDate: toDate ?? null });
+      const timeline = computeProfitTimeline({
+        history: preparedHistory,
+        trades,
+        initialPosition: initialPosition || 0,
+        initialPrice: initialPrice ?? null,
+        fromDate: fundStartDate,
+        toDate: toDate ?? null,
+      });
 
      if (!timeline || timeline.length === 0) continue;
 

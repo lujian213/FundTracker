@@ -345,10 +345,18 @@ function applyAccuracyEnhancements(
     return !timePart.startsWith('15:00');
   })();
 
+  // 检查今天是否已有确认净值（历史净值的日期等于估值日期）
+  const hasConfirmedNetWorthToday = latestHistoryDate && valuationDate && latestHistoryDate === valuationDate;
+
   let rule1Applied = false;
 
-  // 只有在没有实时估值的情况下才应用 Rule 1
-  if (!hasRealtimeValuation && valuationDate && latestHistoryDate && valuationDate <= latestHistoryDate) {
+  // Rule 1 应用条件：
+  // 1. 历史场景：估值日期 < 最新历史净值日期（非实时估值）
+  // 2. 今天场景：今天已有确认净值（即使有实时估值，也用确认净值替代）
+  const shouldApplyRule1 = valuationDate && latestHistoryDate && valuationDate <= latestHistoryDate &&
+    (!hasRealtimeValuation || hasConfirmedNetWorthToday);
+
+  if (shouldApplyRule1) {
     const newCurrentPrice = latestHistory.value;
     const newPreviousPrice = previousHistory ? previousHistory.value : valuation.previousPrice;
     const newChangePercentage = previousHistory

@@ -410,27 +410,26 @@ describe('marketFundService - Valuation Enhancement', () => {
   });
 
   describe('Realtime valuation preservation', () => {
-    test('should preserve realtime valuation time for today\'s fund', () => {
-      // 使用真实的今天日期进行测试
-      const today = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
-      const todayTimestamp = new Date(`${today}T12:00:00`).getTime();
+    test('should preserve realtime valuation when no confirmed net worth for today', () => {
+      // 场景：今天没有历史净值，保留实时估值
+      const today = '2026-08-11';
 
       const history: HistoricalPoint[] = [
-        { date: dateToTimestamp('2026-08-08'), value: 1.1000, equityReturn: 0 },
-        { date: dateToTimestamp('2026-08-09'), value: 1.1200, equityReturn: 1.82 },
-        { date: todayTimestamp, value: 1.1500, equityReturn: 2.68 } // 今天的历史净值
+        { date: dateToTimestamp('2026-08-09'), value: 1.1000, equityReturn: 0 },
+        { date: dateToTimestamp('2026-08-10'), value: 1.1200, equityReturn: 1.82 }
+        // 今天没有历史净值
       ];
 
       const valuation: ValuationData = {
         symbol: 'realtimeFund',
         name: 'Test Fund',
         currentPrice: 1.1550, // 实时估值
-        previousPrice: 1.1500,
-        changePercentage: 0.43,
+        previousPrice: 1.1200,
+        changePercentage: 3.13,
         lastUpdated: `${today} 09:21:00`, // 实时估值时间
         realtimeDate: today,
         valuationDate: today,
-        netWorthDate: today,
+        netWorthDate: '2026-08-10',
         sourceUrl: 'http://example.com'
       };
 
@@ -440,45 +439,52 @@ describe('marketFundService - Valuation Enhancement', () => {
       const result = marketFundService.getValuation('realtimeFund');
 
       expect(result).toBeDefined();
-      // 关键验证：实时估值时间应该被保留，不应该被覆盖为15:00
+      // 验证：没有今天的净值，保留实时估值
       expect(result?.lastUpdated).toBe(`${today} 09:21:00`);
       expect(result?.currentPrice).toBe(1.1550);
       expect(result?.realtimeDate).toBe(today);
-      expect(result?.valuationDate).toBe(today);
     });
 
-    test('should preserve realtime valuation even when latest history date equals valuation date', () => {
-      // 测试：即使历史净值日期等于估值日期（今天），实时估值也不应该被覆盖
-      const today = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
-      const todayTimestamp = new Date(`${today}T12:00:00`).getTime();
+    test('should replace realtime valuation with confirmed net worth when history exists for today', () => {
+      // 场景：当天的净值已经出来，实时估值应该被当天净值替代
+      // 这是用户报告的 015283 问题
+      const today = '2026-08-11';
 
       const history: HistoricalPoint[] = [
-        { date: dateToTimestamp('2026-08-10'), value: 1.1000, equityReturn: 0 },
-        { date: todayTimestamp, value: 1.1500, equityReturn: 2.68 }
+        { date: dateToTimestamp('2026-08-09'), value: 1.1750, equityReturn: 0 },
+        { date: dateToTimestamp('2026-08-10'), value: 1.1600, equityReturn: -1.28 },
+        { date: dateToTimestamp('2026-08-11'), value: 1.1529, equityReturn: -0.61 } // 今天的历史净值
       ];
 
       const valuation: ValuationData = {
-        symbol: 'realtimeFund2',
+        symbol: '015283',
         name: 'Test Fund',
-        currentPrice: 1.1580,
-        previousPrice: 1.1500,
-        changePercentage: 0.70,
-        lastUpdated: `${today} 10:15:00`, // 上午10:15的实时估值
+        currentPrice: 1.1306, // 实时估值（应该被替代）
+        previousPrice: 1.1529, // API返回的是今天的净值（应该被替代为昨天的净值）
+        changePercentage: -1.93, // 基于错误基准计算的涨跌幅（应该被替代）
+        lastUpdated: `${today} 16:00`, // 实时估值时间
         realtimeDate: today,
         valuationDate: today,
-        netWorthDate: '2026-08-10',
+        netWorthDate: today,
         sourceUrl: 'http://example.com'
       };
 
-      marketFundService.updateValuation('realtimeFund2', valuation);
-      marketFundService.updateHistory('realtimeFund2', history);
+      marketFundService.updateValuation('015283', valuation);
+      marketFundService.updateHistory('015283', history);
 
-      const result = marketFundService.getValuation('realtimeFund2');
+      const result = marketFundService.getValuation('015283');
 
       expect(result).toBeDefined();
-      // 验证：实时估值时间应该被保留
-      expect(result?.lastUpdated).toBe(`${today} 10:15:00`);
-      expect(result?.currentPrice).toBe(1.1580);
+      // 验证：实时估值应该被当天净值替代
+      expect(result?.currentPrice).toBeCloseTo(1.1529); // 使用今天的历史净值
+      expect(result?.previousPrice).toBeCloseTo(1.1600); // 使用昨天的历史净值
+      // 涨跌幅应该基于历史净值重新计算：(1.1529 - 1.1600) / 1.1600 * 100 = -0.61%
+      const expectedChange = ((1.1529 - 1.1600) / 1.1600) * 100;
+      expect(result?.changePercentage).toBeCloseTo(expectedChange, 2);
+      // 时间应该被更新为收盘时间
+      expect(result?.lastUpdated).toBe(`${today} 15:00`);
+      expect(result?.realtimeDate).toBe(today);
+      expect(result?.valuationDate).toBe(today);
     });
 
     test('should apply Rule 1 for historical valuation (not today)', () => {
