@@ -113,4 +113,50 @@ describe('T+2基金估值包含逻辑', () => {
     // 只包含历史净值，不包含估值
     expect(result.length).toBe(2);
   });
+
+  /**
+   * 场景：T+2基金估值无法找到晚于的T+1数据，但能找到同日的T+1估值
+   * - T+2基金有8/8的估值
+   * - T+1基金净值日期是8/7，估值日期是8/8
+   * - 无法找到 > 8/8 的T+1日期（现有逻辑失败）
+   * - 但能找到 = 8/8 的T+1估值（同日对齐）
+   * - 结果：T+2的8/8估值应该校准到8/8（同日）
+   */
+  it('当找不到晚于的T+1日期但找到同日T+1估值时，估值应对齐到同日', () => {
+    const history: HistoricalPoint[] = [
+      { date: mkTs('2026-08-05'), value: 2.2701, equityReturn: 0 },
+      { date: mkTs('2026-08-06'), value: 2.2611, equityReturn: 0 },
+    ];
+
+    const allFundNavDates: FundNavDateInfo[] = [
+      // T+1基金：净值日期8/7，估值日期8/8
+      { symbol: '000001', navType: 'T+1', netWorthDate: '2026-08-07', realtimeDate: '2026-08-08' },
+    ];
+
+    const result = prepareHistoryForProfitCalculation({
+      history,
+      targetDate: '2026-08-09', // 站在8/9看
+      todayDate: '2026-08-09',
+      currentPrice: 2.2597, // T+2基金的8/8估值
+      realtimeDate: '2026-08-08',
+      netWorthDate: '2026-08-06',
+      navType: 'T+2',
+      allFundNavDates,
+    });
+
+    // 应包含3个点：2个历史净值 + 1个校准后的估值
+    expect(result.length).toBe(3);
+
+    // 第1个点：历史净值校准到8/6
+    expect(new Date(result[0].date).getDate()).toBe(6);
+    expect(result[0].value).toBe(2.2701);
+
+    // 第2个点：历史净值校准到8/7
+    expect(new Date(result[1].date).getDate()).toBe(7);
+    expect(result[1].value).toBe(2.2611);
+
+    // 第3个点：估值校准到8/8（同日对齐，对应T+1的估值日期）
+    expect(new Date(result[2].date).getDate()).toBe(8);
+    expect(result[2].value).toBe(2.2597);
+  });
 });

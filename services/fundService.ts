@@ -132,6 +132,26 @@ function findEarliestT1DateAfter(
   return earliest;
 }
 
+/**
+ * 查找与指定日期同日的 T+1 估值日期
+ * @param allFundNavDates 所有基金净值日期信息
+ * @param targetDate 目标日期
+ * @returns 校准后的日期，找不到返回 null
+ */
+function findT1DateOn(
+  allFundNavDates: FundNavDateInfo[],
+  targetDate: string
+): string | null {
+  // 复用 findEarliestT1DateAfter 的迭代逻辑，避免重复代码
+  // 同日查找 = 查找 >= targetDate 且 <= targetDate 的最早日期
+  for (const f of allFundNavDates) {
+    if (f.navType === 'T+1' && f.realtimeDate === targetDate) {
+      return targetDate;
+    }
+  }
+  return null;
+}
+
 export function prepareHistoryForProfitCalculation(params: {
   history: HistoricalPoint[];
   targetDate: string;
@@ -229,20 +249,37 @@ export function prepareHistoryForProfitCalculation(params: {
 
     if (navType === 'T+2') {
       // T+2基金：需要校准估值日期到对应的T+1日期
-      // 规则：找第一个晚于T+2估值日期的T+1日期，如果找到就校准，否则跳过
+      // 规则：
+      // 1. 优先查找晚于T+2估值日期的T+1数据（净值或估值）
+      // 2. 如果找不到，再查找同日的T+1估值
+      // 3. 如果还找不到，跳过估值
 
       if (allFundNavDates && allFundNavDates.length > 0) {
         const t2ValuationDate = preferred.date; // T+2估值日期
 
-        const calibratedDate = findEarliestT1DateAfter(allFundNavDates, t2ValuationDate, true);
+        // 第一步：尝试查找晚于的T+1数据（现有逻辑）
+        let calibratedDate = findEarliestT1DateAfter(allFundNavDates, t2ValuationDate, true);
+
+        // 第二步：如果找不到，尝试查找同日的T+1估值
+        if (!calibratedDate) {
+          calibratedDate = findT1DateOn(allFundNavDates, t2ValuationDate);
+        }
 
         if (calibratedDate) {
           // 找到了，将估值校准到这个日期
           const calibratedTs = new Date(`${calibratedDate} 15:00`).getTime();
-          result.push({ date: calibratedTs, value: preferred.price, equityReturn: 0 });
-          result.sort((a, b) => a.date - b.date);
+
+          // 检查是否已存在同日数据
+          // 如果存在同日的历史净值，保留历史净值（已确认数据更可靠），不使用估值
+          const existingIdx = result.findIndex(p => toLocalDateKey(p.date) === calibratedDate);
+          if (existingIdx === -1) {
+            // 不存在同日数据，添加估值
+            result.push({ date: calibratedTs, value: preferred.price, equityReturn: 0 });
+            result.sort((a, b) => a.date - b.date);
+          }
+          // 如果已存在同日数据，跳过估值（保留历史净值）
         }
-        // 如果找不到，跳过这个估值
+        // 第三步：如果都找不到，跳过这个估值
       }
       // 如果没有allFundNavDates，跳过T+2基金的估值
     } else {

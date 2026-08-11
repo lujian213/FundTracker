@@ -332,9 +332,23 @@ function applyAccuracyEnhancements(
   const latestHistoryDate = latestHistory ? toLocalDateKey(latestHistory.date) : null;
   const valuationDate = valuation.valuationDate?.split(' ')[0] || valuation.realtimeDate;
 
+  // 检查是否是今天的实时估值：估值日期必须是今天，且时间部分不是 "15:00"
+  const hasRealtimeValuation = (() => {
+    // 首先检查估值日期是否是今天
+    const today = toLocalDateKey(Date.now());
+    if (valuationDate !== today) return false;
+
+    // 然后检查是否有实时时间（非15:00）
+    const timePart = valuation.lastUpdated?.split(' ')[1];
+    if (!timePart) return false;
+    // 如果时间不是 "15:00:00" 或 "15:00"，说明是实时估值
+    return !timePart.startsWith('15:00');
+  })();
+
   let rule1Applied = false;
 
-  if (valuationDate && latestHistoryDate && valuationDate <= latestHistoryDate) {
+  // 只有在没有实时估值的情况下才应用 Rule 1
+  if (!hasRealtimeValuation && valuationDate && latestHistoryDate && valuationDate <= latestHistoryDate) {
     const newCurrentPrice = latestHistory.value;
     const newPreviousPrice = previousHistory ? previousHistory.value : valuation.previousPrice;
     const newChangePercentage = previousHistory
@@ -358,7 +372,8 @@ function applyAccuracyEnhancements(
   const currentValuationDate = result.valuationDate?.split(' ')[0] || result.realtimeDate;
   const currentNetWorthDate = result.netWorthDate;
 
-  if (!rule1Applied && currentValuationDate && currentNetWorthDate && currentValuationDate <= currentNetWorthDate) {
+  // 同样，只有在没有实时估值的情况下才应用 Rule 2
+  if (!hasRealtimeValuation && !rule1Applied && currentValuationDate && currentNetWorthDate && currentValuationDate <= currentNetWorthDate) {
     // 从已排序数组末尾向前查找，找到 <= currentValuationDate 的最近历史记录
     let closestIdx = -1;
     for (let i = sortedHistory.length - 1; i >= 0; i--) {

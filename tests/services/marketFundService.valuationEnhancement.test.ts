@@ -408,4 +408,114 @@ describe('marketFundService - Valuation Enhancement', () => {
       expect(result?.changePercentage).not.toBeCloseTo(-1.54, 1);
     });
   });
+
+  describe('Realtime valuation preservation', () => {
+    test('should preserve realtime valuation time for today\'s fund', () => {
+      // 使用真实的今天日期进行测试
+      const today = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
+      const todayTimestamp = new Date(`${today}T12:00:00`).getTime();
+
+      const history: HistoricalPoint[] = [
+        { date: dateToTimestamp('2026-08-08'), value: 1.1000, equityReturn: 0 },
+        { date: dateToTimestamp('2026-08-09'), value: 1.1200, equityReturn: 1.82 },
+        { date: todayTimestamp, value: 1.1500, equityReturn: 2.68 } // 今天的历史净值
+      ];
+
+      const valuation: ValuationData = {
+        symbol: 'realtimeFund',
+        name: 'Test Fund',
+        currentPrice: 1.1550, // 实时估值
+        previousPrice: 1.1500,
+        changePercentage: 0.43,
+        lastUpdated: `${today} 09:21:00`, // 实时估值时间
+        realtimeDate: today,
+        valuationDate: today,
+        netWorthDate: today,
+        sourceUrl: 'http://example.com'
+      };
+
+      marketFundService.updateValuation('realtimeFund', valuation);
+      marketFundService.updateHistory('realtimeFund', history);
+
+      const result = marketFundService.getValuation('realtimeFund');
+
+      expect(result).toBeDefined();
+      // 关键验证：实时估值时间应该被保留，不应该被覆盖为15:00
+      expect(result?.lastUpdated).toBe(`${today} 09:21:00`);
+      expect(result?.currentPrice).toBe(1.1550);
+      expect(result?.realtimeDate).toBe(today);
+      expect(result?.valuationDate).toBe(today);
+    });
+
+    test('should preserve realtime valuation even when latest history date equals valuation date', () => {
+      // 测试：即使历史净值日期等于估值日期（今天），实时估值也不应该被覆盖
+      const today = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
+      const todayTimestamp = new Date(`${today}T12:00:00`).getTime();
+
+      const history: HistoricalPoint[] = [
+        { date: dateToTimestamp('2026-08-10'), value: 1.1000, equityReturn: 0 },
+        { date: todayTimestamp, value: 1.1500, equityReturn: 2.68 }
+      ];
+
+      const valuation: ValuationData = {
+        symbol: 'realtimeFund2',
+        name: 'Test Fund',
+        currentPrice: 1.1580,
+        previousPrice: 1.1500,
+        changePercentage: 0.70,
+        lastUpdated: `${today} 10:15:00`, // 上午10:15的实时估值
+        realtimeDate: today,
+        valuationDate: today,
+        netWorthDate: '2026-08-10',
+        sourceUrl: 'http://example.com'
+      };
+
+      marketFundService.updateValuation('realtimeFund2', valuation);
+      marketFundService.updateHistory('realtimeFund2', history);
+
+      const result = marketFundService.getValuation('realtimeFund2');
+
+      expect(result).toBeDefined();
+      // 验证：实时估值时间应该被保留
+      expect(result?.lastUpdated).toBe(`${today} 10:15:00`);
+      expect(result?.currentPrice).toBe(1.1580);
+    });
+
+    test('should apply Rule 1 for historical valuation (not today)', () => {
+      // 测试：历史数据的估值应该应用 Rule 1
+      const today = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
+      const todayTimestamp = new Date(`${today}T12:00:00`).getTime();
+      const historyDate = '2026-08-09';
+
+      const history: HistoricalPoint[] = [
+        { date: dateToTimestamp('2026-08-08'), value: 1.1000, equityReturn: 0 },
+        { date: dateToTimestamp('2026-08-09'), value: 1.1200, equityReturn: 1.82 },
+        { date: todayTimestamp, value: 1.1500, equityReturn: 2.68 }
+      ];
+
+      const valuation: ValuationData = {
+        symbol: 'historicalFund',
+        name: 'Test Fund',
+        currentPrice: 1.1150,
+        previousPrice: 1.1000,
+        changePercentage: 1.36,
+        lastUpdated: `${historyDate} 16:00`, // 历史估值，时间是16:00
+        realtimeDate: historyDate,
+        valuationDate: historyDate,
+        netWorthDate: '2026-08-08',
+        sourceUrl: 'http://example.com'
+      };
+
+      marketFundService.updateValuation('historicalFund', valuation);
+      marketFundService.updateHistory('historicalFund', history);
+
+      const result = marketFundService.getValuation('historicalFund');
+
+      expect(result).toBeDefined();
+      // 验证：历史数据应该应用 Rule 1，使用最新的历史净值
+      expect(result?.currentPrice).toBeCloseTo(1.1500);
+      expect(result?.lastUpdated).toBe(`${today} 15:00`); // 被覆盖为最新历史净值的收盘时间
+      expect(result?.realtimeDate).toBe(today);
+    });
+  });
 });
