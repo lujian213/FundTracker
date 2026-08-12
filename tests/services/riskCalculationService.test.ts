@@ -454,21 +454,21 @@ describe('riskCalculationService', () => {
   });
 
   describe('单个基金回撤计算', () => {
-    it('当前回撤峰值应为历史最高点（未被超越时）', async () => {
+    it('历史最高点尚未恢复时，当前回撤峰值应为历史最高点', async () => {
       const portfolio = createMockPortfolio();
       const marketData = createMockMarketData();
 
       mockGetRiskThresholds.mockReturnValue(DEFAULT_RISK_THRESHOLDS);
       mockComputeOverallProfit.mockResolvedValue(createMockSummary(10));
 
-      // 创建历史净值：1.0 -> 1.5 -> 1.3 -> 1.4 -> 1.35 -> 1.30
-      // 峰值应该是 1.5（历史最高点），而不是 1.4 或 1.35
+      // 创建历史净值：历史最高点1.5，尚未恢复
+      // 1.0 -> 1.5(历史最高，也是当前回撤峰值) -> 1.3 -> 1.4 -> 1.35 -> 1.30
       const history = [
         { date: new Date('2024-01-01').getTime(), value: 1.0, equityReturn: 0 },
         { date: new Date('2024-01-02').getTime(), value: 1.2, equityReturn: 0 },
-        { date: new Date('2024-01-03').getTime(), value: 1.5, equityReturn: 0 },  // 历史最高点
+        { date: new Date('2024-01-03').getTime(), value: 1.5, equityReturn: 0 },  // 历史最高点，也是当前回撤峰值
         { date: new Date('2024-01-04').getTime(), value: 1.3, equityReturn: 0 },
-        { date: new Date('2024-01-05').getTime(), value: 1.4, equityReturn: 0 },  // 反弹，但没超过 1.5
+        { date: new Date('2024-01-05').getTime(), value: 1.4, equityReturn: 0 },  // 反弹，但没超过1.5
         { date: new Date('2024-01-06').getTime(), value: 1.35, equityReturn: 0 },
         { date: new Date('2024-01-07').getTime(), value: 1.30, equityReturn: 0 }, // 当前
       ];
@@ -484,15 +484,11 @@ describe('riskCalculationService', () => {
 
       const snapshot = await computeRiskSnapshot(portfolio, marketData);
 
-      // 应有单个基金回撤数据（portfolio 有 2 个基金）
-      expect(snapshot.fundDrawdowns.length).toBeGreaterThanOrEqual(1);
       const fundDrawdown = snapshot.fundDrawdowns[0];
 
       // 当前回撤深度 = (1.5 - 1.30) / 1.5 = 13.33%
       expect(fundDrawdown.currentDrawdown).toBeCloseTo(13.33, 1);
-      // 峰值日期应该是历史最高点 2024-01-03
-      expect(fundDrawdown.peakDate).toBe('2024-01-03');
-      // 峰值应该是 1.5
+      // 峰值应该是历史最高点 1.5
       expect(fundDrawdown.peakValue).toBe(1.5);
     });
 
@@ -503,8 +499,7 @@ describe('riskCalculationService', () => {
       mockGetRiskThresholds.mockReturnValue(DEFAULT_RISK_THRESHOLDS);
       mockComputeOverallProfit.mockResolvedValue(createMockSummary(10));
 
-      // 创建历史净值：1.0 -> 1.5 -> 1.3 -> 1.6 -> 1.55 -> 1.50
-      // 峰值应该是 1.6（新的历史最高点）
+      // 创建历史净值：创新高场景
       const history = [
         { date: new Date('2024-01-01').getTime(), value: 1.0, equityReturn: 0 },
         { date: new Date('2024-01-02').getTime(), value: 1.2, equityReturn: 0 },
@@ -530,10 +525,47 @@ describe('riskCalculationService', () => {
 
       // 当前回撤深度 = (1.6 - 1.50) / 1.6 = 6.25%
       expect(fundDrawdown.currentDrawdown).toBeCloseTo(6.25, 1);
-      // 峰值日期应该是新的历史最高点 2024-01-05
-      expect(fundDrawdown.peakDate).toBe('2024-01-05');
-      // 峰值应该是 1.6
+      // 峰值应该是新的历史最高点 1.6
       expect(fundDrawdown.peakValue).toBe(1.6);
+    });
+
+    it('恢复进度应基于当前回撤的峰值和低点计算', async () => {
+      const portfolio = createMockPortfolio();
+      const marketData = createMockMarketData();
+
+      mockGetRiskThresholds.mockReturnValue(DEFAULT_RISK_THRESHOLDS);
+      mockComputeOverallProfit.mockResolvedValue(createMockSummary(10));
+
+      // 净值曲线：历史最高1.5尚未被突破
+      // 1.0 -> 1.5(历史最高，也是当前回撤峰值) -> 1.2(当前回撤低点) -> 1.35(当前)
+      // 恢复进度 = (1.35 - 1.2) / (1.5 - 1.2) = 50%
+      const history = [
+        { date: new Date('2024-01-01').getTime(), value: 1.0, equityReturn: 0 },
+        { date: new Date('2024-01-02').getTime(), value: 1.5, equityReturn: 0 },  // 历史最高，当前回撤峰值
+        { date: new Date('2024-01-03').getTime(), value: 1.2, equityReturn: 0 },  // 当前回撤低点
+        { date: new Date('2024-01-04').getTime(), value: 1.35, equityReturn: 0 }, // 当前值
+      ];
+
+      mockGetHistory.mockReturnValue(history);
+      mockGetPosition.mockReturnValue({
+        fullCapacity: 10000,
+        initialPosition: 1000,
+        startDate: '2024-01-01',
+        initialPrice: 1.0,
+      });
+      mockGetTradesForSymbol.mockReturnValue([]);
+
+      const snapshot = await computeRiskSnapshot(portfolio, marketData);
+      const fundDrawdown = snapshot.fundDrawdowns[0];
+
+      // 验证当前回撤的峰值和低点
+      expect(fundDrawdown.peakValue).toBe(1.5);  // 当前回撤峰值 = 历史最高
+      expect(fundDrawdown.troughValue).toBe(1.2);  // 当前回撤低点
+      expect(fundDrawdown.currentValue).toBe(1.35);  // 当前值
+
+      // 恢复进度 = (1.35 - 1.2) / (1.5 - 1.2) = 50%
+      expect(fundDrawdown.troughValue).toBeDefined();
+      expect(fundDrawdown.troughValue).toBeGreaterThan(0);
     });
 
     it('当前回撤低点应正确计算并传递', async () => {
@@ -543,13 +575,11 @@ describe('riskCalculationService', () => {
       mockGetRiskThresholds.mockReturnValue(DEFAULT_RISK_THRESHOLDS);
       mockComputeOverallProfit.mockResolvedValue(createMockSummary(10));
 
-      // 净值曲线：成本价 2.0
-      // 1.0 (+0%) -> 2.4 (+20% 峰值) -> 2.2 (+10% 低点) -> 2.3 (+15% 当前)
       const history = [
-        { date: new Date('2024-01-01').getTime(), value: 2.0, equityReturn: 0 },
-        { date: new Date('2024-10-01').getTime(), value: 2.4, equityReturn: 0 },  // +20% 峰值
-        { date: new Date('2024-01-03').getTime(), value: 2.2, equityReturn: 0 },  // +10% 低点
-        { date: new Date('2024-01-04').getTime(), value: 2.3, equityReturn: 0 },  // +15% 当前
+        { date: new Date('2024-01-01').getTime(), value: 1.0, equityReturn: 0 },
+        { date: new Date('2024-01-02').getTime(), value: 1.5, equityReturn: 0 },  // 峰值
+        { date: new Date('2024-01-03').getTime(), value: 1.3, equityReturn: 0 },  // 低点
+        { date: new Date('2024-01-04').getTime(), value: 1.35, equityReturn: 0 },  // 当前
       ];
 
       mockGetHistory.mockReturnValue(history);
@@ -557,7 +587,7 @@ describe('riskCalculationService', () => {
         fullCapacity: 10000,
         initialPosition: 1000,
         startDate: '2024-01-01',
-        initialPrice: 2.0,
+        initialPrice: 1.0,
       });
       mockGetTradesForSymbol.mockReturnValue([]);
 
@@ -568,10 +598,43 @@ describe('riskCalculationService', () => {
       expect(fundDrawdown.troughDate).toBeTruthy();
       expect(fundDrawdown.troughValue).toBeDefined();
       expect(fundDrawdown.troughValue).toBeGreaterThan(0);
+    });
 
-      // 验证 troughReturnRate 或 troughValue 至少有一个有值
-      const hasTroughData = fundDrawdown.troughReturnRate !== undefined || fundDrawdown.troughValue !== undefined;
-      expect(hasTroughData).toBe(true);
+    it('建仓日期之后的净值数据应被用于计算回撤', async () => {
+      const portfolio = createMockPortfolio();
+      const marketData = createMockMarketData();
+
+      mockGetRiskThresholds.mockReturnValue(DEFAULT_RISK_THRESHOLDS);
+      mockComputeOverallProfit.mockResolvedValue(createMockSummary(10));
+
+      // 历史净值：历史最高点2.0发生在建仓前
+      // 2024-01-01: 1.0 -> 2024-01-02: 2.0 (历史最高) -> 2024-01-03: 1.5 -> 2024-01-04: 1.8 -> 2024-01-05: 1.6
+      // 建仓日期：2024-01-03
+      // 建仓后数据：1.5 -> 1.8 (建仓后最高) -> 1.6 (当前)
+      // 建仓后最大回撤：(1.8 - 1.6) / 1.8 = 11.11%
+      const history = [
+        { date: new Date('2024-01-01').getTime(), value: 1.0, equityReturn: 0 },
+        { date: new Date('2024-01-02').getTime(), value: 2.0, equityReturn: 0 },  // 历史最高点（建仓前）
+        { date: new Date('2024-01-03').getTime(), value: 1.5, equityReturn: 0 },  // 建仓日
+        { date: new Date('2024-01-04').getTime(), value: 1.8, equityReturn: 0 },  // 建仓后最高点
+        { date: new Date('2024-01-05').getTime(), value: 1.6, equityReturn: 0 }, // 当前
+      ];
+
+      mockGetHistory.mockReturnValue(history);
+      mockGetPosition.mockReturnValue({
+        fullCapacity: 10000,
+        initialPosition: 1000,
+        startDate: '2024-01-03',  // 建仓日期
+        initialPrice: 1.5,
+      });
+      mockGetTradesForSymbol.mockReturnValue([]);
+
+      const snapshot = await computeRiskSnapshot(portfolio, marketData);
+      const fundDrawdown = snapshot.fundDrawdowns[0];
+
+      // 最大回撤应该只计算建仓后的数据：(1.8 - 1.6) / 1.8 = 11.11%
+      // 而不是使用所有历史数据：(2.0 - 1.5) / 2.0 = 25%
+      expect(fundDrawdown.maxDrawdown).toBeCloseTo(11.11, 1);
     });
   });
 

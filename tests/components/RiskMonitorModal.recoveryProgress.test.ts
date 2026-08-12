@@ -57,53 +57,70 @@ describe('RiskMonitorModal 恢复进度阈值', () => {
 
   describe('恢复进度计算逻辑', () => {
     /**
-     * 模拟恢复进度计算
-     * 公式：(maxDrawdown - currentDrawdown) / maxDrawdown * 100
+     * 模拟恢复进度计算（正确的公式）
+     * 公式：(currentValue - troughValue) / (peakValue - troughValue) * 100
      */
-    function calculateRecoveryProgress(maxDrawdown: number, currentDrawdown: number): number {
-      if (maxDrawdown <= 0) return 100;
-      return Math.max(0, Math.min(100, ((maxDrawdown - currentDrawdown) / maxDrawdown) * 100));
+    function calculateRecoveryProgress(peakValue: number, troughValue: number, currentValue: number): number {
+      if (peakValue <= troughValue) return 0;
+      return Math.max(0, Math.min(100, ((currentValue - troughValue) / (peakValue - troughValue)) * 100));
     }
 
-    it('完全恢复时应为 100%', () => {
-      const maxDrawdown = 1000;
-      const currentDrawdown = 0;
-      expect(calculateRecoveryProgress(maxDrawdown, currentDrawdown)).toBe(100);
+    it('完全恢复（回到峰值）时应为 100%', () => {
+      const peakValue = 100;
+      const troughValue = 80;
+      const currentValue = 100;  // 当前值等于峰值，完全恢复
+      expect(calculateRecoveryProgress(peakValue, troughValue, currentValue)).toBe(100);
     });
 
-    it('刚开始恢复时应为 0%', () => {
-      const maxDrawdown = 1000;
-      const currentDrawdown = 1000;
-      expect(calculateRecoveryProgress(maxDrawdown, currentDrawdown)).toBe(0);
+    it('在低点时应为 0%', () => {
+      const peakValue = 100;
+      const troughValue = 80;
+      const currentValue = 80;  // 当前值等于低点
+      expect(calculateRecoveryProgress(peakValue, troughValue, currentValue)).toBe(0);
     });
 
     it('部分恢复时应正确计算进度', () => {
-      const maxDrawdown = 1000;
+      const peakValue = 100;
+      const troughValue = 80;
 
-      // 恢复一半
-      expect(calculateRecoveryProgress(maxDrawdown, 500)).toBe(50);
+      // 恢复一半（当前值=90）
+      expect(calculateRecoveryProgress(peakValue, troughValue, 90)).toBe(50);
 
-      // 恢复 30%
-      expect(calculateRecoveryProgress(maxDrawdown, 700)).toBe(30);
+      // 恢复 30%（当前值=86）
+      expect(calculateRecoveryProgress(peakValue, troughValue, 86)).toBe(30);
 
-      // 恢复 70%
-      expect(calculateRecoveryProgress(maxDrawdown, 300)).toBe(70);
+      // 恢复 70%（当前值=94）
+      expect(calculateRecoveryProgress(peakValue, troughValue, 94)).toBe(70);
 
-      // 恢复 35%
-      expect(calculateRecoveryProgress(maxDrawdown, 650)).toBe(35);
+      // 恢复 35%（当前值=87）
+      expect(calculateRecoveryProgress(peakValue, troughValue, 87)).toBe(35);
     });
 
-    it('maxDrawdown 为 0 时应返回 100%', () => {
-      expect(calculateRecoveryProgress(0, 0)).toBe(100);
-      expect(calculateRecoveryProgress(0, 100)).toBe(100);
+    it('峰值等于低点时应返回 0%', () => {
+      expect(calculateRecoveryProgress(80, 80, 80)).toBe(0);
+      expect(calculateRecoveryProgress(100, 100, 90)).toBe(0);
     });
 
-    it('负数回撤应被限制在 0-100% 范围内', () => {
-      // currentDrawdown > maxDrawdown（异常情况）
-      expect(calculateRecoveryProgress(100, 200)).toBe(0);
+    it('当前值超出范围时应被限制在 0-100% 之间', () => {
+      const peakValue = 100;
+      const troughValue = 80;
 
-      // 负数回撤（已盈利）
-      expect(calculateRecoveryProgress(100, -50)).toBe(100);
+      // 当前值低于低点
+      expect(calculateRecoveryProgress(peakValue, troughValue, 70)).toBe(0);
+
+      // 当前值高于峰值
+      expect(calculateRecoveryProgress(peakValue, troughValue, 110)).toBe(100);
+    });
+
+    it('实际场景：历史最高100，历史最低70，当前回升到88', () => {
+      // 历史最高点100，历史最大回撤低点70
+      // 但当前回撤的峰值是95，低点是85，当前值88
+      // 恢复进度应该是 (88 - 85) / (95 - 85) = 30%，而不是 (88 - 70) / (100 - 70) = 60%
+      const peakValue = 95;  // 当前回撤的峰值
+      const troughValue = 85; // 当前回撤的低点
+      const currentValue = 88; // 当前值
+
+      expect(calculateRecoveryProgress(peakValue, troughValue, currentValue)).toBe(30);
     });
   });
 

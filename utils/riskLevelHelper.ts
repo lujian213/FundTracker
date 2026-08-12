@@ -175,3 +175,19 @@ export function getRecoveryProgressColor(status: 'danger' | 'warning' | 'safe'):
     case 'danger': return '#dc2626';  // red-600
   }
 }
+
+/**
+ * 计算恢复进度百分比
+ * @param peakValue 峰值
+ * @param troughValue 低点值
+ * @param currentValue 当前值
+ * @returns 恢复进度百分比 (0-100)
+ */
+export function calculateRecoveryProgress(
+  peakValue: number,
+  troughValue: number,
+  currentValue: number
+): number {
+  if (peakValue <= troughValue) return 0;
+  return Math.max(0, Math.min(100, ((currentValue - troughValue) / (peakValue - troughValue)) * 100));
+}

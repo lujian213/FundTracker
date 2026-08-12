@@ -193,8 +193,10 @@ export async function computeRiskSnapshot(
   const drawdownResult = calculateDrawdownGeneric(values, percentDrawdownStrategy);
   const maxRecoveryDetails = calculateMaxRecoveryGeneric(values, percentDrawdownStrategy);
 
-  // 3. 计算各基金回撤（老版本使用单位盈利法）
-  const fundDrawdowns = computeFundDrawdownsFromPersonalReturn(portfolio);
+  // 3. 计算各基金回撤（使用净值法）
+  const fundDrawdowns = computeFundDrawdowns(portfolio, {
+    method: 'nav'
+  });
 
   // 4. 使用公共函数组装回撤部分
   const snapshot = buildDrawdownSnapshot(
@@ -432,8 +434,26 @@ function computeFundDrawdowns(
         drawdownResult = calculateDrawdownGeneric(profitValues, amountDrawdownStrategy);
         drawdownMethod = 'profit';
       } else {
-        // 老版本逻辑：使用净值
-        const navValues = navHistory.map(p => ({ date: p.date, value: p.nav }));
+        // 老版本逻辑：使用净值（需要考虑建仓日期）
+        const startDate = position?.startDate;
+
+        // 优化：只在需要时才创建数组，避免冗余分配
+        let navValues: { date: string; value: number }[];
+        if (startDate) {
+          // 先过滤再映射，一次完成
+          navValues = navHistory
+            .filter(p => p.date >= startDate)
+            .map(p => ({ date: p.date, value: p.nav }));
+
+          // 如果过滤后数据不足，使用全部数据
+          if (navValues.length < 2) {
+            navValues = navHistory.map(p => ({ date: p.date, value: p.nav }));
+          }
+        } else {
+          // 无需过滤，直接映射
+          navValues = navHistory.map(p => ({ date: p.date, value: p.nav }));
+        }
+
         drawdownResult = calculateDrawdownGeneric(navValues, percentDrawdownStrategy);
         drawdownMethod = 'nav';
       }
@@ -465,172 +485,6 @@ function computeFundDrawdowns(
   return fundDrawdowns;
 }
 
-/**
- * 从个人收益率曲线计算各基金回撤
- * 使用单位盈利法计算：单位盈利 = 净值 - 成本价
- */
-function computeFundDrawdownsFromPersonalReturn(
-  portfolio: Ticker[]
-): FundDrawdown[] {
-  const fundDrawdowns: FundDrawdown[] = [];
-  const today = new Date();
-  const todayStr = formatDateISO(today);
-
-  for (const ticker of portfolio) {
-    const symbol = ticker.symbol;
-    try {
-      // 获取持仓信息
-      const position = getPosition(symbol);
-      const initialShares = position?.initialPosition || 0;
-      const initialPrice = position?.initialPrice || 0;
-
-      // 获取历史净值数据和当前估值
-      const history = getHistory(symbol) || [];
-      const valuation = getValuation(symbol);
-      if (history.length === 0) continue;
-
-      // 使用 prepareHistoryForProfitCalculation 合并历史数据和当前估值
-      const preparedHist = prepareHistoryForProfitCalculation({
-        history,
-        targetDate: todayStr,
-        todayDate: todayStr,
-        currentPrice: valuation?.currentPrice,
-        realtimeDate: valuation?.realtimeDate,
-        previousPrice: valuation?.previousPrice,
-        netWorthDate: valuation?.netWorthDate,
-      });
-
-      // 转换为 { date, nav } 格式
-      const navHistory = preparedHist.map(h => {
-        return { date: formatDateISO(new Date(h.date)), nav: h.value };
-      }).sort((a, b) => a.date.localeCompare(b.date));
-
-      // 获取交易记录
-      const trades = getTradesForSymbol(symbol) || [];
-
-      // 确定有效的初始份额和价格
-      let effectiveInitialShares = initialShares;
-      let effectiveInitialPrice = initialPrice;
-
-      // 如果没有初始持仓，从第一笔买入交易获取
-      if (initialShares === 0) {
-        const firstBuy = trades.find(t => t.type === 'buy');
-        if (!firstBuy) continue; // 没有买入记录，跳过
-        effectiveInitialShares = firstBuy.shares;
-        effectiveInitialPrice = firstBuy.price || 0;
-      }
-
-      // 使用单位盈利法计算回撤
-      const personalResult = calculatePersonalReturnCurve(
-        navHistory,
-        trades.map(t => ({
-          date: t.date,
-          type: t.type as 'buy' | 'sell' | 'initial',
-          shares: t.shares,
-          price: t.price || 0,
-          fee: t.fee || 0,
-        })),
-        effectiveInitialShares,
-        effectiveInitialPrice,
-        position?.startDate  // 传递建仓日期
-      );
-
-      // 如果计算失败，回退到基金净值回撤
-      if (!personalResult) {
-        // 使用基金净值回撤方法
-        const maxDrawdown = navHistory.length > 1
-          ? calculateMaxDrawdownFromNav(navHistory)
-          : 0;
-
-        // 计算历史最大回撤的详细信息
-        const navHistoryForMaxDrawdown = navHistory.map(p => ({ date: p.date, value: p.nav }));
-        const maxDrawdownDetails = calculateMaxDrawdownDetailsFromNav(navHistoryForMaxDrawdown);
-        const maxPeakNav = maxDrawdownDetails.peakNav;
-        const maxPeakDate = maxDrawdownDetails.peakDate || '';
-        const maxTroughNav = maxDrawdownDetails.troughNav;
-        const maxTroughDate = maxDrawdownDetails.troughDate || '';
-
-        const maxDrawdownDays = calculateCalendarDays(maxPeakDate, maxTroughDate);
-
-        const currentDrawdownDetails = calculateCurrentDrawdownDetails(navHistory);
-        const currentDrawdown = currentDrawdownDetails.currentDrawdown;
-        const currentPeakDate = currentDrawdownDetails.peakDate || '';
-        const currentPeakNav = currentDrawdownDetails.peakNav;
-        const currentTroughDate = currentDrawdownDetails.troughDate || '';
-        const currentTroughNav = currentDrawdownDetails.troughNav;
-        const currentNav = currentDrawdownDetails.currentNav;
-        const currentDateNav = currentDrawdownDetails.currentDate || '';
-
-        const currentDrawdownDays = calculateCalendarDays(currentPeakDate, currentDateNav);
-
-        fundDrawdowns.push({
-          symbol,
-          name: ticker.name,
-          currentDrawdown,
-          currentDrawdownDays,
-          maxDrawdown,
-          maxDrawdownPeakDate: maxPeakDate,
-          maxDrawdownTroughDate: maxTroughDate,
-          maxDrawdownDays,
-          maxDrawdownPeakNav: maxPeakNav,
-          maxDrawdownTroughNav: maxTroughNav,
-          peakDate: currentPeakDate,
-          peakValue: currentPeakNav,
-          troughDate: currentTroughDate,
-          troughValue: currentTroughNav,
-          currentValue: currentNav,
-          drawdownMethod: 'nav',  // 老版本使用净值法
-        });
-        continue;
-      }
-
-      // 使用单位盈利法的结果
-      const currentDrawdown = personalResult.currentDrawdown;
-      const maxDrawdown = personalResult.maxDrawdown;
-
-      // 计算持续天数
-      const maxDrawdownDays = calculateCalendarDays(personalResult.peakDate || '', personalResult.troughDate || '');
-      const currentDrawdownDays = calculateCalendarDays(personalResult.peakDate || '', todayStr);
-
-      // 当前单位盈利
-      const currentPoint = personalResult.returnCurve[personalResult.returnCurve.length - 1];
-
-      fundDrawdowns.push({
-        symbol,
-        name: ticker.name,
-        currentDrawdown,
-        currentDrawdownDays,
-        maxDrawdown,
-        maxDrawdownPeakDate: personalResult.peakDate || '',
-        maxDrawdownTroughDate: personalResult.troughDate || '',
-        maxDrawdownDays,
-        maxDrawdownPeakNav: personalResult.peakNav,
-        maxDrawdownTroughNav: personalResult.troughNav,
-        maxDrawdownPeakCostPrice: personalResult.peakCostPrice,
-        maxDrawdownTroughCostPrice: personalResult.troughCostPrice,
-        maxDrawdownPeakUnitProfit: personalResult.peakUnitProfit,
-        maxDrawdownTroughUnitProfit: personalResult.troughUnitProfit,
-        peakDate: personalResult.peakDate || '',
-        peakValue: personalResult.peakNav,
-        peakCostPrice: personalResult.peakCostPrice,
-        peakUnitProfit: personalResult.peakUnitProfit,
-        troughDate: personalResult.troughDate || '',
-        troughValue: personalResult.troughNav,
-        troughCostPrice: personalResult.troughCostPrice,
-        troughUnitProfit: personalResult.troughUnitProfit,
-        currentValue: currentPoint?.nav || 0,
-        currentCostPrice: currentPoint?.costPrice,
-        currentUnitProfit: currentPoint?.unitProfit,
-        drawdownMethod: 'nav',  // 老版本使用净值法
-      });
-    } catch (e) {
-      // 单个基金计算失败，跳过
-      console.warn(`计算基金 ${symbol} 回撤失败:`, e);
-    }
-  }
-
-  return fundDrawdowns;
-}
 
 /**
  * 从累计盈利时间线估算波动率

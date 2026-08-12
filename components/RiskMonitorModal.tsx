@@ -16,7 +16,7 @@ import { formatDateDisplay } from '../utils/dateFormat';
 import { getPosition } from '../services/marketFundService';
 import { computePositions } from '../utils/positionHelper';
 import { getRiskThresholds } from '../services/riskThresholdService';
-import { getScoreColor, getRiskLevel, getAlertLevelStyle, getAlertBadgeStyle, getDrawdownLevel, getDrawdownStatusInfo, getRecoveryProgressStatus, getRecoveryProgressColor } from '../utils/riskLevelHelper';
+import { getScoreColor, getRiskLevel, getAlertLevelStyle, getAlertBadgeStyle, getDrawdownLevel, getDrawdownStatusInfo, getRecoveryProgressStatus, getRecoveryProgressColor, calculateRecoveryProgress } from '../utils/riskLevelHelper';
 
 type RiskTab = 'overview' | 'alerts' | 'concentration' | 'drawdown' | 'drawdown-beta';
 
@@ -1298,10 +1298,9 @@ const DrawdownTab: React.FC<{
           </thead>
           <tbody>
             {sortedFundDrawdowns.map((fd) => {
-              // 计算恢复进度
-              const progress = fd.maxDrawdown > 0
-                ? Math.max(0, Math.min(100, ((fd.maxDrawdown - fd.currentDrawdown) / fd.maxDrawdown) * 100))
-                : 100;
+              // 计算恢复进度：使用当前回撤的峰值和低点
+              const troughValue = fd.troughValue ?? 0;
+              const progress = calculateRecoveryProgress(fd.peakValue, troughValue, fd.currentValue);
 
               // 判断状态：新版基于恢复进度，老版基于回撤值
               const status = drawdownMethod === 'profit'
@@ -1316,7 +1315,7 @@ const DrawdownTab: React.FC<{
 
               // 恢复进度追踪：显示绝对值
               const peakValueDisplay = formatNavOrProfitValue(fd.peakValue, fdMethod);
-              const troughValueDisplay = formatNavOrProfitValue(fd.troughValue || 0, fdMethod);
+              const troughValueDisplay = formatNavOrProfitValue(troughValue, fdMethod);
               const currentValueDisplay = formatNavOrProfitValue(fd.currentValue, fdMethod);
 
               return (
