@@ -22,6 +22,7 @@ import { queryAI, AIResponse } from '../services/aiService';
 import { formatMoneyWithSeparators, fmtNav, fmtNumber, formatPercent } from '../utils/format';
 import { getAIConfig, AIConfiguration } from '../services/aiConfigService';
 import { smartPrepareChartData } from '../utils/chartDataHelper';
+import { calculateYAxisRange } from '../utils/chartYAxisHelper';
 import { computePositionSharesByDate, prepareVolumeBars, computeCostPricesByDate } from '../utils/tradeVolumeHelper';
 import { isFeatureEnabled } from '../services/systemConfigService';
 import InitialPriceAdjustModal from './InitialPriceAdjustModal';
@@ -478,15 +479,9 @@ export const FundDetailsModal: React.FC<FundDetailsModalProps> = ({ data, onClos
     const costPriceMap = computeCostPricesByDate(posInitialPosition, posInitialPrice, posStartDate, tradeList, dates);
     const costPrices = dates.map(d => costPriceMap.get(d));
 
-    // 计算Y轴范围
+    // 计算Y轴范围（使用基于百分比的动态Y轴策略）
     const values = displayData.map(p => p.value);
-    const validCostPrices = costPrices.filter(c => c !== null && c !== undefined) as number[];
-    const rawMin = Math.min(Math.min(...values), validCostPrices.length > 0 ? Math.min(...validCostPrices) : Infinity);
-    const rawMax = Math.max(Math.max(...values), validCostPrices.length > 0 ? Math.max(...validCostPrices) : -Infinity);
-    const margin = (rawMax - rawMin) * 0.1 || 0.01;
-    const min = rawMin - margin;
-    const max = rawMax + margin;
-    const range = max - min;
+    const { min, max, range } = calculateYAxisRange(values, costPrices, 0.05);
 
     const getX = (idx: number) => paddingLeft + (idx * (width - paddingLeft - paddingRight) / (displayData.length - 1));
     const getY = (val: number) => height - paddingBottom - ((val - min) / range * (height - paddingTop - paddingBottom));
