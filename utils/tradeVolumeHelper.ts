@@ -9,6 +9,7 @@ interface TradeAggregate {
   sellShares: number;
   buyAmount: number;  // 买入金额（含手续费）= price * shares + fee
   sellAmount: number; // 卖出金额（减手续费）= price * shares - fee
+  dividendAmount: number; // 分红金额
 }
 
 /**
@@ -20,13 +21,23 @@ function aggregateTradesToMap(trades: TradeRecord[]): Map<string, TradeAggregate
   for (const t of trades) {
     const dateKey = toLocalDateKey(t.date);
     if (!tradeMap.has(dateKey)) {
-      tradeMap.set(dateKey, { buyShares: 0, sellShares: 0, buyAmount: 0, sellAmount: 0 });
+      tradeMap.set(dateKey, {
+        buyShares: 0,
+        sellShares: 0,
+        buyAmount: 0,
+        sellAmount: 0,
+        dividendAmount: 0,
+      });
     }
+
     const entry = tradeMap.get(dateKey)!;
-    if (t.type === 'buy') {
+    if (t.type === 'dividend') {
+      // 分红：记录金额，不影响份额
+      entry.dividendAmount += t.total || 0;
+    } else if (t.type === 'buy') {
       entry.buyShares += t.shares;
       entry.buyAmount += t.price * t.shares + (t.fee || 0);
-    } else {
+    } else { // sell
       entry.sellShares += t.shares;
       entry.sellAmount += t.price * t.shares - (t.fee || 0);
     }
@@ -67,7 +78,7 @@ export function computePositionSharesByDate(
 
 /**
  * 计算每个日期的成本价
- * 公式：成本价 = (初始成本 + 累计买入金额 - 累计卖出金额) ÷ 累计份额
+ * 公式：成本价 = (初始成本 + 累计买入金额 - 累计卖出金额 - 累计分红金额) ÷ 累计份额
  *
  * @param initialPosition 初始份额
  * @param initialPrice 初始价格（单价），null 时使用 0
@@ -97,6 +108,7 @@ export function computeCostPricesByDate(
   let cumulativeShares = initialPosition;
   let cumulativeBuyAmount = 0;
   let cumulativeSellAmount = 0;
+  let cumulativeDividendAmount = 0;  // 累计分红
 
   // 先累加 displayData 第一个日期之前的所有交易
   // startDate 用于决定曲线显示起点，不影响交易累加
@@ -107,6 +119,7 @@ export function computeCostPricesByDate(
       cumulativeShares += trade.buyShares - trade.sellShares;
       cumulativeBuyAmount += trade.buyAmount;
       cumulativeSellAmount += trade.sellAmount;
+      cumulativeDividendAmount += trade.dividendAmount;  // 累加分红
     }
   }
 
@@ -117,6 +130,7 @@ export function computeCostPricesByDate(
       cumulativeShares += trade.buyShares - trade.sellShares;
       cumulativeBuyAmount += trade.buyAmount;
       cumulativeSellAmount += trade.sellAmount;
+      cumulativeDividendAmount += trade.dividendAmount;  // 累加分红
     }
 
     // 在 startDate 之前返回 null（曲线不显示），但交易已累加
@@ -131,8 +145,8 @@ export function computeCostPricesByDate(
       continue;
     }
 
-    // 计算成本价
-    const totalCost = initialCost + cumulativeBuyAmount - cumulativeSellAmount;
+    // 计算成本价（分红减少成本）
+    const totalCost = initialCost + cumulativeBuyAmount - cumulativeSellAmount - cumulativeDividendAmount;
     const costPrice = totalCost / cumulativeShares;
 
     result.set(date, costPrice);

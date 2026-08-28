@@ -326,4 +326,160 @@ describe('profitCalculator', () => {
     const expectedCum = 27467.96 * 1.4733 - 37467.96 * 1.3737 + 10000 * 1.4507 - 14.51;
     expect(byDate['2026-02-25'].cumulativeProfit).toBeCloseTo(expectedCum, 0);
   });
+
+  test('dividend trade increases cumulative profit on the next day', () => {
+    // 新逻辑：分红交易增加累计盈利（减少净投入成本）
+    // 分红当天不影响当天的累计盈利，第二天开始生效
+    //
+    // initialPosition=100, initialPrice=10, initCost=1000
+    // Day1 (2026-02-20, NAV=10): 无交易
+    //   shares = 100, cumulative = 100*10 - 1000 = 0, dailyProfit = 0
+    // Day2 (2026-02-21, NAV=11, 分红 total=50): 当天的分红不影响当天
+    //   shares = 100 (分红不影响份额)
+    //   cumulative = 100*11 - 1000 = 100 (分红明天才生效)
+    //   dailyProfit = 100 - 0 = 100
+    // Day3 (2026-02-22, NAV=12): 昨天的分红今天生效
+    //   shares = 100 (份额不变)
+    //   cumulativeDividendAmount = 50
+    //   cumulative = 100*12 - 1000 + 50 = 250
+    //   dailyProfit = 250 - 100 = 150
+    const history: HistoricalPoint[] = [
+      { date: new Date('2026-02-20').getTime(), value: 10, equityReturn: 0 },
+      { date: new Date('2026-02-21').getTime(), value: 11, equityReturn: 0 },
+      { date: new Date('2026-02-22').getTime(), value: 12, equityReturn: 0 },
+    ];
+    const trades: TradeRecord[] = [
+      { id: 'd1', date: '2026-02-21', type: 'dividend', shares: 0, price: 0, fee: 0, total: 50 }
+    ];
+    const timeline = computeProfitTimeline({ history, trades, initialPosition: 100, initialPrice: 10 });
+
+    expect(timeline[0].date).toBe('2026-02-20');
+    expect(timeline[0].shares).toBe(100);
+    expect(timeline[0].cumulativeProfit).toBeCloseTo(0);
+    expect(timeline[0].dailyProfit).toBeCloseTo(0);
+
+    expect(timeline[1].date).toBe('2026-02-21');
+    expect(timeline[1].shares).toBe(100); // 分红不影响份额
+    expect(timeline[1].cumulativeProfit).toBeCloseTo(100); // 分红明天才生效
+    expect(timeline[1].dailyProfit).toBeCloseTo(100);
+
+    expect(timeline[2].date).toBe('2026-02-22');
+    expect(timeline[2].shares).toBe(100); // 份额不变
+    expect(timeline[2].cumulativeProfit).toBeCloseTo(250); // 100*12 - 1000 + 50
+    expect(timeline[2].dailyProfit).toBeCloseTo(150);
+  });
+
+  test('multiple dividend trades accumulate correctly', () => {
+    // 测试多次分红交易的累计
+    // initialPosition=100, initialPrice=10, initCost=1000
+    // Day1 (2026-02-20, NAV=10): 无交易
+    //   cumulative = 0
+    // Day2 (2026-02-21, NAV=11, 分红 total=30): 当天不影响
+    //   cumulative = 100*11 - 1000 = 100
+    // Day3 (2026-02-22, NAV=12, 分红 total=20): 昨天的分红生效，当天的不影响
+    //   cumulative = 100*12 - 1000 + 30 = 230
+    // Day4 (2026-02-23, NAV=13): 两笔分红都生效
+    //   cumulative = 100*13 - 1000 + 30 + 20 = 350
+    const history: HistoricalPoint[] = [
+      { date: new Date('2026-02-20').getTime(), value: 10, equityReturn: 0 },
+      { date: new Date('2026-02-21').getTime(), value: 11, equityReturn: 0 },
+      { date: new Date('2026-02-22').getTime(), value: 12, equityReturn: 0 },
+      { date: new Date('2026-02-23').getTime(), value: 13, equityReturn: 0 },
+    ];
+    const trades: TradeRecord[] = [
+      { id: 'd1', date: '2026-02-21', type: 'dividend', shares: 0, price: 0, fee: 0, total: 30 },
+      { id: 'd2', date: '2026-02-22', type: 'dividend', shares: 0, price: 0, fee: 0, total: 20 },
+    ];
+    const timeline = computeProfitTimeline({ history, trades, initialPosition: 100, initialPrice: 10 });
+
+    expect(timeline[0].cumulativeProfit).toBeCloseTo(0);
+    expect(timeline[1].cumulativeProfit).toBeCloseTo(100); // 分红明天生效
+    expect(timeline[2].cumulativeProfit).toBeCloseTo(230); // 100*12 - 1000 + 30
+    expect(timeline[3].cumulativeProfit).toBeCloseTo(350); // 100*13 - 1000 + 30 + 20
+  });
+
+  test('dividend trade with buy and sell trades', () => {
+    // 测试分红与买入/卖出混合的场景
+    // initialPosition=100, initialPrice=10, initCost=1000
+    // Day1 (2026-02-20, NAV=10): 无交易
+    //   shares = 100, cumulative = 0
+    // Day2 (2026-02-21, NAV=11, 买入50@10, 分红 total=50): 当天的交易不影响当天
+    //   shares = 100, cumulative = 100*11 - 1000 = 100
+    // Day3 (2026-02-22, NAV=12): 昨天的买入和分红生效
+    //   shares = 100 + 50 = 150
+    //   buyAmount = 50*10 = 500
+    //   dividendAmount = 50
+    //   cumulative = 150*12 - 1000 - 500 + 50 = 350
+    // Day4 (2026-02-23, NAV=13, 卖出30@13): 当天的卖出不影响当天
+    //   shares = 150
+    //   sellAmountBeforeToday = 0 (昨天的卖出还没发生)
+    //   cumulative = 150*13 - 1000 - 500 + 50 = 500
+    // Day5 (2026-02-24, NAV=14): 昨天的卖出生效
+    //   shares = 150 - 30 = 120
+    //   sellAmountBeforeToday = 30*13 = 390
+    //   cumulative = 120*14 - 1000 - 500 + 50 + 390 = 620
+    const history: HistoricalPoint[] = [
+      { date: new Date('2026-02-20').getTime(), value: 10, equityReturn: 0 },
+      { date: new Date('2026-02-21').getTime(), value: 11, equityReturn: 0 },
+      { date: new Date('2026-02-22').getTime(), value: 12, equityReturn: 0 },
+      { date: new Date('2026-02-23').getTime(), value: 13, equityReturn: 0 },
+      { date: new Date('2026-02-24').getTime(), value: 14, equityReturn: 0 },
+    ];
+    const trades: TradeRecord[] = [
+      { id: 'b1', date: '2026-02-21', type: 'buy', shares: 50, price: 10, fee: 0 },
+      { id: 'd1', date: '2026-02-21', type: 'dividend', shares: 0, price: 0, fee: 0, total: 50 },
+      { id: 's1', date: '2026-02-23', type: 'sell', shares: 30, price: 13, fee: 0 },
+    ];
+    const timeline = computeProfitTimeline({ history, trades, initialPosition: 100, initialPrice: 10 });
+
+    expect(timeline[0].shares).toBe(100);
+    expect(timeline[0].cumulativeProfit).toBeCloseTo(0);
+
+    expect(timeline[1].shares).toBe(100); // 当天的买入不影响
+    expect(timeline[1].cumulativeProfit).toBeCloseTo(100);
+
+    expect(timeline[2].shares).toBe(150); // 昨天的买入生效
+    expect(timeline[2].cumulativeProfit).toBeCloseTo(350);
+
+    expect(timeline[3].shares).toBe(150); // 当天的卖出不影响
+    expect(timeline[3].cumulativeProfit).toBeCloseTo(500);
+
+    expect(timeline[4].shares).toBe(120); // 昨天的卖出生效
+    expect(timeline[4].cumulativeProfit).toBeCloseTo(620);
+  });
+
+  test('dividend trade with zero total does not affect cumulative profit', () => {
+    // 测试 total 为 0 的分红交易不影响累计盈利
+    const history: HistoricalPoint[] = [
+      { date: new Date('2026-02-20').getTime(), value: 10, equityReturn: 0 },
+      { date: new Date('2026-02-21').getTime(), value: 11, equityReturn: 0 },
+      { date: new Date('2026-02-22').getTime(), value: 12, equityReturn: 0 },
+    ];
+    const trades: TradeRecord[] = [
+      { id: 'd1', date: '2026-02-21', type: 'dividend', shares: 0, price: 0, fee: 0, total: 0 },
+    ];
+    const timeline = computeProfitTimeline({ history, trades, initialPosition: 100, initialPrice: 10 });
+
+    expect(timeline[0].cumulativeProfit).toBeCloseTo(0);
+    expect(timeline[1].cumulativeProfit).toBeCloseTo(100);
+    expect(timeline[2].cumulativeProfit).toBeCloseTo(200); // 没有分红增加
+  });
+
+  test('dividend trade without total field does not affect cumulative profit', () => {
+    // 测试没有 total 字段的分红交易不影响累计盈利
+    const history: HistoricalPoint[] = [
+      { date: new Date('2026-02-20').getTime(), value: 10, equityReturn: 0 },
+      { date: new Date('2026-02-21').getTime(), value: 11, equityReturn: 0 },
+      { date: new Date('2026-02-22').getTime(), value: 12, equityReturn: 0 },
+    ];
+    const trades: TradeRecord[] = [
+      // total 字段可选，缺失时不应导致错误
+      { id: 'd1', date: '2026-02-21', type: 'dividend', shares: 0, price: 0, fee: 0 },
+    ];
+    const timeline = computeProfitTimeline({ history, trades, initialPosition: 100, initialPrice: 10 });
+
+    expect(timeline[0].cumulativeProfit).toBeCloseTo(0);
+    expect(timeline[1].cumulativeProfit).toBeCloseTo(100);
+    expect(timeline[2].cumulativeProfit).toBeCloseTo(200); // 没有分红增加
+  });
 });

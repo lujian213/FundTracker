@@ -405,3 +405,224 @@ describe('getUnitsForDate', () => {
   });
 });
 
+// ═══════════════════════════════════════════════════════════════════════════════
+// computeAvgCostPrice 分红测试
+// ═══════════════════════════════════════════════════════════════════════════════
+
+describe('computeAvgCostPrice with dividend trades', () => {
+  // 导入 computeAvgCostPrice 函数
+  const { computeAvgCostPrice } = require('../../utils/positionHelper');
+
+  beforeEach(() => {
+    localStorage.clear();
+    resetMarketFundCache();
+  });
+
+  test('dividend reduces average cost price', () => {
+    // 初始份额 100，初始价格 1.0
+    updatePosition('000001', {
+      fullCapacity: 1000,
+      initialPosition: 100,
+      startDate: '2026-01-01',
+      initialPrice: 1.0,
+    });
+
+    // 分红 10 元
+    setTradesForSymbol('000001', [
+      { id: 'd1', date: '2026-01-10', type: 'dividend', shares: 0, price: 0, fee: 0, total: 10 },
+    ] as any);
+
+    // 成本价 = (100 * 1.0 - 10) / 100 = 0.9
+    const costPrice = computeAvgCostPrice('000001', [
+      { id: 'd1', date: '2026-01-10', type: 'dividend', shares: 0, price: 0, fee: 0, total: 10 },
+    ] as any);
+
+    expect(costPrice).toBeCloseTo(0.9, 4);
+  });
+
+  test('multiple dividends accumulate to reduce cost price', () => {
+    // 初始份额 100，初始价格 1.0
+    updatePosition('000001', {
+      fullCapacity: 1000,
+      initialPosition: 100,
+      startDate: '2026-01-01',
+      initialPrice: 1.0,
+    });
+
+    // 分红 10 元 + 15 元 = 25 元
+    setTradesForSymbol('000001', [
+      { id: 'd1', date: '2026-01-10', type: 'dividend', shares: 0, price: 0, fee: 0, total: 10 },
+      { id: 'd2', date: '2026-01-20', type: 'dividend', shares: 0, price: 0, fee: 0, total: 15 },
+    ] as any);
+
+    // 成本价 = (100 * 1.0 - 25) / 100 = 0.75
+    const costPrice = computeAvgCostPrice('000001', [
+      { id: 'd1', date: '2026-01-10', type: 'dividend', shares: 0, price: 0, fee: 0, total: 10 },
+      { id: 'd2', date: '2026-01-20', type: 'dividend', shares: 0, price: 0, fee: 0, total: 15 },
+    ] as any);
+
+    expect(costPrice).toBeCloseTo(0.75, 4);
+  });
+
+  test('dividend does not affect share count', () => {
+    // 初始份额 100
+    updatePosition('000001', {
+      fullCapacity: 1000,
+      initialPosition: 100,
+      startDate: '2026-01-01',
+      initialPrice: 1.0,
+    });
+
+    // 分红 10 元，份额应保持 100
+    setTradesForSymbol('000001', [
+      { id: 'd1', date: '2026-01-10', type: 'dividend', shares: 0, price: 0, fee: 0, total: 10 },
+    ] as any);
+
+    const { entries } = computePositions(
+      [makeTicker('000001')],
+      { '000001': makeValuation('000001', 1.0) }
+    );
+
+    expect(entries[0].currentShares).toBeCloseTo(100);
+  });
+
+  test('dividend with buy and sell trades calculates correct cost price', () => {
+    // 初始份额 100，初始价格 1.0
+    updatePosition('000001', {
+      fullCapacity: 1000,
+      initialPosition: 100,
+      startDate: '2026-01-01',
+      initialPrice: 1.0,
+    });
+
+    // 买入 50 份，价格 1.2
+    // 卖出 30 份，价格 1.3
+    // 分红 20 元
+    setTradesForSymbol('000001', [
+      { id: 'b1', date: '2026-01-10', type: 'buy', shares: 50, price: 1.2, fee: 0 },
+      { id: 's1', date: '2026-01-15', type: 'sell', shares: 30, price: 1.3, fee: 0 },
+      { id: 'd1', date: '2026-01-20', type: 'dividend', shares: 0, price: 0, fee: 0, total: 20 },
+    ] as any);
+
+    // 总份额 = 100 + 50 - 30 = 120
+    // 买入金额 = 50 * 1.2 = 60
+    // 卖出金额 = 30 * 1.3 = 39
+    // 总成本 = 100 * 1.0 + 60 - 39 - 20 = 101
+    // 成本价 = 101 / 120 ≈ 0.8417
+    const costPrice = computeAvgCostPrice('000001', [
+      { id: 'b1', date: '2026-01-10', type: 'buy', shares: 50, price: 1.2, fee: 0 },
+      { id: 's1', date: '2026-01-15', type: 'sell', shares: 30, price: 1.3, fee: 0 },
+      { id: 'd1', date: '2026-01-20', type: 'dividend', shares: 0, price: 0, fee: 0, total: 20 },
+    ] as any);
+
+    expect(costPrice).toBeCloseTo(0.8417, 4);
+  });
+
+  test('dividend with zero or missing total is ignored', () => {
+    updatePosition('000001', {
+      fullCapacity: 1000,
+      initialPosition: 100,
+      startDate: '2026-01-01',
+      initialPrice: 1.0,
+    });
+
+    // 分红 total = 0 和 total = undefined
+    setTradesForSymbol('000001', [
+      { id: 'd1', date: '2026-01-10', type: 'dividend', shares: 0, price: 0, fee: 0, total: 0 },
+      { id: 'd2', date: '2026-01-20', type: 'dividend', shares: 0, price: 0, fee: 0 },
+    ] as any);
+
+    // 成本价应为初始价格 1.0
+    const costPrice = computeAvgCostPrice('000001', [
+      { id: 'd1', date: '2026-01-10', type: 'dividend', shares: 0, price: 0, fee: 0, total: 0 },
+      { id: 'd2', date: '2026-01-20', type: 'dividend', shares: 0, price: 0, fee: 0 },
+    ] as any);
+
+    expect(costPrice).toBeCloseTo(1.0, 4);
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// computePositionState 测试
+// ═══════════════════════════════════════════════════════════════════════════════
+
+describe('computePositionState', () => {
+  const { computePositionState } = require('../../utils/positionHelper');
+
+  test('calculates position state with no trades', () => {
+    const state = computePositionState(100, 1.0, []);
+
+    expect(state.currentShares).toBe(100);
+    expect(state.buyShares).toBe(0);
+    expect(state.sellShares).toBe(0);
+    expect(state.buyAmount).toBe(0);
+    expect(state.sellAmount).toBe(0);
+    expect(state.dividendAmount).toBe(0);
+    expect(state.initialCost).toBe(100);
+  });
+
+  test('calculates position state with buy and sell trades', () => {
+    const trades: any[] = [
+      { id: 'b1', date: '2026-01-01', type: 'buy', shares: 50, price: 1.2, fee: 10 },
+      { id: 's1', date: '2026-01-02', type: 'sell', shares: 30, price: 1.3, fee: 5 },
+    ];
+
+    const state = computePositionState(100, 1.0, trades);
+
+    expect(state.currentShares).toBe(120); // 100 + 50 - 30
+    expect(state.buyShares).toBe(50);
+    expect(state.sellShares).toBe(30);
+    expect(state.buyAmount).toBe(70); // 1.2 * 50 + 10
+    expect(state.sellAmount).toBe(34); // 1.3 * 30 - 5
+    expect(state.dividendAmount).toBe(0);
+    expect(state.initialCost).toBe(100);
+  });
+
+  test('calculates position state with dividend trades', () => {
+    const trades: any[] = [
+      { id: 'd1', date: '2026-01-01', type: 'dividend', shares: 0, price: 0, fee: 0, total: 50 },
+      { id: 'd2', date: '2026-01-02', type: 'dividend', shares: 0, price: 0, fee: 0, total: 30 },
+    ];
+
+    const state = computePositionState(100, 1.0, trades);
+
+    expect(state.currentShares).toBe(100); // 分红不影响份额
+    expect(state.dividendAmount).toBe(80); // 50 + 30
+  });
+
+  test('calculates position state with mixed trades', () => {
+    const trades: any[] = [
+      { id: 'b1', date: '2026-01-01', type: 'buy', shares: 50, price: 1.2, fee: 0 },
+      { id: 'd1', date: '2026-01-02', type: 'dividend', shares: 0, price: 0, fee: 0, total: 100 },
+      { id: 's1', date: '2026-01-03', type: 'sell', shares: 30, price: 1.5, fee: 0 },
+    ];
+
+    const state = computePositionState(100, 1.0, trades);
+
+    expect(state.currentShares).toBe(120); // 100 + 50 - 30
+    expect(state.buyShares).toBe(50);
+    expect(state.sellShares).toBe(30);
+    expect(state.buyAmount).toBe(60); // 1.2 * 50
+    expect(state.sellAmount).toBe(45); // 1.5 * 30
+    expect(state.dividendAmount).toBe(100);
+    expect(state.initialCost).toBe(100);
+  });
+
+  test('handles null initial price', () => {
+    const state = computePositionState(100, null, []);
+
+    expect(state.initialCost).toBe(0);
+  });
+
+  test('ignores dividend with zero or missing total', () => {
+    const trades: any[] = [
+      { id: 'd1', date: '2026-01-01', type: 'dividend', shares: 0, price: 0, fee: 0, total: 0 },
+      { id: 'd2', date: '2026-01-02', type: 'dividend', shares: 0, price: 0, fee: 0 }, // total undefined
+    ];
+
+    const state = computePositionState(100, 1.0, trades);
+
+    expect(state.dividendAmount).toBe(0);
+  });
+});
+

@@ -360,6 +360,15 @@
   "trades": {
     "270023": [
       {
+        "id": "dividend_270023_001",
+        "date": "2026-03-25",
+        "type": "dividend",
+        "shares": 0,
+        "price": 0,
+        "fee": 0,
+        "total": 150.50
+      },
+      {
         "id": "ihi279ajq",
         "date": "2026-04-01",
         "type": "buy",
@@ -1435,6 +1444,15 @@
       }
     ],
     "002611": [
+      {
+        "id": "dividend_002611_001",
+        "date": "2026-04-01",
+        "type": "dividend",
+        "shares": 0,
+        "price": 0,
+        "fee": 0,
+        "total": 250.00
+      },
       {
         "id": "trade_1775193905713_ewevxskfw",
         "date": "2026-04-02",

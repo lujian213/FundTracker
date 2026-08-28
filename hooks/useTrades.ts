@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { TradeRecord, TradeType } from '../types';
+import { TradeRecord, TradeType, getTradeAmount } from '../types';
 import * as marketFundService from '../services/marketFundService';
 
 // 事件名称，用于通知其他组件交易数据已变更
@@ -80,10 +80,9 @@ export function removeTradeForSymbol(symbol: string, id: string) {
  */
 export function exportTradesForSymbolJSON(symbol: string) {
   const arr = getTradesForSymbol(symbol);
-  // compute total dynamically for export
   const out = arr.map(t => ({
     ...t,
-    total: t.type === 'sell' ? t.price * t.shares - (t.fee || 0) : t.price * t.shares + (t.fee || 0)
+    total: getTradeAmount(t)
   }));
   return JSON.stringify({ symbol, trades: out }, null, 2);
 }
@@ -96,8 +95,9 @@ export function exportTradesForSymbolCSV(symbol: string) {
   const header = ['id', 'date', 'type', 'shares', 'price', 'fee', 'total'];
   const lines = [header.join(',')];
   for (const t of arr) {
-    const total = t.type === 'sell' ? t.price * t.shares - (t.fee || 0) : t.price * t.shares + (t.fee || 0);
-    lines.push([t.id, t.date, t.type, t.shares, t.price, t.fee, total].join(','));
+    const total = getTradeAmount(t);
+    const typeDisplay = t.type === 'dividend' ? '分红' : t.type;
+    lines.push([t.id, t.date, typeDisplay, t.shares, t.price, t.fee, total].join(','));
   }
   return lines.join('\n');
 }

@@ -1,10 +1,11 @@
 import React, { useState, useCallback, useRef, useEffect } from 'react';
 import { getTradesForSymbol } from '../hooks/useTrades';
 import { calculateFee } from '../utils/feeCalculator';
+import { TradeType } from '../types';
 
 export interface FeeInputProps {
   symbol: string;
-  type: 'buy' | 'sell';
+  type: TradeType;
   currentDate: string; // 当前交易日期，用于精确匹配历史记录
   price: number;
   total?: number; // 买入时必需

@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useState, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { DayPicker } from 'react-day-picker';
 import { zhCN } from 'date-fns/locale';
-import { Ticker, ValuationData } from '../types';
+import { Ticker, ValuationData, TradeType } from '../types';
 import { readAll, getAllTradeDates } from '../hooks/useTrades';
 import TradeBatchInputModal from './TradeBatchInputModal';
 import ComboTradeModal from './ComboTradeModal';
@@ -115,7 +115,7 @@ const TransactionsModal: React.FC<Props> = ({ portfolio, marketData, onClose, on
   const rows = useMemo(() => {
     if (!selectedDateStr) return [];
     const all = readAll();
-    const result: { id: number; symbol: string; name: string; type: 'buy' | 'sell'; shares: number; price: number; fee: number; total: number; effect: number | null }[] = [];
+    const result: { id: number; symbol: string; name: string; type: TradeType; shares: number; price: number; fee: number; total: number; effect: number | null }[] = [];
     let id = 0;
     Object.entries(all).forEach(([symbol, records]) => {
       records.forEach(r => {

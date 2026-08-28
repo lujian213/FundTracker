@@ -1,4 +1,4 @@
-import { computePositionSharesByDate, prepareVolumeBars } from '../../utils/tradeVolumeHelper';
+import { computePositionSharesByDate, prepareVolumeBars, computeCostPricesByDate } from '../../utils/tradeVolumeHelper';
 import { TradeRecord } from '../../types';
 
 describe('computePositionSharesByDate', () => {
@@ -135,5 +135,39 @@ describe('prepareVolumeBars', () => {
     const { bars } = prepareVolumeBars(trades, dateToX);
 
     expect(bars.length).toBe(0); // 买入=卖出，不显示柱子
+  });
+});
+
+describe('dividend trade handling', () => {
+  it('分红不影响持仓份额', () => {
+    const trades: TradeRecord[] = [
+      { id: '1', date: '2026-01-01', type: 'buy', shares: 100, price: 1, fee: 0 },
+      { id: '2', date: '2026-01-02', type: 'dividend', shares: 0, price: 0, fee: 0, total: 10 },
+    ];
+    const result = computePositionSharesByDate(0, trades, ['2026-01-01', '2026-01-02']);
+    expect(result.get('2026-01-01')).toBe(100);
+    expect(result.get('2026-01-02')).toBe(100); // 分红后份额不变
+  });
+
+  it('分红减少成本价', () => {
+    const trades: TradeRecord[] = [
+      { id: '1', date: '2026-01-01', type: 'buy', shares: 100, price: 1, fee: 0 },
+      { id: '2', date: '2026-01-02', type: 'dividend', shares: 0, price: 0, fee: 0, total: 10 },
+    ];
+    const result = computeCostPricesByDate(0, null, '2026-01-01', trades, ['2026-01-01', '2026-01-02']);
+    expect(result.get('2026-01-01')).toBe(1.0);  // 买入成本
+    expect(result.get('2026-01-02')).toBe(0.9);  // 成本降低：(100-10)/100
+  });
+
+  it('多次分红累积减少成本价', () => {
+    const trades: TradeRecord[] = [
+      { id: '1', date: '2026-01-01', type: 'buy', shares: 100, price: 1, fee: 0 },
+      { id: '2', date: '2026-01-02', type: 'dividend', shares: 0, price: 0, fee: 0, total: 10 },
+      { id: '3', date: '2026-01-03', type: 'dividend', shares: 0, price: 0, fee: 0, total: 10 },
+    ];
+    const result = computeCostPricesByDate(0, null, '2026-01-01', trades, ['2026-01-01', '2026-01-02', '2026-01-03']);
+    expect(result.get('2026-01-01')).toBe(1.0);
+    expect(result.get('2026-01-02')).toBe(0.9);
+    expect(result.get('2026-01-03')).toBe(0.8);  // (100-10-10)/100
   });
 });

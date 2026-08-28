@@ -146,6 +146,8 @@ const BehaviorReviewTab: React.FC<BehaviorReviewTabProps> = ({
           const allAnalyses: BehaviorAnalysis[] = [];
           let totalBuyCount = 0;
           let totalSellCount = 0;
+          let totalDividendCount = 0;
+          let totalDividendAmount = 0;
           let totalFeeRate = 0;
           let fundCount = 0;
 
@@ -158,6 +160,7 @@ const BehaviorReviewTab: React.FC<BehaviorReviewTabProps> = ({
                 shares: t.shares,
                 price: t.price || 0,
                 fee: t.fee || 0,
+                total: t.total,
                 symbol
               })),
               data.navHistory,
@@ -168,6 +171,8 @@ const BehaviorReviewTab: React.FC<BehaviorReviewTabProps> = ({
               allAnalyses.push(result);
               totalBuyCount += result.frequency.buyCount;
               totalSellCount += result.frequency.sellCount;
+              totalDividendCount += result.frequency.dividendCount;
+              totalDividendAmount += result.frequency.dividendAmount;
               totalFeeRate += result.frequency.feeRate;
               fundCount++;
             }
@@ -197,6 +202,8 @@ const BehaviorReviewTab: React.FC<BehaviorReviewTabProps> = ({
             frequency: {
               buyCount: totalBuyCount,
               sellCount: totalSellCount,
+              dividendCount: totalDividendCount,
+              dividendAmount: totalDividendAmount,
               avgHoldingDays: 0,
               feeRate: fundCount > 0 ? totalFeeRate / fundCount : 0,
               trades: allAnalyses.flatMap(a => a.frequency.trades)

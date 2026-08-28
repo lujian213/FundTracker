@@ -346,8 +346,8 @@ describe('TradeManager summary row', () => {
     await waitFor(() => expect(fetchFundHistory).toHaveBeenCalled(), { timeout: 1000 });
 
     // 交易额合计：100*1.0+10 = 110（正数，显示箭头↑）
-    // 新的title格式：总买入 110.00, 总卖出 0.00, 净投入 110.00
-    const titleElement = screen.getByTitle(/总买入 110\.00, 总卖出 0\.00, 净投入 110\.00/);
+    // 新的title格式：总买入 110.00, 总卖出 0.00, 总分红 0.00, 净投入 110.00
+    const titleElement = screen.getByTitle(/总买入 110\.00, 总卖出 0\.00, 总分红 0\.00, 净投入 110\.00/);
     expect(titleElement).toBeInTheDocument();
     expect(screen.getAllByText('110.00').length).toBeGreaterThanOrEqual(1);
   });
@@ -361,8 +361,8 @@ describe('TradeManager summary row', () => {
     await waitFor(() => expect(fetchFundHistory).toHaveBeenCalled(), { timeout: 1000 });
 
     // 交易额合计：买入50*1.0=50，卖出60*1.5=90，合计=50-90=-40（负数，显示箭头↓）
-    // 新的title格式：总买入 50.00, 总卖出 90.00, 净回收 40.00
-    const titleElement = screen.getByTitle(/总买入 50\.00, 总卖出 90\.00, 净回收 40\.00/);
+    // 新的title格式：总买入 50.00, 总卖出 90.00, 总分红 0.00, 净回收 40.00
+    const titleElement = screen.getByTitle(/总买入 50\.00, 总卖出 90\.00, 总分红 0\.00, 净回收 40\.00/);
     expect(titleElement).toBeInTheDocument();
     expect(screen.getAllByText('40.00').length).toBeGreaterThanOrEqual(1);
   });
@@ -437,8 +437,8 @@ describe('TradeManager summary row', () => {
     await waitFor(() => expect(fetchFundHistory).toHaveBeenCalled(), { timeout: 1000 });
 
     // 普通视图：交易额合计 = 买入(100*1.0+10)=110 - 卖出(30*1.5-5)=40 = 70
-    // 新的title格式：总买入 110.00, 总卖出 40.00, 净投入 70.00
-    expect(screen.getByTitle(/总买入 110\.00, 总卖出 40\.00, 净投入 70\.00/)).toBeInTheDocument();
+    // 新的title格式：总买入 110.00, 总卖出 40.00, 总分红 0.00, 净投入 70.00
+    expect(screen.getByTitle(/总买入 110\.00, 总卖出 40\.00, 总分红 0\.00, 净投入 70\.00/)).toBeInTheDocument();
 
     // FIFO视图：交易额合计显示"-"
     fireEvent.click(screen.getByLabelText('先进先出'));
@@ -465,8 +465,8 @@ describe('TradeManager summary row', () => {
     expect(screen.getByText('150.00')).toBeInTheDocument();
 
     // 交易额合计：建仓100*1.0=100 + 买入50*1.2=60 = 160（显示箭头↑）
-    // 新的title格式：总买入 160.00, 总卖出 0.00, 净投入 160.00
-    expect(screen.getByTitle(/总买入 160\.00, 总卖出 0\.00, 净投入 160\.00/)).toBeInTheDocument();
+    // 新的title格式：总买入 160.00, 总卖出 0.00, 总分红 0.00, 净投入 160.00
+    expect(screen.getByTitle(/总买入 160\.00, 总卖出 0\.00, 总分红 0\.00, 净投入 160\.00/)).toBeInTheDocument();
     expect(screen.getAllByText('160.00').length).toBeGreaterThanOrEqual(1);
   });
 
@@ -478,8 +478,8 @@ describe('TradeManager summary row', () => {
     await waitFor(() => expect(fetchFundHistory).toHaveBeenCalled(), { timeout: 1000 });
 
     // 交易额合计：10000*1.0=10000（显示箭头↑）
-    // 新的title格式：总买入 10,000.00, 总卖出 0.00, 净投入 10,000.00
-    expect(screen.getByTitle(/总买入 10,000\.00, 总卖出 0\.00, 净投入 10,000\.00/)).toBeInTheDocument();
+    // 新的title格式：总买入 10,000.00, 总卖出 0.00, 总分红 0.00, 净投入 10,000.00
+    expect(screen.getByTitle(/总买入 10,000\.00, 总卖出 0\.00, 总分红 0\.00, 净投入 10,000\.00/)).toBeInTheDocument();
     expect(screen.getAllByText('10,000.00').length).toBeGreaterThanOrEqual(1);
   });
 
@@ -492,8 +492,8 @@ describe('TradeManager summary row', () => {
     render(<TradeManager symbol="TEST001" currentPrice={1.5} onClose={jest.fn()} />);
     await waitFor(() => expect(fetchFundHistory).toHaveBeenCalled(), { timeout: 1000 });
 
-    // 操作列统计：买入/建仓 2 次，卖出 1 次，总次数 3
-    const titleElement = screen.getByTitle('买入/建仓 2 次，卖出 1 次');
+    // 操作列统计：买入/建仓 2 次，卖出 1 次，分红 0 次，总次数 3
+    const titleElement = screen.getByTitle('买入/建仓 2 次，卖出 1 次，分红 0 次');
     expect(titleElement).toBeInTheDocument();
     expect(titleElement).toHaveTextContent('3');
   });
@@ -507,7 +507,7 @@ describe('TradeManager summary row', () => {
     await waitFor(() => expect(fetchFundHistory).toHaveBeenCalled(), { timeout: 1000 });
 
     // 操作列统计：建仓 1 次 + 卖出 1 次 = 2
-    const titleElement = screen.getByTitle('买入/建仓 1 次，卖出 1 次');
+    const titleElement = screen.getByTitle('买入/建仓 1 次，卖出 1 次，分红 0 次');
     expect(titleElement).toBeInTheDocument();
     expect(titleElement).toHaveTextContent('2');
   });
@@ -521,7 +521,7 @@ describe('TradeManager summary row', () => {
     await waitFor(() => expect(fetchFundHistory).toHaveBeenCalled(), { timeout: 1000 });
 
     // 普通视图显示操作统计
-    expect(screen.getByTitle('买入/建仓 1 次，卖出 1 次')).toBeInTheDocument();
+    expect(screen.getByTitle('买入/建仓 1 次，卖出 1 次，分红 0 次')).toBeInTheDocument();
 
     // FIFO视图：操作列显示"-"
     fireEvent.click(screen.getByLabelText('先进先出'));
@@ -538,7 +538,7 @@ describe('TradeManager summary row', () => {
     await waitFor(() => expect(fetchFundHistory).toHaveBeenCalled(), { timeout: 1000 });
 
     // 普通视图显示操作统计
-    expect(screen.getByTitle('买入/建仓 1 次，卖出 1 次')).toBeInTheDocument();
+    expect(screen.getByTitle('买入/建仓 1 次，卖出 1 次，分红 0 次')).toBeInTheDocument();
 
     // LIFO视图：操作列显示"-"
     fireEvent.click(screen.getByLabelText('后进先出'));
@@ -676,5 +676,266 @@ describe('TradeManager selection stats (total profit)', () => {
       // 10000*(2.0-1.0) = 10000
       expect(screen.getAllByText('+10,000.00').length).toBeGreaterThanOrEqual(2);
     }, { timeout: 1000 });
+  });
+});
+
+// ─── TradeManager dividend type tests ───────────────────────────────────
+describe('TradeManager dividend type', () => {
+  beforeEach(() => {
+    (fetchFundHistory as jest.Mock).mockResolvedValue([]);
+    localStorage.clear();
+    resetMarketFundCache();
+  });
+
+  test('dividend option is available in type selector', async () => {
+    render(<TradeManager symbol="TEST001" currentPrice={1.5} onClose={jest.fn()} />);
+    await waitFor(() => expect(fetchFundHistory).toHaveBeenCalled(), { timeout: 1000 });
+
+    const typeSelect = screen.getByRole('combobox');
+    const options = Array.from(typeSelect.querySelectorAll('option')).map(opt => opt.value);
+    expect(options).toContain('dividend');
+    expect(options).toContain('buy');
+    expect(options).toContain('sell');
+  });
+
+  test('switching to dividend disables shares, price, fee fields', async () => {
+    render(<TradeManager symbol="TEST001" currentPrice={1.5} onClose={jest.fn()} />);
+    await waitFor(() => expect(fetchFundHistory).toHaveBeenCalled(), { timeout: 1000 });
+
+    // 切换到分红类型
+    fireEvent.change(screen.getByRole('combobox'), { target: { value: 'dividend' } });
+
+    // 验证份额字段显示"禁用"
+    expect(screen.getByText('份额（禁用）')).toBeInTheDocument();
+
+    // 验证价格字段显示"禁用"
+    expect(screen.getByText('价格（禁用）')).toBeInTheDocument();
+
+    // 验证手续费字段显示"禁用"
+    expect(screen.getByText('手续费（禁用）')).toBeInTheDocument();
+
+    // 验证总额字段显示"分红金额"
+    expect(screen.getByText('分红金额')).toBeInTheDocument();
+  });
+
+  test('dividend type shows total field as editable', async () => {
+    render(<TradeManager symbol="TEST001" currentPrice={1.5} onClose={jest.fn()} />);
+    await waitFor(() => expect(fetchFundHistory).toHaveBeenCalled(), { timeout: 1000 });
+
+    // 切换到分红类型
+    fireEvent.change(screen.getByRole('combobox'), { target: { value: 'dividend' } });
+
+    // 总额字段应该可编辑
+    const totalInputs = screen.getAllByRole('spinbutton');
+    // 分红类型只有一个可编辑的数字输入框（总额）
+    const editableInputs = totalInputs.filter(input => !input.hasAttribute('readOnly'));
+    expect(editableInputs.length).toBeGreaterThanOrEqual(1);
+  });
+
+  test('dividend validation: total must be > 0', async () => {
+    render(<TradeManager symbol="TEST001" currentPrice={1.5} onClose={jest.fn()} />);
+    await waitFor(() => expect(fetchFundHistory).toHaveBeenCalled(), { timeout: 1000 });
+
+    // 切换到分红类型
+    fireEvent.change(screen.getByRole('combobox'), { target: { value: 'dividend' } });
+
+    // 总额为 0 时点击添加
+    fireEvent.click(screen.getByText('添加交易'));
+
+    // 应该显示错误信息
+    expect(screen.getByText('分红金额必须大于0')).toBeInTheDocument();
+  });
+
+  test('dividend can be added successfully', async () => {
+    render(<TradeManager symbol="TEST001" currentPrice={1.5} onClose={jest.fn()} />);
+    await waitFor(() => expect(fetchFundHistory).toHaveBeenCalled(), { timeout: 1000 });
+
+    // 切换到分红类型
+    fireEvent.change(screen.getByRole('combobox'), { target: { value: 'dividend' } });
+
+    // 输入分红金额
+    const totalInputs = screen.getAllByRole('spinbutton');
+    const totalInput = totalInputs.find(input => !input.hasAttribute('readOnly'));
+    fireEvent.change(totalInput!, { target: { value: '100' } });
+
+    // 点击添加
+    fireEvent.click(screen.getByText('添加交易'));
+
+    // 应该在表格中显示分红记录
+    await waitFor(() => {
+      expect(screen.getByText('分红')).toBeInTheDocument();
+    }, { timeout: 1000 });
+  });
+
+  test('dividend displays with yellow background', async () => {
+    setTradesForSymbol('TEST001', [
+      { id: 'd1', date: '2024-06-15', type: 'dividend', shares: 0, price: 0, fee: 0, total: 100 },
+    ] as any);
+    render(<TradeManager symbol="TEST001" currentPrice={1.5} onClose={jest.fn()} />);
+    await waitFor(() => expect(fetchFundHistory).toHaveBeenCalled(), { timeout: 1000 });
+
+    // 分红记录应该显示"分红"（表格中的div，不是option）
+    const dividendTypes = screen.getAllByText('分红');
+    // 找到表格中的分红类型（在 div 中）
+    const tableDividendType = dividendTypes.find(el => el.tagName === 'DIV');
+    expect(tableDividendType).toBeInTheDocument();
+    expect(tableDividendType).toHaveClass('text-yellow-600');
+  });
+
+  test('dividend shows dash for shares and price in table', async () => {
+    setTradesForSymbol('TEST001', [
+      { id: 'd1', date: '2024-06-15', type: 'dividend', shares: 0, price: 0, fee: 0, total: 100 },
+    ] as any);
+    render(<TradeManager symbol="TEST001" currentPrice={1.5} onClose={jest.fn()} />);
+    await waitFor(() => expect(fetchFundHistory).toHaveBeenCalled(), { timeout: 1000 });
+
+    // 分红记录的数量和价格列应该显示"-"
+    const dashes = screen.getAllByText('-');
+    expect(dashes.length).toBeGreaterThanOrEqual(2);
+  });
+
+  test('dividend shows total amount in trade amount column', async () => {
+    setTradesForSymbol('TEST001', [
+      { id: 'd1', date: '2024-06-15', type: 'dividend', shares: 0, price: 0, fee: 0, total: 123.45 },
+    ] as any);
+    render(<TradeManager symbol="TEST001" currentPrice={1.5} onClose={jest.fn()} />);
+    await waitFor(() => expect(fetchFundHistory).toHaveBeenCalled(), { timeout: 1000 });
+
+    // 分红记录的交易额应该显示 total 值（可能在表格行和合计行中都有）
+    expect(screen.getAllByText('123.45').length).toBeGreaterThanOrEqual(1);
+  });
+
+  test('dividend can be edited', async () => {
+    setTradesForSymbol('TEST001', [
+      { id: 'd1', date: '2024-06-15', type: 'dividend', shares: 0, price: 0, fee: 0, total: 100 },
+    ] as any);
+    render(<TradeManager symbol="TEST001" currentPrice={1.5} onClose={jest.fn()} />);
+    await waitFor(() => expect(fetchFundHistory).toHaveBeenCalled(), { timeout: 1000 });
+
+    // 点击编辑按钮
+    fireEvent.click(screen.getByTitle('编辑'));
+
+    // 类型选择器应该选中分红
+    await waitFor(() => {
+      expect((screen.getByRole('combobox') as HTMLSelectElement).value).toBe('dividend');
+    }, { timeout: 1000 });
+
+    // 分红金额输入框应该显示原有值
+    // 找到所有数字输入框
+    const allInputs = screen.getAllByRole('spinbutton');
+    // 查找分红金额标签对应的输入框
+    const totalLabel = screen.getByText('分红金额');
+    const totalContainer = totalLabel.closest('div');
+    const totalInput = totalContainer?.querySelector('input[type="number"]');
+    expect(totalInput).toHaveValue(100);
+  });
+
+  test('dividend can be deleted', async () => {
+    setTradesForSymbol('TEST001', [
+      { id: 'd1', date: '2024-06-15', type: 'dividend', shares: 0, price: 0, fee: 0, total: 100 },
+    ] as any);
+    render(<TradeManager symbol="TEST001" currentPrice={1.5} onClose={jest.fn()} />);
+    await waitFor(() => expect(fetchFundHistory).toHaveBeenCalled(), { timeout: 1000 });
+
+    // 点击删除按钮
+    fireEvent.click(screen.getByTitle('删除'));
+
+    // 记录应该被删除（表格中的分红记录）
+    await waitFor(() => {
+      // 检查表格中是否还有分红记录（不是 option 中的"分红"）
+      const dividendTypes = screen.getAllByText('分红');
+      const tableDividendType = dividendTypes.find(el => el.tagName === 'DIV');
+      expect(tableDividendType).toBeUndefined();
+    }, { timeout: 1000 });
+  });
+
+  // Task 6: 分红记录在不同视图模式下的过滤测试
+  test('normal view shows dividend records', async () => {
+    setTradesForSymbol('TEST001', [
+      { id: 'b1', date: '2024-01-01', type: 'buy', shares: 100, price: 1.0, fee: 0 },
+      { id: 'd1', date: '2024-01-02', type: 'dividend', shares: 0, price: 0, fee: 0, total: 50 },
+    ] as any);
+    render(<TradeManager symbol="TEST001" currentPrice={1.5} onClose={jest.fn()} />);
+    await waitFor(() => expect(fetchFundHistory).toHaveBeenCalled(), { timeout: 1000 });
+
+    // 普通视图应该显示分红记录（表格中的div，不是option）
+    const dividendTypes = screen.getAllByText('分红');
+    const tableDividendType = dividendTypes.find(el => el.tagName === 'DIV');
+    expect(tableDividendType).toBeInTheDocument();
+    // 分红金额会在表格行和合计行中显示，所以用 getAllByText
+    expect(screen.getAllByText('50.00').length).toBeGreaterThanOrEqual(1);
+    expect(screen.getByText(/共 2 条记录/)).toBeInTheDocument();
+  });
+
+  test('FIFO view excludes dividend records from matching', async () => {
+    setTradesForSymbol('TEST001', [
+      { id: 'b1', date: '2024-01-01', type: 'buy', shares: 100, price: 1.0, fee: 10 },
+      { id: 'd1', date: '2024-01-02', type: 'dividend', shares: 0, price: 0, fee: 0, total: 50 },
+      { id: 's1', date: '2024-01-03', type: 'sell', shares: 60, price: 1.5, fee: 0 },
+    ] as any);
+    render(<TradeManager symbol="TEST001" currentPrice={1.5} onClose={jest.fn()} />);
+    await waitFor(() => expect(fetchFundHistory).toHaveBeenCalled(), { timeout: 1000 });
+
+    // 切换到 FIFO 视图
+    fireEvent.click(screen.getByLabelText('先进先出'));
+    await waitFor(() => expect((screen.getByLabelText('先进先出') as HTMLInputElement).checked).toBe(true), { timeout: 1000 });
+
+    // FIFO 视图应该只显示未完全匹配的买入记录（分红被过滤）
+    // 买入100份，卖出60份，剩余40份
+    expect(screen.getAllByText('40.00').length).toBeGreaterThanOrEqual(1); // 剩余份额
+    expect(screen.getByText('4.00')).toBeInTheDocument(); // 剩余手续费 10 * 40/100 = 4
+    // 分红记录不应该在表格中显示
+    const dividendTypes = screen.getAllByText('分红');
+    const tableDividendType = dividendTypes.find(el => el.tagName === 'DIV');
+    expect(tableDividendType).toBeUndefined();
+    // 记录总数应该只有1条（买入记录）
+    expect(screen.getByText(/共 1 条记录/)).toBeInTheDocument();
+  });
+
+  test('LIFO view excludes dividend records from matching', async () => {
+    setTradesForSymbol('TEST001', [
+      { id: 'b1', date: '2024-01-01', type: 'buy', shares: 100, price: 1.0, fee: 0 },
+      { id: 'b2', date: '2024-01-02', type: 'buy', shares: 50, price: 1.2, fee: 0 },
+      { id: 'd1', date: '2024-01-03', type: 'dividend', shares: 0, price: 0, fee: 0, total: 80 },
+      { id: 's1', date: '2024-01-04', type: 'sell', shares: 70, price: 1.5, fee: 0 },
+    ] as any);
+    render(<TradeManager symbol="TEST001" currentPrice={1.5} onClose={jest.fn()} />);
+    await waitFor(() => expect(fetchFundHistory).toHaveBeenCalled(), { timeout: 1000 });
+
+    // 切换到 LIFO 视图
+    fireEvent.click(screen.getByLabelText('后进先出'));
+    await waitFor(() => expect((screen.getByLabelText('后进先出') as HTMLInputElement).checked).toBe(true), { timeout: 1000 });
+
+    // LIFO 视图应该只显示未完全匹配的买入记录（分红被过滤）
+    // LIFO: b2(50)被完全匹配，b1(100)剩余80份，卖出被过滤
+    expect(screen.getAllByText('80.00').length).toBeGreaterThanOrEqual(1); // b1剩余份额
+    // 分红记录不应该在表格中显示
+    const dividendTypes = screen.getAllByText('分红');
+    const tableDividendType = dividendTypes.find(el => el.tagName === 'DIV');
+    expect(tableDividendType).toBeUndefined();
+    // 记录总数应该只有1条（买入记录）
+    expect(screen.getByText(/共 1 条记录/)).toBeInTheDocument();
+  });
+
+  test('FIFO view summary excludes dividend amount', async () => {
+    setTradesForSymbol('TEST001', [
+      { id: 'b1', date: '2024-01-01', type: 'buy', shares: 100, price: 1.0, fee: 10 },
+      { id: 'd1', date: '2024-01-02', type: 'dividend', shares: 0, price: 0, fee: 0, total: 50 },
+      { id: 's1', date: '2024-01-03', type: 'sell', shares: 30, price: 1.5, fee: 5 },
+    ] as any);
+    render(<TradeManager symbol="TEST001" currentPrice={1.5} onClose={jest.fn()} />);
+    await waitFor(() => expect(fetchFundHistory).toHaveBeenCalled(), { timeout: 1000 });
+
+    // 普通视图：交易额合计应该包含分红
+    // 买入(100*1.0+10)=110, 卖出(30*1.5-5)=40, 分红=50
+    // 合计 = 110 - 40 - 50 = 20
+    expect(screen.getByTitle(/总买入 110\.00, 总卖出 40\.00, 总分红 50\.00, 净投入 20\.00/)).toBeInTheDocument();
+
+    // 切换到 FIFO 视图
+    fireEvent.click(screen.getByLabelText('先进先出'));
+    await waitFor(() => expect((screen.getByLabelText('先进先出') as HTMLInputElement).checked).toBe(true), { timeout: 1000 });
+
+    // FIFO 视图：交易额合计显示"-"，分红不参与计算
+    expect(screen.queryByTitle(/净投入/)).not.toBeInTheDocument();
   });
 });

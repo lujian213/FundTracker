@@ -312,6 +312,12 @@ const TradeBatchInputModal: React.FC<Props> = ({ onClose, onSaved, portfolio = [
       // 切换类型时重置份额和总额
       row.shares = 0;
       row.total = 0;
+      // 切换到分红类型时，重置份额、价格、手续费为0
+      if (row.type === 'dividend') {
+        row.shares = 0;
+        row.price = 0;
+        row.fee = 0;
+      }
     } else if (field === 'shares') {
       const num = Math.max(0, parseFloat(value as string) || 0);
       row.shares = num;
@@ -345,8 +351,10 @@ const TradeBatchInputModal: React.FC<Props> = ({ onClose, onSaved, portfolio = [
   const totals = useMemo(() => {
     let buyCount = 0;
     let sellCount = 0;
+    let dividendCount = 0;
     let buyTotal = 0;
     let sellTotal = 0;
+    let dividendTotal = 0;
     let totalFee = 0;
 
     for (const group of fundGroups) {
@@ -356,15 +364,18 @@ const TradeBatchInputModal: React.FC<Props> = ({ onClose, onSaved, portfolio = [
         if (row.type === 'buy') {
           buyCount++;
           buyTotal += row.total;
-        } else {
+        } else if (row.type === 'sell') {
           sellCount++;
           sellTotal += row.total;
+        } else if (row.type === 'dividend') {
+          dividendCount++;
+          dividendTotal += row.total;
         }
         totalFee += row.fee;
       }
     }
 
-    return { buyCount, sellCount, buyTotal, sellTotal, totalFee };
+    return { buyCount, sellCount, dividendCount, buyTotal, sellTotal, dividendTotal, totalFee };
   }, [fundGroups]);
 
   // 检查是否有未保存的数据
@@ -404,6 +415,17 @@ const TradeBatchInputModal: React.FC<Props> = ({ onClose, onSaved, portfolio = [
         const row = group.rows[rowIndex];
         const rowId = `${groupIndex}-${rowIndex}`;
 
+        // 分红类型的验证逻辑
+        if (row.type === 'dividend') {
+          // 分红只需要验证总额必须为正数
+          if (row.total <= 0) {
+            errors.push(`${group.name}: 分红金额必须为正数`);
+            errorFieldIds.add(`total-${rowId}`);
+          }
+          continue; // 跳过后续验证
+        }
+
+        // 买入/卖出的验证逻辑
         // 交易类型检查 - 必须有值（买入或卖出）
         if (!row.type) {
           errors.push(`${group.name}: 请选择交易类型`);
@@ -649,15 +671,17 @@ const TradeBatchInputModal: React.FC<Props> = ({ onClose, onSaved, portfolio = [
                               >
                                 <option value="buy">买入</option>
                                 <option value="sell">卖出</option>
+                                <option value="dividend">分红</option>
                               </select>
                             </td>
                             <td className="px-3 py-2">
                               <input
                                 type="number"
                                 step="0.0001"
-                                value={row.price}
+                                value={row.type === 'dividend' ? 0 : row.price}
                                 readOnly
-                                className="w-full text-right text-xs border border-gray-100 rounded px-2 py-1 bg-gray-50 text-gray-500 [-moz-appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                                disabled={row.type === 'dividend'}
+                                className={`w-full text-right text-xs border rounded px-2 py-1 [-moz-appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none ${row.type === 'dividend' ? 'border-gray-100 bg-gray-50 text-gray-400' : 'border-gray-100 bg-gray-50 text-gray-500'}`}
                               />
                             </td>
                             <td className="px-3 py-2">
@@ -665,11 +689,12 @@ const TradeBatchInputModal: React.FC<Props> = ({ onClose, onSaved, portfolio = [
                                 type="number"
                                 step="0.01"
                                 min="0"
-                                value={row.shares === undefined ? '' : (row.shares > 0 ? Number(row.shares.toFixed(2)) : '')}
-                                readOnly={row.type === 'buy'}
+                                value={row.type === 'dividend' ? 0 : (row.shares === undefined ? '' : (row.shares > 0 ? Number(row.shares.toFixed(2)) : ''))}
+                                readOnly={row.type === 'buy' || row.type === 'dividend'}
+                                disabled={row.type === 'dividend'}
                                 onChange={(e) => updateRow(groupIndex, row.id, 'shares', e.target.value)}
-                                placeholder={row.type === 'buy' ? '自动计算' : '输入份额'}
-                                className={`w-full text-right text-xs border rounded px-2 py-1 [-moz-appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none ${row.type === 'buy' ? 'border-gray-100 bg-gray-50 text-gray-500' : 'border-gray-200'}`}
+                                placeholder={row.type === 'buy' ? '自动计算' : row.type === 'dividend' ? '分红无份额' : '输入份额'}
+                                className={`w-full text-right text-xs border rounded px-2 py-1 [-moz-appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none ${(row.type === 'buy' || row.type === 'dividend') ? 'border-gray-100 bg-gray-50 text-gray-500' : 'border-gray-200'}`}
                               />
                             </td>
                             <td className="px-3 py-2">
@@ -680,8 +705,9 @@ const TradeBatchInputModal: React.FC<Props> = ({ onClose, onSaved, portfolio = [
                                 price={row.price}
                                 total={row.type === 'buy' ? row.total : undefined}
                                 shares={row.type === 'sell' ? row.shares : undefined}
-                                value={row.fee}
+                                value={row.type === 'dividend' ? 0 : row.fee}
                                 onChange={(newFee) => updateRow(groupIndex, row.id, 'fee', newFee)}
+                                disabled={row.type === 'dividend'}
                                 compact={true}
                               />
                             </td>
@@ -693,7 +719,7 @@ const TradeBatchInputModal: React.FC<Props> = ({ onClose, onSaved, portfolio = [
                                 value={row.total === undefined ? '' : row.total}
                                 readOnly={row.type === 'sell'}
                                 onChange={(e) => updateRow(groupIndex, row.id, 'total', e.target.value)}
-                                placeholder={row.type === 'sell' ? '自动计算' : '输入总额'}
+                                placeholder={row.type === 'sell' ? '自动计算' : row.type === 'dividend' ? '输入分红金额' : '输入总额'}
                                 className={`w-full text-right text-xs border rounded px-2 py-1 [-moz-appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none ${row.type === 'sell' ? 'border-gray-100 bg-gray-50 text-gray-500' : 'border-gray-200'}`}
                               />
                             </td>
@@ -718,11 +744,13 @@ const TradeBatchInputModal: React.FC<Props> = ({ onClose, onSaved, portfolio = [
                         <div className="flex justify-between">
                           <span>
                             总计：买入 <span className="font-bold text-green-600">{totals.buyCount}</span> 条，
-                            卖出 <span className="font-bold text-red-500">{totals.sellCount}</span> 条
+                            卖出 <span className="font-bold text-red-500">{totals.sellCount}</span> 条，
+                            分红 <span className="font-bold text-yellow-600">{totals.dividendCount}</span> 条
                           </span>
                           <span className="space-x-4">
                             <span>买入总额：<span className="font-bold text-green-600">{totals.buyTotal.toFixed(2)}</span></span>
                             <span>卖出总额：<span className="font-bold text-red-500">{totals.sellTotal.toFixed(2)}</span></span>
+                            <span>分红总额：<span className="font-bold text-yellow-600">{totals.dividendTotal.toFixed(2)}</span></span>
                             <span>手续费：<span className="font-bold">{totals.totalFee.toFixed(2)}</span></span>
                           </span>
                         </div>

@@ -56,9 +56,80 @@ export interface PositionEntry {
 }
 
 /**
+ * 持仓状态计算结果
+ */
+export interface PositionState {
+  /** 当前份额 */
+  currentShares: number;
+  /** 累计买入份额 */
+  buyShares: number;
+  /** 累计卖出份额 */
+  sellShares: number;
+  /** 累计买入金额 (价格*份额+手续费) */
+  buyAmount: number;
+  /** 累计卖出金额 (价格*份额-手续费) */
+  sellAmount: number;
+  /** 累计分红金额 */
+  dividendAmount: number;
+  /** 初始成本 (初始份额*初始价格) */
+  initialCost: number;
+}
+
+/**
+ * 计算持仓状态（份额、金额等）
+ *
+ * 统一的持仓状态计算函数，被多个模块共用：
+ * - FundDetailsModal: 显示当前持仓和盈利
+ * - profitCalculator: 计算累计盈利曲线
+ * - positionHelper: 计算成本价
+ *
+ * @param initialPosition 初始份额
+ * @param initialPrice 初始价格
+ * @param trades 交易记录
+ * @returns 持仓状态对象
+ */
+export function computePositionState(
+  initialPosition: number,
+  initialPrice: number | null,
+  trades: TradeRecord[]
+): PositionState {
+  let buyShares = 0;
+  let sellShares = 0;
+  let buyAmount = 0;
+  let sellAmount = 0;
+  let dividendAmount = 0;
+
+  for (const t of trades || []) {
+    if (t.type === 'buy') {
+      buyShares += t.shares;
+      buyAmount += t.price * t.shares + (t.fee || 0);
+    } else if (t.type === 'sell') {
+      sellShares += t.shares;
+      sellAmount += t.price * t.shares - (t.fee || 0);
+    } else if (t.type === 'dividend') {
+      // 分红：累加金额，不影响份额
+      dividendAmount += t.total || 0;
+    }
+  }
+
+  const currentShares = initialPosition + buyShares - sellShares;
+  const initialCost = initialPrice !== null ? initialPosition * initialPrice : 0;
+
+  return {
+    currentShares,
+    buyShares,
+    sellShares,
+    buyAmount,
+    sellAmount,
+    dividendAmount,
+    initialCost
+  };
+}
+
+/**
  * 计算单个基金的平均成本价
- * 公式：持仓成本价 = (初始份额×初始价格 + Σ买入金额 - Σ卖出金额) ÷ 当前持仓份额
- * 其中：买入金额 = 价格 × 份额 + 手续费，卖出金额 = 价格 × 份额 - 手续费
+ * 公式：持仓成本价 = (初始成本 + 累计买入金额 - 累计卖出金额 - 累计分红金额) ÷ 当前持仓份额
+ * 其中：买入金额 = 价格 × 份额 + 手续费，卖出金额 = 价格 × 份额 - 手续费，分红金额 = total 字段
  */
 export function computeAvgCostPrice(
   symbol: string,
@@ -74,27 +145,13 @@ export function computeAvgCostPrice(
     initialPrice = position.initialPrice || 0;
   }
 
-  // 计算买入和卖出金额
-  let buyAmount = 0;
-  let sellAmount = 0;
-  let buyShares = 0;
-  let sellShares = 0;
+  // 使用公共函数计算持仓状态
+  const state = computePositionState(initialPosition, initialPrice, trades);
 
-  for (const t of trades || []) {
-    if (t.type === 'buy') {
-      buyShares += t.shares;
-      buyAmount += t.price * t.shares + (t.fee || 0);
-    } else {
-      sellShares += t.shares;
-      sellAmount += t.price * t.shares - (t.fee || 0);
-    }
-  }
+  if (state.currentShares <= 0) return null;
 
-  const totalShares = initialPosition + buyShares - sellShares;
-  if (totalShares <= 0) return null;
-
-  const totalCost = initialPosition * initialPrice + buyAmount - sellAmount;
-  return totalCost / totalShares;
+  const totalCost = state.initialCost + state.buyAmount - state.sellAmount - state.dividendAmount;
+  return totalCost / state.currentShares;
 }
 
 // 32-color palette using the golden angle (≈137.5°) for hue steps.

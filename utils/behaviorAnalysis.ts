@@ -1,4 +1,4 @@
-import { TradeRecord, HistoricalPoint, BehaviorAnalysis, BehaviorScore, TimingScore } from '../types';
+import { TradeRecord, HistoricalPoint, BehaviorAnalysis, BehaviorScore, TimingScore, isDividendTrade, getTradeAmount } from '../types';
 import { formatDateISO } from './dateFormat';
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -191,7 +191,10 @@ export function calculateTradeTimingScore(
   let score: number;
   let reason: string;
 
-  if (trade.type === 'buy') {
+  if (isDividendTrade(trade)) {
+    // 分红交易不评价时机，返回中性分数
+    return { trade, score: 0, percentile, reason: "分红" };
+  } else if (trade.type === 'buy') {
     // 买入：低位好，高位差
     if (percentile < 30) {
       score = 90;
@@ -311,7 +314,7 @@ export function identifyChaseHighSellLow(
           result.push({ ...trade, reason });
         }
       }
-    } else {
+    } else if (trade.type === 'sell') {
       // 加入卖出栈（后进先出）
       sellStack.push({
         date: trade.date,
@@ -371,7 +374,7 @@ export function identifyFrequentLossTrade(
         shares: trade.shares,
         fee: trade.fee ?? 0 // 兼容null/undefined
       });
-    } else {
+    } else if (trade.type === 'sell') {
       // 卖出：计算整体收益率并更新栈（单次遍历优化）
       const sellFee = trade.fee ?? 0; // 兼容null/undefined
       let remaining = trade.shares;
@@ -610,10 +613,14 @@ export function calculateBehaviorAnalysis(
   // 计算交易频率
   const buyTrades = sortedTrades.filter(t => t.type === 'buy');
   const sellTrades = sortedTrades.filter(t => t.type === 'sell');
+  const dividendTrades = sortedTrades.filter(isDividendTrade);
 
   const totalFee = sortedTrades.reduce((sum, t) => sum + (t.fee || 0), 0);
   const totalAmount = sortedTrades.reduce((sum, t) => sum + t.price * t.shares, 0);
   const feeRate = totalAmount > 0 ? (totalFee / totalAmount) * 100 : 0;
+
+  // 计算分红总金额
+  const dividendAmount = dividendTrades.reduce((sum, t) => sum + (t.total || 0), 0);
 
   // 计算平均持仓天数（简化：使用所有持仓时间的平均值）
   const avgHoldingDays = 0; // TODO: 需要更复杂的计算
@@ -623,6 +630,8 @@ export function calculateBehaviorAnalysis(
     frequency: {
       buyCount: buyTrades.length,
       sellCount: sellTrades.length,
+      dividendCount: dividendTrades.length,
+      dividendAmount,
       avgHoldingDays,
       feeRate: Math.round(feeRate * 100) / 100,
       trades: sortedTrades
@@ -665,6 +674,8 @@ export function calculateBehaviorAnalysisByPeriod(
       frequency: {
         buyCount: 0,
         sellCount: 0,
+        dividendCount: 0,
+        dividendAmount: 0,
         avgHoldingDays: 0,
         feeRate: 0,
         trades: []

@@ -102,14 +102,21 @@ export async function buildBackupData(
   const rawTrades = readAllTrades();
   const trades: Record<string, TradeRecord[]> = {};
   Object.entries(rawTrades).forEach(([sym, arr]) => {
-    trades[sym] = arr.map((t: any) => ({
-      id: t.id,
-      date: t.date,
-      type: t.type,
-      shares: t.shares,
-      price: t.price,
-      fee: t.fee,
-    }));
+    trades[sym] = arr.map((t: any) => {
+      const base: any = {
+        id: t.id,
+        date: t.date,
+        type: t.type,
+        shares: t.shares,
+        price: t.price,
+        fee: t.fee,
+      };
+      // 分红类型保存 total 字段
+      if (t.type === 'dividend' && t.total !== undefined) {
+        base.total = t.total;
+      }
+      return base;
+    });
   });
 
   // 5. config - including sync filter config, systemParams and features

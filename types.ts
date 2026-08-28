@@ -162,7 +162,7 @@ export interface VolumeData {
 export interface VolumeBar {
   date: string;       // YYYY-MM-DD
   x: number;          // SVG X 坐标
-  type: 'buy' | 'sell';
+  type: 'buy' | 'sell' | 'dividend';
   shares: number;     // 交易份额（绝对值）
 }
 
@@ -323,7 +323,7 @@ export interface IntradayPoint {
 export type VirtualTradeAction = 'buy' | 'sell' | 'hold';
 
 // --- Trade types (moved from useTrades.ts to make them globally available) ---
-export type TradeType = 'buy' | 'sell';
+export type TradeType = 'buy' | 'sell' | 'dividend';
 export interface TradeRecord {
   id: string;
   date: string; // YYYY-MM-DD
@@ -673,6 +673,8 @@ export interface BehaviorAnalysis {
   frequency: {
     buyCount: number;
     sellCount: number;
+    dividendCount: number;        // 分红次数
+    dividendAmount: number;       // 分红总金额
     avgHoldingDays: number;
     feeRate: number;
     trades: TradeRecord[];
@@ -733,4 +735,30 @@ export interface DrawdownResult {
   maxTroughDate: string | null;
   maxPeakValue: number;
   maxTroughValue: number;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// 分红交易类型辅助函数
+// ═══════════════════════════════════════════════════════════════════════════════
+
+/**
+ * 类型守卫：判断交易记录是否为分红类型
+ */
+export function isDividendTrade(trade: TradeRecord): boolean {
+  return trade.type === 'dividend';
+}
+
+/**
+ * 获取交易金额（统一处理三种类型）
+ * - buy: shares * price + fee
+ * - sell: shares * price - fee
+ * - dividend: total 字段
+ */
+export function getTradeAmount(trade: TradeRecord): number {
+  if (trade.type === 'dividend') {
+    return trade.total || 0;
+  }
+  return trade.type === 'buy'
+    ? trade.shares * trade.price + (trade.fee || 0)
+    : trade.shares * trade.price - (trade.fee || 0);
 }

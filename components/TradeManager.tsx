@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { HistoricalPoint, TradeRecord } from '../types';
+import { HistoricalPoint, TradeRecord, TradeType, isDividendTrade, getTradeAmount } from '../types';
 import { fetchFundHistory } from '../services/fundService';
 import { resolvePreferredPrice, toLocalDateKey } from '../utils/priceResolver';
 import { formatDateDisplay } from '../utils/dateFormat';
@@ -9,7 +9,6 @@ import { getMatcher, MatchedRecord } from '../utils/tradeMatcher';
 import { SymbolBadge } from './SymbolBadge';
 import { FeeInput } from './FeeInput';
 
-type TradeType = 'buy' | 'sell';
 type ViewMode = 'normal' | 'fifo' | 'lifo';
 
 export const TradeManager: React.FC<{
@@ -62,12 +61,21 @@ export const TradeManager: React.FC<{
     return records;
   }, [trades, hasInitialPosition, startDate, initialPosition, initialPrice]);
 
+  // 根据视图模式过滤记录
+  const recordsForMatching = useMemo(() => {
+    if (viewMode === 'normal') {
+      return allRecords;  // 普通视图显示所有记录
+    }
+    // FIFO/LIFO视图：排除分红记录
+    return allRecords.filter(record => record.type !== 'dividend');
+  }, [viewMode, allRecords]);
+
   // 使用匹配器处理数据
   const { matchedRecords, matchErrors } = useMemo(() => {
     const matcher = getMatcher(viewMode);
-    const result = matcher(allRecords, currentPrice);
+    const result = matcher(recordsForMatching, currentPrice);
     return { matchedRecords: result.records, matchErrors: result.errors };
-  }, [viewMode, allRecords, currentPrice]);
+  }, [viewMode, recordsForMatching, currentPrice]);
 
   const pageSize = 10;
   const pageCount = Math.max(1, Math.ceil(matchedRecords.length / pageSize));
@@ -136,17 +144,29 @@ export const TradeManager: React.FC<{
   // 计算合计行数据
   const summary = useMemo(() => {
     let totalShares = 0;
-    let totalTradeAmount = 0; // 交易额合计：买入+建仓交易额 - 卖出交易额
+    let totalTradeAmount = 0; // 交易额合计：买入+建仓交易额 - 卖出交易额 - 分红金额
     let totalFee = 0; // 手续费合计：买入+建仓手续费 + 卖出手续费
     let totalBuyAmount = 0; // 总买入：买入+建仓的交易额总和
     let totalSellAmount = 0; // 总卖出：卖出的交易额总和
+    let totalDividendAmount = 0; // 总分红：分红金额总和
     let buyCount = 0; // 买入/建仓次数
     let sellCount = 0; // 卖出次数
+    let dividendCount = 0; // 分红次数
 
     for (const record of matchedRecords) {
       const isSell = record.type === 'sell';
+      const isDividend = record.type === 'dividend';
       const displayShares = record.remainingShares;
       const displayFee = record.remainingFee;
+
+      // 分红类型：分红金额等同卖出参与计算
+      if (isDividend) {
+        const dividendAmount = getTradeAmount(record);
+        totalDividendAmount += dividendAmount;
+        dividendCount++;
+        totalTradeAmount -= dividendAmount;
+        continue;
+      }
 
       // 数量：买入和建仓为正，卖出为负
       if (isSell) {
@@ -175,7 +195,7 @@ export const TradeManager: React.FC<{
       totalFee += displayFee;
     }
 
-    return { totalShares, totalTradeAmount, totalFee, totalBuyAmount, totalSellAmount, buyCount, sellCount };
+    return { totalShares, totalTradeAmount, totalFee, totalBuyAmount, totalSellAmount, totalDividendAmount, buyCount, sellCount, dividendCount };
   }, [matchedRecords]);
 
   // 计算选中记录的统计信息（仅买入/建仓记录）
@@ -284,6 +304,31 @@ export const TradeManager: React.FC<{
 
     const price = getPriceForDate(date);
 
+    // 分红类型：总额必须 > 0，份额/价格/手续费固定为 0
+    if (type === 'dividend') {
+      const t = Number(total);
+      if (!t || t <= 0) { setError('分红金额必须大于0'); return; }
+      // 分红：shares=0, price=0, fee=0, total=user input
+      if (editingId) {
+        update(editingId, { date, type, shares: 0, price: 0, fee: 0, total: t });
+        setEditingId(null);
+      } else {
+        const record: TradeRecord = {
+          id: Math.random().toString(36).substr(2, 9),
+          date,
+          type,
+          shares: 0,
+          price: 0,
+          fee: 0,
+          total: t,
+        };
+        add(record);
+      }
+      // reset
+      setTotal('0'); setPage(0);
+      return;
+    }
+
     // Derive the actual shares to persist:
     // - sell: user inputs shares; total is computed (readonly)
     // - buy:  user inputs total;  shares = (total - fee) / price (readonly, 2dp)
@@ -324,17 +369,23 @@ export const TradeManager: React.FC<{
     setEditingId(t.id);
     setDate(t.date);
     setType(t.type);
-    if (t.type === 'sell') {
+    if (t.type === 'dividend') {
+      // 分红：编辑 total 字段
+      setTotal(String(t.total || 0));
+      setShares('0');
+      setFee('0');
+    } else if (t.type === 'sell') {
       // sell: user edits shares directly
       setShares(String(t.shares));
       setTotal('0');
+      setFee(String(t.fee));
     } else {
       // buy: user edits total; back-compute from stored shares * price + fee
       const backTotal = Number((t.shares * t.price + (t.fee || 0)).toFixed(2));
       setTotal(String(backTotal));
       setShares('0');
+      setFee(String(t.fee));
     }
-    setFee(String(t.fee));
   };
 
   const cancelEdit = () => {
@@ -403,10 +454,10 @@ export const TradeManager: React.FC<{
   // 渲染交易额合计
   const renderTradeAmountSummary = () => {
     if (viewMode !== 'normal') return '-';
-    if (summary.totalTradeAmount === 0) return '0.00';
+    if (summary.totalTradeAmount === 0 && summary.totalDividendAmount === 0) return '0.00';
     const isNetInflow = summary.totalTradeAmount > 0;
     const netLabel = isNetInflow ? '净投入' : '净回收';
-    const tip = `总买入 ${formatNumber(summary.totalBuyAmount, 2)}, 总卖出 ${formatNumber(summary.totalSellAmount, 2)}, ${netLabel} ${formatNumber(Math.abs(summary.totalTradeAmount), 2)}`;
+    const tip = `总买入 ${formatNumber(summary.totalBuyAmount, 2)}, 总卖出 ${formatNumber(summary.totalSellAmount, 2)}, 总分红 ${formatNumber(summary.totalDividendAmount, 2)}, ${netLabel} ${formatNumber(Math.abs(summary.totalTradeAmount), 2)}`;
     return (
       <>
         {formatNumber(Math.abs(summary.totalTradeAmount), 2)}
@@ -420,8 +471,8 @@ export const TradeManager: React.FC<{
   // 渲染操作列统计
   const renderOperationSummary = () => {
     if (viewMode !== 'normal') return '-';
-    const totalCount = summary.buyCount + summary.sellCount;
-    const tip = `买入/建仓 ${summary.buyCount} 次，卖出 ${summary.sellCount} 次`;
+    const totalCount = summary.buyCount + summary.sellCount + summary.dividendCount;
+    const tip = `买入/建仓 ${summary.buyCount} 次，卖出 ${summary.sellCount} 次，分红 ${summary.dividendCount} 次`;
     return (
       <span title={tip} className="cursor-help">
         {totalCount}
@@ -477,14 +528,25 @@ export const TradeManager: React.FC<{
             <select
               value={type}
               onChange={e => {
-                setType(e.target.value as TradeType);
-                setShares('0');
-                setTotal('0');
+                const newType = e.target.value as TradeType;
+                setType(newType);
+                // 切换类型时重置字段
+                if (newType === 'dividend') {
+                  // 分红类型：份额、手续费设为0，总额设为0（待用户输入）
+                  setShares('0');
+                  setFee('0');
+                  setTotal('0');
+                } else {
+                  // buy/sell：保持原有重置逻辑
+                  setShares('0');
+                  setTotal('0');
+                }
               }}
               className="w-full px-2 py-1 border rounded h-8 text-sm"
             >
               <option value="buy">买入</option>
               <option value="sell">卖出</option>
+              <option value="dividend">分红</option>
             </select>
           </div>
           <div>
@@ -497,6 +559,16 @@ export const TradeManager: React.FC<{
                   value={shares}
                   onChange={e => setShares(e.target.value)}
                   className="w-full px-2 py-1 border rounded h-8 text-sm text-right"
+                />
+              </>
+            ) : type === 'dividend' ? (
+              <>
+                <label className="text-xs text-gray-500">份额（禁用）</label>
+                <input
+                  type="text"
+                  readOnly
+                  value="0"
+                  className="w-full px-2 py-1 border rounded h-8 text-sm text-right bg-gray-100 cursor-not-allowed"
                 />
               </>
             ) : (
@@ -521,11 +593,22 @@ export const TradeManager: React.FC<{
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-2 items-end">
           <div>
-            <label className="text-xs text-gray-500">价格（只读，按交易日期）</label>
-            <input type="text" readOnly value={displayPrice.toFixed(4)} className="w-full px-2 py-1 border rounded h-8 text-sm text-right bg-gray-50" />
+            <label className="text-xs text-gray-500">
+              {type === 'dividend' ? '价格（禁用）' : '价格（只读，按交易日期）'}
+            </label>
+            <input
+              type="text"
+              readOnly
+              value={type === 'dividend' ? '0' : displayPrice.toFixed(4)}
+              className={`w-full px-2 py-1 border rounded h-8 text-sm text-right ${
+                type === 'dividend' ? 'bg-gray-100 cursor-not-allowed' : 'bg-gray-50'
+              }`}
+            />
           </div>
           <div>
-            <label className="text-xs text-gray-500">手续费</label>
+            <label className="text-xs text-gray-500">
+              {type === 'dividend' ? '手续费（禁用）' : '手续费'}
+            </label>
             <FeeInput
               symbol={symbol}
               type={type}
@@ -535,12 +618,24 @@ export const TradeManager: React.FC<{
               shares={type === 'sell' ? Number(shares) : undefined}
               value={Number(fee)}
               onChange={(newFee) => setFee(String(newFee))}
+              disabled={type === 'dividend'}
             />
           </div>
           <div>
             {type === 'buy' ? (
               <>
                 <label className="text-xs text-gray-500">总额</label>
+                <input
+                  type="number"
+                  step="0.01"
+                  value={total}
+                  onChange={e => setTotal(e.target.value)}
+                  className="w-full px-2 py-1 border rounded h-8 text-sm text-right"
+                />
+              </>
+            ) : type === 'dividend' ? (
+              <>
+                <label className="text-xs text-gray-500">分红金额</label>
                 <input
                   type="number"
                   step="0.01"
@@ -657,17 +752,21 @@ export const TradeManager: React.FC<{
                 {visibleRecords.map((t, index) => {
                   const isInitial = (t as any).isInitial;
                   const isSell = t.type === 'sell';
+                  const isDividend = t.type === 'dividend';
                   const isError = t.isError;
                   const isSelected = selectedIds.has(t.id);
 
                   // 使用 remainingShares 和 remainingFee
                   const displayShares = t.remainingShares;
                   const displayFee = t.remainingFee;
-                  const tradeAmount = calcTradeAmount(isSell, displayShares, t.price, displayFee);
+                  // 分红类型使用 total 字段作为交易额
+                  const tradeAmount = isDividend
+                    ? getTradeAmount(t)
+                    : calcTradeAmount(isSell, displayShares, t.price, displayFee);
 
-                  // 盈亏计算：买入和建仓计算盈亏，卖出显示"-"
-                  const profitRate = isSell ? 0 : calcProfitRate(t.price);
-                  const profitAmount = isSell ? 0 : calcProfitAmount(displayShares, t.price);
+                  // 盈亏计算：买入和建仓计算盈亏，卖出和分红显示"-"
+                  const profitRate = (isSell || isDividend) ? 0 : calcProfitRate(t.price);
+                  const profitAmount = (isSell || isDividend) ? 0 : calcProfitAmount(displayShares, t.price);
 
                   return (
                     <div
@@ -678,6 +777,7 @@ export const TradeManager: React.FC<{
                       } ${
                         isError ? 'bg-orange-50 border-orange-400' :
                         isInitial ? 'bg-blue-50 border-blue-200' :
+                        isDividend ? 'bg-yellow-50 border-yellow-200' :
                         (t.type === 'buy' ? 'bg-green-50 border-green-100' : 'bg-red-50 border-red-100')
                       }`}
                       onMouseDown={(e) => handleRowMouseDown(t.id, index, e)}
@@ -685,11 +785,11 @@ export const TradeManager: React.FC<{
                       onMouseUp={handleRowMouseUp}
                     >
                       <div className="w-[12%] text-left text-xs truncate">{formatDateDisplay(t.date)}</div>
-                      <div className={`w-[8%] text-left text-xs ${isInitial ? 'text-blue-500' : 'text-gray-500'}`}>
-                        {isInitial ? '建仓' : (t.type === 'buy' ? '买入' : '卖出')}
+                      <div className={`w-[8%] text-left text-xs ${isInitial ? 'text-blue-500' : isDividend ? 'text-yellow-600' : 'text-gray-500'}`}>
+                        {isInitial ? '建仓' : isDividend ? '分红' : (t.type === 'buy' ? '买入' : '卖出')}
                       </div>
-                      <div className="w-[12%] text-right text-xs">{formatNumber(displayShares, 2)}</div>
-                      <div className="w-[10%] text-right text-xs">{t.price.toFixed(4)}</div>
+                      <div className="w-[12%] text-right text-xs">{isDividend ? '-' : formatNumber(displayShares, 2)}</div>
+                      <div className="w-[10%] text-right text-xs">{isDividend ? '-' : t.price.toFixed(4)}</div>
                       <div className="w-[18%] text-right text-xs font-medium">{formatNumber(tradeAmount, 2)}</div>
                       <div className="w-[10%] text-right text-xs">{displayFee === 0 ? '-' : formatNumber(displayFee, 2)}</div>
                       <div className={`w-[10%] text-right text-xs ${profitRate > 0 ? 'text-red-500' : profitRate < 0 ? 'text-green-500' : ''}`}>

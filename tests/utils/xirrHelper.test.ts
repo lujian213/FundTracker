@@ -374,3 +374,115 @@ describe('computeSimpleAnnualizedReturn', () => {
     expect(result).toBeLessThan(130);
   });
 });
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// 分红交易测试
+// ═══════════════════════════════════════════════════════════════════════════════
+
+describe('buildCashFlows with dividend trades', () => {
+  test('dividend creates positive cash flow', () => {
+    const trades: TradeRecord[] = [
+      { id: 'b1', date: '2026-01-01', type: 'buy', shares: 1000, price: 1.0, fee: 0 },
+      { id: 'd1', date: '2026-02-01', type: 'dividend', shares: 0, price: 0, fee: 0, total: 100 },
+    ];
+    const result = buildCashFlows({
+      initialPosition: 0,
+      initialPrice: null,
+      startDate: null,
+      trades,
+      currentShares: 1000,
+      currentPrice: 1.2,
+      currentDate: '2026-05-17'
+    });
+
+    expect(result).toHaveLength(3);
+    // Buy: -1000
+    expect(result[0].amount).toBe(-1000);
+    // Dividend: +100 (positive cash inflow)
+    expect(result[1].amount).toBe(100);
+    // Final: 1200
+    expect(result[2].amount).toBe(1200);
+  });
+
+  test('multiple dividends accumulate', () => {
+    const trades: TradeRecord[] = [
+      { id: 'b1', date: '2026-01-01', type: 'buy', shares: 1000, price: 1.0, fee: 0 },
+      { id: 'd1', date: '2026-02-01', type: 'dividend', shares: 0, price: 0, fee: 0, total: 50 },
+      { id: 'd2', date: '2026-03-01', type: 'dividend', shares: 0, price: 0, fee: 0, total: 60 },
+    ];
+    const result = buildCashFlows({
+      initialPosition: 0,
+      initialPrice: null,
+      startDate: null,
+      trades,
+      currentShares: 1000,
+      currentPrice: 1.2,
+      currentDate: '2026-05-17'
+    });
+
+    expect(result).toHaveLength(4);
+    // Buy: -1000
+    expect(result[0].amount).toBe(-1000);
+    // Dividends: +50, +60
+    expect(result[1].amount).toBe(50);
+    expect(result[2].amount).toBe(60);
+    // Final: 1200
+    expect(result[3].amount).toBe(1200);
+  });
+
+  test('dividend with zero total is ignored', () => {
+    const trades: TradeRecord[] = [
+      { id: 'b1', date: '2026-01-01', type: 'buy', shares: 1000, price: 1.0, fee: 0 },
+      { id: 'd1', date: '2026-02-01', type: 'dividend', shares: 0, price: 0, fee: 0, total: 0 },
+    ];
+    const result = buildCashFlows({
+      initialPosition: 0,
+      initialPrice: null,
+      startDate: null,
+      trades,
+      currentShares: 1000,
+      currentPrice: 1.2,
+      currentDate: '2026-05-17'
+    });
+
+    // Dividend with total=0 should still be included (amount=0)
+    expect(result).toHaveLength(3);
+    expect(result[1].amount).toBe(0);
+  });
+
+  test('dividend increases XIRR', () => {
+    // Scenario 1: No dividend
+    const trades1: TradeRecord[] = [
+      { id: 'b1', date: '2026-01-01', type: 'buy', shares: 1000, price: 1.0, fee: 0 },
+    ];
+    const result1 = buildCashFlows({
+      initialPosition: 0,
+      initialPrice: null,
+      startDate: null,
+      trades: trades1,
+      currentShares: 1000,
+      currentPrice: 1.2,
+      currentDate: '2026-05-17'
+    });
+    const xirr1 = computeXIRR(result1);
+
+    // Scenario 2: With dividend
+    const trades2: TradeRecord[] = [
+      { id: 'b1', date: '2026-01-01', type: 'buy', shares: 1000, price: 1.0, fee: 0 },
+      { id: 'd1', date: '2026-03-01', type: 'dividend', shares: 0, price: 0, fee: 0, total: 100 },
+    ];
+    const result2 = buildCashFlows({
+      initialPosition: 0,
+      initialPrice: null,
+      startDate: null,
+      trades: trades2,
+      currentShares: 1000,
+      currentPrice: 1.2,
+      currentDate: '2026-05-17'
+    });
+    const xirr2 = computeXIRR(result2);
+
+    // Dividend should increase return
+    expect(xirr2).toBeGreaterThan(xirr1!);
+  });
+});

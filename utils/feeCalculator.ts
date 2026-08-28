@@ -1,4 +1,4 @@
-import { TradeRecord } from '../types';
+import { TradeRecord, TradeType } from '../types';
 
 /**
  * 检查交易是否在指定日期的3个月以内
@@ -19,15 +19,21 @@ function isWithinThreeMonths(tradeDate: string, currentDate: string): boolean {
  * 查找精确匹配的历史交易记录
  * - 买入：查找3个月以内、交易总额相同的记录
  * - 卖出：查找3个月以内、份额相同的记录
+ * - 分红：不适用，直接返回 null
  */
 export function findExactMatchTrade(params: {
   historicalTrades: TradeRecord[];
-  type: 'buy' | 'sell';
+  type: TradeType;
   currentDate: string;
   total?: number; // 买入时使用
   shares?: number; // 卖出时使用
 }): TradeRecord | null {
   const { historicalTrades, type, currentDate, total, shares } = params;
+
+  // 分红交易没有精确匹配的概念
+  if (type === 'dividend') {
+    return null;
+  }
 
   let latest: TradeRecord | null = null;
 
@@ -65,7 +71,7 @@ export function findExactMatchTrade(params: {
  */
 export function findRecentTradeByType(
   trades: TradeRecord[],
-  type: 'buy' | 'sell'
+  type: TradeType
 ): TradeRecord | null {
   let recentTrade: TradeRecord | null = null;
 
@@ -101,18 +107,24 @@ export function calculateFeeRate(trade: TradeRecord): number {
  * 根据历史交易计算当前交易的手续费
  *
  * 计算策略：
- * 1. 首先查找3个月以内、金额/份额相同的记录，直接使用其手续费（避免计算误差）
- * 2. 如果找不到精确匹配，则使用费率计算（原逻辑）
+ * 1. 分红交易：直接返回 0（分红无手续费）
+ * 2. 首先查找3个月以内、金额/份额相同的记录，直接使用其手续费（避免计算误差）
+ * 3. 如果找不到精确匹配，则使用费率计算（原逻辑）
  */
 export function calculateFee(params: {
   historicalTrades: TradeRecord[];
-  type: 'buy' | 'sell';
+  type: TradeType;
   currentDate: string; // 当前交易日期，用于判断3个月范围
   price: number;
   total?: number;
   shares?: number;
 }): number {
   const { historicalTrades, type, currentDate, price, total, shares } = params;
+
+  // 分红交易无手续费
+  if (type === 'dividend') {
+    return 0;
+  }
 
   // 1. 尝试查找精确匹配的历史记录
   const exactMatch = findExactMatchTrade({

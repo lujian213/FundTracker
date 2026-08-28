@@ -1,4 +1,4 @@
-import { HistoricalPoint, ValuationData } from '../types';
+import { HistoricalPoint, ValuationData, TradeType } from '../types';
 import { toLocalDateKey } from './priceResolver';
 
 /**
@@ -39,14 +39,17 @@ export function findNextValidTradeDate(
  * @param trade 交易信息
  * @param currentNav 当前交易日净值
  * @param nextValidDate 下一个有效交易日（日期和净值），或 null
- * @returns 盈亏金额，或 null（无法计算）
+ * @returns 盈亏金额，或 null（无法计算或分红交易）
  */
 export function calculateTradeEffect(
-  trade: { type: 'buy' | 'sell'; shares: number; fee: number },
+  trade: { type: TradeType; shares: number; fee: number },
   currentNav: number,
   nextValidDate: { date: string; netValue: number } | null
 ): number | null {
   if (!nextValidDate) return null;
+
+  // 分红交易不影响份额，不产生盈亏效果
+  if (trade.type === 'dividend') return null;
 
   // 净交易份额：买入为正，卖出为负
   const netShares = trade.type === 'buy' ? trade.shares : -trade.shares;
@@ -64,7 +67,7 @@ export function calculateTradeEffect(
  */
 export function calculateDateTradeEffect(
   tradesWithNav: Array<{
-    trade: { type: 'buy' | 'sell'; shares: number; fee: number };
+    trade: { type: TradeType; shares: number; fee: number };
     currentNav: number;
     nextValidDate: { date: string; netValue: number } | null;
   }>

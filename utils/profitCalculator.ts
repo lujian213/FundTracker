@@ -44,6 +44,7 @@ export function computeProfitTimeline(params: {
   const timeline: ProfitPoint[] = [];
   let cumulativeBuyAmount = 0; // sum of (price*shares + fee) for buys up to yesterday
   let cumulativeSellAmount = 0; // sum of (price*shares - fee) for sells up to yesterday
+  let cumulativeDividendAmount = 0; // sum of total for dividends up to yesterday
   let cumulativePrevious = 0;
   let runningBuyShares = 0;
   let runningSellShares = 0;
@@ -56,6 +57,7 @@ export function computeProfitTimeline(params: {
   let sellSharesBeforeToday = 0;
   let buyAmountBeforeToday = 0;
   let sellAmountBeforeToday = 0;
+  let dividendAmountBeforeToday = 0;
 
   for (const p of sortedHistory) {
     const dateKey = tsToISODate(p.date);
@@ -64,7 +66,7 @@ export function computeProfitTimeline(params: {
       const shares = initialPosition + buySharesBeforeToday - sellSharesBeforeToday;
       const netValueBeforeStart = p.value || 0;
       const initCostBeforeStart = (initialPrice !== null && initialPrice !== undefined) ? (initialPosition * initialPrice) : 0;
-      const cumulative = (shares * netValueBeforeStart) - initCostBeforeStart - buyAmountBeforeToday + sellAmountBeforeToday;
+      const cumulative = (shares * netValueBeforeStart) - initCostBeforeStart - buyAmountBeforeToday + sellAmountBeforeToday + dividendAmountBeforeToday;
       cumulativePrevious = cumulative;
 
       // 然后累加该日期的交易
@@ -76,9 +78,12 @@ export function computeProfitTimeline(params: {
           if (t.type === 'buy') {
             runningBuyShares += t.shares;
             cumulativeBuyAmount += (t.price || 0) * (t.shares || 0) + fee;
-          } else {
+          } else if (t.type === 'sell') {
             runningSellShares += t.shares;
             cumulativeSellAmount += (t.price || 0) * (t.shares || 0) - fee;
+          } else if (t.type === 'dividend') {
+            // 分红：累加金额，不影响份额
+            cumulativeDividendAmount += t.total || 0;
           }
         }
       }
@@ -89,6 +94,7 @@ export function computeProfitTimeline(params: {
       sellSharesBeforeToday = runningSellShares;
       buyAmountBeforeToday = cumulativeBuyAmount;
       sellAmountBeforeToday = cumulativeSellAmount;
+      dividendAmountBeforeToday = cumulativeDividendAmount;
       continue;
     }
     if (dateKey > end) break;
@@ -104,9 +110,12 @@ export function computeProfitTimeline(params: {
           if (t.type === 'buy') {
             runningBuyShares += t.shares;
             cumulativeBuyAmount += (t.price || 0) * (t.shares || 0) + fee;
-          } else {
+          } else if (t.type === 'sell') {
             runningSellShares += t.shares;
             cumulativeSellAmount += (t.price || 0) * (t.shares || 0) - fee;
+          } else if (t.type === 'dividend') {
+            // 分红：累加金额，不影响份额
+            cumulativeDividendAmount += t.total || 0;
           }
         }
       }
@@ -115,6 +124,7 @@ export function computeProfitTimeline(params: {
       sellSharesBeforeToday = runningSellShares;
       buyAmountBeforeToday = cumulativeBuyAmount;
       sellAmountBeforeToday = cumulativeSellAmount;
+      dividendAmountBeforeToday = cumulativeDividendAmount;
       lastProcessedDate = dateKey;
     }
 
@@ -122,7 +132,7 @@ export function computeProfitTimeline(params: {
     const shares = initialPosition + buySharesBeforeToday - sellSharesBeforeToday;
     const netValue = p.value || 0;
     const initCost = (initialPrice !== null && initialPrice !== undefined) ? (initialPosition * initialPrice) : 0;
-    const cumulative = (shares * netValue) - initCost - buyAmountBeforeToday + sellAmountBeforeToday;
+    const cumulative = (shares * netValue) - initCost - buyAmountBeforeToday + sellAmountBeforeToday + dividendAmountBeforeToday;
 
     // 当日盈利 = 当日累计盈利 - 前一日累计盈利
     const daily = Number((cumulative - cumulativePrevious).toFixed(4));

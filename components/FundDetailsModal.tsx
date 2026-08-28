@@ -6,7 +6,7 @@ import * as marketFundService from '../services/marketFundService';
 import { MA_COLORS } from '../utils/movingAverage';
 import { DEFAULT_VISIBLE_MAS, MA_WINDOWS } from '../utils/maConfig';
 import { computeRatingFromHistory } from '../utils/ratingHelper';
-import { computeAvgCostPrice, getLatestValuationPrice } from '../utils/positionHelper';
+import { computeAvgCostPrice, getLatestValuationPrice, computePositionState } from '../utils/positionHelper';
 import RatingTooltip from './RatingTooltip';
 import TradeManager from './TradeManager';
 import useTrades from '../hooks/useTrades';
@@ -985,22 +985,12 @@ export const FundDetailsModal: React.FC<FundDetailsModalProps> = ({ data, onClos
     // If fullCapacity is 0 (not configured), we treat these values as not-applicable (null) so they don't appear in other aggregations.
     const holdings = useMemo(() => {
     if (!fullCapacity || fullCapacity <= 0) {
-      return { totalShares: 0, buyShares: 0, sellShares: 0, buyAmount: 0, sellAmount: 0, marketValue: null as number | null, profit: null as number | null };
+      return { totalShares: 0, buyShares: 0, sellShares: 0, buyAmount: 0, sellAmount: 0, dividendAmount: 0, marketValue: null as number | null, profit: null as number | null };
     }
-    let buyShares = 0;
-    let sellShares = 0;
-    let buyAmount = 0; // sum of buy: price*shares + fee
-    let sellAmount = 0; // sum of sell: price*shares - (t.fee || 0);
-    for (const t of tradeList || []) {
-      if (t.type === 'buy') {
-        buyShares += t.shares;
-        buyAmount += t.price * t.shares + (t.fee || 0);
-      } else {
-        sellShares += t.shares;
-        sellAmount += t.price * t.shares - (t.fee || 0);
-      }
-    }
-    const totalShares = initialPosition + buyShares - sellShares;
+
+    // 使用公共函数计算持仓状态
+    const state = computePositionState(initialPosition, initialPrice, tradeList || []);
+
     const resolved = resolvePreferredPrice({
       targetDate: todayLocal,
       todayDate: todayLocal,
@@ -1011,11 +1001,21 @@ export const FundDetailsModal: React.FC<FundDetailsModalProps> = ({ data, onClos
       netWorthDate: valuationData.netWorthDate,
     });
     const effectivePrice = resolved ? resolved.price : 0;
-    const marketValue = totalShares * effectivePrice;
-    // initialPrice may be null -> treat as 0 for calculation (or if null, initialPosition*0)
-    const initPrice = initialPrice !== null ? initialPrice : 0;
-    const profit = (totalShares * effectivePrice) + sellAmount - buyAmount - (initialPosition * initPrice);
-    return { totalShares, buyShares, sellShares, buyAmount, sellAmount, marketValue, profit };
+    const marketValue = state.currentShares * effectivePrice;
+
+    // 计算盈利：市值 + 卖出金额 + 分红金额 - 买入金额 - 初始成本
+    const profit = marketValue + state.sellAmount + state.dividendAmount - state.buyAmount - state.initialCost;
+
+    return {
+      totalShares: state.currentShares,
+      buyShares: state.buyShares,
+      sellShares: state.sellShares,
+      buyAmount: state.buyAmount,
+      sellAmount: state.sellAmount,
+      dividendAmount: state.dividendAmount,
+      marketValue,
+      profit
+    };
     }, [tradeList, todayLocal, history, valuationData.currentPrice, valuationData.realtimeDate, valuationData.previousPrice, valuationData.netWorthDate, initialPosition, initialPrice, fullCapacity]);
 
     const { totalShares, buyShares, sellShares, buyAmount, sellAmount, marketValue, profit } = holdings;

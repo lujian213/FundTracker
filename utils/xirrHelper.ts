@@ -1,4 +1,4 @@
-import { TradeRecord } from '../types';
+import { TradeRecord, getTradeAmount } from '../types';
 import xirr from '@webcarrot/xirr';
 
 /** 一年的毫秒数 */
@@ -41,19 +41,13 @@ export function buildCashFlows(params: BuildCashFlowsParams): CashFlow[] {
 
   // 2. 交易记录
   for (const trade of trades) {
-    if (trade.type === 'buy') {
-      // 买入：负数（钱流出）
-      cashFlows.push({
-        date: new Date(trade.date),
-        amount: -trade.price * trade.shares - (trade.fee || 0)
-      });
-    } else {
-      // 卖出：正数（钱流入）
-      cashFlows.push({
-        date: new Date(trade.date),
-        amount: trade.price * trade.shares - (trade.fee || 0)
-      });
-    }
+    const amount = getTradeAmount(trade);
+    // 买入：负数（钱流出），卖出和分红：正数（钱流入）
+    const cashFlowAmount = trade.type === 'buy' ? -amount : amount;
+    cashFlows.push({
+      date: new Date(trade.date),
+      amount: cashFlowAmount
+    });
   }
 
   // 3. 最终市值（正数，视为最终卖出回款）
