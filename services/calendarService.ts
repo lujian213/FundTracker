@@ -116,6 +116,9 @@ export function updateCalendarData(
   }
 
   saveCalendarData(data);
+
+  // 触发日历数据更新事件，通知主界面刷新提示信息
+  window.dispatchEvent(new CustomEvent('calendar-data-updated'));
 }
 
 export function clearCalendarData(): void {

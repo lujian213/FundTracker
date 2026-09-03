@@ -303,6 +303,9 @@ const AppContent: React.FC = () => {
     wasViewingFundOpenRef.current = viewingFund !== null;
   }, [viewingFund]);
 
+  // 日历数据更新触发器，用于刷新日历按钮提示信息
+  const [calendarUpdateTrigger, setCalendarUpdateTrigger] = useState<number>(0);
+
   const [virtualTradeModalFund, setVirtualTradeModalFund] = useState<string | null>(null);
   const [viewingIndexSymbol, setViewingIndexSymbol] = useState<string | null>(null);
   const [pendingImportData, setPendingImportData] = useState<BackupData | null>(null);
@@ -579,6 +582,16 @@ const AppContent: React.FC = () => {
 
     window.addEventListener('draftDataAlertsClear', handleAlertsClear as EventListener);
     return () => window.removeEventListener('draftDataAlertsClear', handleAlertsClear as EventListener);
+  }, []);
+
+  // 监听日历数据更新事件，刷新主界面的日历按钮提示信息
+  useEffect(() => {
+    const handleCalendarUpdate = () => {
+      setCalendarUpdateTrigger(prev => prev + 1);
+    };
+
+    window.addEventListener('calendar-data-updated', handleCalendarUpdate);
+    return () => window.removeEventListener('calendar-data-updated', handleCalendarUpdate);
   }, []);
 
   // portfolio 由 marketFundService 管理，不需要单独同步到 localStorage
@@ -1143,7 +1156,8 @@ const AppContent: React.FC = () => {
   }, [viewingIndexSymbol, displayDomesticIndices, displayGlobalIndices]);
 
   // 获取即将到来的日历事件（日历数据更新频率低，使用 useMemo 缓存）
-  const upcomingCalendarEvents = useMemo(() => getFirstEventInWorkdays(4), []);
+  // 依赖 calendarUpdateTrigger 确保在后台刷新日历数据后重新计算
+  const upcomingCalendarEvents = useMemo(() => getFirstEventInWorkdays(4), [calendarUpdateTrigger]);
 
   // 从 marketFundService 获取基金历史数据
   const fundHistories = useMemo(() => {
