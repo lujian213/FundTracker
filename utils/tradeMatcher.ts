@@ -179,12 +179,15 @@ export const lifoMatcher: MatcherFunction = (records, _currentPrice) => {
 };
 
 // 根据视图模式返回匹配器
-export const getMatcher = (viewMode: 'normal' | 'fifo' | 'lifo'): MatcherFunction => {
+export const getMatcher = (viewMode: 'normal' | 'fifo' | 'lifo' | 'error'): MatcherFunction => {
   switch (viewMode) {
     case 'fifo':
       return fifoMatcher;
     case 'lifo':
       return lifoMatcher;
+    case 'error':
+      // 错误交易视图使用普通视图的显示方式
+      return normalMatcher;
     default:
       return normalMatcher;
   }

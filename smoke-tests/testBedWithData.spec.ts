@@ -5529,7 +5529,7 @@ test.describe('testBedWithData', () => {
       if (await tradeAmountSpanLocator.count() > 0) {
         const tradeAmountTitle = await tradeAmountSpanLocator.getAttribute('title') || '';
         console.log(`交易额列悬停提示: ${tradeAmountTitle}`);
-        expect(tradeAmountTitle).toMatch(/总买入 [\d,.]+, 总卖出 [\d,.]+, (净投入|净回收) [\d,.]+/);
+        expect(tradeAmountTitle).toMatch(/总买入 [\d,.]+, 总卖出 [\d,.]+, 总分红 [\d,.]+, (净投入|净回收) [\d,.]+/);
       }
 
       console.log('合计行统计信息验证完成');
@@ -5579,11 +5579,74 @@ test.describe('testBedWithData', () => {
     console.log('先进先出和后进先出视图无编辑按钮验证完成');
 
     // ══════════════════════════════════════════════════════════════════════════════
+    // 16.5. 验证错误交易视图
+    // ══════════════════════════════════════════════════════════════════════════════
+    // 验证视图切换区域有四个单选按钮
+    const viewRadios = tradeManagerModal.locator('input[type="radio"]');
+    const viewRadioCount = await viewRadios.count();
+    console.log(`视图切换区域单选按钮数量: ${viewRadioCount}`);
+    expect(viewRadioCount).toBe(4);
+
+    // 切换回普通视图
+    const normalViewRadioLocator = tradeManagerModal.locator('label:has-text("普通视图")');
+    await normalViewRadioLocator.click();
+    await page.waitForTimeout(500);
+
+    // 验证当前选中"普通视图"
+    const normalRadioChecked = await tradeManagerModal.locator('input[type="radio"][value="normal"]').isChecked();
+    console.log(`当前选中"普通视图": ${normalRadioChecked}`);
+    expect(normalRadioChecked).toBe(true);
+
+    // 点击"错误交易"单选按钮
+    const errorTradeRadioLocator = tradeManagerModal.locator('label:has-text("错误交易")');
+    await errorTradeRadioLocator.click();
+    await page.waitForTimeout(500);
+
+    console.log('已切换到错误交易视图');
+
+    // 验证错误交易视图表头正确（使用div结构）
+    const errorTableHeader = tradeManagerModal.locator('.flex.items-center.px-2.py-2.bg-gray-100').filter({ hasText: '日期' });
+    const headerVisible = await errorTableHeader.isVisible({ timeout: 2000 });
+    console.log(`错误交易视图表头显示: ${headerVisible}`);
+
+    // 验证关键列存在
+    const expectedHeaders = ['日期', '操作', '数量', '价格', '交易额', '手续费', '盈亏率', '盈亏额'];
+    for (const header of expectedHeaders) {
+      const headerLocator = tradeManagerModal.locator(`div:has-text("${header}")`).filter({ has: errorTableHeader });
+      const headerCount = await headerLocator.count();
+      if (headerCount > 0) {
+        console.log(`表头验证: ${header} ✓`);
+      }
+    }
+
+    // 验证错误交易视图底部有合计行（如果有数据）
+    const errorSummaryRow = tradeManagerModal.locator('.bg-gray-100').filter({ hasText: '合计' });
+    const summaryRowVisible = await errorSummaryRow.isVisible({ timeout: 2000 }).catch(() => false);
+
+    if (summaryRowVisible) {
+      console.log('错误交易视图合计行显示: true');
+    } else {
+      // 如果没有数据，可能显示"暂无交易记录"
+      const emptyState = tradeManagerModal.locator('text=暂无交易记录');
+      const emptyVisible = await emptyState.isVisible({ timeout: 2000 }).catch(() => false);
+      if (emptyVisible) {
+        console.log('错误交易视图无错误交易数据，显示空状态');
+      }
+    }
+
+    // 验证分页功能
+    const paginationLocator = tradeManagerModal.locator('button:has-text("上一页"), button:has-text("下一页")');
+    const paginationCount = await paginationLocator.count();
+    console.log(`分页按钮数量: ${paginationCount}`);
+
+    console.log('错误交易视图验证完成');
+
+    // ══════════════════════════════════════════════════════════════════════════════
     // 17. 关闭交易管理窗口
     // ══════════════════════════════════════════════════════════════════════════════
-    // 关闭交易管理窗口（使用 dispatchEvent 触发点击）
+    // 关闭交易管理窗口（点击背景遮罩层）
     // ══════════════════════════════════════════════════════════════════════════════
-    const overlay = page.locator('.fixed.inset-0').filter({ hasText: '交易管理' }).locator('.absolute.inset-0');
+    const overlay = page.locator('.fixed.inset-0 > .absolute.inset-0.bg-black\\/60').first();
     await overlay.dispatchEvent('click');
     await expect(tradeManagerModal).not.toBeVisible({ timeout: 3000 });
 

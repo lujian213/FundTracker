@@ -1041,7 +1041,7 @@ const DrawdownTab: React.FC<{
             <div className="text-5xl font-extrabold text-red-600 leading-none">
               -{currentDrawdownDisplay}
             </div>
-            <div className="text-sm text-red-800 mt-1">当前回撤深度</div>
+            <div className="text-sm text-gray-600 mt-1">回撤金额</div>
             {/* 盈利占比回撤百分比 + 状态标签 */}
             <div className="mt-2 flex items-center gap-2 flex-wrap">
               {(() => {
@@ -1055,6 +1055,11 @@ const DrawdownTab: React.FC<{
 
                 return (
                   <>
+                    {/* 盈利回撤类型标签 */}
+                    <span className="px-3 py-1 rounded-full text-xs font-semibold bg-gray-100 text-gray-700">
+                      盈利回撤
+                    </span>
+
                     {/* 盈利占比回撤百分比 */}
                     {drawdownMethod === 'profit' && snapshot.profitRatioDrawdown && (
                       <span className={`px-3 py-1 rounded-full text-xs font-semibold ${statusInfo.style}`}>

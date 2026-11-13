@@ -939,3 +939,158 @@ describe('TradeManager dividend type', () => {
     expect(screen.queryByTitle(/净投入/)).not.toBeInTheDocument();
   });
 });
+
+// ─── TradeManager error trade view tests ───────────────────────────────────────
+describe('TradeManager error trade view', () => {
+  const today = new Date();
+  const yesterday = new Date(today.getTime() - 24 * 3600 * 1000);
+  const fmt = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+
+  beforeEach(() => {
+    localStorage.clear();
+    // 重置市场基金服务缓存
+    const { resetCache: resetMarketFundCache } = require('../../services/marketFundService');
+    resetMarketFundCache();
+  });
+
+  test('error view shows trades with wrong price', async () => {
+    // 设置历史净值：昨天的净值为1.2
+    (fetchFundHistory as jest.Mock).mockResolvedValue([
+      { date: new Date(`${fmt(yesterday)} 15:00`).getTime(), value: 1.2, equityReturn: 0 },
+    ]);
+
+    // 添加一笔交易：昨天买入，但价格错误（1.0而不是1.2）
+    setTradesForSymbol('TEST001', [
+      { id: 'b1', date: fmt(yesterday), type: 'buy', shares: 100, price: 1.0, fee: 0 },
+    ] as any);
+
+    render(<TradeManager symbol="TEST001" currentPrice={1.5} onClose={jest.fn()} />);
+    await waitFor(() => expect(fetchFundHistory).toHaveBeenCalled(), { timeout: 1000 });
+
+    // 切换到错误交易视图
+    fireEvent.click(screen.getByLabelText('错误交易'));
+    await waitFor(() => expect((screen.getByLabelText('错误交易') as HTMLInputElement).checked).toBe(true), { timeout: 1000 });
+
+    // 错误交易视图应该显示这笔交易
+    expect(screen.getByText(/共 1 条记录/)).toBeInTheDocument();
+    expect(screen.getByText('1.0000')).toBeInTheDocument(); // 错误的价格
+  });
+
+  test('error view excludes trades with correct price', async () => {
+    // 设置历史净值：昨天的净值为1.2
+    (fetchFundHistory as jest.Mock).mockResolvedValue([
+      { date: new Date(`${fmt(yesterday)} 15:00`).getTime(), value: 1.2, equityReturn: 0 },
+    ]);
+
+    // 添加一笔交易：昨天买入，价格正确（1.2）
+    setTradesForSymbol('TEST001', [
+      { id: 'b1', date: fmt(yesterday), type: 'buy', shares: 100, price: 1.2, fee: 0 },
+    ] as any);
+
+    render(<TradeManager symbol="TEST001" currentPrice={1.5} onClose={jest.fn()} />);
+    await waitFor(() => expect(fetchFundHistory).toHaveBeenCalled(), { timeout: 1000 });
+
+    // 切换到错误交易视图
+    fireEvent.click(screen.getByLabelText('错误交易'));
+    await waitFor(() => expect((screen.getByLabelText('错误交易') as HTMLInputElement).checked).toBe(true), { timeout: 1000 });
+
+    // 错误交易视图应该为空
+    expect(screen.getByText('暂无交易记录')).toBeInTheDocument();
+  });
+
+  test('error view marks trades with missing NAV as error', async () => {
+    // 没有历史净值数据
+    (fetchFundHistory as jest.Mock).mockResolvedValue([]);
+
+    // 添加一笔交易
+    setTradesForSymbol('TEST001', [
+      { id: 'b1', date: fmt(yesterday), type: 'buy', shares: 100, price: 1.0, fee: 0 },
+    ] as any);
+
+    render(<TradeManager symbol="TEST001" currentPrice={1.5} onClose={jest.fn()} />);
+    await waitFor(() => expect(fetchFundHistory).toHaveBeenCalled(), { timeout: 1000 });
+
+    // 切换到错误交易视图
+    fireEvent.click(screen.getByLabelText('错误交易'));
+    await waitFor(() => expect((screen.getByLabelText('错误交易') as HTMLInputElement).checked).toBe(true), { timeout: 1000 });
+
+    // 由于找不到历史净值，交易应该被标记为错误并显示
+    expect(screen.getByText(/共 1 条记录/)).toBeInTheDocument();
+  });
+
+  test('error view excludes dividend trades', async () => {
+    // 设置历史净值
+    (fetchFundHistory as jest.Mock).mockResolvedValue([
+      { date: new Date(`${fmt(yesterday)} 15:00`).getTime(), value: 1.2, equityReturn: 0 },
+    ]);
+
+    // 添加分红交易（分红不需要检查价格）
+    setTradesForSymbol('TEST001', [
+      { id: 'd1', date: fmt(yesterday), type: 'dividend', shares: 0, price: 0, fee: 0, total: 50 },
+    ] as any);
+
+    render(<TradeManager symbol="TEST001" currentPrice={1.5} onClose={jest.fn()} />);
+    await waitFor(() => expect(fetchFundHistory).toHaveBeenCalled(), { timeout: 1000 });
+
+    // 切换到错误交易视图
+    fireEvent.click(screen.getByLabelText('错误交易'));
+    await waitFor(() => expect((screen.getByLabelText('错误交易') as HTMLInputElement).checked).toBe(true), { timeout: 1000 });
+
+    // 分红交易不应该在错误交易视图中显示
+    expect(screen.getByText('暂无交易记录')).toBeInTheDocument();
+  });
+
+  test('error view allows edit and delete', async () => {
+    // 设置历史净值
+    (fetchFundHistory as jest.Mock).mockResolvedValue([
+      { date: new Date(`${fmt(yesterday)} 15:00`).getTime(), value: 1.2, equityReturn: 0 },
+    ]);
+
+    // 添加错误交易
+    setTradesForSymbol('TEST001', [
+      { id: 'b1', date: fmt(yesterday), type: 'buy', shares: 100, price: 1.0, fee: 0 },
+    ] as any);
+
+    render(<TradeManager symbol="TEST001" currentPrice={1.5} onClose={jest.fn()} />);
+    await waitFor(() => expect(fetchFundHistory).toHaveBeenCalled(), { timeout: 1000 });
+
+    // 切换到错误交易视图
+    fireEvent.click(screen.getByLabelText('错误交易'));
+    await waitFor(() => expect((screen.getByLabelText('错误交易') as HTMLInputElement).checked).toBe(true), { timeout: 1000 });
+
+    // 应该能看到编辑和删除按钮
+    expect(screen.getByTitle('编辑')).toBeInTheDocument();
+    expect(screen.getByTitle('删除')).toBeInTheDocument();
+  });
+
+  test('fixing error trade by deleting it', async () => {
+    // 设置历史净值
+    (fetchFundHistory as jest.Mock).mockResolvedValue([
+      { date: new Date(`${fmt(yesterday)} 15:00`).getTime(), value: 1.2, equityReturn: 0 },
+    ]);
+
+    // 添加错误交易
+    setTradesForSymbol('TEST001', [
+      { id: 'b1', date: fmt(yesterday), type: 'buy', shares: 100, price: 1.0, fee: 0 },
+    ] as any);
+
+    render(<TradeManager symbol="TEST001" currentPrice={1.5} onClose={jest.fn()} />);
+    await waitFor(() => expect(fetchFundHistory).toHaveBeenCalled(), { timeout: 1000 });
+
+    // 切换到错误交易视图
+    fireEvent.click(screen.getByLabelText('错误交易'));
+    await waitFor(() => expect((screen.getByLabelText('错误交易') as HTMLInputElement).checked).toBe(true), { timeout: 1000 });
+
+    // 应该看到交易记录
+    expect(screen.getByText(/共 1 条记录/)).toBeInTheDocument();
+
+    // 点击删除按钮
+    fireEvent.click(screen.getByTitle('删除'));
+
+    // 等待删除完成，错误列表应该刷新
+    await waitFor(() => {
+      // 删除后应该没有交易记录了
+      expect(screen.getByText('暂无交易记录')).toBeInTheDocument();
+    }, { timeout: 2000 });
+  });
+});

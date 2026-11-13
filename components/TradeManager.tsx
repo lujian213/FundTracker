@@ -9,7 +9,7 @@ import { getMatcher, MatchedRecord } from '../utils/tradeMatcher';
 import { SymbolBadge } from './SymbolBadge';
 import { FeeInput } from './FeeInput';
 
-type ViewMode = 'normal' | 'fifo' | 'lifo';
+type ViewMode = 'normal' | 'fifo' | 'lifo' | 'error';
 
 export const TradeManager: React.FC<{
   name?: string;
@@ -61,14 +61,56 @@ export const TradeManager: React.FC<{
     return records;
   }, [trades, hasInitialPosition, startDate, initialPosition, initialPrice]);
 
+  const todayLocal = useMemo(() => toLocalDateKey(new Date()), []);
+
+  // get price for a given local date string: exact match by local date or nearest previous available (<= end of day)
+  const getPriceForDate = (isoDate: string) => {
+    const resolved = resolvePreferredPrice({
+      targetDate: isoDate,
+      todayDate: todayLocal,
+      history,
+      currentPrice,
+      realtimeDate,
+      previousPrice,
+      netWorthDate,
+    });
+    return resolved ? resolved.price : 0;
+  };
+
+  // check if a trade has price error (transaction price != historical NAV)
+  const isErrorTrade = (record: TradeRecord | MatchedRecord): boolean => {
+    // 分红类型不需要检查价格
+    if (record.type === 'dividend') return false;
+
+    // 从历史净值中查找该日期的净值
+    const historyPrice = getPriceForDate(record.date);
+
+    // 如果找不到历史净值（返回0），标记为错误
+    if (historyPrice === 0) return true;
+
+    // 精确比较交易价格和历史净值
+    return record.price !== historyPrice;
+  };
+
   // 根据视图模式过滤记录
   const recordsForMatching = useMemo(() => {
     if (viewMode === 'normal') {
       return allRecords;  // 普通视图显示所有记录
     }
+    if (viewMode === 'error') {
+      // 错误交易视图：只显示价格错误的交易（需要先加载历史净值）
+      return allRecords.filter(record => {
+        // 分红类型不检查
+        if (record.type === 'dividend') return false;
+        // 建仓记录不检查（建仓价格可能是自定义的）
+        if ((record as any).isInitial) return false;
+        // 检查价格是否错误
+        return isErrorTrade(record);
+      });
+    }
     // FIFO/LIFO视图：排除分红记录
     return allRecords.filter(record => record.type !== 'dividend');
-  }, [viewMode, allRecords]);
+  }, [viewMode, allRecords, history, currentPrice, previousPrice, realtimeDate, netWorthDate, todayLocal]);
 
   // 使用匹配器处理数据
   const { matchedRecords, matchErrors } = useMemo(() => {
@@ -281,22 +323,6 @@ export const TradeManager: React.FC<{
     document.addEventListener('mouseup', handleMouseUp);
     return () => document.removeEventListener('mouseup', handleMouseUp);
   }, []);
-
-  const todayLocal = useMemo(() => toLocalDateKey(new Date()), []);
-
-  // get price for a given local date string: exact match by local date or nearest previous available (<= end of day)
-  const getPriceForDate = (isoDate: string) => {
-    const resolved = resolvePreferredPrice({
-      targetDate: isoDate,
-      todayDate: todayLocal,
-      history,
-      currentPrice,
-      realtimeDate,
-      previousPrice,
-      netWorthDate,
-    });
-    return resolved ? resolved.price : 0;
-  };
 
   const addOrUpdateTrade = () => {
     const f = Number(fee);
@@ -722,6 +748,17 @@ export const TradeManager: React.FC<{
                 />
                 后进先出
               </label>
+              <label className="flex items-center cursor-pointer">
+                <input
+                  type="radio"
+                  name="viewMode"
+                  value="error"
+                  checked={viewMode === 'error'}
+                  onChange={() => setViewMode('error')}
+                  className="mr-1"
+                />
+                错误交易
+              </label>
             </div>
           </div>
           {/* 表头 */}
@@ -799,7 +836,7 @@ export const TradeManager: React.FC<{
                         {profitAmount === 0 ? '-' : `${profitAmount > 0 ? '+' : '-'}${formatNumber(Math.abs(profitAmount), 2)}`}
                       </div>
                       <div className="w-[8%] text-right text-xs">
-                        {isInitial || viewMode !== 'normal' ? (
+                        {isInitial || (viewMode !== 'normal' && viewMode !== 'error') ? (
                           <span className="text-gray-400">-</span>
                         ) : (
                           <span className="space-x-2">
